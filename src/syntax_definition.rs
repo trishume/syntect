@@ -1,24 +1,24 @@
-use yaml_rust::{YamlLoader, Yaml};
-use std::collections::{HashMap};
+use yaml_rust::{YamlLoader, Yaml, ScanError};
+use std::collections::{HashMap, BTreeMap};
 
-type Regex = String;
-type Scope = String;
-type CaptureMapping = HashMap<usize, Scope>;
+pub type Regex = String;
+pub type Scope = String;
+pub type CaptureMapping = HashMap<usize, Scope>;
 
 #[derive(Debug)]
-struct SyntaxDefinition {
-    name: String,
-    file_extensions: Vec<String>,
-    default_scope: Scope,
-    first_line_match: Regex,
-    hidden: bool,
+pub struct SyntaxDefinition {
+    pub name: String,
+    pub file_extensions: Vec<String>,
+    pub scope: Scope,
+    pub first_line_match: Option<Regex>,
+    pub hidden: bool,
 
-    variables: HashMap<String, String>,
-    contexts: HashMap<String, Context>
+    pub variables: HashMap<String, String>,
+    pub contexts: HashMap<String, Context>
 }
 
 #[derive(Debug)]
-struct Context {
+pub struct Context {
     meta_scope: Scope,
     meta_content_scope: Scope,
     meta_include_prototype: bool,
@@ -28,7 +28,7 @@ struct Context {
 }
 
 #[derive(Debug)]
-struct MatchPattern {
+pub struct MatchPattern {
     regex: Regex,
     scope: Option<Scope>,
     captures: Option<CaptureMapping>,
@@ -36,7 +36,7 @@ struct MatchPattern {
 }
 
 #[derive(Debug)]
-enum ContextReference {
+pub enum ContextReference {
   Named(String),
   Scope {name: String, sub_context: Option<String>},
   File(String),
@@ -44,9 +44,52 @@ enum ContextReference {
 }
 
 #[derive(Debug)]
-enum MatchOperation {
+pub enum MatchOperation {
     Push(Vec<ContextReference>),
     Set(Vec<ContextReference>),
     Pop,
     None
+}
+
+#[derive(Debug)]
+pub enum ParseError {
+  InvalidYaml(ScanError),
+  EmptyFile,
+  MissingMandatoryKey(&'static str),
+  TypeMismatch
+}
+
+fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>
+  (map: &'a BTreeMap<Yaml, Yaml>, key: &'static str, f: F) -> Result<R, ParseError> {
+  map.get(&Yaml::String(key.to_owned()))
+     .ok_or(ParseError::MissingMandatoryKey(key))
+     .and_then(|x| f(x).ok_or(ParseError::TypeMismatch))
+}
+
+impl SyntaxDefinition {
+  pub fn load_from_str(s: &str) -> Result<SyntaxDefinition, ParseError> {
+    let docs = match YamlLoader::load_from_str(s) {
+      Ok(x) => x,
+      Err(e) => return Err(ParseError::InvalidYaml(e))
+    };
+    if docs.len() == 0 { return Err(ParseError::EmptyFile) }
+    let doc = &docs[0];
+    SyntaxDefinition::parse_top_level(doc)
+  }
+
+  fn parse_top_level(doc: &Yaml) -> Result<SyntaxDefinition, ParseError> {
+    let h = try!(doc.as_hash().ok_or(ParseError::TypeMismatch));
+
+    let defn = SyntaxDefinition {
+      name: try!(get_key(h, "name", |x| x.as_str())).to_owned(),
+      scope: try!(get_key(h, "scope", |x| x.as_str())).to_owned(),
+      file_extensions: vec![], // TODO
+      first_line_match: get_key(h, "first_line_match", |x| x.as_str()).ok().map(|x| x.to_owned()),
+      hidden: get_key(h, "hidden", |x| x.as_bool()).unwrap_or(false),
+
+      variables: HashMap::new(), // TODO
+      contexts: HashMap::new(), // TODO
+    };
+    Ok(defn)
+  }
 }

@@ -5,5 +5,9 @@ mod syntax_definition;
 mod tests {
     #[test]
     fn it_works() {
+      use syntax_definition::{SyntaxDefinition};
+      let defn : SyntaxDefinition = SyntaxDefinition::load_from_str("name: C\nscope: source.c").unwrap();
+      assert_eq!(defn.name, "C");
+      assert_eq!(defn.scope, "source.c");
     }
 }
