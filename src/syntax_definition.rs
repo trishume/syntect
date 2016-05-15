@@ -10,17 +10,17 @@ pub struct SyntaxDefinition {
     pub name: String,
     pub file_extensions: Vec<String>,
     pub scope: ScopeElement,
-    pub first_line_match: Option<Regex>,
+    first_line_match: Option<Regex>,
     pub hidden: bool,
 
-    pub variables: HashMap<String, String>,
-    pub contexts: HashMap<String, Context>
+    variables: HashMap<String, String>,
+    contexts: HashMap<String, Context>
 }
 
 #[derive(Debug)]
 pub struct Context {
-    meta_scope: ScopeElement,
-    meta_content_scope: ScopeElement,
+    meta_scope: Option<ScopeElement>,
+    meta_content_scope: Option<ScopeElement>,
     meta_include_prototype: bool,
 
     patterns: Vec<Pattern>
@@ -94,6 +94,9 @@ impl SyntaxDefinition {
       }
     }
 
+    let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
+    let contexts = try!(SyntaxDefinition::parse_contexts(contexts_hash, &variables));
+
     let defn = SyntaxDefinition {
       name: try!(get_key(h, "name", |x| x.as_str())).to_owned(),
       scope: try!(get_key(h, "scope", |x| x.as_str())).to_owned(),
@@ -106,8 +109,131 @@ impl SyntaxDefinition {
       hidden: get_key(h, "hidden", |x| x.as_bool()).unwrap_or(false),
 
       variables: variables,
-      contexts: HashMap::new(), // TODO
+      contexts: contexts, // TODO
     };
     Ok(defn)
   }
+
+  fn parse_contexts(map: &BTreeMap<Yaml, Yaml>, variables: &HashMap<String,String>) -> Result<HashMap<String,Context>, ParseError> {
+    let mut contexts = HashMap::new();
+    for (key, value) in map.iter() {
+      if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
+        let context = try!(SyntaxDefinition::parse_context(val_vec, variables));
+        contexts.insert(name.to_owned(), context);
+      }
+    }
+    return Ok(contexts);
+  }
+
+  fn parse_context(vec: &Vec<Yaml>, variables: &HashMap<String,String>) -> Result<Context, ParseError> {
+    let mut context = Context {
+      meta_scope: None,
+      meta_content_scope: None,
+      meta_include_prototype: true,
+      patterns: Vec::new()
+    };
+    for y in vec.iter() {
+      let map = try!(y.as_hash().ok_or(ParseError::TypeMismatch));
+
+      if let Some(x) = get_key(map, "meta_scope", |x| x.as_str()).ok() {
+        context.meta_scope = Some(x.to_owned());
+      } else if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
+        context.meta_scope = Some(x.to_owned());
+      } else if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
+        context.meta_include_prototype = x;
+      } else if let Some(x) = get_key(map, "include", |x| Some(x)).ok() {
+        let reference = try!(SyntaxDefinition::parse_reference(x, variables));
+        context.patterns.push(Pattern::Include(reference));
+      } else {
+        let pattern = try!(SyntaxDefinition::parse_match_pattern(map, variables));
+        context.patterns.push(Pattern::Match(pattern));
+      }
+
+    }
+    return Ok(context);
+  }
+
+  fn parse_reference(y: &Yaml, variables: &HashMap<String,String>) -> Result<ContextReference, ParseError> {
+    if let Some(s) = y.as_str() {
+      if s.starts_with("scope:") {
+        let scope_ref = &s[6..];
+        let parts : Vec<&str> = scope_ref.split("#").collect();
+        Ok(ContextReference::ByScope {
+          name: parts[0].to_owned(),
+          sub_context: if parts.len() > 0 { Some(parts[1].to_owned()) } else { None }
+        })
+      } else if s.ends_with(".sublime-syntax") {
+        Ok(ContextReference::File(s.to_owned()))
+      } else {
+        Ok(ContextReference::Named(s.to_owned()))
+      }
+    } else if let Some(v) = y.as_vec() {
+      let context = try!(SyntaxDefinition::parse_context(v, variables));
+      Ok(ContextReference::Inline(Box::new(context)))
+    } else {
+      Err(ParseError::TypeMismatch)
+    }
+  }
+
+  fn parse_match_pattern(map: &BTreeMap<Yaml, Yaml>, variables: &HashMap<String,String>) -> Result<MatchPattern, ParseError> {
+    let raw_regex = try!(get_key(map, "match", |x| x.as_str()));
+    let regex = raw_regex.to_owned(); // TODO substitute variables, compile with Onigurama
+    let scope = get_key(map, "scope", |x| x.as_str()).ok().map(|s| s.to_owned());
+    let pattern = MatchPattern {
+      regex: regex,
+      scope: scope,
+      captures: None, // TODO
+      operation: MatchOperation::None // TODO
+    };
+    return Ok(pattern);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn can_parse() {
+      use syntax_definition::{SyntaxDefinition};
+      let defn : SyntaxDefinition = SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {}").unwrap();
+      assert_eq!(defn.name, "C");
+      assert_eq!(defn.scope, "source.c");
+      let exts_empty : Vec<String> = Vec::new();
+      assert_eq!(defn.file_extensions, exts_empty);
+      assert_eq!(defn.hidden, false);
+      assert!(defn.variables.is_empty());
+      let defn2 : SyntaxDefinition = SyntaxDefinition::load_from_str("
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        hidden: true
+        variables:
+          ident: '[A-Za-z_][A-Za-z_0-9]*'
+        contexts:
+          main:
+            - match: \\b(if|else|for|while)\\b
+              scope: keyword.control.c
+            - match: '\"'
+              push: string
+
+          string:
+            - meta_scope: string.quoted.double.c
+            - match: \\\\.
+              scope: constant.character.escape.c
+            - match: '\"'
+              pop: true
+      ").unwrap();
+      assert_eq!(defn2.name, "C");
+      assert_eq!(defn2.scope, "source.c");
+      let exts : Vec<String> = vec![String::from("c"), String::from("h")];
+      assert_eq!(defn2.file_extensions, exts);
+      assert_eq!(defn2.hidden, true);
+      assert_eq!(defn2.variables.get("ident").unwrap(), "[A-Za-z_][A-Za-z_0-9]*");
+
+      let n : Option<String> = None;
+      println!("{:?}", defn2);
+      assert!(false);
+      assert_eq!(defn2.contexts["main"].meta_scope, n);
+      assert_eq!(defn2.contexts["main"].meta_include_prototype, true);
+      assert_eq!(defn2.contexts["string"].meta_scope, Some(String::from("string.quoted.double.c")));
+    }
 }
