@@ -17,7 +17,7 @@ pub struct SyntaxDefinition {
     contexts: HashMap<String, Context>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Context {
     meta_scope: Option<ScopeElement>,
     meta_content_scope: Option<ScopeElement>,
@@ -26,13 +26,13 @@ pub struct Context {
     patterns: Vec<Pattern>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Pattern {
     Match(MatchPattern),
     Include(ContextReference),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MatchPattern {
     regex: Regex,
     scope: Option<ScopeElement>,
@@ -40,7 +40,7 @@ pub struct MatchPattern {
     operation: MatchOperation,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ContextReference {
     Named(String),
     ByScope {
@@ -51,7 +51,7 @@ pub enum ContextReference {
     Inline(Box<Context>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum MatchOperation {
     Push(Vec<ContextReference>),
     Set(Vec<ContextReference>),
@@ -118,7 +118,7 @@ impl SyntaxDefinition {
             hidden: get_key(h, "hidden", |x| x.as_bool()).unwrap_or(false),
 
             variables: variables,
-            contexts: contexts, // TODO
+            contexts: contexts,
         };
         Ok(defn)
     }
@@ -200,11 +200,35 @@ impl SyntaxDefinition {
         let raw_regex = try!(get_key(map, "match", |x| x.as_str()));
         let regex = raw_regex.to_owned(); // TODO substitute variables, compile with Onigurama
         let scope = get_key(map, "scope", |x| x.as_str()).ok().map(|s| s.to_owned());
+
+        let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
+            let mut res_map = HashMap::new();
+            for (key, value) in map.iter() {
+                if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
+                    res_map.insert(key_int as usize, val_str.to_owned());
+                }
+            }
+            Some(res_map)
+        } else {
+            None
+        };
+
+        let operation = if let Ok(map) = get_key(map, "pop", |x| x.as_bool()) {
+            MatchOperation::Pop
+        } else if let Ok(y) = get_key(map, "push", |x| Some(x)) {
+            MatchOperation::Push(vec![try!(SyntaxDefinition::parse_reference(y, variables))])
+        } else if let Ok(y) = get_key(map, "set", |x| Some(x)) {
+            MatchOperation::Set(vec![try!(SyntaxDefinition::parse_reference(y, variables))])
+            // TODO multi-push and multi-pop
+        } else {
+            MatchOperation::None
+        };
+
         let pattern = MatchPattern {
             regex: regex,
             scope: scope,
-            captures: None, // TODO
-            operation: MatchOperation::None, // TODO
+            captures: captures,
+            operation: operation, // TODO
         };
         return Ok(pattern);
     }
@@ -214,7 +238,7 @@ impl SyntaxDefinition {
 mod tests {
     #[test]
     fn can_parse() {
-        use syntax_definition::SyntaxDefinition;
+        use syntax_definition::{SyntaxDefinition, Pattern, CaptureMapping, MatchPattern, MatchOperation, ContextReference};
         let defn: SyntaxDefinition =
             SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {}").unwrap();
         assert_eq!(defn.name, "C");
@@ -235,6 +259,10 @@ mod tests {
           main:
             - match: \\b(if|else|for|while)\\b
               scope: keyword.control.c
+              captures:
+                  1: meta.preprocessor.c++
+                  2: keyword.control.include.c++
+              push: scope:source.c#main
             - match: '\"'
               push: string
           string:
@@ -255,10 +283,24 @@ mod tests {
 
         let n: Option<String> = None;
         println!("{:?}", defn2);
-        assert!(false);
+        // assert!(false);
         assert_eq!(defn2.contexts["main"].meta_scope, n);
         assert_eq!(defn2.contexts["main"].meta_include_prototype, true);
         assert_eq!(defn2.contexts["string"].meta_scope,
                    Some(String::from("string.quoted.double.c")));
+        let first_pattern: &Pattern = &defn2.contexts["main"].patterns[0];
+        match first_pattern {
+            &Pattern::Match(ref match_pat) => {
+                let m : &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
+                let x : &String = &m[&1];
+                assert_eq!(x, "meta.preprocessor.c++");
+                assert_eq!(match_pat.operation, MatchOperation::Push(vec![
+                    ContextReference::ByScope {
+                        name: String::from("source.c"),
+                        sub_context: Some(String::from("main"))
+                    }]));
+            },
+            _ => assert!(false)
+        }
     }
 }
