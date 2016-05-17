@@ -216,10 +216,9 @@ impl SyntaxDefinition {
         let operation = if let Ok(map) = get_key(map, "pop", |x| x.as_bool()) {
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", |x| Some(x)) {
-            MatchOperation::Push(vec![try!(SyntaxDefinition::parse_reference(y, variables))])
+            MatchOperation::Push(try!(SyntaxDefinition::parse_pushargs(y, variables)))
         } else if let Ok(y) = get_key(map, "set", |x| Some(x)) {
-            MatchOperation::Set(vec![try!(SyntaxDefinition::parse_reference(y, variables))])
-            // TODO multi-push and multi-pop
+            MatchOperation::Set(try!(SyntaxDefinition::parse_pushargs(y, variables)))
         } else {
             MatchOperation::None
         };
@@ -228,9 +227,21 @@ impl SyntaxDefinition {
             regex: regex,
             scope: scope,
             captures: captures,
-            operation: operation, // TODO
+            operation: operation,
         };
         return Ok(pattern);
+    }
+
+    fn parse_pushargs(y: &Yaml,
+                      variables: &HashMap<String, String>)
+                      -> Result<Vec<ContextReference>, ParseError> {
+        // check for a push of multiple items
+        if y.as_vec().map(|v| !v.is_empty() && v[0].as_str().is_some()).unwrap_or(false) {
+            // this works because Result implements FromIterator to handle the errors
+            y.as_vec().unwrap().iter().map(|x| SyntaxDefinition::parse_reference(x, variables)).collect()
+        } else {
+            Ok(vec![try!(SyntaxDefinition::parse_reference(y, variables))])
+        }
     }
 }
 
@@ -262,7 +273,7 @@ mod tests {
               captures:
                   1: meta.preprocessor.c++
                   2: keyword.control.include.c++
-              push: scope:source.c#main
+              push: [string, 'scope:source.c#main']
             - match: '\"'
               push: string
           string:
@@ -295,6 +306,7 @@ mod tests {
                 let x : &String = &m[&1];
                 assert_eq!(x, "meta.preprocessor.c++");
                 assert_eq!(match_pat.operation, MatchOperation::Push(vec![
+                    ContextReference::Named(String::from("string")),
                     ContextReference::ByScope {
                         name: String::from("source.c"),
                         sub_context: Some(String::from("main"))
