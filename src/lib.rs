@@ -1,5 +1,5 @@
 extern crate yaml_rust;
-mod syntax_definition;
+pub mod syntax_definition;
 
 #[cfg(test)]
 mod tests {

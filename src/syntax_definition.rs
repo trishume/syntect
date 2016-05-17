@@ -10,20 +10,20 @@ pub struct SyntaxDefinition {
     pub name: String,
     pub file_extensions: Vec<String>,
     pub scope: ScopeElement,
-    first_line_match: Option<Regex>,
+    pub first_line_match: Option<Regex>,
     pub hidden: bool,
 
-    variables: HashMap<String, String>,
-    contexts: HashMap<String, Context>,
+    pub variables: HashMap<String, String>,
+    pub contexts: HashMap<String, Context>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Context {
-    meta_scope: Option<ScopeElement>,
-    meta_content_scope: Option<ScopeElement>,
-    meta_include_prototype: bool,
+    pub meta_scope: Option<ScopeElement>,
+    pub meta_content_scope: Option<ScopeElement>,
+    pub meta_include_prototype: bool,
 
-    patterns: Vec<Pattern>,
+    pub patterns: Vec<Pattern>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -34,10 +34,10 @@ pub enum Pattern {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MatchPattern {
-    regex: Regex,
-    scope: Option<ScopeElement>,
-    captures: Option<CaptureMapping>,
-    operation: MatchOperation,
+    pub regex: Regex,
+    pub scope: Option<ScopeElement>,
+    pub captures: Option<CaptureMapping>,
+    pub operation: MatchOperation,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -213,7 +213,7 @@ impl SyntaxDefinition {
             None
         };
 
-        let operation = if let Ok(map) = get_key(map, "pop", |x| x.as_bool()) {
+        let operation = if let Ok(_) = get_key(map, "pop", |x| Some(x)) {
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", |x| Some(x)) {
             MatchOperation::Push(try!(SyntaxDefinition::parse_pushargs(y, variables)))
@@ -249,7 +249,7 @@ impl SyntaxDefinition {
 mod tests {
     #[test]
     fn can_parse() {
-        use syntax_definition::{SyntaxDefinition, Pattern, CaptureMapping, MatchPattern, MatchOperation, ContextReference};
+        use syntax_definition::{SyntaxDefinition, Pattern, CaptureMapping, MatchOperation, ContextReference};
         let defn: SyntaxDefinition =
             SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {}").unwrap();
         assert_eq!(defn.name, "C");
@@ -268,7 +268,7 @@ mod tests {
           ident: '[A-Za-z_][A-Za-z_0-9]*'
         contexts:
           main:
-            - match: \\b(if|else|for|while)\\b
+            - match: \\b(if|else|for|while|{{ident}})\\b
               scope: keyword.control.c
               captures:
                   1: meta.preprocessor.c++
