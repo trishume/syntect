@@ -5,3 +5,4 @@ authors = ["Tristan Hume <tristan@thume.ca>"]
 
 [dependencies]
 yaml-rust = "0.3.2"
+onig = "0.4.0"

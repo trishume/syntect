@@ -1,4 +1,5 @@
 extern crate yaml_rust;
+extern crate onig;
 pub mod syntax_definition;
 
 #[cfg(test)]
