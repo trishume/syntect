@@ -5,5 +5,6 @@ authors = ["Tristan Hume <tristan@thume.ca>"]
 
 [dependencies]
 yaml-rust = "0.3"
-onig = "0.4"
+# TODO: switch this back to crates.io once a new release with my fix is published
+onig = { git = "https://github.com/rust-onig/rust-onig.git", rev = "d152d45" }
 walkdir = "0.1"

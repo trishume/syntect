@@ -7,7 +7,7 @@ use walkdir;
 
 #[derive(Debug)]
 pub struct PackageSet {
-    syntaxes: Vec<SyntaxDefinition>
+    pub syntaxes: Vec<SyntaxDefinition>
 }
 
 #[derive(Debug)]
@@ -47,8 +47,10 @@ mod tests {
     #[test]
     fn can_load() {
         use package_set::{PackageSet};
-        let ps = PackageSet::load_from_folder("testdata/Packages");
-        println!("{:#?}", ps);
-        assert!(false);
+        let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
+        let actionscript = ps.syntaxes.iter().find(|s| s.name == "ActionScript").unwrap();
+        // println!("{:#?}", actionscript);
+        assert_eq!(actionscript.scope, "source.actionscript.2");
+        // assert!(false);
     }
 }

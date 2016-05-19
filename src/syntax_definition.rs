@@ -1,7 +1,6 @@
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
-use onig::{Regex, Captures};
-use onig;
+use onig::{Regex, Captures, Syntax, self};
 
 pub type ScopeElement = String;
 pub type CaptureMapping = HashMap<usize, ScopeElement>;
@@ -84,6 +83,7 @@ struct ParserState {
     variables: HashMap<String, String>,
     variable_regex: Regex,
     backref_regex: Regex,
+    short_multibyte_regex: Regex,
 }
 
 impl SyntaxDefinition {
@@ -114,6 +114,7 @@ impl SyntaxDefinition {
             variables: variables,
             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
             backref_regex: Regex::new(r"\\\d").unwrap(),
+            short_multibyte_regex: Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
         };
 
         let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
@@ -215,17 +216,20 @@ impl SyntaxDefinition {
                            state: &ParserState)
                            -> Result<MatchPattern, ParseError> {
         let raw_regex = try!(get_key(map, "match", |x| x.as_str()));
-        let regex_str = state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
-            // println!("{:?}", caps.at(1).unwrap_or(""));
+        let regex_str_1 = state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
             state.variables.get(caps.at(1).unwrap_or("")).map(|x| &**x).unwrap_or("").to_owned()
         });
-        println!("{:?}", regex_str);
+        // bug triggered by CSS.sublime-syntax, dunno why this is necessary
+        let regex_str = state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &Captures| {
+            format!("\\x{{000000{}}}", caps.at(1).unwrap_or(""))
+        });
+        // println!("{:?}", regex_str);
 
         // if it contains back references we can't resolve it until runtime
         let regex = if state.backref_regex.find(&regex_str).is_some() {
             None
         } else {
-            Some(try!(Regex::new(&regex_str).map_err(|e| ParseError::RegexCompileError(e))))
+            Some(try!(Regex::with_options(&regex_str, onig::REGEX_OPTION_CAPTURE_GROUP, Syntax::default()).map_err(|e| ParseError::RegexCompileError(e))))
         };
 
         let scope = get_key(map, "scope", |x| x.as_str()).ok().map(|s| s.to_owned());
