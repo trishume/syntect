@@ -1,7 +1,6 @@
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
-use onig::{Regex, Captures};
-use onig;
+use onig::{Regex, Captures, Syntax, self};
 
 pub type ScopeElement = String;
 pub type CaptureMapping = HashMap<usize, ScopeElement>;
@@ -35,7 +34,9 @@ pub enum Pattern {
 
 #[derive(Debug)]
 pub struct MatchPattern {
-    pub regex: Regex,
+    pub regex_str: String,
+    // present unless contains backrefs and has to be dynamically compiled
+    pub regex: Option<Regex>,
     pub scope: Option<ScopeElement>,
     pub captures: Option<CaptureMapping>,
     pub operation: MatchOperation,
@@ -80,7 +81,9 @@ fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a BTreeMap<Yaml, Yaml
 
 struct ParserState {
     variables: HashMap<String, String>,
-    variable_regex: Regex
+    variable_regex: Regex,
+    backref_regex: Regex,
+    short_multibyte_regex: Regex,
 }
 
 impl SyntaxDefinition {
@@ -109,7 +112,9 @@ impl SyntaxDefinition {
         }
         let state = ParserState {
             variables: variables,
-            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap()
+            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
+            backref_regex: Regex::new(r"\\\d").unwrap(),
+            short_multibyte_regex: Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
         };
 
         let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
@@ -188,7 +193,7 @@ impl SyntaxDefinition {
                 let parts: Vec<&str> = scope_ref.split("#").collect();
                 Ok(ContextReference::ByScope {
                     name: parts[0].to_owned(),
-                    sub_context: if parts.len() > 0 {
+                    sub_context: if parts.len() > 1 {
                         Some(parts[1].to_owned())
                     } else {
                         None
@@ -211,11 +216,21 @@ impl SyntaxDefinition {
                            state: &ParserState)
                            -> Result<MatchPattern, ParseError> {
         let raw_regex = try!(get_key(map, "match", |x| x.as_str()));
-        let regex_str = state.variable_regex.replace(raw_regex, |caps: &Captures| {
+        let regex_str_1 = state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
             state.variables.get(caps.at(1).unwrap_or("")).map(|x| &**x).unwrap_or("").to_owned()
         });
+        // bug triggered by CSS.sublime-syntax, dunno why this is necessary
+        let regex_str = state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &Captures| {
+            format!("\\x{{000000{}}}", caps.at(1).unwrap_or(""))
+        });
         // println!("{:?}", regex_str);
-        let regex = try!(Regex::new(&regex_str).map_err(|e| ParseError::RegexCompileError(e)));
+
+        // if it contains back references we can't resolve it until runtime
+        let regex = if state.backref_regex.find(&regex_str).is_some() {
+            None
+        } else {
+            Some(try!(Regex::with_options(&regex_str, onig::REGEX_OPTION_CAPTURE_GROUP, Syntax::default()).map_err(|e| ParseError::RegexCompileError(e))))
+        };
 
         let scope = get_key(map, "scope", |x| x.as_str()).ok().map(|s| s.to_owned());
 
@@ -242,6 +257,7 @@ impl SyntaxDefinition {
         };
 
         let pattern = MatchPattern {
+            regex_str: regex_str,
             regex: regex,
             scope: scope,
             captures: captures,
@@ -325,11 +341,12 @@ mod tests {
                 assert_eq!(format!("{:?}",match_pat.operation),
                     "Push([Named(\"string\"), ByScope { name: \"source.c\", sub_context: Some(\"main\") }])");
 
-                assert!(match_pat.regex.is_match("else"));
-                assert!(!match_pat.regex.is_match("elses"));
-                assert!(!match_pat.regex.is_match("elose"));
-                assert!(match_pat.regex.is_match("QYYQQQ"));
-                assert!(!match_pat.regex.is_match("QYYQZQQ"));
+                let r = match_pat.regex.as_ref().unwrap();
+                assert!(r.is_match("else"));
+                assert!(!r.is_match("elses"));
+                assert!(!r.is_match("elose"));
+                assert!(r.is_match("QYYQQQ"));
+                assert!(!r.is_match("QYYQZQQ"));
             },
             _ => assert!(false)
         }

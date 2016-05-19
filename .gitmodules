@@ -1,0 +1,3 @@
+[submodule "testdata/Packages"]
+	path = testdata/Packages
+	url = https://github.com/sublimehq/Packages

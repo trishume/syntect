@@ -1,6 +1,8 @@
 extern crate yaml_rust;
 extern crate onig;
+extern crate walkdir;
 pub mod syntax_definition;
+pub mod package_set;
 
 #[cfg(test)]
 mod tests {
