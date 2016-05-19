@@ -4,5 +4,6 @@ version = "0.1.0"
 authors = ["Tristan Hume <tristan@thume.ca>"]
 
 [dependencies]
-yaml-rust = "0.3.2"
-onig = "0.4.0"
+yaml-rust = "0.3"
+onig = "0.4"
+walkdir = "0.1"
