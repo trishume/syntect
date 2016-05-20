@@ -37,7 +37,7 @@ pub struct MatchPattern {
     pub regex_str: String,
     // present unless contains backrefs and has to be dynamically compiled
     pub regex: Option<Regex>,
-    pub scope: Option<ScopeElement>,
+    pub scope: Vec<ScopeElement>,
     pub captures: Option<CaptureMapping>,
     pub operation: MatchOperation,
 }
@@ -232,7 +232,7 @@ impl SyntaxDefinition {
             Some(try!(Regex::with_options(&regex_str, onig::REGEX_OPTION_CAPTURE_GROUP, Syntax::default()).map_err(|e| ParseError::RegexCompileError(e))))
         };
 
-        let scope = get_key(map, "scope", |x| x.as_str()).ok().map(|s| s.to_owned());
+        let scope = get_key(map, "scope", |x| x.as_str()).ok().map(|s| s.split_whitespace().map(|scope| scope.to_owned()).collect()).unwrap_or_else(|| vec![]);
 
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
             let mut res_map = HashMap::new();
@@ -303,7 +303,7 @@ mod tests {
         contexts:
           main:
             - match: \\b(if|else|for|while|{{ident}})\\b
-              scope: keyword.control.c
+              scope: keyword.control.c keyword.looping.c
               captures:
                   1: meta.preprocessor.c++
                   2: keyword.control.include.c++
@@ -340,6 +340,8 @@ mod tests {
                 assert_eq!(x, "meta.preprocessor.c++");
                 assert_eq!(format!("{:?}",match_pat.operation),
                     "Push([Named(\"string\"), ByScope { name: \"source.c\", sub_context: Some(\"main\") }])");
+
+                assert_eq!(match_pat.scope, vec![String::from("keyword.control.c"), String::from("keyword.looping.c")]);
 
                 let r = match_pat.regex.as_ref().unwrap();
                 assert!(r.is_match("else"));
