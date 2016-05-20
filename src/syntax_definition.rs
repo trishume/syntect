@@ -49,7 +49,10 @@ pub enum ContextReference {
         name: String,
         sub_context: Option<String>,
     },
-    File(String),
+    File {
+        name: String,
+        sub_context: Option<String>,
+    },
     Inline(Box<Context>),
 }
 
@@ -188,21 +191,24 @@ impl SyntaxDefinition {
                        state: &ParserState)
                        -> Result<ContextReference, ParseError> {
         if let Some(s) = y.as_str() {
-            if s.starts_with("scope:") {
-                let scope_ref = &s[6..];
-                let parts: Vec<&str> = scope_ref.split("#").collect();
-                Ok(ContextReference::ByScope {
-                    name: parts[0].to_owned(),
-                    sub_context: if parts.len() > 1 {
-                        Some(parts[1].to_owned())
-                    } else {
-                        None
-                    },
-                })
-            } else if s.ends_with(".sublime-syntax") {
-                Ok(ContextReference::File(s.to_owned()))
+            let parts: Vec<&str> = s.split("#").collect();
+            let sub_context = if parts.len() > 1 {
+                Some(parts[1].to_owned())
             } else {
-                Ok(ContextReference::Named(s.to_owned()))
+                None
+            };
+            if parts[0].starts_with("scope:") {
+                Ok(ContextReference::ByScope {
+                    name: parts[0][6..].to_owned(),
+                    sub_context: sub_context,
+                })
+            } else if parts[0].ends_with(".sublime-syntax") {
+                Ok(ContextReference::File {
+                    name: s.to_owned(),
+                    sub_context: sub_context,
+                })
+            } else {
+                Ok(ContextReference::Named(parts[0].to_owned()))
             }
         } else if let Some(v) = y.as_vec() {
             let context = try!(SyntaxDefinition::parse_context(v, state));
@@ -307,7 +313,7 @@ mod tests {
               captures:
                   1: meta.preprocessor.c++
                   2: keyword.control.include.c++
-              push: [string, 'scope:source.c#main']
+              push: [string, 'scope:source.c#main', 'CSS.sublime-syntax#rule-list-body']
             - match: '\"'
               push: string
           string:
@@ -339,7 +345,8 @@ mod tests {
                 let x : &String = &m[&1];
                 assert_eq!(x, "meta.preprocessor.c++");
                 assert_eq!(format!("{:?}",match_pat.operation),
-                    "Push([Named(\"string\"), ByScope { name: \"source.c\", sub_context: Some(\"main\") }])");
+                    "Push([Named(\"string\"), ByScope { name: \"source.c\", sub_context: Some(\"main\") }, \
+                    File { name: \"CSS.sublime-syntax#rule-list-body\", sub_context: Some(\"rule-list-body\") }])");
 
                 assert_eq!(match_pat.scope, vec![String::from("keyword.control.c"), String::from("keyword.looping.c")]);
 
