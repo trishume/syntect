@@ -1,9 +1,12 @@
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
 use onig::{Regex, Captures, Syntax, self};
+use std::rc::Rc;
+use std::cell::{RefCell};
 
 pub type ScopeElement = String;
 pub type CaptureMapping = HashMap<usize, ScopeElement>;
+pub type ContextPtr = Rc<RefCell<Context>>;
 
 #[derive(Debug)]
 pub struct SyntaxDefinition {
@@ -14,7 +17,7 @@ pub struct SyntaxDefinition {
     pub hidden: bool,
 
     pub variables: HashMap<String, String>,
-    pub contexts: HashMap<String, Context>,
+    pub contexts: HashMap<String, ContextPtr>,
 }
 
 #[derive(Debug)]
@@ -53,7 +56,7 @@ pub enum ContextReference {
         name: String,
         sub_context: Option<String>,
     },
-    Inline(Box<Context>),
+    Direct(ContextPtr),
 }
 
 #[derive(Debug)]
@@ -146,7 +149,7 @@ impl SyntaxDefinition {
 
     fn parse_contexts(map: &BTreeMap<Yaml, Yaml>,
                       state: &ParserState)
-                      -> Result<HashMap<String, Context>, ParseError> {
+                      -> Result<HashMap<String, ContextPtr>, ParseError> {
         let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
@@ -159,7 +162,7 @@ impl SyntaxDefinition {
 
     fn parse_context(vec: &Vec<Yaml>,
                      state: &ParserState)
-                     -> Result<Context, ParseError> {
+                     -> Result<ContextPtr, ParseError> {
         let mut context = Context {
             meta_scope: None,
             meta_content_scope: None,
@@ -184,7 +187,7 @@ impl SyntaxDefinition {
             }
 
         }
-        return Ok(context);
+        return Ok(Rc::new(RefCell::new(context)));
     }
 
     fn parse_reference(y: &Yaml,
@@ -212,7 +215,7 @@ impl SyntaxDefinition {
             }
         } else if let Some(v) = y.as_vec() {
             let context = try!(SyntaxDefinition::parse_context(v, state));
-            Ok(ContextReference::Inline(Box::new(context)))
+            Ok(ContextReference::Direct(context))
         } else {
             Err(ParseError::TypeMismatch)
         }
@@ -334,11 +337,11 @@ mod tests {
         let n: Option<String> = None;
         println!("{:?}", defn2);
         // assert!(false);
-        assert_eq!(defn2.contexts["main"].meta_scope, n);
-        assert_eq!(defn2.contexts["main"].meta_include_prototype, true);
-        assert_eq!(defn2.contexts["string"].meta_scope,
+        assert_eq!(defn2.contexts["main"].borrow().meta_scope, n);
+        assert_eq!(defn2.contexts["main"].borrow().meta_include_prototype, true);
+        assert_eq!(defn2.contexts["string"].borrow().meta_scope,
                    Some(String::from("string.quoted.double.c")));
-        let first_pattern: &Pattern = &defn2.contexts["main"].patterns[0];
+        let first_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m : &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
