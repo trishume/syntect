@@ -1,6 +1,7 @@
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
 use onig::{Regex, Captures, Syntax, self};
+use std::rc::Rc;
 
 pub type ScopeElement = String;
 pub type CaptureMapping = HashMap<usize, ScopeElement>;
@@ -14,7 +15,7 @@ pub struct SyntaxDefinition {
     pub hidden: bool,
 
     pub variables: HashMap<String, String>,
-    pub contexts: HashMap<String, Context>,
+    pub contexts: HashMap<String, Rc<Context>>,
 }
 
 #[derive(Debug)]
@@ -53,7 +54,7 @@ pub enum ContextReference {
         name: String,
         sub_context: Option<String>,
     },
-    Inline(Box<Context>),
+    Inline(Rc<Context>),
 }
 
 #[derive(Debug)]
@@ -146,7 +147,7 @@ impl SyntaxDefinition {
 
     fn parse_contexts(map: &BTreeMap<Yaml, Yaml>,
                       state: &ParserState)
-                      -> Result<HashMap<String, Context>, ParseError> {
+                      -> Result<HashMap<String, Rc<Context>>, ParseError> {
         let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
@@ -159,32 +160,35 @@ impl SyntaxDefinition {
 
     fn parse_context(vec: &Vec<Yaml>,
                      state: &ParserState)
-                     -> Result<Context, ParseError> {
-        let mut context = Context {
+                     -> Result<Rc<Context>, ParseError> {
+        let mut context_rc = Rc::new(Context {
             meta_scope: None,
             meta_content_scope: None,
             meta_include_prototype: true,
             patterns: Vec::new(),
-        };
-        for y in vec.iter() {
-            let map = try!(y.as_hash().ok_or(ParseError::TypeMismatch));
+        });
+        {
+            let context = Rc::get_mut(&mut context_rc).unwrap();
+            for y in vec.iter() {
+                let map = try!(y.as_hash().ok_or(ParseError::TypeMismatch));
 
-            if let Some(x) = get_key(map, "meta_scope", |x| x.as_str()).ok() {
-                context.meta_scope = Some(x.to_owned());
-            } else if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
-                context.meta_scope = Some(x.to_owned());
-            } else if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
-                context.meta_include_prototype = x;
-            } else if let Some(x) = get_key(map, "include", |x| Some(x)).ok() {
-                let reference = try!(SyntaxDefinition::parse_reference(x, state));
-                context.patterns.push(Pattern::Include(reference));
-            } else {
-                let pattern = try!(SyntaxDefinition::parse_match_pattern(map, state));
-                context.patterns.push(Pattern::Match(pattern));
+                if let Some(x) = get_key(map, "meta_scope", |x| x.as_str()).ok() {
+                    context.meta_scope = Some(x.to_owned());
+                } else if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
+                    context.meta_scope = Some(x.to_owned());
+                } else if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
+                    context.meta_include_prototype = x;
+                } else if let Some(x) = get_key(map, "include", |x| Some(x)).ok() {
+                    let reference = try!(SyntaxDefinition::parse_reference(x, state));
+                    context.patterns.push(Pattern::Include(reference));
+                } else {
+                    let pattern = try!(SyntaxDefinition::parse_match_pattern(map, state));
+                    context.patterns.push(Pattern::Match(pattern));
+                }
+
             }
-
         }
-        return Ok(context);
+        return Ok(context_rc);
     }
 
     fn parse_reference(y: &Yaml,
@@ -212,7 +216,7 @@ impl SyntaxDefinition {
             }
         } else if let Some(v) = y.as_vec() {
             let context = try!(SyntaxDefinition::parse_context(v, state));
-            Ok(ContextReference::Inline(Box::new(context)))
+            Ok(ContextReference::Inline(context))
         } else {
             Err(ParseError::TypeMismatch)
         }
