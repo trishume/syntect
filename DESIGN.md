@@ -25,3 +25,23 @@
 - 99.8% of scopes have 6 or fewer atoms, 97% have 5 or fewer, 70% have 4 or fewer
   - for unique scopes: {2=>81, 4=>1752, 3=>621, 5=>935, 7=>8, 6=>140} ----> 95% of uniques <= 6
   - for non-unique scopes: {2=>125, 4=>3383, 3=>1505, 5=>1891, 7=>9, 6=>202}
+
+# Checking prefix
+
+operation: `fn extent_matched(potential_prefix: Scope, s: Scope) -> u8`
+idea: any differences are beyond the length of the prefix.
+figure this out by xor and then ctz/clz then a compare to the length (however that works).
+
+```
+XXXXYYYY00000000 # prefix
+XXXXYYYYZZZZ0000 # testee
+00000000ZZZZ0000 # = xored
+
+XXXXYYYYQQQQ0000 # non-prefix
+XXXXYYYYZZZZ0000 # testee
+00000000GGGG0000 # = xored
+
+XXXXQQQQ00000000 # non-prefix
+XXXXYYYYZZZZ0000 # testee
+0000BBBBZZZZ0000 # = xored
+```
