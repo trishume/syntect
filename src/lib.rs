@@ -3,6 +3,8 @@ extern crate onig;
 extern crate walkdir;
 pub mod syntax_definition;
 pub mod package_set;
+pub mod scope;
+pub mod parser;
 
 #[cfg(test)]
 mod tests {

@@ -1,7 +1,7 @@
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
 use onig::{Regex, Captures, Syntax, self};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::cell::{RefCell};
 
 pub type ScopeElement = String;
@@ -56,7 +56,8 @@ pub enum ContextReference {
         name: String,
         sub_context: Option<String>,
     },
-    Direct(ContextPtr),
+    Inline(ContextPtr),
+    Direct(Weak<RefCell<Context>>),
 }
 
 #[derive(Debug)]
@@ -215,7 +216,7 @@ impl SyntaxDefinition {
             }
         } else if let Some(v) = y.as_vec() {
             let context = try!(SyntaxDefinition::parse_context(v, state));
-            Ok(ContextReference::Direct(context))
+            Ok(ContextReference::Inline(context))
         } else {
             Err(ParseError::TypeMismatch)
         }
