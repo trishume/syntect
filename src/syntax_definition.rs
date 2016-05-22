@@ -4,6 +4,7 @@ use onig::{Regex, Captures, Syntax, self};
 use std::rc::{Rc, Weak};
 use std::cell::{RefCell};
 use scope::*;
+use std::path::Path;
 
 pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
 pub type ContextPtr = Rc<RefCell<Context>>;
@@ -49,7 +50,7 @@ pub struct MatchPattern {
 pub enum ContextReference {
     Named(String),
     ByScope {
-        name: String,
+        scope: Scope,
         sub_context: Option<String>,
     },
     File {
@@ -74,6 +75,7 @@ pub enum ParseError {
     EmptyFile,
     MissingMandatoryKey(&'static str),
     RegexCompileError(onig::Error),
+    BadFileRef,
     TypeMismatch,
 }
 
@@ -209,12 +211,13 @@ impl SyntaxDefinition {
             };
             if parts[0].starts_with("scope:") {
                 Ok(ContextReference::ByScope {
-                    name: parts[0][6..].to_owned(),
+                    scope: state.scope_repo.build(&parts[0][6..]),
                     sub_context: sub_context,
                 })
             } else if parts[0].ends_with(".sublime-syntax") {
+                let stem = try!(Path::new(parts[0]).file_stem().and_then(|x| x.to_str()).ok_or(ParseError::BadFileRef));
                 Ok(ContextReference::File {
-                    name: s.to_owned(),
+                    name: stem.to_owned(),
                     sub_context: sub_context,
                 })
             } else {
@@ -299,7 +302,7 @@ impl SyntaxDefinition {
 mod tests {
     #[test]
     fn can_parse() {
-        use syntax_definition::{SyntaxDefinition, Pattern, CaptureMapping};
+        use syntax_definition::*;
         use scope::*;
         let mut repo = ScopeRepository::new();
         let defn: SyntaxDefinition =
@@ -355,9 +358,18 @@ mod tests {
             &Pattern::Match(ref match_pat) => {
                 let m : &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
                 assert_eq!(&m[&1], &vec![repo.build("meta.preprocessor.c++")]);
-                assert_eq!(format!("{:?}",match_pat.operation),
-                    "Push([Named(\"string\"), ByScope { name: \"source.c\", sub_context: Some(\"main\") }, \
-                    File { name: \"CSS.sublime-syntax#rule-list-body\", sub_context: Some(\"rule-list-body\") }])");
+                use syntax_definition::ContextReference::*;
+
+                // this is sadly necessary because Context is not Eq because of the Regex
+                let expected = MatchOperation::Push(vec![
+                    Named("string".to_owned()),
+                    ByScope { scope: repo.build("source.c"), sub_context: Some("main".to_owned()) },
+                    File {
+                        name: "CSS".to_owned(),
+                        sub_context: Some("rule-list-body".to_owned())
+                    },
+                ]);
+                assert_eq!(format!("{:?}",match_pat.operation),format!("{:?}",expected));
 
                 assert_eq!(match_pat.scope, vec![repo.build("keyword.control.c"), repo.build("keyword.looping.c")]);
 

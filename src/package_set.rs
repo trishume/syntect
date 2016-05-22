@@ -1,10 +1,13 @@
-use syntax_definition::{SyntaxDefinition, ParseError};
-use scope::ScopeRepository;
+use syntax_definition::*;
+use scope::*;
 use std::path::Path;
 use walkdir::WalkDir;
 use std::io::{Read, self};
 use std::fs::File;
 use walkdir;
+use std::ops::DerefMut;
+use std::mem;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct PackageSet {
@@ -34,14 +37,75 @@ impl PackageSet {
         for entry in WalkDir::new(folder) {
             let entry = try!(entry.map_err(|e| PackageLoadError::WalkDir(e)));
             if entry.path().extension().map(|e| e == "sublime-syntax").unwrap_or(false) {
-                println!("{}", entry.path().display());
+                // println!("{}", entry.path().display());
                 syntaxes.push(try!(load_syntax_file(entry.path(), &mut repo)));
             }
         }
-        Ok(PackageSet {
+        let mut ps = PackageSet {
             syntaxes: syntaxes,
             scope_repo: repo,
-        })
+        };
+        ps.link_syntaxes();
+        Ok(ps)
+    }
+
+    fn link_syntaxes(&mut self) {
+        for syntax in self.syntaxes.iter() {
+            for (_, ref context_ptr) in syntax.contexts.iter() {
+                let mut mut_ref = context_ptr.borrow_mut();
+                self.link_context(syntax, mut_ref.deref_mut());
+            }
+        }
+    }
+
+    fn link_context(&self, syntax: &SyntaxDefinition, context: &mut Context) {
+        for pattern in context.patterns.iter_mut() {
+            match *pattern {
+                Pattern::Match(ref mut match_pat) => self.link_match_pat(syntax, match_pat),
+                Pattern::Include(ref mut context_ref) => self.link_ref(syntax, context_ref),
+            }
+        }
+    }
+
+    fn link_ref(&self, syntax: &SyntaxDefinition, context_ref: &mut ContextReference) {
+        // println!("{:?}", context_ref);
+        use syntax_definition::ContextReference::*;
+        let maybe_new_context = match *context_ref {
+            Named(ref s) => syntax.contexts.get(s),
+            Inline(ref context_ptr) => {
+                let mut mut_ref = context_ptr.borrow_mut();
+                self.link_context(syntax, mut_ref.deref_mut());
+                None
+            },
+            ByScope {scope, ref sub_context} => {
+                let other_syntax = self.syntaxes.iter().find(|&s| s.scope == scope);
+                let context_name = sub_context.as_ref().map(|x| &**x).unwrap_or("main");
+                other_syntax.and_then(|s| s.contexts.get(context_name))
+            },
+            File {ref name, ref sub_context} => {
+                let other_syntax = self.syntaxes.iter().find(|&s| name == &s.name);
+                let context_name = sub_context.as_ref().map(|x| &**x).unwrap_or("main");
+                other_syntax.and_then(|s| s.contexts.get(context_name))
+            },
+            Direct(_) => None,
+        };
+        if let Some(new_context) = maybe_new_context {
+            let mut new_ref = Direct(Rc::downgrade(&new_context));
+            mem::swap(context_ref, &mut new_ref);
+        }
+    }
+
+    fn link_match_pat(&self, syntax: &SyntaxDefinition, match_pat: &mut MatchPattern) {
+        let maybe_context_refs = match match_pat.operation {
+            MatchOperation::Push(ref mut context_refs) => Some(context_refs),
+            MatchOperation::Set(ref mut context_refs) => Some(context_refs),
+            MatchOperation::Pop | MatchOperation::None => None,
+        };
+        if let Some(context_refs) = maybe_context_refs {
+            for context_ref in context_refs.iter_mut() {
+                self.link_ref(syntax, context_ref);
+            }
+        }
     }
 }
 
@@ -50,12 +114,11 @@ impl PackageSet {
 mod tests {
     #[test]
     fn can_load() {
-        use scope::Scope;
         use package_set::{PackageSet};
         let mut ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
-        let actionscript = ps.syntaxes.iter().find(|s| s.name == "ActionScript").unwrap();
-        // println!("{:#?}", actionscript);
-        assert_eq!(actionscript.scope, ps.scope_repo.build("source.actionscript.2"));
+        let syntax = ps.syntaxes.iter().find(|s| s.name == "Ruby on Rails").unwrap();
+        // println!("{:#?}", syntax);
+        assert_eq!(syntax.scope, ps.scope_repo.build("source.ruby.rails"));
         // assert!(false);
     }
 }
