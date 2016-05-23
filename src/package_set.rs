@@ -2,7 +2,7 @@ use syntax_definition::*;
 use scope::*;
 use std::path::Path;
 use walkdir::WalkDir;
-use std::io::{Read, self};
+use std::io::{self, Read};
 use std::fs::File;
 use walkdir;
 use std::ops::DerefMut;
@@ -22,7 +22,9 @@ pub enum PackageLoadError {
     Parsing(ParseError),
 }
 
-fn load_syntax_file(p: &Path, scope_repo: &mut ScopeRepository) -> Result<SyntaxDefinition, PackageLoadError> {
+fn load_syntax_file(p: &Path,
+                    scope_repo: &mut ScopeRepository)
+                    -> Result<SyntaxDefinition, PackageLoadError> {
     let mut f = try!(File::open(p).map_err(|e| PackageLoadError::IOErr(e)));
     let mut s = String::new();
     try!(f.read_to_string(&mut s).map_err(|e| PackageLoadError::IOErr(e)));
@@ -76,17 +78,17 @@ impl PackageSet {
                 let mut mut_ref = context_ptr.borrow_mut();
                 self.link_context(syntax, mut_ref.deref_mut());
                 None
-            },
-            ByScope {scope, ref sub_context} => {
+            }
+            ByScope { scope, ref sub_context } => {
                 let other_syntax = self.syntaxes.iter().find(|&s| s.scope == scope);
                 let context_name = sub_context.as_ref().map(|x| &**x).unwrap_or("main");
                 other_syntax.and_then(|s| s.contexts.get(context_name))
-            },
-            File {ref name, ref sub_context} => {
+            }
+            File { ref name, ref sub_context } => {
                 let other_syntax = self.syntaxes.iter().find(|&s| name == &s.name);
                 let context_name = sub_context.as_ref().map(|x| &**x).unwrap_or("main");
                 other_syntax.and_then(|s| s.contexts.get(context_name))
-            },
+            }
             Direct(_) => None,
         };
         if let Some(new_context) = maybe_new_context {
@@ -114,7 +116,7 @@ impl PackageSet {
 mod tests {
     #[test]
     fn can_load() {
-        use package_set::{PackageSet};
+        use package_set::PackageSet;
         let mut ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
         let syntax = ps.syntaxes.iter().find(|s| s.name == "Ruby on Rails").unwrap();
         // println!("{:#?}", syntax);

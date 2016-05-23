@@ -14,7 +14,8 @@ mod tests {
         use scope::*;
         let mut repo = ScopeRepository::new();
         let defn: SyntaxDefinition =
-            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {}", &mut repo).unwrap();
+            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {}", &mut repo)
+                .unwrap();
         assert_eq!(defn.name, "C");
         assert_eq!(defn.scope, repo.build("source.c"));
     }

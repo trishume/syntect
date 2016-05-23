@@ -1,8 +1,8 @@
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
-use onig::{Regex, Captures, Syntax, self};
+use onig::{self, Regex, Captures, Syntax};
 use std::rc::{Rc, Weak};
-use std::cell::{RefCell};
+use std::cell::RefCell;
 use scope::*;
 use std::path::Path;
 
@@ -92,7 +92,7 @@ fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Vec<Scope> {
     s.split_whitespace().map(|scope| repo.build(scope)).collect()
 }
 
-struct ParserState<'a>{
+struct ParserState<'a> {
     scope_repo: &'a mut ScopeRepository,
     variables: HashMap<String, String>,
     variable_regex: Regex,
@@ -101,7 +101,9 @@ struct ParserState<'a>{
 }
 
 impl SyntaxDefinition {
-    pub fn load_from_str(s: &str, scope_repo: &mut ScopeRepository) -> Result<SyntaxDefinition, ParseError> {
+    pub fn load_from_str(s: &str,
+                         scope_repo: &mut ScopeRepository)
+                         -> Result<SyntaxDefinition, ParseError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
             Err(e) => return Err(ParseError::InvalidYaml(e)),
@@ -113,7 +115,9 @@ impl SyntaxDefinition {
         SyntaxDefinition::parse_top_level(doc, scope_repo)
     }
 
-    fn parse_top_level(doc: &Yaml, scope_repo: &mut ScopeRepository) -> Result<SyntaxDefinition, ParseError> {
+    fn parse_top_level(doc: &Yaml,
+                       scope_repo: &mut ScopeRepository)
+                       -> Result<SyntaxDefinition, ParseError> {
         let h = try!(doc.as_hash().ok_or(ParseError::TypeMismatch));
 
         let mut variables = HashMap::new();
@@ -169,9 +173,7 @@ impl SyntaxDefinition {
         return Ok(contexts);
     }
 
-    fn parse_context(vec: &Vec<Yaml>,
-                     state: &mut ParserState)
-                     -> Result<ContextPtr, ParseError> {
+    fn parse_context(vec: &Vec<Yaml>, state: &mut ParserState) -> Result<ContextPtr, ParseError> {
         let mut context = Context {
             meta_scope: Vec::new(),
             meta_content_scope: Vec::new(),
@@ -199,9 +201,7 @@ impl SyntaxDefinition {
         return Ok(Rc::new(RefCell::new(context)));
     }
 
-    fn parse_reference(y: &Yaml,
-                       state: &mut ParserState)
-                       -> Result<ContextReference, ParseError> {
+    fn parse_reference(y: &Yaml, state: &mut ParserState) -> Result<ContextReference, ParseError> {
         if let Some(s) = y.as_str() {
             let parts: Vec<&str> = s.split("#").collect();
             let sub_context = if parts.len() > 1 {
@@ -215,7 +215,10 @@ impl SyntaxDefinition {
                     sub_context: sub_context,
                 })
             } else if parts[0].ends_with(".sublime-syntax") {
-                let stem = try!(Path::new(parts[0]).file_stem().and_then(|x| x.to_str()).ok_or(ParseError::BadFileRef));
+                let stem = try!(Path::new(parts[0])
+                    .file_stem()
+                    .and_then(|x| x.to_str())
+                    .ok_or(ParseError::BadFileRef));
                 Ok(ContextReference::File {
                     name: stem.to_owned(),
                     sub_context: sub_context,
@@ -248,10 +251,16 @@ impl SyntaxDefinition {
         let regex = if state.backref_regex.find(&regex_str).is_some() {
             None
         } else {
-            Some(try!(Regex::with_options(&regex_str, onig::REGEX_OPTION_CAPTURE_GROUP, Syntax::default()).map_err(|e| ParseError::RegexCompileError(e))))
+            Some(try!(Regex::with_options(&regex_str,
+                                          onig::REGEX_OPTION_CAPTURE_GROUP,
+                                          Syntax::default())
+                .map_err(|e| ParseError::RegexCompileError(e))))
         };
 
-        let scope = get_key(map, "scope", |x| x.as_str()).ok().map(|s| str_to_scopes(s, state.scope_repo)).unwrap_or_else(|| vec![]);
+        let scope = get_key(map, "scope", |x| x.as_str())
+            .ok()
+            .map(|s| str_to_scopes(s, state.scope_repo))
+            .unwrap_or_else(|| vec![]);
 
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
             let mut res_map = HashMap::new();
@@ -291,7 +300,11 @@ impl SyntaxDefinition {
         // check for a push of multiple items
         if y.as_vec().map(|v| !v.is_empty() && v[0].as_str().is_some()).unwrap_or(false) {
             // this works because Result implements FromIterator to handle the errors
-            y.as_vec().unwrap().iter().map(|x| SyntaxDefinition::parse_reference(x, state)).collect()
+            y.as_vec()
+                .unwrap()
+                .iter()
+                .map(|x| SyntaxDefinition::parse_reference(x, state))
+                .collect()
         } else {
             Ok(vec![try!(SyntaxDefinition::parse_reference(y, state))])
         }
@@ -306,7 +319,8 @@ mod tests {
         use scope::*;
         let mut repo = ScopeRepository::new();
         let defn: SyntaxDefinition =
-            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {}", &mut repo).unwrap();
+            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {}", &mut repo)
+                .unwrap();
         assert_eq!(defn.name, "C");
         assert_eq!(defn.scope, repo.build("source.c"));
         let exts_empty: Vec<String> = Vec::new();
@@ -337,7 +351,8 @@ mod tests {
               scope: constant.character.escape.c
             - match: '\"'
               pop: true
-        ", &mut repo)
+        ",
+                                            &mut repo)
                 .unwrap();
         assert_eq!(defn2.name, "C");
         assert_eq!(defn2.scope, repo.build("source.c"));
@@ -356,7 +371,7 @@ mod tests {
         let first_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
-                let m : &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
+                let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
                 assert_eq!(&m[&1], &vec![repo.build("meta.preprocessor.c++")]);
                 use syntax_definition::ContextReference::*;
 
@@ -369,9 +384,11 @@ mod tests {
                         sub_context: Some("rule-list-body".to_owned())
                     },
                 ]);
-                assert_eq!(format!("{:?}",match_pat.operation),format!("{:?}",expected));
+                assert_eq!(format!("{:?}", match_pat.operation),
+                           format!("{:?}", expected));
 
-                assert_eq!(match_pat.scope, vec![repo.build("keyword.control.c"), repo.build("keyword.looping.c")]);
+                assert_eq!(match_pat.scope,
+                           vec![repo.build("keyword.control.c"), repo.build("keyword.looping.c")]);
 
                 let r = match_pat.regex.as_ref().unwrap();
                 assert!(r.is_match("else"));
@@ -379,8 +396,8 @@ mod tests {
                 assert!(!r.is_match("elose"));
                 assert!(r.is_match("QYYQQQ"));
                 assert!(!r.is_match("QYYQZQQ"));
-            },
-            _ => assert!(false)
+            }
+            _ => assert!(false),
         }
     }
 }
