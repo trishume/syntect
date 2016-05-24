@@ -44,6 +44,7 @@ pub struct MatchPattern {
     pub scope: Vec<Scope>,
     pub captures: Option<CaptureMapping>,
     pub operation: MatchOperation,
+    pub with_prototype: Option<ContextPtr>,
 }
 
 #[derive(Debug)]
@@ -294,12 +295,19 @@ impl SyntaxDefinition {
             MatchOperation::None
         };
 
+        let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
+            Some(try!(SyntaxDefinition::parse_context(v, state)))
+        } else {
+            None
+        };
+
         let pattern = MatchPattern {
             regex_str: regex_str,
             regex: regex,
             scope: scope,
             captures: captures,
             operation: operation,
+            with_prototype: with_prototype,
         };
         return Ok(pattern);
     }
@@ -356,6 +364,9 @@ mod tests {
                   1: meta.preprocessor.c++
                   2: keyword.control.include.c++
               push: [string, 'scope:source.c#main', 'CSS.sublime-syntax#rule-list-body']
+              with_prototype:
+                - match: wow
+                  pop: true
             - match: '\"'
               push: string
           string:
@@ -424,6 +435,8 @@ mod tests {
                 assert!(!r.is_match("elose"));
                 assert!(r.is_match("QYYQQQ"));
                 assert!(!r.is_match("QYYQZQQ"));
+
+                assert!(match_pat.with_prototype.is_some());
             }
             _ => assert!(false),
         }
