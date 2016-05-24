@@ -1,18 +1,32 @@
-use syntax_definition::ContextPtr;
-use scope::{ScopeStack, ScopeStackOp};
+use syntax_definition::*;
+use scope::*;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ParseState {
-    context_stack: Vec<ContextPtr>,
+    stack: Vec<StateLevel>,
     pub scope_stack: ScopeStack,
     first_line: bool,
 }
 
+#[derive(Debug, Clone)]
+struct StateLevel {
+    context: ContextPtr,
+    prototype: Option<ContextPtr>,
+    scopes_pushed: usize,
+}
+
 impl ParseState {
-    pub fn new() -> ParseState {
+    pub fn new(syntax: &SyntaxDefinition) -> ParseState {
+        let start_state = StateLevel {
+            context: syntax.contexts["main"].clone(),
+            prototype: None,
+            scopes_pushed: 1,
+        };
+        let mut scope_stack = ScopeStack::new();
+        scope_stack.push(syntax.scope);
         ParseState {
-            context_stack: vec![],
-            scope_stack: ScopeStack::new(),
+            stack: vec![start_state],
+            scope_stack: scope_stack,
             first_line: true,
         }
     }

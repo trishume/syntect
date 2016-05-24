@@ -77,6 +77,7 @@ pub enum ParseError {
     MissingMandatoryKey(&'static str),
     RegexCompileError(onig::Error),
     BadFileRef,
+    MainMissing,
     TypeMismatch,
 }
 
@@ -141,6 +142,9 @@ impl SyntaxDefinition {
         };
 
         let contexts = try!(SyntaxDefinition::parse_contexts(contexts_hash, &mut state));
+        if !contexts.contains_key("main") {
+            return Err(ParseError::MainMissing);
+        }
 
         let defn = SyntaxDefinition {
             name: try!(get_key(h, "name", |x| x.as_str())).to_owned(),
@@ -337,7 +341,8 @@ mod tests {
         use scope::*;
         let mut repo = ScopeRepository::new();
         let defn: SyntaxDefinition =
-            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {}", &mut repo)
+            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}",
+                                            &mut repo)
                 .unwrap();
         assert_eq!(defn.name, "C");
         assert_eq!(defn.scope, repo.build("source.c"));

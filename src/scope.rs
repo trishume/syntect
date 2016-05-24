@@ -83,6 +83,9 @@ impl ScopeStack {
     pub fn new() -> ScopeStack {
         ScopeStack { scopes: Vec::new() }
     }
+    pub fn push(&mut self, s: Scope) {
+        self.scopes.push(s);
+    }
 }
 
 #[cfg(test)]

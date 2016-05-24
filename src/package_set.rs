@@ -111,7 +111,6 @@ impl PackageSet {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #[test]
