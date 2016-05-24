@@ -95,6 +95,7 @@ fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Vec<Scope> {
 struct ParserState<'a> {
     scope_repo: &'a mut ScopeRepository,
     variables: HashMap<String, String>,
+    has_prototype: bool,
     variable_regex: Regex,
     backref_regex: Regex,
     short_multibyte_regex: Regex,
@@ -128,15 +129,16 @@ impl SyntaxDefinition {
                 }
             }
         }
+        let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
         let mut state = ParserState {
             scope_repo: scope_repo,
             variables: variables,
+            has_prototype: contexts_hash.contains_key(&Yaml::String(String::from("prototype"))),
             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
             backref_regex: Regex::new(r"\\\d").unwrap(),
             short_multibyte_regex: Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
         };
 
-        let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
         let contexts = try!(SyntaxDefinition::parse_contexts(contexts_hash, &mut state));
 
         let defn = SyntaxDefinition {
@@ -180,6 +182,7 @@ impl SyntaxDefinition {
             meta_include_prototype: true,
             patterns: Vec::new(),
         };
+        let mut seen_pattern = false;
         for y in vec.iter() {
             let map = try!(y.as_hash().ok_or(ParseError::TypeMismatch));
 
@@ -189,12 +192,19 @@ impl SyntaxDefinition {
                 context.meta_scope = str_to_scopes(x, state.scope_repo);
             } else if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
                 context.meta_include_prototype = x;
-            } else if let Some(x) = get_key(map, "include", |x| Some(x)).ok() {
-                let reference = try!(SyntaxDefinition::parse_reference(x, state));
-                context.patterns.push(Pattern::Include(reference));
             } else {
-                let pattern = try!(SyntaxDefinition::parse_match_pattern(map, state));
-                context.patterns.push(Pattern::Match(pattern));
+                if !seen_pattern && context.meta_include_prototype && state.has_prototype {
+                    seen_pattern = true;
+                    context.patterns
+                        .push(Pattern::Include(ContextReference::Named(String::from("prototype"))));
+                }
+                if let Some(x) = get_key(map, "include", |x| Some(x)).ok() {
+                    let reference = try!(SyntaxDefinition::parse_reference(x, state));
+                    context.patterns.push(Pattern::Include(reference));
+                } else {
+                    let pattern = try!(SyntaxDefinition::parse_match_pattern(map, state));
+                    context.patterns.push(Pattern::Match(pattern));
+                }
             }
 
         }
@@ -336,6 +346,9 @@ mod tests {
         variables:
           ident: '[QY]+'
         contexts:
+          prototype:
+            - match: lol
+              scope: source.php
           main:
             - match: \\b(if|else|for|while|{{ident}})\\b
               scope: keyword.control.c keyword.looping.c
@@ -347,6 +360,7 @@ mod tests {
               push: string
           string:
             - meta_scope: string.quoted.double.c
+            - meta_include_prototype: false
             - match: \\\\.
               scope: constant.character.escape.c
             - match: '\"'
@@ -368,7 +382,21 @@ mod tests {
         assert_eq!(defn2.contexts["main"].borrow().meta_include_prototype, true);
         assert_eq!(defn2.contexts["string"].borrow().meta_scope,
                    vec![repo.build("string.quoted.double.c")]);
-        let first_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];
+        {
+            let proto_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];
+            match proto_pattern {
+                &Pattern::Include(ContextReference::Named(_)) => (),
+                _ => assert!(false, "Prototype should be included"),
+            }
+            let not_proto_pattern: &Pattern = &defn2.contexts["string"].borrow().patterns[0];
+            match not_proto_pattern {
+                &Pattern::Include(ContextReference::Named(_)) => {
+                    assert!(false, "Prototype shouldn't be included")
+                }
+                _ => (),
+            }
+        }
+        let first_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[1];
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
