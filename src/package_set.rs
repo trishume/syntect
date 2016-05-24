@@ -51,6 +51,14 @@ impl PackageSet {
         Ok(ps)
     }
 
+    pub fn find_syntax_by_scope<'a>(&'a self, scope: Scope) -> Option<&'a SyntaxDefinition> {
+        self.syntaxes.iter().find(|&s| s.scope == scope)
+    }
+
+    pub fn find_syntax_by_name<'a>(&'a self, name: &str) -> Option<&'a SyntaxDefinition> {
+        self.syntaxes.iter().find(|&s| name == &s.name)
+    }
+
     fn link_syntaxes(&mut self) {
         for syntax in self.syntaxes.iter() {
             for (_, ref context_ptr) in syntax.contexts.iter() {
@@ -80,12 +88,12 @@ impl PackageSet {
                 None
             }
             ByScope { scope, ref sub_context } => {
-                let other_syntax = self.syntaxes.iter().find(|&s| s.scope == scope);
+                let other_syntax = self.find_syntax_by_scope(scope);
                 let context_name = sub_context.as_ref().map(|x| &**x).unwrap_or("main");
                 other_syntax.and_then(|s| s.contexts.get(context_name))
             }
             File { ref name, ref sub_context } => {
-                let other_syntax = self.syntaxes.iter().find(|&s| name == &s.name);
+                let other_syntax = self.find_syntax_by_name(name);
                 let context_name = sub_context.as_ref().map(|x| &**x).unwrap_or("main");
                 other_syntax.and_then(|s| s.contexts.get(context_name))
             }
@@ -117,9 +125,10 @@ mod tests {
     fn can_load() {
         use package_set::PackageSet;
         let mut ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
-        let syntax = ps.syntaxes.iter().find(|s| s.name == "Ruby on Rails").unwrap();
+        let rails_scope = ps.scope_repo.build("source.ruby.rails");
+        let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         // println!("{:#?}", syntax);
-        assert_eq!(syntax.scope, ps.scope_repo.build("source.ruby.rails"));
+        assert_eq!(syntax.scope, rails_scope);
         // assert!(false);
     }
 }
