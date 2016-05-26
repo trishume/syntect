@@ -2,9 +2,10 @@ use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
 use onig::{self, Regex, Captures, Syntax};
 use std::rc::{Rc, Weak};
-use std::cell::RefCell;
+use std::cell::{RefCell, Ref};
 use scope::*;
 use std::path::Path;
+use std::marker::PhantomData;
 
 pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
 pub type ContextPtr = Rc<RefCell<Context>>;
@@ -34,6 +35,12 @@ pub struct Context {
 pub enum Pattern {
     Match(MatchPattern),
     Include(ContextReference),
+}
+
+#[derive(Debug)]
+pub struct MatchIter {
+    ctx_stack: Vec<ContextPtr>,
+    index_stack: Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -79,6 +86,49 @@ pub enum ParseError {
     BadFileRef,
     MainMissing,
     TypeMismatch,
+}
+
+impl Iterator for MatchIter {
+    type Item = (ContextPtr, usize);
+
+    fn next(&mut self) -> Option<(ContextPtr, usize)> {
+        loop {
+            if self.ctx_stack.is_empty() {
+                return None;
+            }
+            let last_index = self.ctx_stack.len()-1;
+            let context_ref = self.ctx_stack[last_index].clone();
+            let context = context_ref.borrow();
+            let index = self.index_stack[last_index];
+            if index < context.patterns.len() {
+                match context.patterns[index] {
+                    Pattern::Match(_) => {
+                        self.index_stack[last_index] = index + 1;
+                        return Some((context_ref.clone(), index));
+                    }
+                    Pattern::Include(ref ctx_ref) => {
+                        let ctx_ptr = match ctx_ref {
+                            &ContextReference::Inline(ref ctx_ptr) => ctx_ptr.clone(),
+                            &ContextReference::Direct(ref ctx_ptr) => ctx_ptr.upgrade().unwrap(),
+                            _ => panic!("Can only iterate patterns after linking."),
+                        };
+                        self.ctx_stack.push(ctx_ptr);
+                        self.index_stack.push(0);
+                    }
+                }
+            } else {
+                self.ctx_stack.pop();
+                self.index_stack.pop();
+            }
+        }
+    }
+}
+
+pub fn context_iter(ctx: ContextPtr) -> MatchIter {
+    MatchIter {
+        ctx_stack: vec![ctx],
+        index_stack: vec![0],
+    }
 }
 
 fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a BTreeMap<Yaml, Yaml>,
