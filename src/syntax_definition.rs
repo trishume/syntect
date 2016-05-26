@@ -5,6 +5,7 @@ use std::rc::{Rc, Weak};
 use std::cell::{RefCell, Ref};
 use scope::*;
 use std::path::Path;
+use std::marker::PhantomData;
 
 pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
 pub type ContextPtr = Rc<RefCell<Context>>;
@@ -37,8 +38,8 @@ pub enum Pattern {
 }
 
 #[derive(Debug)]
-pub struct MatchIter<'a> {
-    ctx_stack: Vec<Ref<'a, Context>>,
+pub struct MatchIter {
+    ctx_stack: Vec<ContextPtr>,
     index_stack: Vec<usize>,
 }
 
@@ -87,21 +88,23 @@ pub enum ParseError {
     TypeMismatch,
 }
 
-impl<'a> Iterator for MatchIter<'a> {
-    type Item = &'a MatchPattern;
+impl Iterator for MatchIter {
+    type Item = (ContextPtr, usize);
 
-    fn next(&mut self) -> Option<&'a MatchPattern> {
+    fn next(&mut self) -> Option<(ContextPtr, usize)> {
         loop {
             if self.ctx_stack.is_empty() {
                 return None;
             }
-            let ref context = self.ctx_stack[self.ctx_stack.len() - 1];
-            let index = self.index_stack[self.index_stack.len() - 1];
+            let last_index = self.ctx_stack.len()-1;
+            let context_ref = self.ctx_stack[last_index].clone();
+            let context = context_ref.borrow();
+            let index = self.index_stack[last_index];
             if index < context.patterns.len() {
                 match context.patterns[index] {
-                    Pattern::Match(ref match_pat) => {
-                        self.index_stack[self.index_stack.len() - 1] = index + 1;
-                        return Some(match_pat);
+                    Pattern::Match(_) => {
+                        self.index_stack[last_index] = index + 1;
+                        return Some((context_ref.clone(), index));
                     }
                     Pattern::Include(ref ctx_ref) => {
                         let ctx_ptr = match ctx_ref {
@@ -109,7 +112,7 @@ impl<'a> Iterator for MatchIter<'a> {
                             &ContextReference::Direct(ref ctx_ptr) => ctx_ptr.upgrade().unwrap(),
                             _ => panic!("Can only iterate patterns after linking."),
                         };
-                        self.ctx_stack.push(ctx_ptr.borrow());
+                        self.ctx_stack.push(ctx_ptr);
                         self.index_stack.push(0);
                     }
                 }
@@ -121,7 +124,7 @@ impl<'a> Iterator for MatchIter<'a> {
     }
 }
 
-pub fn context_iter<'a>(ctx: Ref<'a, Context>) -> MatchIter<'a> {
+pub fn context_iter(ctx: ContextPtr) -> MatchIter {
     MatchIter {
         ctx_stack: vec![ctx],
         index_stack: vec![0],
