@@ -76,7 +76,7 @@ pub struct ScopeStack {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScopeStackOp {
     Push(Scope),
-    Pop,
+    Pop(usize),
 }
 
 impl ScopeStack {
@@ -85,6 +85,16 @@ impl ScopeStack {
     }
     pub fn push(&mut self, s: Scope) {
         self.scopes.push(s);
+    }
+    pub fn apply(&mut self, op: &ScopeStackOp) {
+        match op {
+            &ScopeStackOp::Push(scope) => self.scopes.push(scope),
+            &ScopeStackOp::Pop(count) => {
+                for _ in 0..count {
+                    self.scopes.pop();
+                }
+            }
+        }
     }
 }
 
