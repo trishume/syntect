@@ -2,10 +2,9 @@ use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
 use onig::{self, Regex, Captures, Syntax};
 use std::rc::{Rc, Weak};
-use std::cell::{RefCell, Ref};
+use std::cell::RefCell;
 use scope::*;
 use std::path::Path;
-use std::marker::PhantomData;
 
 pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
 pub type ContextPtr = Rc<RefCell<Context>>;
@@ -96,16 +95,14 @@ impl Iterator for MatchIter {
             if self.ctx_stack.is_empty() {
                 return None;
             }
-            let last_index = self.ctx_stack.len()-1;
+            let last_index = self.ctx_stack.len() - 1;
             let context_ref = self.ctx_stack[last_index].clone();
             let context = context_ref.borrow();
             let index = self.index_stack[last_index];
+            self.index_stack[last_index] = index + 1;
             if index < context.patterns.len() {
                 match context.patterns[index] {
-                    Pattern::Match(_) => {
-                        self.index_stack[last_index] = index + 1;
-                        return Some((context_ref.clone(), index));
-                    }
+                    Pattern::Match(_) => return Some((context_ref.clone(), index)),
                     Pattern::Include(ref ctx_ref) => {
                         let ctx_ptr = match ctx_ref {
                             &ContextReference::Inline(ref ctx_ptr) => ctx_ptr.clone(),
@@ -120,6 +117,15 @@ impl Iterator for MatchIter {
                 self.ctx_stack.pop();
                 self.index_stack.pop();
             }
+        }
+    }
+}
+
+impl Context {
+    pub fn match_at(&self, index: usize) -> &MatchPattern {
+        match self.patterns[index] {
+            Pattern::Match(ref match_pat) => match_pat,
+            _ => panic!("bad index to match_at"),
         }
     }
 }
@@ -313,13 +319,13 @@ impl SyntaxDefinition {
         // println!("{:?}", regex_str);
 
         // if it contains back references we can't resolve it until runtime
-        let regex = if state.backref_regex.find(&regex_str).is_some() {
+        let regex_res = Regex::with_options(&regex_str,
+                                            onig::REGEX_OPTION_CAPTURE_GROUP,
+                                            Syntax::default());
+        let regex = if regex_res.is_err() && state.backref_regex.find(&regex_str).is_some() {
             None
         } else {
-            Some(try!(Regex::with_options(&regex_str,
-                                          onig::REGEX_OPTION_CAPTURE_GROUP,
-                                          Syntax::default())
-                .map_err(|e| ParseError::RegexCompileError(e))))
+            Some(try!(regex_res.map_err(|e| ParseError::RegexCompileError(e))))
         };
 
         let scope = get_key(map, "scope", |x| x.as_str())

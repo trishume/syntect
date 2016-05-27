@@ -124,11 +124,15 @@ mod tests {
     #[test]
     fn can_load() {
         use package_set::PackageSet;
+        use syntax_definition::*;
         let mut ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
         let rails_scope = ps.scope_repo.build("source.ruby.rails");
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // assert!(false);
+        let main_context = syntax.contexts.get("main").unwrap();
+        let count = context_iter(main_context.clone()).count();
+        assert_eq!(count, 91);
     }
 }
