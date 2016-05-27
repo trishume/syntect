@@ -111,10 +111,28 @@ impl ParseState {
         for s in pat.scope.iter() {
             ops.push((match_start, ScopeStackOp::Push(s.clone())));
         }
+        if let Some(ref capture_map) = pat.captures {
+            // captures could appear in an arbitrary order, have to produce ops in right order
+            // ex: ((bob)|(hi))* could match hibob in wrong order, and outer has to push first
+            // we don't have to handle a capture matching multiple times, Sublime doesn't
+            let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
+            for (cap_index, scopes) in capture_map.iter() {
+                if let Some((cap_start, cap_end)) = reg_match.regions.pos(*cap_index) {
+                    for scope in scopes.iter() {
+                        map.push(((cap_start, -((cap_end - cap_start) as i32)),
+                                  ScopeStackOp::Push(scope.clone())));
+                    }
+                    map.push(((cap_end, -1000000), ScopeStackOp::Pop(scopes.len())));
+                }
+            }
+            map.sort_by(|a, b| a.0.cmp(&b.0));
+            for ((index, _), op) in map.into_iter() {
+                ops.push((index, op));
+            }
+        }
         if !pat.scope.is_empty() {
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
-        // TODO apply capture scopes
         // TODO perform operation (with prototype)
         // TODO apply meta scopes
     }
@@ -150,16 +168,19 @@ mod tests {
             ParseState::new(syntax)
         };
 
-        let line = "class Bob; 5; end";
+        let line = "module Bob::Wow::Troll::Five; 5; end";
         let ops = state.parse_line(line);
         debug_print_ops(line, &ps.scope_repo, &ops);
 
         let test_ops = vec![
-            (0, ScopeStackOp::Push(ps.scope_repo.build("meta.class.ruby"))),
-            // TODO missing captures
-            (9, ScopeStackOp::Pop(1)),
-            (9, ScopeStackOp::Push(ps.scope_repo.build("punctuation.separator.statement.ruby"))),
-            (10, ScopeStackOp::Pop(1)),
+            (0, ScopeStackOp::Push(ps.scope_repo.build("meta.module.ruby"))),
+            (0, ScopeStackOp::Push(ps.scope_repo.build("keyword.control.module.ruby"))),
+            (6, ScopeStackOp::Pop(1)),
+            (7, ScopeStackOp::Push(ps.scope_repo.build("entity.name.type.module.ruby"))),
+            (7, ScopeStackOp::Push(ps.scope_repo.build("entity.other.inherited-class.module.first.ruby"))),
+            (10, ScopeStackOp::Push(ps.scope_repo.build("punctuation.separator.inheritance.ruby"))),
+            (12, ScopeStackOp::Pop(1)),
+            (12, ScopeStackOp::Pop(1)),
         ];
         assert_eq!(&ops[0..test_ops.len()], &test_ops[..]);
         // assert!(false);
