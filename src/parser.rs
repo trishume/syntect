@@ -2,6 +2,7 @@ use syntax_definition::*;
 use scope::*;
 use onig::{self, Region};
 use std::usize;
+use std::i32;
 
 #[derive(Debug, Clone)]
 pub struct ParseState {
@@ -68,7 +69,7 @@ impl ParseState {
                 let pat_context = pat_context_ptr.borrow();
                 let match_pat = pat_context.match_at(pat_index);
 
-                println!("{:?}", match_pat.regex_str);
+                // println!("{:?}", match_pat.regex_str);
                 let regex = match_pat.regex.as_ref().unwrap(); // TODO handle backrefs
                 let mut regions = Region::new();
                 // TODO caching
@@ -108,6 +109,8 @@ impl ParseState {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context.borrow();
         let pat = context.match_at(reg_match.pat_index);
+
+        self.push_meta_ops(true, match_start, &*context, &pat.operation, ops);
         for s in pat.scope.iter() {
             ops.push((match_start, ScopeStackOp::Push(s.clone())));
         }
@@ -122,7 +125,7 @@ impl ParseState {
                         map.push(((cap_start, -((cap_end - cap_start) as i32)),
                                   ScopeStackOp::Push(scope.clone())));
                     }
-                    map.push(((cap_end, -1000000), ScopeStackOp::Pop(scopes.len())));
+                    map.push(((cap_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
                 }
             }
             map.sort_by(|a, b| a.0.cmp(&b.0));
@@ -133,8 +136,38 @@ impl ParseState {
         if !pat.scope.is_empty() {
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
+        self.push_meta_ops(false, match_end, &*context, &pat.operation, ops);
         // TODO perform operation (with prototype)
-        // TODO apply meta scopes
+    }
+
+    fn push_meta_ops(&self, initial: bool, index: usize, cur_context: &Context, match_op: &MatchOperation, ops: &mut Vec<(usize, ScopeStackOp)>) {
+        match match_op {
+            &MatchOperation::Push(ref context_refs) | &MatchOperation::Set(ref context_refs) => {
+                for r in context_refs {
+                    let ctx_ptr = r.resolve();
+                    let ctx = ctx_ptr.borrow();
+                    let v = if initial {
+                        &ctx.meta_scope
+                    } else {
+                        &ctx.meta_content_scope
+                    };
+                    for scope in v.iter() {
+                        ops.push((index, ScopeStackOp::Push(scope.clone())));
+                    }
+                }
+            },
+            &MatchOperation::Pop => {
+                let v = if initial {
+                    &cur_context.meta_content_scope
+                } else {
+                    &cur_context.meta_scope
+                };
+                if !v.is_empty() {
+                    ops.push((index, ScopeStackOp::Pop(v.len())));
+                }
+            },
+            &MatchOperation::None => (),
+        }
     }
 }
 
@@ -183,6 +216,17 @@ mod tests {
             (12, ScopeStackOp::Pop(1)),
         ];
         assert_eq!(&ops[0..test_ops.len()], &test_ops[..]);
+
+        let line2 = "__END__\nhilol";
+        let ops2 = state.parse_line(line2);
+        debug_print_ops(line2, &ps.scope_repo, &ops2);
+        let test_ops2 = vec![
+            (0, ScopeStackOp::Push(ps.scope_repo.build("string.unquoted.program-block.ruby"))),
+            (8, ScopeStackOp::Pop(1)),
+            (8, ScopeStackOp::Push(ps.scope_repo.build("text.plain"))),
+        ];
+        assert_eq!(&ops2[0..test_ops2.len()], &test_ops2[..]);
+
         // assert!(false);
     }
 }

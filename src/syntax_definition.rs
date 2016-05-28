@@ -121,6 +121,13 @@ impl Iterator for MatchIter {
     }
 }
 
+pub fn context_iter(ctx: ContextPtr) -> MatchIter {
+    MatchIter {
+        ctx_stack: vec![ctx],
+        index_stack: vec![0],
+    }
+}
+
 impl Context {
     pub fn match_at(&self, index: usize) -> &MatchPattern {
         match self.patterns[index] {
@@ -130,10 +137,14 @@ impl Context {
     }
 }
 
-pub fn context_iter(ctx: ContextPtr) -> MatchIter {
-    MatchIter {
-        ctx_stack: vec![ctx],
-        index_stack: vec![0],
+impl ContextReference {
+    // find the pointed to context, panics if ref is not linked
+    pub fn resolve(&self) -> ContextPtr {
+        match self {
+            &ContextReference::Inline(ref ptr) => ptr.clone(),
+            &ContextReference::Direct(ref ptr) => ptr.upgrade().unwrap(),
+            _ => panic!("Can only call resolve on linked references"),
+        }
     }
 }
 
@@ -250,7 +261,7 @@ impl SyntaxDefinition {
             if let Some(x) = get_key(map, "meta_scope", |x| x.as_str()).ok() {
                 context.meta_scope = str_to_scopes(x, state.scope_repo);
             } else if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
-                context.meta_scope = str_to_scopes(x, state.scope_repo);
+                context.meta_content_scope = str_to_scopes(x, state.scope_repo);
             } else if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
                 context.meta_include_prototype = x;
             } else {
