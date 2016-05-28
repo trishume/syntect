@@ -15,7 +15,6 @@ pub struct ParseState {
 struct StateLevel {
     context: ContextPtr,
     prototype: Option<ContextPtr>,
-    scopes_pushed: usize,
 }
 
 #[derive(Debug)]
@@ -30,7 +29,6 @@ impl ParseState {
         let start_state = StateLevel {
             context: syntax.contexts["main"].clone(),
             prototype: None,
-            scopes_pushed: 1,
         };
         let mut scope_stack = ScopeStack::new();
         scope_stack.push(syntax.scope);
@@ -65,6 +63,7 @@ impl ParseState {
             let cur_level = &self.stack[self.stack.len() - 1];
             let mut min_start = usize::MAX;
             let mut cur_match: Option<RegexMatch> = None;
+            // TODO iterate through prototypes first
             for (pat_context_ptr, pat_index) in context_iter(cur_level.context.clone()) {
                 let pat_context = pat_context_ptr.borrow();
                 let match_pat = pat_context.match_at(pat_index);
@@ -137,12 +136,19 @@ impl ParseState {
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
         self.push_meta_ops(false, match_end, &*context, &pat.operation, ops);
-        // TODO perform operation (with prototype)
+
+        self.perform_op(&pat.operation);
     }
 
-    fn push_meta_ops(&self, initial: bool, index: usize, cur_context: &Context, match_op: &MatchOperation, ops: &mut Vec<(usize, ScopeStackOp)>) {
+    fn push_meta_ops(&self,
+                     initial: bool,
+                     index: usize,
+                     cur_context: &Context,
+                     match_op: &MatchOperation,
+                     ops: &mut Vec<(usize, ScopeStackOp)>) {
         match match_op {
-            &MatchOperation::Push(ref context_refs) | &MatchOperation::Set(ref context_refs) => {
+            &MatchOperation::Push(ref context_refs) |
+            &MatchOperation::Set(ref context_refs) => {
                 for r in context_refs {
                     let ctx_ptr = r.resolve();
                     let ctx = ctx_ptr.borrow();
@@ -155,7 +161,7 @@ impl ParseState {
                         ops.push((index, ScopeStackOp::Push(scope.clone())));
                     }
                 }
-            },
+            }
             &MatchOperation::Pop => {
                 let v = if initial {
                     &cur_context.meta_content_scope
@@ -165,8 +171,30 @@ impl ParseState {
                 if !v.is_empty() {
                     ops.push((index, ScopeStackOp::Pop(v.len())));
                 }
-            },
+            }
             &MatchOperation::None => (),
+        }
+    }
+
+    fn perform_op(&mut self, match_op: &MatchOperation) {
+        let ctx_refs = match match_op {
+            &MatchOperation::Push(ref ctx_refs) => ctx_refs,
+            &MatchOperation::Set(ref ctx_refs) => {
+                self.stack.pop();
+                ctx_refs
+            }
+            &MatchOperation::Pop => {
+                self.stack.pop();
+                return;
+            }
+            &MatchOperation::None => return,
+        };
+        for r in ctx_refs {
+            let ctx_ptr = r.resolve();
+            self.stack.push(StateLevel {
+                context: ctx_ptr,
+                prototype: None, // TODO prototype
+            });
         }
     }
 }
@@ -179,8 +207,8 @@ mod tests {
     fn debug_print_ops(line: &str,
                        scope_repo: &ScopeRepository,
                        ops: &Vec<(usize, ScopeStackOp)>) {
-        println!("{}", line);
         for &(i, ref op) in ops.iter() {
+            println!("{}", line);
             print!("{: <1$}", "", i);
             match op {
                 &ScopeStackOp::Push(s) => {
@@ -195,6 +223,7 @@ mod tests {
 
     #[test]
     fn can_parse() {
+        use scope::ScopeStackOp::{Push, Pop};
         let mut ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
@@ -206,26 +235,38 @@ mod tests {
         debug_print_ops(line, &ps.scope_repo, &ops);
 
         let test_ops = vec![
-            (0, ScopeStackOp::Push(ps.scope_repo.build("meta.module.ruby"))),
-            (0, ScopeStackOp::Push(ps.scope_repo.build("keyword.control.module.ruby"))),
-            (6, ScopeStackOp::Pop(1)),
-            (7, ScopeStackOp::Push(ps.scope_repo.build("entity.name.type.module.ruby"))),
-            (7, ScopeStackOp::Push(ps.scope_repo.build("entity.other.inherited-class.module.first.ruby"))),
-            (10, ScopeStackOp::Push(ps.scope_repo.build("punctuation.separator.inheritance.ruby"))),
-            (12, ScopeStackOp::Pop(1)),
-            (12, ScopeStackOp::Pop(1)),
+            (0, Push(ps.scope_repo.build("meta.module.ruby"))),
+            (0, Push(ps.scope_repo.build("keyword.control.module.ruby"))),
+            (6, Pop(1)),
+            (7, Push(ps.scope_repo.build("entity.name.type.module.ruby"))),
+            (7, Push(ps.scope_repo.build("entity.other.inherited-class.module.first.ruby"))),
+            (10, Push(ps.scope_repo.build("punctuation.separator.inheritance.ruby"))),
+            (12, Pop(1)),
+            (12, Pop(1)),
         ];
         assert_eq!(&ops[0..test_ops.len()], &test_ops[..]);
 
-        let line2 = "__END__\nhilol";
+        let line2 = "def lol(wow = 5)";
         let ops2 = state.parse_line(line2);
         debug_print_ops(line2, &ps.scope_repo, &ops2);
-        let test_ops2 = vec![
-            (0, ScopeStackOp::Push(ps.scope_repo.build("string.unquoted.program-block.ruby"))),
-            (8, ScopeStackOp::Pop(1)),
-            (8, ScopeStackOp::Push(ps.scope_repo.build("text.plain"))),
-        ];
-        assert_eq!(&ops2[0..test_ops2.len()], &test_ops2[..]);
+        let test_ops2 =
+            vec![(0, Push(ps.scope_repo.build("meta.function.method.with-arguments.ruby"))),
+                 (0, Push(ps.scope_repo.build("keyword.control.def.ruby"))),
+                 (3, Pop(1)),
+                 (4, Push(ps.scope_repo.build("entity.name.function.ruby"))),
+                 (7, Pop(1)),
+                 (7, Push(ps.scope_repo.build("punctuation.definition.parameters.ruby"))),
+                 (8, Pop(1)),
+                 (8, Push(ps.scope_repo.build("variable.parameter.function.ruby"))),
+                 (12, Push(ps.scope_repo.build("keyword.operator.assignment.ruby"))),
+                 (13, Pop(1)),
+                 (14, Push(ps.scope_repo.build("constant.numeric.ruby"))),
+                 (15, Pop(1)),
+                 (15, Pop(1)),
+                 (15, Push(ps.scope_repo.build("punctuation.definition.parameters.ruby"))),
+                 (16, Pop(1)),
+                 (16, Pop(1))];
+        assert_eq!(ops2, test_ops2);
 
         // assert!(false);
     }
