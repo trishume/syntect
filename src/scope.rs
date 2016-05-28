@@ -96,6 +96,12 @@ impl ScopeStack {
             }
         }
     }
+    pub fn debug_print(&self, repo: &ScopeRepository) {
+        for s in self.scopes.iter() {
+            print!("{} ", repo.to_string(*s));
+        }
+        println!("");
+    }
 }
 
 #[cfg(test)]

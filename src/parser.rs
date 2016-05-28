@@ -63,28 +63,39 @@ impl ParseState {
             let cur_level = &self.stack[self.stack.len() - 1];
             let mut min_start = usize::MAX;
             let mut cur_match: Option<RegexMatch> = None;
-            // TODO iterate through prototypes first
-            for (pat_context_ptr, pat_index) in context_iter(cur_level.context.clone()) {
-                let pat_context = pat_context_ptr.borrow();
-                let match_pat = pat_context.match_at(pat_index);
+            let context_chain = self.stack
+                .iter()
+                .filter_map(|lvl| lvl.prototype.as_ref().map(|x| x.clone()))
+                .chain(Some(cur_level.context.clone()).into_iter());
+            for ctx in context_chain {
+                for (pat_context_ptr, pat_index) in context_iter(ctx) {
+                    let pat_context = pat_context_ptr.borrow();
+                    let match_pat = pat_context.match_at(pat_index);
 
-                // println!("{:?}", match_pat.regex_str);
-                let regex = match_pat.regex.as_ref().unwrap(); // TODO handle backrefs
-                let mut regions = Region::new();
-                // TODO caching
-                let matched = regex.search_with_options(line,
-                                                        *start,
-                                                        line.len(),
-                                                        onig::SEARCH_OPTION_NONE,
-                                                        Some(&mut regions));
-                if let Some(match_start) = matched {
-                    if match_start < min_start {
-                        min_start = match_start;
-                        cur_match = Some(RegexMatch {
-                            regions: regions,
-                            context: pat_context_ptr.clone(),
-                            pat_index: pat_index,
-                        });
+                    // println!("{:?}", match_pat.regex_str);
+                    let regex = match_pat.regex.as_ref().unwrap(); // TODO handle backrefs
+                    let mut regions = Region::new();
+                    // TODO caching
+                    let matched = regex.search_with_options(line,
+                                                            *start,
+                                                            line.len(),
+                                                            onig::SEARCH_OPTION_NONE,
+                                                            Some(&mut regions));
+                    if let Some(match_start) = matched {
+                        let match_end = regions.pos(0).unwrap().1;
+                        // this is necessary to avoid infinite looping on dumb patterns
+                        let does_something = match match_pat.operation {
+                            MatchOperation::None => match_start != match_end,
+                            _ => true,
+                        };
+                        if match_start < min_start && does_something {
+                            min_start = match_start;
+                            cur_match = Some(RegexMatch {
+                                regions: regions,
+                                context: pat_context_ptr.clone(),
+                                pat_index: pat_index,
+                            });
+                        }
                     }
                 }
             }
@@ -108,6 +119,7 @@ impl ParseState {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context.borrow();
         let pat = context.match_at(reg_match.pat_index);
+        // println!("running pattern {}", pat.regex_str);
 
         self.push_meta_ops(true, match_start, &*context, &pat.operation, ops);
         for s in pat.scope.iter() {
@@ -137,7 +149,7 @@ impl ParseState {
         }
         self.push_meta_ops(false, match_end, &*context, &pat.operation, ops);
 
-        self.perform_op(&pat.operation);
+        self.perform_op(pat);
     }
 
     fn push_meta_ops(&self,
@@ -176,24 +188,29 @@ impl ParseState {
         }
     }
 
-    fn perform_op(&mut self, match_op: &MatchOperation) {
-        let ctx_refs = match match_op {
-            &MatchOperation::Push(ref ctx_refs) => ctx_refs,
-            &MatchOperation::Set(ref ctx_refs) => {
+    fn perform_op(&mut self, pat: &MatchPattern) {
+        let ctx_refs = match pat.operation {
+            MatchOperation::Push(ref ctx_refs) => ctx_refs,
+            MatchOperation::Set(ref ctx_refs) => {
                 self.stack.pop();
                 ctx_refs
             }
-            &MatchOperation::Pop => {
+            MatchOperation::Pop => {
                 self.stack.pop();
                 return;
             }
-            &MatchOperation::None => return,
+            MatchOperation::None => return,
         };
-        for r in ctx_refs {
+        for (i, r) in ctx_refs.iter().enumerate() {
+            let proto = if i == 0 {
+                pat.with_prototype.clone()
+            } else {
+                None
+            };
             let ctx_ptr = r.resolve();
             self.stack.push(StateLevel {
                 context: ctx_ptr,
-                prototype: None, // TODO prototype
+                prototype: proto,
             });
         }
     }
@@ -227,6 +244,10 @@ mod tests {
         let mut ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+            ParseState::new(syntax)
+        };
+        let mut state2 = {
+            let syntax = ps.find_syntax_by_name("HTML (Rails)").unwrap();
             ParseState::new(syntax)
         };
 
@@ -267,6 +288,21 @@ mod tests {
                  (16, Pop(1)),
                  (16, Pop(1))];
         assert_eq!(ops2, test_ops2);
+
+        let line3 = "<script>var lol = '<% def wow(";
+        let ops3 = state2.parse_line(line3);
+        debug_print_ops(line3, &ps.scope_repo, &ops3);
+        let mut test_stack = ScopeStack::new();
+        test_stack.push(ps.scope_repo.build("text.html.ruby"));
+        test_stack.push(ps.scope_repo.build("text.html.basic"));
+        test_stack.push(ps.scope_repo.build("source.js.embedded.html"));
+        test_stack.push(ps.scope_repo.build("string.quoted.single.js"));
+        test_stack.push(ps.scope_repo.build("source.ruby.rails.embedded.html"));
+        test_stack.push(ps.scope_repo.build("meta.function.method.with-arguments.ruby"));
+        test_stack.push(ps.scope_repo.build("variable.parameter.function.ruby"));
+        state2.scope_stack.debug_print(&ps.scope_repo);
+        test_stack.debug_print(&ps.scope_repo);
+        assert_eq!(state2.scope_stack, test_stack);
 
         // assert!(false);
     }

@@ -116,6 +116,10 @@ impl PackageSet {
                 self.link_ref(syntax, context_ref);
             }
         }
+        if let Some(ref context_ptr) = match_pat.with_prototype {
+            let mut mut_ref = context_ptr.borrow_mut();
+            self.link_context(syntax, mut_ref.deref_mut());
+        }
     }
 }
 

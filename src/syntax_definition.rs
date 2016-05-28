@@ -107,7 +107,7 @@ impl Iterator for MatchIter {
                         let ctx_ptr = match ctx_ref {
                             &ContextReference::Inline(ref ctx_ptr) => ctx_ptr.clone(),
                             &ContextReference::Direct(ref ctx_ptr) => ctx_ptr.upgrade().unwrap(),
-                            _ => panic!("Can only iterate patterns after linking."),
+                            _ => panic!("Can only iterate patterns after linking: {:?}", ctx_ref),
                         };
                         self.ctx_stack.push(ctx_ptr);
                         self.index_stack.push(0);
@@ -143,7 +143,7 @@ impl ContextReference {
         match self {
             &ContextReference::Inline(ref ptr) => ptr.clone(),
             &ContextReference::Direct(ref ptr) => ptr.upgrade().unwrap(),
-            _ => panic!("Can only call resolve on linked references"),
+            _ => panic!("Can only call resolve on linked references: {:?}", self),
         }
     }
 }
@@ -168,6 +168,7 @@ struct ParserState<'a> {
     variable_regex: Regex,
     backref_regex: Regex,
     short_multibyte_regex: Regex,
+    top_level_scope: Scope,
 }
 
 impl SyntaxDefinition {
@@ -199,6 +200,7 @@ impl SyntaxDefinition {
             }
         }
         let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
+        let top_level_scope = scope_repo.build(try!(get_key(h, "scope", |x| x.as_str())));
         let mut state = ParserState {
             scope_repo: scope_repo,
             variables: variables,
@@ -206,6 +208,7 @@ impl SyntaxDefinition {
             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
             backref_regex: Regex::new(r"\\\d").unwrap(),
             short_multibyte_regex: Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
+            top_level_scope: top_level_scope,
         };
 
         let contexts = try!(SyntaxDefinition::parse_contexts(contexts_hash, &mut state));
@@ -215,7 +218,7 @@ impl SyntaxDefinition {
 
         let defn = SyntaxDefinition {
             name: try!(get_key(h, "name", |x| x.as_str())).to_owned(),
-            scope: state.scope_repo.build(try!(get_key(h, "scope", |x| x.as_str()))),
+            scope: top_level_scope,
             file_extensions: {
                 get_key(h, "file_extensions", |x| x.as_vec())
                     .map(|v| v.iter().filter_map(|y| y.as_str()).map(|x| x.to_owned()).collect())
@@ -240,8 +243,14 @@ impl SyntaxDefinition {
         let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
-                let context = try!(SyntaxDefinition::parse_context(val_vec, state));
-                contexts.insert(name.to_owned(), context);
+                let context_ptr = try!(SyntaxDefinition::parse_context(val_vec, state));
+                if name == "main" {
+                    let mut context = context_ptr.borrow_mut();
+                    if context.meta_content_scope.is_empty() {
+                        context.meta_content_scope.push(state.top_level_scope)
+                    }
+                }
+                contexts.insert(name.to_owned(), context_ptr);
             }
         }
         return Ok(contexts);
