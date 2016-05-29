@@ -170,8 +170,9 @@ impl MatchPattern {
     pub fn compile_with_refs(&self, region: &Region, s: &str) -> Regex {
         // TODO don't panic on invalid regex
         Regex::with_options(&self.regex_with_substitutes(region, s),
-            onig::REGEX_OPTION_CAPTURE_GROUP,
-            Syntax::default()).unwrap()
+                            onig::REGEX_OPTION_CAPTURE_GROUP,
+                            Syntax::default())
+            .unwrap()
     }
 }
 

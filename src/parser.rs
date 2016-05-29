@@ -80,7 +80,9 @@ impl ParseState {
                     let refs_regex = if cur_level.captures.is_some() && match_pat.regex.is_none() {
                         let &(ref region, ref s) = cur_level.captures.as_ref().unwrap();
                         Some(match_pat.compile_with_refs(region, s))
-                    } else { None };
+                    } else {
+                        None
+                    };
                     let regex = if let Some(ref rgx) = refs_regex {
                         rgx
                     } else {
