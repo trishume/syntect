@@ -26,6 +26,7 @@ pub struct Context {
     pub meta_scope: Vec<Scope>,
     pub meta_content_scope: Vec<Scope>,
     pub meta_include_prototype: bool,
+    pub uses_backrefs: bool,
 
     pub patterns: Vec<Pattern>,
 }
@@ -261,6 +262,7 @@ impl SyntaxDefinition {
             meta_scope: Vec::new(),
             meta_content_scope: Vec::new(),
             meta_include_prototype: true,
+            uses_backrefs: false,
             patterns: Vec::new(),
         };
         let mut seen_pattern = false;
@@ -284,6 +286,9 @@ impl SyntaxDefinition {
                     context.patterns.push(Pattern::Include(reference));
                 } else {
                     let pattern = try!(SyntaxDefinition::parse_match_pattern(map, state));
+                    if pattern.regex.is_none() {
+                        context.uses_backrefs = true;
+                    }
                     context.patterns.push(Pattern::Match(pattern));
                 }
             }

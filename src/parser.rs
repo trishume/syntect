@@ -15,6 +15,7 @@ pub struct ParseState {
 struct StateLevel {
     context: ContextPtr,
     prototype: Option<ContextPtr>,
+    captures: Option<(Region, String)>,
 }
 
 #[derive(Debug)]
@@ -29,6 +30,7 @@ impl ParseState {
         let start_state = StateLevel {
             context: syntax.contexts["main"].clone(),
             prototype: None,
+            captures: None,
         };
         let mut scope_stack = ScopeStack::new();
         scope_stack.push(syntax.scope);
@@ -90,6 +92,7 @@ impl ParseState {
                         };
                         if match_start < min_start && does_something {
                             min_start = match_start;
+                            // TODO pass by immutable ref and re-use context and regions
                             cur_match = Some(RegexMatch {
                                 regions: regions,
                                 context: pat_context_ptr.clone(),
@@ -149,7 +152,7 @@ impl ParseState {
         }
         self.push_meta_ops(false, match_end, &*context, &pat.operation, ops);
 
-        self.perform_op(pat);
+        self.perform_op(line, &reg_match.regions, pat);
     }
 
     fn push_meta_ops(&self,
@@ -188,7 +191,7 @@ impl ParseState {
         }
     }
 
-    fn perform_op(&mut self, pat: &MatchPattern) {
+    fn perform_op(&mut self, line: &str, regions: &Region, pat: &MatchPattern) {
         let ctx_refs = match pat.operation {
             MatchOperation::Push(ref ctx_refs) => ctx_refs,
             MatchOperation::Set(ref ctx_refs) => {
@@ -208,9 +211,19 @@ impl ParseState {
                 None
             };
             let ctx_ptr = r.resolve();
+            let captures = {
+                let ctx = ctx_ptr.borrow();
+                if ctx.uses_backrefs {
+                    // TODO maybe move the Region instead of cloning
+                    Some((regions.clone(), line.to_owned()))
+                } else {
+                    None
+                }
+            };
             self.stack.push(StateLevel {
                 context: ctx_ptr,
                 prototype: proto,
+                captures: captures,
             });
         }
     }
