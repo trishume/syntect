@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use onig::Regex;
+use onig::{self, Regex, Region, Syntax};
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use scope::*;
+use regex_syntax::quote;
 
 pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
 pub type ContextPtr = Rc<RefCell<Context>>;
@@ -109,6 +110,9 @@ impl Iterator for MatchIter {
     }
 }
 
+/// Returns an iterator over all the match patterns in this context.
+/// It recursively follows include directives. Can only be run on
+/// contexts that have already been linked up.
 pub fn context_iter(ctx: ContextPtr) -> MatchIter {
     MatchIter {
         ctx_stack: vec![ctx],
@@ -126,12 +130,72 @@ impl Context {
 }
 
 impl ContextReference {
-    // find the pointed to context, panics if ref is not linked
+    /// find the pointed to context, panics if ref is not linked
     pub fn resolve(&self) -> ContextPtr {
         match self {
             &ContextReference::Inline(ref ptr) => ptr.clone(),
             &ContextReference::Direct(ref ptr) => ptr.upgrade().unwrap(),
             _ => panic!("Can only call resolve on linked references: {:?}", self),
         }
+    }
+}
+
+impl MatchPattern {
+    /// substitutes back-refs in Regex with regions from s
+    /// used for match patterns which refer to captures from the pattern
+    /// that pushed them.
+    pub fn regex_with_substitutes(&self, region: &Region, s: &str) -> String {
+        let mut reg_str = String::new();
+
+        let mut last_was_escape = false;
+        for c in self.regex_str.chars() {
+            if last_was_escape && c.is_digit(10) {
+                let val = c.to_digit(10).unwrap();
+                if let Some((start, end)) = region.pos(val as usize) {
+                    let escaped = quote(&s[start..end]);
+                    reg_str.push_str(&escaped);
+                }
+            } else if last_was_escape {
+                reg_str.push('\\');
+                reg_str.push(c);
+            } else if c != '\\' {
+                reg_str.push(c);
+            }
+
+            last_was_escape = c == '\\' && !last_was_escape;
+        }
+        reg_str
+    }
+
+    pub fn compile_with_refs(&self, region: &Region, s: &str) -> Regex {
+        // TODO don't panic on invalid regex
+        Regex::with_options(&self.regex_with_substitutes(region, s),
+            onig::REGEX_OPTION_CAPTURE_GROUP,
+            Syntax::default()).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use syntax_definition::*;
+    #[test]
+    fn can_compile_refs() {
+        use onig::{self, Regex, Region};
+        let pat = MatchPattern {
+            regex_str: String::from(r"lol \\ \2 \1 '\9' \wz"),
+            regex: None,
+            scope: vec![],
+            captures: None,
+            operation: MatchOperation::None,
+            with_prototype: None,
+        };
+        let r = Regex::new(r"(\\\[\]\(\))(b)(c)(d)(e)").unwrap();
+        let mut region = Region::new();
+        let s = r"\[]()bcde";
+        assert!(r.match_with_options(s, 0, onig::SEARCH_OPTION_NONE, Some(&mut region)).is_some());
+
+        let regex_res = pat.regex_with_substitutes(&region, s);
+        assert_eq!(regex_res, r"lol \\ b \\\[\]\(\) '' \wz");
+        pat.compile_with_refs(&region, s);
     }
 }

@@ -7,3 +7,4 @@ authors = ["Tristan Hume <tristan@thume.ca>"]
 yaml-rust = "0.3"
 onig = { git = "https://github.com/trishume/rust-onig.git" }
 walkdir = "0.1"
+regex-syntax = "0.3.3"

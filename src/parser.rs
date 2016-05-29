@@ -46,6 +46,8 @@ impl ParseState {
                 "Somehow main context was popped from the stack");
         let mut match_start = 0;
         let mut res = Vec::new();
+        // TODO push file syntax on first line
+        // TODO set regex parameters correctly for start of file
         while self.parse_next_token(line, &mut match_start, &mut res) {
         }
         // apply operations to our scope to keep up
@@ -75,7 +77,15 @@ impl ParseState {
                     let match_pat = pat_context.match_at(pat_index);
 
                     // println!("{:?}", match_pat.regex_str);
-                    let regex = match_pat.regex.as_ref().unwrap(); // TODO handle backrefs
+                    let refs_regex = if cur_level.captures.is_some() && match_pat.regex.is_none() {
+                        let &(ref region, ref s) = cur_level.captures.as_ref().unwrap();
+                        Some(match_pat.compile_with_refs(region, s))
+                    } else { None };
+                    let regex = if let Some(ref rgx) = refs_regex {
+                        rgx
+                    } else {
+                        match_pat.regex.as_ref().unwrap()
+                    };
                     let mut regions = Region::new();
                     // TODO caching
                     let matched = regex.search_with_options(line,
@@ -316,6 +326,22 @@ mod tests {
         state2.scope_stack.debug_print(&ps.scope_repo);
         test_stack.debug_print(&ps.scope_repo);
         assert_eq!(state2.scope_stack, test_stack);
+
+        // for testing backrefs
+        let line4 = "lol = <<-END wow END";
+        let ops4 = state.parse_line(line4);
+        debug_print_ops(line4, &ps.scope_repo, &ops4);
+        let test_ops4 = vec![
+            (4, Push(ps.scope_repo.build("keyword.operator.assignment.ruby"))),
+            (5, Pop(1)),
+            (6, Push(ps.scope_repo.build("string.unquoted.heredoc.ruby"))),
+            (6, Push(ps.scope_repo.build("punctuation.definition.string.begin.ruby"))),
+            (12, Pop(1)),
+            (16, Push(ps.scope_repo.build("punctuation.definition.string.end.ruby"))),
+            (20, Pop(1)),
+            (20, Pop(1)),
+        ];
+        assert_eq!(ops4, test_ops4);
 
         // assert!(false);
     }
