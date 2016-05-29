@@ -1,5 +1,6 @@
 use syntax_definition::*;
 use scope::*;
+use yaml_load::*;
 use std::path::Path;
 use walkdir::WalkDir;
 use std::io::{self, Read};
