@@ -1,6 +1,12 @@
 // see DESIGN.md
 use std::collections::HashMap;
 use std::u16;
+use std::sync::Mutex;
+use std::fmt;
+
+lazy_static! {
+    static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct Scope {
@@ -65,6 +71,21 @@ impl ScopeRepository {
         let index = self.atoms.len() - 1;
         self.atom_index_map.insert(atom.to_owned(), index);
         return index;
+    }
+}
+
+impl Scope {
+    fn new(s: &str) -> Scope {
+        let mut repo = SCOPE_REPO.lock().unwrap();
+        repo.build(s)
+    }
+}
+
+impl fmt::Display for Scope {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut repo = SCOPE_REPO.lock().unwrap();
+        let s = repo.to_string(*self);
+        write!(f, "<{}>", s)
     }
 }
 

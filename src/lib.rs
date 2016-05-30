@@ -2,6 +2,7 @@ extern crate yaml_rust;
 extern crate onig;
 extern crate walkdir;
 extern crate regex_syntax;
+#[macro_use] extern crate lazy_static;
 pub mod syntax_definition;
 pub mod yaml_load;
 pub mod package_set;
