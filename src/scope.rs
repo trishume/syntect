@@ -1,8 +1,14 @@
 // see DESIGN.md
 use std::collections::HashMap;
 use std::u16;
+use std::sync::Mutex;
+use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+lazy_static! {
+    pub static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
+}
+
+#[derive(Clone, PartialEq, Eq, Copy)]
 pub struct Scope {
     data: [u16; 8],
 }
@@ -27,7 +33,7 @@ fn pack_as_u16s(atoms: &[usize]) -> [u16; 8] {
 }
 
 impl ScopeRepository {
-    pub fn new() -> ScopeRepository {
+    fn new() -> ScopeRepository {
         ScopeRepository {
             atoms: Vec::new(),
             atom_index_map: HashMap::new(),
@@ -68,6 +74,29 @@ impl ScopeRepository {
     }
 }
 
+impl Scope {
+    pub fn new(s: &str) -> Scope {
+        let mut repo = SCOPE_REPO.lock().unwrap();
+        repo.build(s)
+    }
+}
+
+impl fmt::Display for Scope {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let repo = SCOPE_REPO.lock().unwrap();
+        let s = repo.to_string(*self);
+        write!(f, "{}", s)
+    }
+}
+
+impl fmt::Debug for Scope {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let repo = SCOPE_REPO.lock().unwrap();
+        let s = repo.to_string(*self);
+        write!(f, "<{}>", s)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeStack {
     scopes: Vec<Scope>,
@@ -101,6 +130,15 @@ impl ScopeStack {
             print!("{} ", repo.to_string(*s));
         }
         println!("");
+    }
+}
+
+impl fmt::Display for ScopeStack {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for s in self.scopes.iter() {
+            try!(write!(f, "{} ", s));
+        }
+        Ok(())
     }
 }
 

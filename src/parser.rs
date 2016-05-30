@@ -247,14 +247,13 @@ mod tests {
     use parser::*;
     use scope::*;
     fn debug_print_ops(line: &str,
-                       scope_repo: &ScopeRepository,
                        ops: &Vec<(usize, ScopeStackOp)>) {
         for &(i, ref op) in ops.iter() {
             println!("{}", line);
             print!("{: <1$}", "", i);
             match op {
                 &ScopeStackOp::Push(s) => {
-                    println!("^ +{}", scope_repo.to_string(s));
+                    println!("^ +{}", s);
                 }
                 &ScopeStackOp::Pop(count) => {
                     println!("^ pop {}", count);
@@ -266,7 +265,7 @@ mod tests {
     #[test]
     fn can_parse() {
         use scope::ScopeStackOp::{Push, Pop};
-        let mut ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
+        let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)
@@ -278,15 +277,15 @@ mod tests {
 
         let line = "module Bob::Wow::Troll::Five; 5; end";
         let ops = state.parse_line(line);
-        debug_print_ops(line, &ps.scope_repo, &ops);
+        debug_print_ops(line, &ops);
 
         let test_ops = vec![
-            (0, Push(ps.scope_repo.build("meta.module.ruby"))),
-            (0, Push(ps.scope_repo.build("keyword.control.module.ruby"))),
+            (0, Push(Scope::new("meta.module.ruby"))),
+            (0, Push(Scope::new("keyword.control.module.ruby"))),
             (6, Pop(1)),
-            (7, Push(ps.scope_repo.build("entity.name.type.module.ruby"))),
-            (7, Push(ps.scope_repo.build("entity.other.inherited-class.module.first.ruby"))),
-            (10, Push(ps.scope_repo.build("punctuation.separator.inheritance.ruby"))),
+            (7, Push(Scope::new("entity.name.type.module.ruby"))),
+            (7, Push(Scope::new("entity.other.inherited-class.module.first.ruby"))),
+            (10, Push(Scope::new("punctuation.separator.inheritance.ruby"))),
             (12, Pop(1)),
             (12, Pop(1)),
         ];
@@ -294,57 +293,57 @@ mod tests {
 
         let line2 = "def lol(wow = 5)";
         let ops2 = state.parse_line(line2);
-        debug_print_ops(line2, &ps.scope_repo, &ops2);
+        debug_print_ops(line2, &ops2);
         let test_ops2 =
-            vec![(0, Push(ps.scope_repo.build("meta.function.method.with-arguments.ruby"))),
-                 (0, Push(ps.scope_repo.build("keyword.control.def.ruby"))),
+            vec![(0, Push(Scope::new("meta.function.method.with-arguments.ruby"))),
+                 (0, Push(Scope::new("keyword.control.def.ruby"))),
                  (3, Pop(1)),
-                 (4, Push(ps.scope_repo.build("entity.name.function.ruby"))),
+                 (4, Push(Scope::new("entity.name.function.ruby"))),
                  (7, Pop(1)),
-                 (7, Push(ps.scope_repo.build("punctuation.definition.parameters.ruby"))),
+                 (7, Push(Scope::new("punctuation.definition.parameters.ruby"))),
                  (8, Pop(1)),
-                 (8, Push(ps.scope_repo.build("variable.parameter.function.ruby"))),
-                 (12, Push(ps.scope_repo.build("keyword.operator.assignment.ruby"))),
+                 (8, Push(Scope::new("variable.parameter.function.ruby"))),
+                 (12, Push(Scope::new("keyword.operator.assignment.ruby"))),
                  (13, Pop(1)),
-                 (14, Push(ps.scope_repo.build("constant.numeric.ruby"))),
+                 (14, Push(Scope::new("constant.numeric.ruby"))),
                  (15, Pop(1)),
                  (15, Pop(1)),
-                 (15, Push(ps.scope_repo.build("punctuation.definition.parameters.ruby"))),
+                 (15, Push(Scope::new("punctuation.definition.parameters.ruby"))),
                  (16, Pop(1)),
                  (16, Pop(1))];
         assert_eq!(ops2, test_ops2);
 
         let line3 = "<script>var lol = '<% def wow(";
         let ops3 = state2.parse_line(line3);
-        debug_print_ops(line3, &ps.scope_repo, &ops3);
+        debug_print_ops(line3, &ops3);
         let mut test_stack = ScopeStack::new();
-        test_stack.push(ps.scope_repo.build("text.html.ruby"));
-        test_stack.push(ps.scope_repo.build("text.html.basic"));
-        test_stack.push(ps.scope_repo.build("source.js.embedded.html"));
-        test_stack.push(ps.scope_repo.build("string.quoted.single.js"));
-        test_stack.push(ps.scope_repo.build("source.ruby.rails.embedded.html"));
-        test_stack.push(ps.scope_repo.build("meta.function.method.with-arguments.ruby"));
-        test_stack.push(ps.scope_repo.build("variable.parameter.function.ruby"));
-        state2.scope_stack.debug_print(&ps.scope_repo);
-        test_stack.debug_print(&ps.scope_repo);
+        test_stack.push(Scope::new("text.html.ruby"));
+        test_stack.push(Scope::new("text.html.basic"));
+        test_stack.push(Scope::new("source.js.embedded.html"));
+        test_stack.push(Scope::new("string.quoted.single.js"));
+        test_stack.push(Scope::new("source.ruby.rails.embedded.html"));
+        test_stack.push(Scope::new("meta.function.method.with-arguments.ruby"));
+        test_stack.push(Scope::new("variable.parameter.function.ruby"));
+        println!("{:?}", state2.scope_stack);
+        println!("{:?}", test_stack);
         assert_eq!(state2.scope_stack, test_stack);
 
         // for testing backrefs
         let line4 = "lol = <<-END wow END";
         let ops4 = state.parse_line(line4);
-        debug_print_ops(line4, &ps.scope_repo, &ops4);
+        debug_print_ops(line4, &ops4);
         let test_ops4 = vec![
-            (4, Push(ps.scope_repo.build("keyword.operator.assignment.ruby"))),
+            (4, Push(Scope::new("keyword.operator.assignment.ruby"))),
             (5, Pop(1)),
-            (6, Push(ps.scope_repo.build("string.unquoted.heredoc.ruby"))),
-            (6, Push(ps.scope_repo.build("punctuation.definition.string.begin.ruby"))),
+            (6, Push(Scope::new("string.unquoted.heredoc.ruby"))),
+            (6, Push(Scope::new("punctuation.definition.string.begin.ruby"))),
             (12, Pop(1)),
-            (16, Push(ps.scope_repo.build("punctuation.definition.string.end.ruby"))),
+            (16, Push(Scope::new("punctuation.definition.string.end.ruby"))),
             (20, Pop(1)),
             (20, Pop(1)),
         ];
         assert_eq!(ops4, test_ops4);
 
-        // assert!(false);
+        assert!(false);
     }
 }

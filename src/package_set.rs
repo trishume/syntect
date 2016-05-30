@@ -13,7 +13,6 @@ use std::rc::Rc;
 #[derive(Debug)]
 pub struct PackageSet {
     pub syntaxes: Vec<SyntaxDefinition>,
-    pub scope_repo: ScopeRepository,
 }
 
 #[derive(Debug)]
@@ -23,30 +22,27 @@ pub enum PackageLoadError {
     Parsing(ParseError),
 }
 
-fn load_syntax_file(p: &Path,
-                    scope_repo: &mut ScopeRepository)
+fn load_syntax_file(p: &Path)
                     -> Result<SyntaxDefinition, PackageLoadError> {
     let mut f = try!(File::open(p).map_err(|e| PackageLoadError::IOErr(e)));
     let mut s = String::new();
     try!(f.read_to_string(&mut s).map_err(|e| PackageLoadError::IOErr(e)));
 
-    SyntaxDefinition::load_from_str(&s, scope_repo).map_err(|e| PackageLoadError::Parsing(e))
+    SyntaxDefinition::load_from_str(&s).map_err(|e| PackageLoadError::Parsing(e))
 }
 
 impl PackageSet {
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<PackageSet, PackageLoadError> {
-        let mut repo = ScopeRepository::new();
         let mut syntaxes = Vec::new();
         for entry in WalkDir::new(folder) {
             let entry = try!(entry.map_err(|e| PackageLoadError::WalkDir(e)));
             if entry.path().extension().map(|e| e == "sublime-syntax").unwrap_or(false) {
                 // println!("{}", entry.path().display());
-                syntaxes.push(try!(load_syntax_file(entry.path(), &mut repo)));
+                syntaxes.push(try!(load_syntax_file(entry.path())));
             }
         }
         let mut ps = PackageSet {
             syntaxes: syntaxes,
-            scope_repo: repo,
         };
         ps.link_syntaxes();
         Ok(ps)
@@ -130,8 +126,9 @@ mod tests {
     fn can_load() {
         use package_set::PackageSet;
         use syntax_definition::*;
-        let mut ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
-        let rails_scope = ps.scope_repo.build("source.ruby.rails");
+        use scope::*;
+        let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
+        let rails_scope = Scope::new("source.ruby.rails");
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
