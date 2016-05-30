@@ -126,7 +126,8 @@ mod tests {
     fn can_load() {
         use package_set::PackageSet;
         use syntax_definition::*;
-        let mut ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
+        use scope::*;
+        let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
         let rails_scope = Scope::new("source.ruby.rails");
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         // println!("{:#?}", syntax);

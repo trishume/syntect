@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use scope::*;
 use std::path::Path;
+use std::ops::DerefMut;
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -42,8 +43,7 @@ struct ParserState<'a> {
 }
 
 impl SyntaxDefinition {
-    pub fn load_from_str(s: &str,
-                         scope_repo: &mut ScopeRepository)
+    pub fn load_from_str(s: &str)
                          -> Result<SyntaxDefinition, ParseError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
@@ -53,7 +53,8 @@ impl SyntaxDefinition {
             return Err(ParseError::EmptyFile);
         }
         let doc = &docs[0];
-        SyntaxDefinition::parse_top_level(doc, scope_repo)
+        let mut scope_repo = SCOPE_REPO.lock().unwrap();
+        SyntaxDefinition::parse_top_level(doc, scope_repo.deref_mut())
     }
 
     fn parse_top_level(doc: &Yaml,
@@ -289,13 +290,11 @@ mod tests {
     fn can_parse() {
         use syntax_definition::*;
         use scope::*;
-        let mut repo = ScopeRepository::new();
         let defn: SyntaxDefinition =
-            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}",
-                                            &mut repo)
+            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}")
                 .unwrap();
         assert_eq!(defn.name, "C");
-        assert_eq!(defn.scope, repo.build("source.c"));
+        assert_eq!(defn.scope, Scope::new("source.c"));
         let exts_empty: Vec<String> = Vec::new();
         assert_eq!(defn.file_extensions, exts_empty);
         assert_eq!(defn.hidden, false);
@@ -331,11 +330,10 @@ mod tests {
               scope: constant.character.escape.c
             - match: '\"'
               pop: true
-        ",
-                                            &mut repo)
+        ")
                 .unwrap();
         assert_eq!(defn2.name, "C");
-        assert_eq!(defn2.scope, repo.build("source.c"));
+        assert_eq!(defn2.scope, Scope::new("source.c"));
         let exts: Vec<String> = vec![String::from("c"), String::from("h")];
         assert_eq!(defn2.file_extensions, exts);
         assert_eq!(defn2.hidden, true);
@@ -347,7 +345,7 @@ mod tests {
         assert_eq!(defn2.contexts["main"].borrow().meta_scope, n);
         assert_eq!(defn2.contexts["main"].borrow().meta_include_prototype, true);
         assert_eq!(defn2.contexts["string"].borrow().meta_scope,
-                   vec![repo.build("string.quoted.double.c")]);
+                   vec![Scope::new("string.quoted.double.c")]);
         {
             let proto_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];
             match proto_pattern {
@@ -366,13 +364,13 @@ mod tests {
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
-                assert_eq!(&m[&1], &vec![repo.build("meta.preprocessor.c++")]);
+                assert_eq!(&m[&1], &vec![Scope::new("meta.preprocessor.c++")]);
                 use syntax_definition::ContextReference::*;
 
                 // this is sadly necessary because Context is not Eq because of the Regex
                 let expected = MatchOperation::Push(vec![
                     Named("string".to_owned()),
-                    ByScope { scope: repo.build("source.c"), sub_context: Some("main".to_owned()) },
+                    ByScope { scope: Scope::new("source.c"), sub_context: Some("main".to_owned()) },
                     File {
                         name: "CSS".to_owned(),
                         sub_context: Some("rule-list-body".to_owned())
@@ -382,7 +380,7 @@ mod tests {
                            format!("{:?}", expected));
 
                 assert_eq!(match_pat.scope,
-                           vec![repo.build("keyword.control.c"), repo.build("keyword.looping.c")]);
+                           vec![Scope::new("keyword.control.c"), Scope::new("keyword.looping.c")]);
 
                 let r = match_pat.regex.as_ref().unwrap();
                 assert!(r.is_match("else"));
