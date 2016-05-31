@@ -280,12 +280,12 @@ mod tests {
         debug_print_ops(line, &ops);
 
         let test_ops = vec![
-            (0, Push(Scope::new("meta.module.ruby"))),
-            (0, Push(Scope::new("keyword.control.module.ruby"))),
+            (0, Push(Scope::new("meta.module.ruby").unwrap())),
+            (0, Push(Scope::new("keyword.control.module.ruby").unwrap())),
             (6, Pop(1)),
-            (7, Push(Scope::new("entity.name.type.module.ruby"))),
-            (7, Push(Scope::new("entity.other.inherited-class.module.first.ruby"))),
-            (10, Push(Scope::new("punctuation.separator.inheritance.ruby"))),
+            (7, Push(Scope::new("entity.name.type.module.ruby").unwrap())),
+            (7, Push(Scope::new("entity.other.inherited-class.module.first.ruby").unwrap())),
+            (10, Push(Scope::new("punctuation.separator.inheritance.ruby").unwrap())),
             (12, Pop(1)),
             (12, Pop(1)),
         ];
@@ -295,20 +295,20 @@ mod tests {
         let ops2 = state.parse_line(line2);
         debug_print_ops(line2, &ops2);
         let test_ops2 =
-            vec![(0, Push(Scope::new("meta.function.method.with-arguments.ruby"))),
-                 (0, Push(Scope::new("keyword.control.def.ruby"))),
+            vec![(0, Push(Scope::new("meta.function.method.with-arguments.ruby").unwrap())),
+                 (0, Push(Scope::new("keyword.control.def.ruby").unwrap())),
                  (3, Pop(1)),
-                 (4, Push(Scope::new("entity.name.function.ruby"))),
+                 (4, Push(Scope::new("entity.name.function.ruby").unwrap())),
                  (7, Pop(1)),
-                 (7, Push(Scope::new("punctuation.definition.parameters.ruby"))),
+                 (7, Push(Scope::new("punctuation.definition.parameters.ruby").unwrap())),
                  (8, Pop(1)),
-                 (8, Push(Scope::new("variable.parameter.function.ruby"))),
-                 (12, Push(Scope::new("keyword.operator.assignment.ruby"))),
+                 (8, Push(Scope::new("variable.parameter.function.ruby").unwrap())),
+                 (12, Push(Scope::new("keyword.operator.assignment.ruby").unwrap())),
                  (13, Pop(1)),
-                 (14, Push(Scope::new("constant.numeric.ruby"))),
+                 (14, Push(Scope::new("constant.numeric.ruby").unwrap())),
                  (15, Pop(1)),
                  (15, Pop(1)),
-                 (15, Push(Scope::new("punctuation.definition.parameters.ruby"))),
+                 (15, Push(Scope::new("punctuation.definition.parameters.ruby").unwrap())),
                  (16, Pop(1)),
                  (16, Pop(1))];
         assert_eq!(ops2, test_ops2);
@@ -317,13 +317,13 @@ mod tests {
         let ops3 = state2.parse_line(line3);
         debug_print_ops(line3, &ops3);
         let mut test_stack = ScopeStack::new();
-        test_stack.push(Scope::new("text.html.ruby"));
-        test_stack.push(Scope::new("text.html.basic"));
-        test_stack.push(Scope::new("source.js.embedded.html"));
-        test_stack.push(Scope::new("string.quoted.single.js"));
-        test_stack.push(Scope::new("source.ruby.rails.embedded.html"));
-        test_stack.push(Scope::new("meta.function.method.with-arguments.ruby"));
-        test_stack.push(Scope::new("variable.parameter.function.ruby"));
+        test_stack.push(Scope::new("text.html.ruby").unwrap());
+        test_stack.push(Scope::new("text.html.basic").unwrap());
+        test_stack.push(Scope::new("source.js.embedded.html").unwrap());
+        test_stack.push(Scope::new("string.quoted.single.js").unwrap());
+        test_stack.push(Scope::new("source.ruby.rails.embedded.html").unwrap());
+        test_stack.push(Scope::new("meta.function.method.with-arguments.ruby").unwrap());
+        test_stack.push(Scope::new("variable.parameter.function.ruby").unwrap());
         println!("{:?}", state2.scope_stack);
         println!("{:?}", test_stack);
         assert_eq!(state2.scope_stack, test_stack);
@@ -333,17 +333,17 @@ mod tests {
         let ops4 = state.parse_line(line4);
         debug_print_ops(line4, &ops4);
         let test_ops4 = vec![
-            (4, Push(Scope::new("keyword.operator.assignment.ruby"))),
+            (4, Push(Scope::new("keyword.operator.assignment.ruby").unwrap())),
             (5, Pop(1)),
-            (6, Push(Scope::new("string.unquoted.heredoc.ruby"))),
-            (6, Push(Scope::new("punctuation.definition.string.begin.ruby"))),
+            (6, Push(Scope::new("string.unquoted.heredoc.ruby").unwrap())),
+            (6, Push(Scope::new("punctuation.definition.string.begin.ruby").unwrap())),
             (12, Pop(1)),
-            (16, Push(Scope::new("punctuation.definition.string.end.ruby"))),
+            (16, Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())),
             (20, Pop(1)),
             (20, Pop(1)),
         ];
         assert_eq!(ops4, test_ops4);
 
-        assert!(false);
+        // assert!(false);
     }
 }

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::u16;
 use std::sync::Mutex;
 use std::fmt;
+use std::str::FromStr;
 
 lazy_static! {
     pub static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
@@ -14,22 +15,33 @@ pub struct Scope {
 }
 
 #[derive(Debug)]
+pub enum ParseScopeError {
+    /// Due to a limitation of the current optimized internal representation
+    /// scopes can be at most 8 atoms long
+    TooLong,
+    /// The internal representation uses 16 bits per atom, so if all scopes ever
+    /// used by the program have more than 2^16-2 atoms, things break
+    TooManyAtoms,
+}
+
+#[derive(Debug)]
 pub struct ScopeRepository {
     atoms: Vec<String>,
     atom_index_map: HashMap<String, usize>,
 }
 
-fn pack_as_u16s(atoms: &[usize]) -> [u16; 8] {
+fn pack_as_u16s(atoms: &[usize]) -> Result<[u16; 8],ParseScopeError> {
     let mut res: [u16; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
 
     for i in 0..(atoms.len()) {
         let n = atoms[i];
-        assert!(n < (u16::MAX as usize) - 2,
-                "too many unique scope atoms, there must be less than 2^16-3 for packing reasons");
+        if n >= (u16::MAX as usize) - 2 {
+            return Err(ParseScopeError::TooManyAtoms);
+        }
         let small = (n + 1) as u16; // +1 since we reserve 0 for unused
         res[i] = small;
     }
-    res
+    Ok(res)
 }
 
 impl ScopeRepository {
@@ -40,12 +52,12 @@ impl ScopeRepository {
         }
     }
 
-    pub fn build(&mut self, s: &str) -> Scope {
+    pub fn build(&mut self, s: &str) -> Result<Scope, ParseScopeError> {
         let parts: Vec<usize> = s.split('.').map(|a| self.atom_to_index(a)).collect();
-        assert!(parts.len() <= 8,
-                "scope {:?} too long to pack, currently the limit is 8 atoms",
-                s);
-        Scope { data: pack_as_u16s(&parts[..]) }
+        if parts.len() > 8 {
+            return Err(ParseScopeError::TooManyAtoms);
+        }
+        Ok(Scope { data: try!(pack_as_u16s(&parts[..])) })
     }
 
     pub fn to_string(&self, scope: Scope) -> String {
@@ -75,9 +87,17 @@ impl ScopeRepository {
 }
 
 impl Scope {
-    pub fn new(s: &str) -> Scope {
+    pub fn new(s: &str) -> Result<Scope, ParseScopeError> {
         let mut repo = SCOPE_REPO.lock().unwrap();
-        repo.build(s)
+        repo.build(s.trim())
+    }
+}
+
+impl FromStr for Scope {
+    type Err = ParseScopeError;
+
+    fn from_str(s: &str) -> Result<Scope, ParseScopeError> {
+        Scope::new(s)
     }
 }
 
@@ -133,12 +153,75 @@ impl ScopeStack {
     }
 }
 
+impl FromStr for ScopeStack {
+    type Err = ParseScopeError;
+
+    fn from_str(s: &str) -> Result<ScopeStack, ParseScopeError> {
+        let mut scopes = Vec::new();
+        for name in s.split_whitespace() {
+            scopes.push(try!(Scope::from_str(name)))
+        };
+        Ok(ScopeStack {scopes: scopes})
+    }
+}
+
 impl fmt::Display for ScopeStack {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for s in self.scopes.iter() {
             try!(write!(f, "{} ", s));
         }
         Ok(())
+    }
+}
+
+// The following code (until the tests module at the end)
+// is based on code from https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs
+// under the MIT license
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeSelector {
+    path: ScopeStack,
+    exclude: Option<ScopeStack>
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeSelectors {
+    pub selectors: Vec<ScopeSelector>
+}
+
+impl FromStr for ScopeSelector {
+    type Err = ParseScopeError;
+
+    fn from_str(s: &str) -> Result<ScopeSelector, ParseScopeError> {
+        match s.find(" - ") {
+            Some(index) => {
+                let (path_str, exclude_str) = s.split_at(index);
+                Ok(ScopeSelector {
+                    path: try!(ScopeStack::from_str(path_str)),
+                    exclude: Some(try!(ScopeStack::from_str(exclude_str))),
+                })
+            },
+            None => {
+                Ok(ScopeSelector {
+                    path: try!(ScopeStack::from_str(s)),
+                    exclude: None,
+                })
+            }
+        }
+    }
+}
+
+impl FromStr for ScopeSelectors {
+    type Err = ParseScopeError;
+
+    fn from_str(s: &str) -> Result<ScopeSelectors, ParseScopeError> {
+        let mut selectors = Vec::new();
+        for selector in s.split(',') {
+            selectors.push(try!(ScopeSelector::from_str(selector)))
+        };
+        Ok(ScopeSelectors {
+            selectors: selectors
+        })
     }
 }
 
@@ -156,15 +239,15 @@ mod tests {
     fn repo_works() {
         use scope::*;
         let mut repo = ScopeRepository::new();
-        assert_eq!(repo.build("source.php"), repo.build("source.php"));
-        assert_eq!(repo.build("source.php.wow.hi.bob.troll.clock.5"),
-                   repo.build("source.php.wow.hi.bob.troll.clock.5"));
-        assert_eq!(repo.build(""), repo.build(""));
-        let s1 = repo.build("");
+        assert_eq!(repo.build("source.php").unwrap(), repo.build("source.php").unwrap());
+        assert_eq!(repo.build("source.php.wow.hi.bob.troll.clock.5").unwrap(),
+                   repo.build("source.php.wow.hi.bob.troll.clock.5").unwrap());
+        assert_eq!(repo.build("").unwrap(), repo.build("").unwrap());
+        let s1 = repo.build("").unwrap();
         assert_eq!(repo.to_string(s1), "");
-        let s2 = repo.build("source.php.wow");
+        let s2 = repo.build("source.php.wow").unwrap();
         assert_eq!(repo.to_string(s2), "source.php.wow");
-        assert!(repo.build("source.php") != repo.build("source.perl"));
-        assert!(repo.build("source.php") != repo.build("source.php.wagon"));
+        assert!(repo.build("source.php").unwrap() != repo.build("source.perl").unwrap());
+        assert!(repo.build("source.php").unwrap() != repo.build("source.php.wagon").unwrap());
     }
 }

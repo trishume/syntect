@@ -14,6 +14,7 @@ pub enum ParseError {
     EmptyFile,
     MissingMandatoryKey(&'static str),
     RegexCompileError(onig::Error),
+    InvalidScope(ParseScopeError),
     BadFileRef,
     MainMissing,
     TypeMismatch,
@@ -28,8 +29,8 @@ fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a BTreeMap<Yaml, Yaml
         .and_then(|x| f(x).ok_or(ParseError::TypeMismatch))
 }
 
-fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Vec<Scope> {
-    s.split_whitespace().map(|scope| repo.build(scope)).collect()
+fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Result<Vec<Scope>,ParseError> {
+    s.split_whitespace().map(|scope| repo.build(scope).map_err(ParseError::InvalidScope)).collect()
 }
 
 struct ParserState<'a> {
@@ -71,7 +72,7 @@ impl SyntaxDefinition {
             }
         }
         let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
-        let top_level_scope = scope_repo.build(try!(get_key(h, "scope", |x| x.as_str())));
+        let top_level_scope = try!(scope_repo.build(try!(get_key(h, "scope", |x| x.as_str()))).map_err(ParseError::InvalidScope));
         let mut state = ParserState {
             scope_repo: scope_repo,
             variables: variables,
@@ -140,9 +141,9 @@ impl SyntaxDefinition {
             let map = try!(y.as_hash().ok_or(ParseError::TypeMismatch));
 
             if let Some(x) = get_key(map, "meta_scope", |x| x.as_str()).ok() {
-                context.meta_scope = str_to_scopes(x, state.scope_repo);
+                context.meta_scope = try!(str_to_scopes(x, state.scope_repo));
             } else if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
-                context.meta_content_scope = str_to_scopes(x, state.scope_repo);
+                context.meta_content_scope = try!(str_to_scopes(x, state.scope_repo));
             } else if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
                 context.meta_include_prototype = x;
             } else {
@@ -177,7 +178,7 @@ impl SyntaxDefinition {
             };
             if parts[0].starts_with("scope:") {
                 Ok(ContextReference::ByScope {
-                    scope: state.scope_repo.build(&parts[0][6..]),
+                    scope: try!(state.scope_repo.build(&parts[0][6..]).map_err(ParseError::InvalidScope)),
                     sub_context: sub_context,
                 })
             } else if parts[0].ends_with(".sublime-syntax") {
@@ -223,16 +224,16 @@ impl SyntaxDefinition {
             Some(try!(regex_res.map_err(|e| ParseError::RegexCompileError(e))))
         };
 
-        let scope = get_key(map, "scope", |x| x.as_str())
+        let scope = try!(get_key(map, "scope", |x| x.as_str())
             .ok()
             .map(|s| str_to_scopes(s, state.scope_repo))
-            .unwrap_or_else(|| vec![]);
+            .unwrap_or_else(|| Ok(vec![])));
 
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
             let mut res_map = HashMap::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
-                    res_map.insert(key_int as usize, str_to_scopes(val_str, state.scope_repo));
+                    res_map.insert(key_int as usize, try!(str_to_scopes(val_str, state.scope_repo)));
                 }
             }
             Some(res_map)
@@ -294,7 +295,7 @@ mod tests {
             SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}")
                 .unwrap();
         assert_eq!(defn.name, "C");
-        assert_eq!(defn.scope, Scope::new("source.c"));
+        assert_eq!(defn.scope, Scope::new("source.c").unwrap());
         let exts_empty: Vec<String> = Vec::new();
         assert_eq!(defn.file_extensions, exts_empty);
         assert_eq!(defn.hidden, false);
@@ -333,7 +334,7 @@ mod tests {
         ")
                 .unwrap();
         assert_eq!(defn2.name, "C");
-        assert_eq!(defn2.scope, Scope::new("source.c"));
+        assert_eq!(defn2.scope, Scope::new("source.c").unwrap());
         let exts: Vec<String> = vec![String::from("c"), String::from("h")];
         assert_eq!(defn2.file_extensions, exts);
         assert_eq!(defn2.hidden, true);
@@ -345,7 +346,7 @@ mod tests {
         assert_eq!(defn2.contexts["main"].borrow().meta_scope, n);
         assert_eq!(defn2.contexts["main"].borrow().meta_include_prototype, true);
         assert_eq!(defn2.contexts["string"].borrow().meta_scope,
-                   vec![Scope::new("string.quoted.double.c")]);
+                   vec![Scope::new("string.quoted.double.c").unwrap()]);
         {
             let proto_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];
             match proto_pattern {
@@ -364,13 +365,13 @@ mod tests {
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
-                assert_eq!(&m[&1], &vec![Scope::new("meta.preprocessor.c++")]);
+                assert_eq!(&m[&1], &vec![Scope::new("meta.preprocessor.c++").unwrap()]);
                 use syntax_definition::ContextReference::*;
 
                 // this is sadly necessary because Context is not Eq because of the Regex
                 let expected = MatchOperation::Push(vec![
                     Named("string".to_owned()),
-                    ByScope { scope: Scope::new("source.c"), sub_context: Some("main".to_owned()) },
+                    ByScope { scope: Scope::new("source.c").unwrap(), sub_context: Some("main".to_owned()) },
                     File {
                         name: "CSS".to_owned(),
                         sub_context: Some("rule-list-body".to_owned())
@@ -380,7 +381,7 @@ mod tests {
                            format!("{:?}", expected));
 
                 assert_eq!(match_pat.scope,
-                           vec![Scope::new("keyword.control.c"), Scope::new("keyword.looping.c")]);
+                           vec![Scope::new("keyword.control.c").unwrap(), Scope::new("keyword.looping.c").unwrap()]);
 
                 let r = match_pat.regex.as_ref().unwrap();
                 assert!(r.is_match("else"));

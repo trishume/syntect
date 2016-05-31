@@ -128,7 +128,7 @@ mod tests {
         use syntax_definition::*;
         use scope::*;
         let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
-        let rails_scope = Scope::new("source.ruby.rails");
+        let rails_scope = Scope::new("source.ruby.rails").unwrap();
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
