@@ -195,7 +195,8 @@ impl FromStr for ScopeSelector {
     fn from_str(s: &str) -> Result<ScopeSelector, ParseScopeError> {
         match s.find(" - ") {
             Some(index) => {
-                let (path_str, exclude_str) = s.split_at(index);
+                let (path_str, exclude_with_dash) = s.split_at(index);
+                let exclude_str = &exclude_with_dash[3..];
                 Ok(ScopeSelector {
                     path: try!(ScopeStack::from_str(path_str)),
                     exclude: Some(try!(ScopeStack::from_str(exclude_str))),
@@ -249,5 +250,23 @@ mod tests {
         assert_eq!(repo.to_string(s2), "source.php.wow");
         assert!(repo.build("source.php").unwrap() != repo.build("source.perl").unwrap());
         assert!(repo.build("source.php").unwrap() != repo.build("source.php.wagon").unwrap());
+    }
+    #[test]
+    fn global_repo_works() {
+        use scope::*;
+        use std::str::FromStr;
+        assert_eq!(Scope::new("source.php").unwrap(), Scope::new("source.php").unwrap());
+        assert!(Scope::from_str("1.2.3.4.5.6.7.8").is_ok());
+        assert!(Scope::from_str("1.2.3.4.5.6.7.8.9").is_err());
+    }
+    #[test]
+    fn selectors_work() {
+        use scope::*;
+        use std::str::FromStr;
+        let sels = ScopeSelectors::from_str("source.php meta.preprocessor - string.quoted, source string").unwrap();
+        assert_eq!(sels.selectors.len(), 2);
+        let first_sel = &sels.selectors[0];
+        assert_eq!(format!("{:?}", first_sel),
+            "ScopeSelector { path: ScopeStack { scopes: [<source.php>, <meta.preprocessor>] }, exclude: Some(ScopeStack { scopes: [<string.quoted>] }) }");
     }
 }
