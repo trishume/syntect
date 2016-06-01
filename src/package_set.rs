@@ -194,13 +194,17 @@ mod tests {
     #[test]
     fn can_parse_common_themes() {
         use package_set::PackageSet;
+        use theme::style::Color;
         let theme_paths = PackageSet::discover_themes("testdata/themes.tmbundle").unwrap();
         for theme_path in theme_paths.iter() {
             println!("{:?}", theme_path);
-            if theme_path.ends_with("8-Colour-Dark.tmTheme") { continue; }
-            let theme = PackageSet::get_theme(theme_path).unwrap();
-            println!("{:?}", theme.name);
+            PackageSet::get_theme(theme_path).unwrap();
         }
+
+        let theme = PackageSet::get_theme("testdata/themes.tmbundle/Themes/Amy.tmTheme").unwrap();
+        assert_eq!(theme.name.unwrap(), "Amy");
+        assert_eq!(theme.settings.selection.unwrap(), Color {r: 0x80, g: 0x00, b: 0x00, a: 0x80});
+        assert_eq!(theme.scopes[0].style.foreground.unwrap(), Color { r: 0x40, g: 0x40, b: 0x80, a: 0xFF});
         // assert!(false);
     }
 }

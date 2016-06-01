@@ -24,7 +24,7 @@ pub struct StyleModifier {
 pub const BLACK: Color = Color {r: 0x00, g: 0x00, b: 0x00, a: 0x00};
 pub const WHITE: Color = Color {r: 0xFF, g: 0xFF, b: 0xFF, a: 0xFF};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
     pub r: u8,
     pub g: u8,
