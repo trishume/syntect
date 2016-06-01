@@ -1,4 +1,4 @@
-mod selector;
-mod settings;
-mod style;
-mod theme;
+pub mod selector;
+pub mod settings;
+pub mod style;
+pub mod theme;

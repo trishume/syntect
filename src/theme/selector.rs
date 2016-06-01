@@ -56,7 +56,6 @@ impl FromStr for ScopeSelectors {
 mod tests {
     #[test]
     fn selectors_work() {
-        use scope::*;
         use theme::selector::*;
         use std::str::FromStr;
         let sels = ScopeSelectors::from_str("source.php meta.preprocessor - string.quoted, source string").unwrap();

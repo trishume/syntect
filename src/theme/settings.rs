@@ -3,7 +3,6 @@
 
 use std::io::{Read, Seek};
 use plist::{Plist, Error as PlistError};
-use rustc_serialize::json::ParserError as JsonError;
 
 pub use rustc_serialize::json::Json as Settings;
 pub use rustc_serialize::json::Array as SettingsArray;
