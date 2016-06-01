@@ -172,6 +172,7 @@ impl FromStr for FontStyle {
                 "bold" => FONT_STYLE_BOLD,
                 "underline" => FONT_STYLE_UNDERLINE,
                 "italic" => FONT_STYLE_ITALIC,
+                "normal" => FontStyle::empty(),
                 s => return Err(IncorrectFontStyle(s.to_owned())),
             })
         }
@@ -273,7 +274,6 @@ impl ParseSettings for ThemeItem {
 impl ParseSettings for ThemeSettings {
     type Error = ParseThemeError;
 
-    #[allow(cyclomatic_complexity)]
     fn parse_settings(json: Settings) -> Result<ThemeSettings, Self::Error> {
         let mut settings = ThemeSettings::default();
 
@@ -285,55 +285,55 @@ impl ParseSettings for ThemeSettings {
         for (key, value) in obj {
             match &key[..] {
                 "foreground" =>
-                    settings.foreground = Some(try!(Color::parse_settings(value))),
+                    settings.foreground = Color::parse_settings(value).ok(),
                 "background" =>
-                    settings.background = Some(try!(Color::parse_settings(value))),
+                    settings.background = Color::parse_settings(value).ok(),
                 "caret" =>
-                    settings.caret = Some(try!(Color::parse_settings(value))),
+                    settings.caret = Color::parse_settings(value).ok(),
                 "lineHighlight" =>
-                    settings.line_highlight = Some(try!(Color::parse_settings(value))),
+                    settings.line_highlight = Color::parse_settings(value).ok(),
                 "bracketContentsForeground" =>
-                    settings.bracket_contents_foreground = Some(try!(Color::parse_settings(value))),
+                    settings.bracket_contents_foreground = Color::parse_settings(value).ok(),
                 "bracketContentsOptions" =>
-                    settings.bracket_contents_options = Some(try!(UnderlineOption::parse_settings(value))),
+                    settings.bracket_contents_options = UnderlineOption::parse_settings(value).ok(),
                 "bracketsForeground" =>
-                    settings.brackets_foreground = Some(try!(Color::parse_settings(value))),
+                    settings.brackets_foreground = Color::parse_settings(value).ok(),
                 "bracketsBackground" =>
-                    settings.brackets_background = Some(try!(Color::parse_settings(value))),
+                    settings.brackets_background = Color::parse_settings(value).ok(),
                 "bracketsOptions" =>
-                    settings.brackets_options = Some(try!(UnderlineOption::parse_settings(value))),
+                    settings.brackets_options = UnderlineOption::parse_settings(value).ok(),
                 "tagsForeground" =>
-                    settings.tags_foreground = Some(try!(Color::parse_settings(value))),
+                    settings.tags_foreground = Color::parse_settings(value).ok(),
                 "tagsOptions" =>
-                    settings.tags_options = Some(try!(UnderlineOption::parse_settings(value))),
+                    settings.tags_options = UnderlineOption::parse_settings(value).ok(),
                 "findHighlight" =>
-                    settings.find_highlight = Some(try!(Color::parse_settings(value))),
+                    settings.find_highlight = Color::parse_settings(value).ok(),
                 "findHighlightForeground" =>
-                    settings.find_highlight_foreground = Some(try!(Color::parse_settings(value))),
+                    settings.find_highlight_foreground = Color::parse_settings(value).ok(),
                 "gutter" =>
-                    settings.gutter = Some(try!(Color::parse_settings(value))),
+                    settings.gutter = Color::parse_settings(value).ok(),
                 "gutterForeground" =>
-                    settings.gutter_foreground = Some(try!(Color::parse_settings(value))),
+                    settings.gutter_foreground = Color::parse_settings(value).ok(),
                 "selection" =>
-                    settings.selection = Some(try!(Color::parse_settings(value))),
+                    settings.selection = Color::parse_settings(value).ok(),
                 "selectionBackground" =>
-                    settings.selection_background = Some(try!(Color::parse_settings(value))),
+                    settings.selection_background = Color::parse_settings(value).ok(),
                 "selectionBorder" =>
-                    settings.selection_border = Some(try!(Color::parse_settings(value))),
+                    settings.selection_border = Color::parse_settings(value).ok(),
                 "inactiveSelection" =>
-                    settings.inactive_selection = Some(try!(Color::parse_settings(value))),
+                    settings.inactive_selection = Color::parse_settings(value).ok(),
                 "guide" =>
-                    settings.guide = Some(try!(Color::parse_settings(value))),
+                    settings.guide = Color::parse_settings(value).ok(),
                 "activeGuide" =>
-                    settings.active_guide = Some(try!(Color::parse_settings(value))),
+                    settings.active_guide = Color::parse_settings(value).ok(),
                 "stackGuide" =>
-                    settings.stack_guide = Some(try!(Color::parse_settings(value))),
+                    settings.stack_guide = Color::parse_settings(value).ok(),
                 "highlight" =>
-                    settings.highlight = Some(try!(Color::parse_settings(value))),
+                    settings.highlight = Color::parse_settings(value).ok(),
                 "highlightForeground" =>
-                    settings.highlight_foreground = Some(try!(Color::parse_settings(value))),
+                    settings.highlight_foreground = Color::parse_settings(value).ok(),
                 "invisibles" => (), // ignored
-                _ => return Err(UndefinedScopeSettings(key))
+                _ => (),
             }
         };
         Ok(settings)
@@ -374,7 +374,10 @@ impl ParseSettings for Theme {
         };
         let mut scopes = Vec::new();
         for json in iter {
-            scopes.push(try!(ThemeItem::parse_settings(json)));
+            // TODO option to disable best effort parsing and bubble up warnings
+            if let Ok(item) = ThemeItem::parse_settings(json) {
+                scopes.push(item);
+            }
         }
         Ok(Theme {
             name: name,
