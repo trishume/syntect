@@ -4,14 +4,16 @@ use std::u16;
 use std::sync::Mutex;
 use std::fmt;
 use std::str::FromStr;
+use std::u64;
 
 lazy_static! {
     pub static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
 }
 
-#[derive(Clone, PartialEq, Eq, Copy)]
+#[derive(Clone, PartialEq, Eq, Copy, Default)]
 pub struct Scope {
-    data: [u16; 8],
+    a: u64,
+    b: u64,
 }
 
 #[derive(Debug)]
@@ -30,16 +32,23 @@ pub struct ScopeRepository {
     atom_index_map: HashMap<String, usize>,
 }
 
-fn pack_as_u16s(atoms: &[usize]) -> Result<[u16; 8],ParseScopeError> {
-    let mut res: [u16; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
+fn pack_as_u16s(atoms: &[usize]) -> Result<Scope,ParseScopeError> {
+    let mut res = Scope {a: 0, b: 0};
 
     for i in 0..(atoms.len()) {
         let n = atoms[i];
         if n >= (u16::MAX as usize) - 2 {
             return Err(ParseScopeError::TooManyAtoms);
         }
-        let small = (n + 1) as u16; // +1 since we reserve 0 for unused
-        res[i] = small;
+        let small = n + 1; // +1 since we reserve 0 for unused
+
+        if i < 4 {
+            let shift = (3-i)*16;
+            res.a |= (small << shift) as u64;
+        } else {
+            let shift = (7-i)*16;
+            res.b |= (small << shift) as u64;
+        }
     }
     Ok(res)
 }
@@ -53,17 +62,22 @@ impl ScopeRepository {
     }
 
     pub fn build(&mut self, s: &str) -> Result<Scope, ParseScopeError> {
+        if s.is_empty() {
+            return Ok(Scope {a: 0, b: 0});
+        }
         let parts: Vec<usize> = s.split('.').map(|a| self.atom_to_index(a)).collect();
         if parts.len() > 8 {
             return Err(ParseScopeError::TooManyAtoms);
         }
-        Ok(Scope { data: try!(pack_as_u16s(&parts[..])) })
+        pack_as_u16s(&parts[..])
     }
 
     pub fn to_string(&self, scope: Scope) -> String {
         let mut s = String::new();
         for i in 0..8 {
-            let atom_number = scope.data[i];
+            let atom_number = scope.atom_at(i);
+            // println!("atom {} of {:x}-{:x} = {:x}",
+            //     i, scope.a, scope.b, atom_number);
             if atom_number == 0 {
                 break;
             }
@@ -90,6 +104,71 @@ impl Scope {
     pub fn new(s: &str) -> Result<Scope, ParseScopeError> {
         let mut repo = SCOPE_REPO.lock().unwrap();
         repo.build(s.trim())
+    }
+
+    pub fn atom_at(self, index: usize) -> u16 {
+        let shifted = if index < 4 {
+            (self.a >> ((3-index)*16))
+        } else if index < 8 {
+            (self.b >> ((7-index)*16))
+        } else {
+            // panic!("atom index out of bounds {:?}", index);
+            panic!(); // TODO test if this is actually faster
+        };
+        (shifted & 0xFFFF) as u16
+    }
+
+    #[inline(always)]
+    fn missing_atoms(self) -> u32 {
+        let trail = if self.b == 0 {
+            self.a.trailing_zeros()+64
+        } else {
+            self.b.trailing_zeros()
+        };
+        trail / 16
+    }
+
+    /// Tests if this scope is a prefix of another scope.
+    /// Note that the empty scope is always a prefix.
+    ///
+    /// This operation uses bitwise operations and is very fast
+    /// # Examples
+    ///
+    /// ```
+    /// use syntect::scope::Scope;
+    /// assert!( Scope::new("string").unwrap()
+    ///         .is_prefix_of(Scope::new("string.quoted").unwrap()));
+    /// assert!( Scope::new("string.quoted").unwrap()
+    ///         .is_prefix_of(Scope::new("string.quoted").unwrap()));
+    /// assert!( Scope::new("").unwrap()
+    ///         .is_prefix_of(Scope::new("meta.rails.controller").unwrap()));
+    /// assert!(!Scope::new("source.php").unwrap()
+    ///         .is_prefix_of(Scope::new("source").unwrap()));
+    /// assert!(!Scope::new("source.php").unwrap()
+    ///         .is_prefix_of(Scope::new("source.ruby").unwrap()));
+    /// assert!(!Scope::new("meta.php").unwrap()
+    ///         .is_prefix_of(Scope::new("source.php").unwrap()));
+    /// assert!(!Scope::new("meta.php").unwrap()
+    ///         .is_prefix_of(Scope::new("source.php.wow").unwrap()));
+    /// ```
+    pub fn is_prefix_of(self, s: Scope) -> bool {
+        let pref_missing = self.missing_atoms();
+
+        let mask: (u64, u64) = if pref_missing == 8 {
+            (0, 0)
+        } else if pref_missing > 4 {
+            (u64::MAX << ((pref_missing-4)*16), 0)
+        } else {
+            (u64::MAX, u64::MAX << (pref_missing*16))
+        };
+
+        // xor to find the difference
+        let ax = (self.a ^ s.a) & mask.0;
+        let bx = (self.b ^ s.b) & mask.1;
+        println!("{:x}-{:x} is_pref {:x}-{:x}: missing {} mask {:x}-{:x} xor {:x}-{:x}",
+            self.a, self.b, s.a, s.b, pref_missing, mask.0, mask.1, ax, bx);
+
+        ax == 0 && bx == 0
     }
 }
 
@@ -206,5 +285,23 @@ mod tests {
         assert_eq!(Scope::new("source.php").unwrap(), Scope::new("source.php").unwrap());
         assert!(Scope::from_str("1.2.3.4.5.6.7.8").is_ok());
         assert!(Scope::from_str("1.2.3.4.5.6.7.8.9").is_err());
+    }
+    #[test]
+    fn prefixes_work() {
+        use scope::Scope;
+        assert!( Scope::new("1.2.3.4.5.6.7.8").unwrap()
+                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!( Scope::new("1.2.3.4.5.6").unwrap()
+                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!( Scope::new("1.2.3").unwrap()
+                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!(!Scope::new("1.2.3.4.5.6.a").unwrap()
+                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!(!Scope::new("1.2.a.4.5.6.7").unwrap()
+                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!(!Scope::new("1.2.a.4.5.6.7").unwrap()
+                .is_prefix_of(Scope::new("1.2.3.4.5").unwrap()));
+        assert!(!Scope::new("1.2.a").unwrap()
+                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
     }
 }
