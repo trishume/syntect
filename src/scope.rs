@@ -156,6 +156,8 @@ impl Scope {
 
         let mask: (u64, u64) = if pref_missing == 8 {
             (0, 0)
+        } else if pref_missing == 4 {
+            (u64::MAX, 0)
         } else if pref_missing > 4 {
             (u64::MAX << ((pref_missing-4)*16), 0)
         } else {
@@ -293,7 +295,7 @@ mod tests {
                 .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
         assert!( Scope::new("1.2.3.4.5.6").unwrap()
                 .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
-        assert!( Scope::new("1.2.3").unwrap()
+        assert!( Scope::new("1.2.3.4").unwrap()
                 .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
         assert!(!Scope::new("1.2.3.4.5.6.a").unwrap()
                 .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
