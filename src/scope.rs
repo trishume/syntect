@@ -128,6 +128,12 @@ impl Scope {
         trail / 16
     }
 
+    /// return the number of atoms in the scope
+    #[inline(always)]
+    pub fn len(self) -> u32 {
+        8 - self.missing_atoms()
+    }
+
     /// Tests if this scope is a prefix of another scope.
     /// Note that the empty scope is always a prefix.
     ///
@@ -213,6 +219,9 @@ impl ScopeStack {
     pub fn new() -> ScopeStack {
         ScopeStack { scopes: Vec::new() }
     }
+    pub fn from_vec(v: Vec<Scope>) -> ScopeStack {
+        ScopeStack { scopes: v }
+    }
     pub fn push(&mut self, s: Scope) {
         self.scopes.push(s);
     }
@@ -231,6 +240,43 @@ impl ScopeStack {
             print!("{} ", repo.to_string(*s));
         }
         println!("");
+    }
+
+    /// checks if this stack matches the given selector stack
+    /// if so it returns a match score, higher match scores are stronger
+    /// matches. Scores are ordered according to the rules found
+    /// at https://manual.macromates.com/en/scope_selectors
+    ///
+    /// It accomplishes this ordering through some bit manipulation
+    /// ensuring deeper and longer matches matter.
+    /// Unfortunately it currently will only return reasonable results
+    /// up to stack depths of 16.
+    /// # Examples
+    /// ```
+    /// use syntect::scope::ScopeStack;
+    /// use std::str::FromStr;
+    /// assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a.b c e.f").unwrap()),
+    ///     Some(0x212));
+    /// assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a c.d.e").unwrap()),
+    ///     None);
+    /// ```
+    pub fn match_score(&self, sel: &ScopeStack) -> Option<u64> {
+        const ATOM_LEN_BITS: u16 = 4;
+        let mut sel_index: usize = 0;
+        let mut score: u64 = 0;
+        for (i, scope) in self.scopes.iter().enumerate() {
+            let sel_scope = sel.scopes[sel_index];
+            if sel_scope.is_prefix_of(*scope) {
+                let len = sel_scope.len();
+                // TODO this breaks on stacks larger than 16 things, maybe use doubles?
+                score |= (len as u64) << (ATOM_LEN_BITS*(i as u16));
+                sel_index += 1;
+                if sel_index >= sel.scopes.len() {
+                    return Some(score);
+                }
+            }
+        }
+        None
     }
 }
 
@@ -305,5 +351,26 @@ mod tests {
                 .is_prefix_of(Scope::new("1.2.3.4.5").unwrap()));
         assert!(!Scope::new("1.2.a").unwrap()
                 .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+    }
+    #[test]
+    fn matching_works() {
+        use scope::*;
+        use std::str::FromStr;
+        assert_eq!(ScopeStack::from_str("string.quoted").unwrap().match_score(&ScopeStack::from_str("string").unwrap()),
+            Some(1));
+        assert_eq!(ScopeStack::from_str("string.quoted").unwrap().match_score(&ScopeStack::from_str("source").unwrap()),
+            None);
+        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a.b e.f").unwrap()),
+            Some(0x202));
+        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("c e.f").unwrap()),
+            Some(0x210));
+        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("c.d e.f").unwrap()),
+            Some(0x220));
+        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a.b c e.f").unwrap()),
+            Some(0x212));
+        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a c.d").unwrap()),
+            Some(0x021));
+        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a c.d.e").unwrap()),
+            None);
     }
 }
