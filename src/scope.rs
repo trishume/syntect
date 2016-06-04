@@ -32,6 +32,17 @@ pub struct ScopeRepository {
     atom_index_map: HashMap<String, usize>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ScopeStack {
+    scopes: Vec<Scope>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScopeStackOp {
+    Push(Scope),
+    Pop(usize),
+}
+
 fn pack_as_u16s(atoms: &[usize]) -> Result<Scope,ParseScopeError> {
     let mut res = Scope {a: 0, b: 0};
 
@@ -173,8 +184,8 @@ impl Scope {
         // xor to find the difference
         let ax = (self.a ^ s.a) & mask.0;
         let bx = (self.b ^ s.b) & mask.1;
-        println!("{:x}-{:x} is_pref {:x}-{:x}: missing {} mask {:x}-{:x} xor {:x}-{:x}",
-            self.a, self.b, s.a, s.b, pref_missing, mask.0, mask.1, ax, bx);
+        // println!("{:x}-{:x} is_pref {:x}-{:x}: missing {} mask {:x}-{:x} xor {:x}-{:x}",
+        //     self.a, self.b, s.a, s.b, pref_missing, mask.0, mask.1, ax, bx);
 
         ax == 0 && bx == 0
     }
@@ -204,17 +215,6 @@ impl fmt::Debug for Scope {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ScopeStack {
-    scopes: Vec<Scope>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ScopeStackOp {
-    Push(Scope),
-    Pop(usize),
-}
-
 impl ScopeStack {
     pub fn new() -> ScopeStack {
         ScopeStack { scopes: Vec::new() }
@@ -242,7 +242,23 @@ impl ScopeStack {
         println!("");
     }
 
-    /// checks if this stack matches the given selector stack
+    /// Return the bottom n elements of the stack.
+    /// Equivalent to &scopes[0..n] on a Vec
+    pub fn bottom_n(&self, n: usize) -> &[Scope] {
+        &self.scopes[0..n]
+    }
+
+    /// Return a slice of the scopes in this stack
+    pub fn as_slice(&self) -> &[Scope] {
+        &self.scopes[..]
+    }
+
+    /// Return the height/length of this stack
+    pub fn len(&self) -> usize {
+        self.scopes.len()
+    }
+
+    /// checks if this stack as a selector matches the given stack
     /// if so it returns a match score, higher match scores are stronger
     /// matches. Scores are ordered according to the rules found
     /// at https://manual.macromates.com/en/scope_selectors
@@ -255,23 +271,25 @@ impl ScopeStack {
     /// ```
     /// use syntect::scope::ScopeStack;
     /// use std::str::FromStr;
-    /// assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a.b c e.f").unwrap()),
+    /// assert_eq!(ScopeStack::from_str("a.b c e.f").unwrap()
+    ///     .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
     ///     Some(0x212));
-    /// assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a c.d.e").unwrap()),
+    /// assert_eq!(ScopeStack::from_str("a c.d.e").unwrap()
+    ///     .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
     ///     None);
     /// ```
-    pub fn match_score(&self, sel: &ScopeStack) -> Option<u64> {
+    pub fn does_match(&self, stack: &[Scope]) -> Option<u64> {
         const ATOM_LEN_BITS: u16 = 4;
         let mut sel_index: usize = 0;
         let mut score: u64 = 0;
-        for (i, scope) in self.scopes.iter().enumerate() {
-            let sel_scope = sel.scopes[sel_index];
+        for (i, scope) in stack.iter().enumerate() {
+            let sel_scope = self.scopes[sel_index];
             if sel_scope.is_prefix_of(*scope) {
                 let len = sel_scope.len();
                 // TODO this breaks on stacks larger than 16 things, maybe use doubles?
                 score |= (len as u64) << (ATOM_LEN_BITS*(i as u16));
                 sel_index += 1;
-                if sel_index >= sel.scopes.len() {
+                if sel_index >= self.scopes.len() {
                     return Some(score);
                 }
             }
@@ -356,21 +374,29 @@ mod tests {
     fn matching_works() {
         use scope::*;
         use std::str::FromStr;
-        assert_eq!(ScopeStack::from_str("string.quoted").unwrap().match_score(&ScopeStack::from_str("string").unwrap()),
+        assert_eq!(ScopeStack::from_str("string").unwrap()
+            .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
             Some(1));
-        assert_eq!(ScopeStack::from_str("string.quoted").unwrap().match_score(&ScopeStack::from_str("source").unwrap()),
+        assert_eq!(ScopeStack::from_str("source").unwrap()
+            .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
             None);
-        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a.b e.f").unwrap()),
+        assert_eq!(ScopeStack::from_str("a.b e.f").unwrap()
+            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
             Some(0x202));
-        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("c e.f").unwrap()),
+        assert_eq!(ScopeStack::from_str("c e.f").unwrap()
+            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
             Some(0x210));
-        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("c.d e.f").unwrap()),
+        assert_eq!(ScopeStack::from_str("c.d e.f").unwrap()
+            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
             Some(0x220));
-        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a.b c e.f").unwrap()),
+        assert_eq!(ScopeStack::from_str("a.b c e.f").unwrap()
+            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
             Some(0x212));
-        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a c.d").unwrap()),
+        assert_eq!(ScopeStack::from_str("a c.d").unwrap()
+            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
             Some(0x021));
-        assert_eq!(ScopeStack::from_str("a.b c.d e.f.g").unwrap().match_score(&ScopeStack::from_str("a c.d.e").unwrap()),
+        assert_eq!(ScopeStack::from_str("a c.d.e").unwrap()
+            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
             None);
     }
 }

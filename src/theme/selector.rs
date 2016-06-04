@@ -16,11 +16,11 @@ pub struct ScopeSelectors {
 }
 
 impl ScopeSelector {
-    pub fn does_match(&self, stack: &ScopeStack) -> Option<u64> {
-        if self.exclude.as_ref().and_then(|sel| stack.match_score(sel)).is_some() {
+    pub fn does_match(&self, stack: &[Scope]) -> Option<u64> {
+        if self.exclude.as_ref().and_then(|sel| sel.does_match(stack)).is_some() {
             return None;
         }
-        stack.match_score(&self.path)
+        self.path.does_match(stack)
     }
 }
 
@@ -48,7 +48,7 @@ impl FromStr for ScopeSelector {
 }
 
 impl ScopeSelectors {
-    pub fn does_match(&self, stack: &ScopeStack) -> Option<u64> {
+    pub fn does_match(&self, stack: &[Scope]) -> Option<u64> {
         self.selectors.iter().filter_map(|sel| sel.does_match(stack)).max()
     }
 }
@@ -65,7 +65,8 @@ impl FromStr for ScopeSelectors {
     /// use syntect::scope::ScopeStack;
     /// use syntect::theme::selector::ScopeSelectors;
     /// use std::str::FromStr;
-    /// assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c k, e.f - a.b").unwrap().does_match(&ScopeStack::from_str("a.b c.d j e.f").unwrap()),
+    /// assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c k, e.f - a.b").unwrap()
+    ///     .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
     ///     Some(0x2001));
     /// ```
     fn from_str(s: &str) -> Result<ScopeSelectors, ParseScopeError> {
@@ -96,15 +97,20 @@ mod tests {
         use scope::ScopeStack;
         use theme::selector::*;
         use std::str::FromStr;
-        assert_eq!(ScopeSelectors::from_str("a.b, a e, e.f").unwrap().does_match(&ScopeStack::from_str("a.b e.f").unwrap()),
+        assert_eq!(ScopeSelectors::from_str("a.b, a e, e.f").unwrap()
+            .does_match(ScopeStack::from_str("a.b e.f").unwrap().as_slice()),
             Some(0x20));
-        assert_eq!(ScopeSelectors::from_str("a.b, a e.f, e.f").unwrap().does_match(&ScopeStack::from_str("a.b e.f").unwrap()),
+        assert_eq!(ScopeSelectors::from_str("a.b, a e.f, e.f").unwrap()
+            .does_match(ScopeStack::from_str("a.b e.f").unwrap().as_slice()),
             Some(0x21));
-        assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c j, e.f").unwrap().does_match(&ScopeStack::from_str("a.b c.d j e.f").unwrap()),
+        assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c j, e.f").unwrap()
+            .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
             Some(0x2000));
-        assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c j, e.f - a.b").unwrap().does_match(&ScopeStack::from_str("a.b c.d j e.f").unwrap()),
+        assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c j, e.f - a.b").unwrap()
+            .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
             Some(0x2));
-        assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c k, e.f - a.b").unwrap().does_match(&ScopeStack::from_str("a.b c.d j e.f").unwrap()),
+        assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c k, e.f - a.b").unwrap()
+            .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
             Some(0x2001));
     }
 }
