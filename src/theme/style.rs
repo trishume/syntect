@@ -1,7 +1,7 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/style.rs
 /// released under the MIT license by @defuz
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Style {
     /// Foreground color.
     pub foreground: Color,
@@ -11,7 +11,7 @@ pub struct Style {
     pub font_style: FontStyle
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct StyleModifier {
     /// Foreground color.
     pub foreground: Option<Color>,

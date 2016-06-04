@@ -257,7 +257,8 @@ mod tests {
                 }
                 &ScopeStackOp::Pop(count) => {
                     println!("^ pop {}", count);
-                }
+                },
+                &ScopeStackOp::Noop => println!("noop"),
             }
         }
     }

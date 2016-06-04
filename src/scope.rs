@@ -41,6 +41,7 @@ pub struct ScopeStack {
 pub enum ScopeStackOp {
     Push(Scope),
     Pop(usize),
+    Noop,
 }
 
 fn pack_as_u16s(atoms: &[usize]) -> Result<Scope,ParseScopeError> {
@@ -225,6 +226,9 @@ impl ScopeStack {
     pub fn push(&mut self, s: Scope) {
         self.scopes.push(s);
     }
+    pub fn pop(&mut self) {
+        self.scopes.pop();
+    }
     pub fn apply(&mut self, op: &ScopeStackOp) {
         match op {
             &ScopeStackOp::Push(scope) => self.scopes.push(scope),
@@ -232,7 +236,8 @@ impl ScopeStack {
                 for _ in 0..count {
                     self.scopes.pop();
                 }
-            }
+            },
+            &ScopeStackOp::Noop => ()
         }
     }
     pub fn debug_print(&self, repo: &ScopeRepository) {
