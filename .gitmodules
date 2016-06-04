@@ -4,3 +4,12 @@
 [submodule "testdata/themes.tmbundle"]
 	path = testdata/themes.tmbundle
 	url = https://github.com/textmate/themes.tmbundle.git
+[submodule "testdata/InspiredGitHub.tmtheme"]
+	path = testdata/InspiredGitHub.tmtheme
+	url = https://github.com/sethlopezme/InspiredGitHub.tmtheme.git
+[submodule "testdata/Solarized"]
+	path = testdata/Solarized
+	url = https://github.com/braver/Solarized.git
+[submodule "testdata/spacegray"]
+	path = testdata/spacegray
+	url = https://github.com/kkga/spacegray.git

@@ -14,3 +14,4 @@ pub mod package_set;
 pub mod scope;
 pub mod parser;
 pub mod theme;
+pub mod util;

@@ -246,21 +246,7 @@ mod tests {
     use package_set::PackageSet;
     use parser::*;
     use scope::*;
-    fn debug_print_ops(line: &str, ops: &Vec<(usize, ScopeStackOp)>) {
-        for &(i, ref op) in ops.iter() {
-            println!("{}", line);
-            print!("{: <1$}", "", i);
-            match op {
-                &ScopeStackOp::Push(s) => {
-                    println!("^ +{}", s);
-                }
-                &ScopeStackOp::Pop(count) => {
-                    println!("^ pop {}", count);
-                }
-                &ScopeStackOp::Noop => println!("noop"),
-            }
-        }
-    }
+    use util::debug_print_ops;
 
     #[test]
     fn can_parse() {
