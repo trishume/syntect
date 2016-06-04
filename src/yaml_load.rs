@@ -29,8 +29,10 @@ fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a BTreeMap<Yaml, Yaml
         .and_then(|x| f(x).ok_or(ParseSyntaxError::TypeMismatch))
 }
 
-fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Result<Vec<Scope>,ParseSyntaxError> {
-    s.split_whitespace().map(|scope| repo.build(scope).map_err(ParseSyntaxError::InvalidScope)).collect()
+fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Result<Vec<Scope>, ParseSyntaxError> {
+    s.split_whitespace()
+        .map(|scope| repo.build(scope).map_err(ParseSyntaxError::InvalidScope))
+        .collect()
 }
 
 struct ParserState<'a> {
@@ -44,8 +46,7 @@ struct ParserState<'a> {
 }
 
 impl SyntaxDefinition {
-    pub fn load_from_str(s: &str)
-                         -> Result<SyntaxDefinition, ParseSyntaxError> {
+    pub fn load_from_str(s: &str) -> Result<SyntaxDefinition, ParseSyntaxError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
             Err(e) => return Err(ParseSyntaxError::InvalidYaml(e)),
@@ -72,7 +73,8 @@ impl SyntaxDefinition {
             }
         }
         let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
-        let top_level_scope = try!(scope_repo.build(try!(get_key(h, "scope", |x| x.as_str()))).map_err(ParseSyntaxError::InvalidScope));
+        let top_level_scope = try!(scope_repo.build(try!(get_key(h, "scope", |x| x.as_str())))
+            .map_err(ParseSyntaxError::InvalidScope));
         let mut state = ParserState {
             scope_repo: scope_repo,
             variables: variables,
@@ -128,7 +130,9 @@ impl SyntaxDefinition {
         return Ok(contexts);
     }
 
-    fn parse_context(vec: &Vec<Yaml>, state: &mut ParserState) -> Result<ContextPtr, ParseSyntaxError> {
+    fn parse_context(vec: &Vec<Yaml>,
+                     state: &mut ParserState)
+                     -> Result<ContextPtr, ParseSyntaxError> {
         let mut context = Context {
             meta_scope: Vec::new(),
             meta_content_scope: Vec::new(),
@@ -168,7 +172,9 @@ impl SyntaxDefinition {
         return Ok(Rc::new(RefCell::new(context)));
     }
 
-    fn parse_reference(y: &Yaml, state: &mut ParserState) -> Result<ContextReference, ParseSyntaxError> {
+    fn parse_reference(y: &Yaml,
+                       state: &mut ParserState)
+                       -> Result<ContextReference, ParseSyntaxError> {
         if let Some(s) = y.as_str() {
             let parts: Vec<&str> = s.split("#").collect();
             let sub_context = if parts.len() > 1 {
@@ -178,7 +184,9 @@ impl SyntaxDefinition {
             };
             if parts[0].starts_with("scope:") {
                 Ok(ContextReference::ByScope {
-                    scope: try!(state.scope_repo.build(&parts[0][6..]).map_err(ParseSyntaxError::InvalidScope)),
+                    scope: try!(state.scope_repo
+                        .build(&parts[0][6..])
+                        .map_err(ParseSyntaxError::InvalidScope)),
                     sub_context: sub_context,
                 })
             } else if parts[0].ends_with(".sublime-syntax") {
@@ -233,7 +241,8 @@ impl SyntaxDefinition {
             let mut res_map = HashMap::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
-                    res_map.insert(key_int as usize, try!(str_to_scopes(val_str, state.scope_repo)));
+                    res_map.insert(key_int as usize,
+                                   try!(str_to_scopes(val_str, state.scope_repo)));
                 }
             }
             Some(res_map)
@@ -381,7 +390,8 @@ mod tests {
                            format!("{:?}", expected));
 
                 assert_eq!(match_pat.scope,
-                           vec![Scope::new("keyword.control.c").unwrap(), Scope::new("keyword.looping.c").unwrap()]);
+                           vec![Scope::new("keyword.control.c").unwrap(),
+                                Scope::new("keyword.looping.c").unwrap()]);
 
                 let r = match_pat.regex.as_ref().unwrap();
                 assert!(r.is_match("else"));

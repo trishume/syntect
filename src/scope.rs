@@ -44,8 +44,8 @@ pub enum ScopeStackOp {
     Noop,
 }
 
-fn pack_as_u16s(atoms: &[usize]) -> Result<Scope,ParseScopeError> {
-    let mut res = Scope {a: 0, b: 0};
+fn pack_as_u16s(atoms: &[usize]) -> Result<Scope, ParseScopeError> {
+    let mut res = Scope { a: 0, b: 0 };
 
     for i in 0..(atoms.len()) {
         let n = atoms[i];
@@ -55,10 +55,10 @@ fn pack_as_u16s(atoms: &[usize]) -> Result<Scope,ParseScopeError> {
         let small = n + 1; // +1 since we reserve 0 for unused
 
         if i < 4 {
-            let shift = (3-i)*16;
+            let shift = (3 - i) * 16;
             res.a |= (small << shift) as u64;
         } else {
-            let shift = (7-i)*16;
+            let shift = (7 - i) * 16;
             res.b |= (small << shift) as u64;
         }
     }
@@ -75,7 +75,7 @@ impl ScopeRepository {
 
     pub fn build(&mut self, s: &str) -> Result<Scope, ParseScopeError> {
         if s.is_empty() {
-            return Ok(Scope {a: 0, b: 0});
+            return Ok(Scope { a: 0, b: 0 });
         }
         let parts: Vec<usize> = s.split('.').map(|a| self.atom_to_index(a)).collect();
         if parts.len() > 8 {
@@ -120,9 +120,9 @@ impl Scope {
 
     pub fn atom_at(self, index: usize) -> u16 {
         let shifted = if index < 4 {
-            (self.a >> ((3-index)*16))
+            (self.a >> ((3 - index) * 16))
         } else if index < 8 {
-            (self.b >> ((7-index)*16))
+            (self.b >> ((7 - index) * 16))
         } else {
             // panic!("atom index out of bounds {:?}", index);
             panic!(); // TODO test if this is actually faster
@@ -133,7 +133,7 @@ impl Scope {
     #[inline(always)]
     fn missing_atoms(self) -> u32 {
         let trail = if self.b == 0 {
-            self.a.trailing_zeros()+64
+            self.a.trailing_zeros() + 64
         } else {
             self.b.trailing_zeros()
         };
@@ -177,9 +177,9 @@ impl Scope {
         } else if pref_missing == 4 {
             (u64::MAX, 0)
         } else if pref_missing > 4 {
-            (u64::MAX << ((pref_missing-4)*16), 0)
+            (u64::MAX << ((pref_missing - 4) * 16), 0)
         } else {
-            (u64::MAX, u64::MAX << (pref_missing*16))
+            (u64::MAX, u64::MAX << (pref_missing * 16))
         };
 
         // xor to find the difference
@@ -236,8 +236,8 @@ impl ScopeStack {
                 for _ in 0..count {
                     self.scopes.pop();
                 }
-            },
-            &ScopeStackOp::Noop => ()
+            }
+            &ScopeStackOp::Noop => (),
         }
     }
     pub fn debug_print(&self, repo: &ScopeRepository) {
@@ -292,7 +292,7 @@ impl ScopeStack {
             if sel_scope.is_prefix_of(*scope) {
                 let len = sel_scope.len();
                 // TODO this breaks on stacks larger than 16 things, maybe use doubles?
-                score |= (len as u64) << (ATOM_LEN_BITS*(i as u16));
+                score |= (len as u64) << (ATOM_LEN_BITS * (i as u16));
                 sel_index += 1;
                 if sel_index >= self.scopes.len() {
                     return Some(score);
@@ -310,8 +310,8 @@ impl FromStr for ScopeStack {
         let mut scopes = Vec::new();
         for name in s.split_whitespace() {
             scopes.push(try!(Scope::from_str(name)))
-        };
-        Ok(ScopeStack {scopes: scopes})
+        }
+        Ok(ScopeStack { scopes: scopes })
     }
 }
 
@@ -338,7 +338,8 @@ mod tests {
     fn repo_works() {
         use scope::*;
         let mut repo = ScopeRepository::new();
-        assert_eq!(repo.build("source.php").unwrap(), repo.build("source.php").unwrap());
+        assert_eq!(repo.build("source.php").unwrap(),
+                   repo.build("source.php").unwrap());
         assert_eq!(repo.build("source.php.wow.hi.bob.troll.clock.5").unwrap(),
                    repo.build("source.php.wow.hi.bob.troll.clock.5").unwrap());
         assert_eq!(repo.build("").unwrap(), repo.build("").unwrap());
@@ -353,55 +354,71 @@ mod tests {
     fn global_repo_works() {
         use scope::*;
         use std::str::FromStr;
-        assert_eq!(Scope::new("source.php").unwrap(), Scope::new("source.php").unwrap());
+        assert_eq!(Scope::new("source.php").unwrap(),
+                   Scope::new("source.php").unwrap());
         assert!(Scope::from_str("1.2.3.4.5.6.7.8").is_ok());
         assert!(Scope::from_str("1.2.3.4.5.6.7.8.9").is_err());
     }
     #[test]
     fn prefixes_work() {
         use scope::Scope;
-        assert!( Scope::new("1.2.3.4.5.6.7.8").unwrap()
-                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
-        assert!( Scope::new("1.2.3.4.5.6").unwrap()
-                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
-        assert!( Scope::new("1.2.3.4").unwrap()
-                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
-        assert!(!Scope::new("1.2.3.4.5.6.a").unwrap()
-                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
-        assert!(!Scope::new("1.2.a.4.5.6.7").unwrap()
-                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
-        assert!(!Scope::new("1.2.a.4.5.6.7").unwrap()
-                .is_prefix_of(Scope::new("1.2.3.4.5").unwrap()));
-        assert!(!Scope::new("1.2.a").unwrap()
-                .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!(Scope::new("1.2.3.4.5.6.7.8")
+            .unwrap()
+            .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!(Scope::new("1.2.3.4.5.6")
+            .unwrap()
+            .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!(Scope::new("1.2.3.4")
+            .unwrap()
+            .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!(!Scope::new("1.2.3.4.5.6.a")
+            .unwrap()
+            .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!(!Scope::new("1.2.a.4.5.6.7")
+            .unwrap()
+            .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
+        assert!(!Scope::new("1.2.a.4.5.6.7")
+            .unwrap()
+            .is_prefix_of(Scope::new("1.2.3.4.5").unwrap()));
+        assert!(!Scope::new("1.2.a")
+            .unwrap()
+            .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
     }
     #[test]
     fn matching_works() {
         use scope::*;
         use std::str::FromStr;
-        assert_eq!(ScopeStack::from_str("string").unwrap()
-            .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
-            Some(1));
-        assert_eq!(ScopeStack::from_str("source").unwrap()
-            .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
-            None);
-        assert_eq!(ScopeStack::from_str("a.b e.f").unwrap()
-            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-            Some(0x202));
-        assert_eq!(ScopeStack::from_str("c e.f").unwrap()
-            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-            Some(0x210));
-        assert_eq!(ScopeStack::from_str("c.d e.f").unwrap()
-            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-            Some(0x220));
-        assert_eq!(ScopeStack::from_str("a.b c e.f").unwrap()
-            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-            Some(0x212));
-        assert_eq!(ScopeStack::from_str("a c.d").unwrap()
-            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-            Some(0x021));
-        assert_eq!(ScopeStack::from_str("a c.d.e").unwrap()
-            .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-            None);
+        assert_eq!(ScopeStack::from_str("string")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
+                   Some(1));
+        assert_eq!(ScopeStack::from_str("source")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeStack::from_str("a.b e.f")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+                   Some(0x202));
+        assert_eq!(ScopeStack::from_str("c e.f")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+                   Some(0x210));
+        assert_eq!(ScopeStack::from_str("c.d e.f")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+                   Some(0x220));
+        assert_eq!(ScopeStack::from_str("a.b c e.f")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+                   Some(0x212));
+        assert_eq!(ScopeStack::from_str("a c.d")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+                   Some(0x021));
+        assert_eq!(ScopeStack::from_str("a c.d.e")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+                   None);
     }
 }

@@ -1,6 +1,5 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/style.rs
 /// released under the MIT license by @defuz
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Style {
     /// Foreground color.
@@ -8,7 +7,7 @@ pub struct Style {
     /// Background color.
     pub background: Color,
     /// Style of the font.
-    pub font_style: FontStyle
+    pub font_style: FontStyle,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -18,18 +17,28 @@ pub struct StyleModifier {
     /// Background color.
     pub background: Option<Color>,
     /// Style of the font.
-    pub font_style: Option<FontStyle>
+    pub font_style: Option<FontStyle>,
 }
 
-pub const BLACK: Color = Color {r: 0x00, g: 0x00, b: 0x00, a: 0x00};
-pub const WHITE: Color = Color {r: 0xFF, g: 0xFF, b: 0xFF, a: 0xFF};
+pub const BLACK: Color = Color {
+    r: 0x00,
+    g: 0x00,
+    b: 0x00,
+    a: 0x00,
+};
+pub const WHITE: Color = Color {
+    r: 0xFF,
+    g: 0xFF,
+    b: 0xFF,
+    a: 0xFF,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
     pub r: u8,
     pub g: u8,
     pub b: u8,
-    pub a: u8
+    pub a: u8,
 }
 
 bitflags! {

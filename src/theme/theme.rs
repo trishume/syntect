@@ -6,7 +6,7 @@ use std::str::FromStr;
 use theme::settings::{ParseSettings, Settings};
 use theme::style::*;
 use theme::selector::*;
-use scope::{ParseScopeError};
+use scope::ParseScopeError;
 
 use self::ParseThemeError::*;
 
@@ -15,7 +15,7 @@ pub struct Theme {
     pub name: Option<String>,
     pub author: Option<String>,
     pub settings: ThemeSettings,
-    pub scopes: Vec<ThemeItem>
+    pub scopes: Vec<ThemeItem>,
 }
 
 #[derive(Debug, Default)]
@@ -86,14 +86,14 @@ pub struct ThemeSettings {
     pub highlight: Option<Color>,
     /// Foreground color for regions added via `sublime.add_regions()`
     /// with the `sublime.DRAW_OUTLINED` flag added.
-    pub highlight_foreground: Option<Color>
+    pub highlight_foreground: Option<Color>,
 }
 
 #[derive(Debug, Default)]
 pub struct ThemeItem {
     /// Target scope name.
     pub scope: ScopeSelectors,
-    pub style: StyleModifier
+    pub style: StyleModifier,
 }
 
 #[derive(Debug)]
@@ -101,7 +101,7 @@ pub enum UnderlineOption {
     None,
     Underline,
     StippledUnderline,
-    SquigglyUnderline
+    SquigglyUnderline,
 }
 
 #[derive(Debug)]
@@ -117,7 +117,7 @@ pub enum ParseThemeError {
     ColorShemeSettingsIsNotObject,
     ScopeSelectorIsNotString(String),
     DuplicateSettings,
-    ScopeParse(ParseScopeError)
+    ScopeParse(ParseScopeError),
 }
 
 impl From<ParseScopeError> for ParseThemeError {
@@ -146,7 +146,7 @@ impl FromStr for UnderlineOption {
             "underline" => UnderlineOption::Underline,
             "stippled_underline" => UnderlineOption::StippledUnderline,
             "squiggly_underline" => UnderlineOption::SquigglyUnderline,
-            _ => return Err(IncorrectUnderlineOption)
+            _ => return Err(IncorrectUnderlineOption),
         })
     }
 }
@@ -157,7 +157,7 @@ impl ParseSettings for UnderlineOption {
     fn parse_settings(settings: Settings) -> Result<UnderlineOption, Self::Error> {
         match settings {
             Settings::String(value) => Ok(try!(UnderlineOption::from_str(&value))),
-            _ => Err(IncorrectUnderlineOption)
+            _ => Err(IncorrectUnderlineOption),
         }
     }
 }
@@ -186,7 +186,7 @@ impl ParseSettings for FontStyle {
     fn parse_settings(settings: Settings) -> Result<FontStyle, Self::Error> {
         match settings {
             Settings::String(value) => Ok(try!(FontStyle::from_str(&value))),
-            c => Err(IncorrectFontStyle(c.to_string()))
+            c => Err(IncorrectFontStyle(c.to_string())),
         }
     }
 }
@@ -204,10 +204,31 @@ impl FromStr for Color {
             d.push(try!(char.to_digit(16).ok_or(IncorrectColor)) as u8);
         }
         Ok(match d.len() {
-            3 => Color { r: d[0], g: d[1], b: d[2], a: 255 },
-            6 => Color { r: d[0]*16+d[1], g: d[2]*16+d[3], b: d[4]*16+d[5], a: 255 },
-            8 => Color { r: d[0]*16+d[1], g: d[2]*16+d[3], b: d[4]*16+d[5], a: d[6]*16+d[7] },
-            _ => return Err(IncorrectColor)
+            3 => {
+                Color {
+                    r: d[0],
+                    g: d[1],
+                    b: d[2],
+                    a: 255,
+                }
+            }
+            6 => {
+                Color {
+                    r: d[0] * 16 + d[1],
+                    g: d[2] * 16 + d[3],
+                    b: d[4] * 16 + d[5],
+                    a: 255,
+                }
+            }
+            8 => {
+                Color {
+                    r: d[0] * 16 + d[1],
+                    g: d[2] * 16 + d[3],
+                    b: d[4] * 16 + d[5],
+                    a: d[6] * 16 + d[7],
+                }
+            }
+            _ => return Err(IncorrectColor),
         })
     }
 }
@@ -218,7 +239,7 @@ impl ParseSettings for Color {
     fn parse_settings(settings: Settings) -> Result<Color, Self::Error> {
         match settings {
             Settings::String(value) => Ok(try!(Color::from_str(&value))),
-            _ => Err(IncorrectColor)
+            _ => Err(IncorrectColor),
         }
     }
 }
@@ -247,7 +268,11 @@ impl ParseSettings for StyleModifier {
             _ => return Err(IncorrectColor),
         };
 
-        Ok(StyleModifier { foreground: foreground, background: background, font_style: font_style })
+        Ok(StyleModifier {
+            foreground: foreground,
+            background: background,
+            font_style: font_style,
+        })
     }
 }
 
@@ -265,9 +290,12 @@ impl ParseSettings for ThemeItem {
         };
         let style = match obj.remove("settings") {
             Some(settings) => try!(StyleModifier::parse_settings(settings)),
-            None => return Err(IncorrectSettings)
+            None => return Err(IncorrectSettings),
         };
-        Ok(ThemeItem { scope: scope, style: style })
+        Ok(ThemeItem {
+            scope: scope,
+            style: style,
+        })
     }
 }
 
@@ -284,58 +312,56 @@ impl ParseSettings for ThemeSettings {
 
         for (key, value) in obj {
             match &key[..] {
-                "foreground" =>
-                    settings.foreground = Color::parse_settings(value).ok(),
-                "background" =>
-                    settings.background = Color::parse_settings(value).ok(),
-                "caret" =>
-                    settings.caret = Color::parse_settings(value).ok(),
-                "lineHighlight" =>
-                    settings.line_highlight = Color::parse_settings(value).ok(),
-                "bracketContentsForeground" =>
-                    settings.bracket_contents_foreground = Color::parse_settings(value).ok(),
-                "bracketContentsOptions" =>
-                    settings.bracket_contents_options = UnderlineOption::parse_settings(value).ok(),
-                "bracketsForeground" =>
-                    settings.brackets_foreground = Color::parse_settings(value).ok(),
-                "bracketsBackground" =>
-                    settings.brackets_background = Color::parse_settings(value).ok(),
-                "bracketsOptions" =>
-                    settings.brackets_options = UnderlineOption::parse_settings(value).ok(),
-                "tagsForeground" =>
-                    settings.tags_foreground = Color::parse_settings(value).ok(),
-                "tagsOptions" =>
-                    settings.tags_options = UnderlineOption::parse_settings(value).ok(),
-                "findHighlight" =>
-                    settings.find_highlight = Color::parse_settings(value).ok(),
-                "findHighlightForeground" =>
-                    settings.find_highlight_foreground = Color::parse_settings(value).ok(),
-                "gutter" =>
-                    settings.gutter = Color::parse_settings(value).ok(),
-                "gutterForeground" =>
-                    settings.gutter_foreground = Color::parse_settings(value).ok(),
-                "selection" =>
-                    settings.selection = Color::parse_settings(value).ok(),
-                "selectionBackground" =>
-                    settings.selection_background = Color::parse_settings(value).ok(),
-                "selectionBorder" =>
-                    settings.selection_border = Color::parse_settings(value).ok(),
-                "inactiveSelection" =>
-                    settings.inactive_selection = Color::parse_settings(value).ok(),
-                "guide" =>
-                    settings.guide = Color::parse_settings(value).ok(),
-                "activeGuide" =>
-                    settings.active_guide = Color::parse_settings(value).ok(),
-                "stackGuide" =>
-                    settings.stack_guide = Color::parse_settings(value).ok(),
-                "highlight" =>
-                    settings.highlight = Color::parse_settings(value).ok(),
-                "highlightForeground" =>
-                    settings.highlight_foreground = Color::parse_settings(value).ok(),
+                "foreground" => settings.foreground = Color::parse_settings(value).ok(),
+                "background" => settings.background = Color::parse_settings(value).ok(),
+                "caret" => settings.caret = Color::parse_settings(value).ok(),
+                "lineHighlight" => settings.line_highlight = Color::parse_settings(value).ok(),
+                "bracketContentsForeground" => {
+                    settings.bracket_contents_foreground = Color::parse_settings(value).ok()
+                }
+                "bracketContentsOptions" => {
+                    settings.bracket_contents_options = UnderlineOption::parse_settings(value).ok()
+                }
+                "bracketsForeground" => {
+                    settings.brackets_foreground = Color::parse_settings(value).ok()
+                }
+                "bracketsBackground" => {
+                    settings.brackets_background = Color::parse_settings(value).ok()
+                }
+                "bracketsOptions" => {
+                    settings.brackets_options = UnderlineOption::parse_settings(value).ok()
+                }
+                "tagsForeground" => settings.tags_foreground = Color::parse_settings(value).ok(),
+                "tagsOptions" => {
+                    settings.tags_options = UnderlineOption::parse_settings(value).ok()
+                }
+                "findHighlight" => settings.find_highlight = Color::parse_settings(value).ok(),
+                "findHighlightForeground" => {
+                    settings.find_highlight_foreground = Color::parse_settings(value).ok()
+                }
+                "gutter" => settings.gutter = Color::parse_settings(value).ok(),
+                "gutterForeground" => {
+                    settings.gutter_foreground = Color::parse_settings(value).ok()
+                }
+                "selection" => settings.selection = Color::parse_settings(value).ok(),
+                "selectionBackground" => {
+                    settings.selection_background = Color::parse_settings(value).ok()
+                }
+                "selectionBorder" => settings.selection_border = Color::parse_settings(value).ok(),
+                "inactiveSelection" => {
+                    settings.inactive_selection = Color::parse_settings(value).ok()
+                }
+                "guide" => settings.guide = Color::parse_settings(value).ok(),
+                "activeGuide" => settings.active_guide = Color::parse_settings(value).ok(),
+                "stackGuide" => settings.stack_guide = Color::parse_settings(value).ok(),
+                "highlight" => settings.highlight = Color::parse_settings(value).ok(),
+                "highlightForeground" => {
+                    settings.highlight_foreground = Color::parse_settings(value).ok()
+                }
                 "invisibles" => (), // ignored
                 _ => (),
             }
-        };
+        }
         Ok(settings)
     }
 }
@@ -346,31 +372,31 @@ impl ParseSettings for Theme {
     fn parse_settings(settings: Settings) -> Result<Theme, Self::Error> {
         let mut obj = match settings {
             Settings::Object(obj) => obj,
-            _ => return Err(IncorrectSyntax)
+            _ => return Err(IncorrectSyntax),
         };
         let name = match obj.remove("name") {
             Some(Settings::String(name)) => Some(name),
             None => None,
-            _ => return Err(IncorrectSyntax)
+            _ => return Err(IncorrectSyntax),
         };
         let author = match obj.remove("author") {
             Some(Settings::String(author)) => Some(author),
             None => None,
-            _ => return Err(IncorrectSyntax)
+            _ => return Err(IncorrectSyntax),
         };
         let items = match obj.remove("settings") {
             Some(Settings::Array(items)) => items,
-            _ => return Err(IncorrectSyntax)
+            _ => return Err(IncorrectSyntax),
         };
         let mut iter = items.into_iter();
         let settings = match iter.next() {
             Some(Settings::Object(mut obj)) => {
                 match obj.remove("settings") {
                     Some(settings) => try!(ThemeSettings::parse_settings(settings)),
-                    None => return Err(UndefinedSettings)
+                    None => return Err(UndefinedSettings),
                 }
-            },
-            _ => return Err(UndefinedSettings)
+            }
+            _ => return Err(UndefinedSettings),
         };
         let mut scopes = Vec::new();
         for json in iter {
@@ -383,7 +409,7 @@ impl ParseSettings for Theme {
             name: name,
             author: author,
             settings: settings,
-            scopes: scopes
+            scopes: scopes,
         })
     }
 }

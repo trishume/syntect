@@ -52,8 +52,7 @@ impl From<ParseSyntaxError> for PackageError {
     }
 }
 
-fn load_syntax_file(p: &Path)
-                    -> Result<SyntaxDefinition, PackageError> {
+fn load_syntax_file(p: &Path) -> Result<SyntaxDefinition, PackageError> {
     let mut f = try!(File::open(p));
     let mut s = String::new();
     try!(f.read_to_string(&mut s));
@@ -71,9 +70,7 @@ impl PackageSet {
                 syntaxes.push(try!(load_syntax_file(entry.path())));
             }
         }
-        let mut ps = PackageSet {
-            syntaxes: syntaxes,
-        };
+        let mut ps = PackageSet { syntaxes: syntaxes };
         ps.link_syntaxes();
         Ok(ps)
     }
@@ -203,8 +200,20 @@ mod tests {
 
         let theme = PackageSet::get_theme("testdata/themes.tmbundle/Themes/Amy.tmTheme").unwrap();
         assert_eq!(theme.name.unwrap(), "Amy");
-        assert_eq!(theme.settings.selection.unwrap(), Color {r: 0x80, g: 0x00, b: 0x00, a: 0x80});
-        assert_eq!(theme.scopes[0].style.foreground.unwrap(), Color { r: 0x40, g: 0x40, b: 0x80, a: 0xFF});
+        assert_eq!(theme.settings.selection.unwrap(),
+                   Color {
+                       r: 0x80,
+                       g: 0x00,
+                       b: 0x00,
+                       a: 0x80,
+                   });
+        assert_eq!(theme.scopes[0].style.foreground.unwrap(),
+                   Color {
+                       r: 0x40,
+                       g: 0x40,
+                       b: 0x80,
+                       a: 0xFF,
+                   });
         // assert!(false);
     }
 }
