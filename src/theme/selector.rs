@@ -15,6 +15,15 @@ pub struct ScopeSelectors {
     pub selectors: Vec<ScopeSelector>
 }
 
+impl ScopeSelector {
+    pub fn does_match(&self, stack: &ScopeStack) -> Option<u64> {
+        if self.exclude.as_ref().and_then(|sel| stack.match_score(sel)).is_some() {
+            return None;
+        }
+        stack.match_score(&self.path)
+    }
+}
+
 impl FromStr for ScopeSelector {
     type Err = ParseScopeError;
 
@@ -38,9 +47,27 @@ impl FromStr for ScopeSelector {
     }
 }
 
+impl ScopeSelectors {
+    pub fn does_match(&self, stack: &ScopeStack) -> Option<u64> {
+        self.selectors.iter().filter_map(|sel| sel.does_match(stack)).max()
+    }
+}
+
 impl FromStr for ScopeSelectors {
     type Err = ParseScopeError;
 
+    /// checks if any of these selectors match the given scope stack
+    /// if so it returns a match score, higher match scores are stronger
+    /// matches. Scores are ordered according to the rules found
+    /// at https://manual.macromates.com/en/scope_selectors
+    /// # Examples
+    /// ```
+    /// use syntect::scope::ScopeStack;
+    /// use syntect::theme::selector::ScopeSelectors;
+    /// use std::str::FromStr;
+    /// assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c k, e.f - a.b").unwrap().does_match(&ScopeStack::from_str("a.b c.d j e.f").unwrap()),
+    ///     Some(0x2001));
+    /// ```
     fn from_str(s: &str) -> Result<ScopeSelectors, ParseScopeError> {
         let mut selectors = Vec::new();
         for selector in s.split(',') {
@@ -63,5 +90,21 @@ mod tests {
         let first_sel = &sels.selectors[0];
         assert_eq!(format!("{:?}", first_sel),
             "ScopeSelector { path: ScopeStack { scopes: [<source.php>, <meta.preprocessor>] }, exclude: Some(ScopeStack { scopes: [<string.quoted>] }) }");
+    }
+    #[test]
+    fn matching_works() {
+        use scope::ScopeStack;
+        use theme::selector::*;
+        use std::str::FromStr;
+        assert_eq!(ScopeSelectors::from_str("a.b, a e, e.f").unwrap().does_match(&ScopeStack::from_str("a.b e.f").unwrap()),
+            Some(0x20));
+        assert_eq!(ScopeSelectors::from_str("a.b, a e.f, e.f").unwrap().does_match(&ScopeStack::from_str("a.b e.f").unwrap()),
+            Some(0x21));
+        assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c j, e.f").unwrap().does_match(&ScopeStack::from_str("a.b c.d j e.f").unwrap()),
+            Some(0x2000));
+        assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c j, e.f - a.b").unwrap().does_match(&ScopeStack::from_str("a.b c.d j e.f").unwrap()),
+            Some(0x2));
+        assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c k, e.f - a.b").unwrap().does_match(&ScopeStack::from_str("a.b c.d j e.f").unwrap()),
+            Some(0x2001));
     }
 }
