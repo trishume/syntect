@@ -134,10 +134,11 @@ impl ParseState {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context.borrow();
         let pat = context.match_at(reg_match.pat_index);
-        // println!("running pattern {}", pat.regex_str);
+        // println!("running pattern {:?}", pat);
 
         self.push_meta_ops(true, match_start, &*context, &pat.operation, ops);
         for s in pat.scope.iter() {
+            // println!("pushing {:?} at {}", s, match_start);
             ops.push((match_start, ScopeStackOp::Push(s.clone())));
         }
         if let Some(ref capture_map) = pat.captures {
@@ -173,6 +174,22 @@ impl ParseState {
                      cur_context: &Context,
                      match_op: &MatchOperation,
                      ops: &mut Vec<(usize, ScopeStackOp)>) {
+        let involves_pop = match match_op {
+            &MatchOperation::Pop => true,
+            &MatchOperation::Set(_) => true,
+            &MatchOperation::Push(_) => false,
+            &MatchOperation::None => false,
+        };
+        if involves_pop {
+            let v = if initial {
+                &cur_context.meta_content_scope
+            } else {
+                &cur_context.meta_scope
+            };
+            if !v.is_empty() {
+                ops.push((index, ScopeStackOp::Pop(v.len())));
+            }
+        }
         match match_op {
             &MatchOperation::Push(ref context_refs) |
             &MatchOperation::Set(ref context_refs) => {
@@ -189,17 +206,8 @@ impl ParseState {
                     }
                 }
             }
-            &MatchOperation::Pop => {
-                let v = if initial {
-                    &cur_context.meta_content_scope
-                } else {
-                    &cur_context.meta_scope
-                };
-                if !v.is_empty() {
-                    ops.push((index, ScopeStackOp::Pop(v.len())));
-                }
-            }
-            &MatchOperation::None => (),
+            &MatchOperation::None |
+            &MatchOperation::Pop => (),
         }
     }
 
