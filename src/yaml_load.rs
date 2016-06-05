@@ -117,7 +117,9 @@ impl SyntaxDefinition {
         let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
-                let context_ptr = try!(SyntaxDefinition::parse_context(val_vec, state));
+                let is_prototype = (name == "prototype");
+                let context_ptr =
+                    try!(SyntaxDefinition::parse_context(val_vec, state, is_prototype));
                 if name == "main" {
                     let mut context = context_ptr.borrow_mut();
                     if context.meta_content_scope.is_empty() {
@@ -131,7 +133,8 @@ impl SyntaxDefinition {
     }
 
     fn parse_context(vec: &Vec<Yaml>,
-                     state: &mut ParserState)
+                     state: &mut ParserState,
+                     is_prototype: bool)
                      -> Result<ContextPtr, ParseSyntaxError> {
         let mut context = Context {
             meta_scope: Vec::new(),
@@ -151,7 +154,8 @@ impl SyntaxDefinition {
             } else if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
                 context.meta_include_prototype = x;
             } else {
-                if !seen_pattern && context.meta_include_prototype && state.has_prototype {
+                if !seen_pattern && context.meta_include_prototype && state.has_prototype &&
+                   !is_prototype {
                     seen_pattern = true;
                     context.patterns
                         .push(Pattern::Include(ContextReference::Named(String::from("prototype"))));
@@ -202,7 +206,7 @@ impl SyntaxDefinition {
                 Ok(ContextReference::Named(parts[0].to_owned()))
             }
         } else if let Some(v) = y.as_vec() {
-            let context = try!(SyntaxDefinition::parse_context(v, state));
+            let context = try!(SyntaxDefinition::parse_context(v, state, false));
             Ok(ContextReference::Inline(context))
         } else {
             Err(ParseSyntaxError::TypeMismatch)
@@ -261,7 +265,8 @@ impl SyntaxDefinition {
         };
 
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
-            Some(try!(SyntaxDefinition::parse_context(v, state)))
+            // TODO should a with_prototype include the prototype? I don't think so.
+            Some(try!(SyntaxDefinition::parse_context(v, state, true)))
         } else {
             None
         };
