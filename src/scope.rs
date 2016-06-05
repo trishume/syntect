@@ -172,6 +172,7 @@ impl Scope {
     pub fn is_prefix_of(self, s: Scope) -> bool {
         let pref_missing = self.missing_atoms();
 
+        // TODO: test optimization - use checked shl and then mult carry flag as int by -1
         let mask: (u64, u64) = if pref_missing == 8 {
             (0, 0)
         } else if pref_missing == 4 {

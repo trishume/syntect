@@ -25,7 +25,7 @@ fn main() {
     let mut highlight_state = HighlightState::new(&highlighter, state.scope_stack.clone());
     for maybe_line in file.lines() {
         let line = maybe_line.unwrap();
-        // println!("{}", state.scope_stack);
+        // println!("{:?}", highlight_state);
         let ops = state.parse_line(&line);
         // debug_print_ops(&line, &ops);
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], &line, &highlighter);

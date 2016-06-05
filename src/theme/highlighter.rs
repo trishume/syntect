@@ -65,7 +65,7 @@ impl<'a> Iterator for HighlightIterator<'a> {
     type Item = (Style, &'a str);
 
     fn next(&mut self) -> Option<(Style, &'a str)> {
-        if self.pos == self.text.len() {
+        if self.pos == self.text.len() && self.index >= self.changes.len() {
             return None;
         }
         let (end, command) = if self.index < self.changes.len() {
@@ -73,13 +73,15 @@ impl<'a> Iterator for HighlightIterator<'a> {
         } else {
             (self.text.len(), ScopeStackOp::Noop)
         };
-        // println!("{} - {:?}", self.index, self.state.styles);
+        // println!("{} - {:?}", self.index, self.pos);
         let style = self.state.styles.last().unwrap().clone();
         let text = &self.text[self.pos..end];
         match command {
             ScopeStackOp::Push(scope) => {
                 self.state.path.push(scope);
-                self.state.styles.push(style.apply(self.highlighter.get_style(self.state.path.as_slice())));
+                self.state
+                    .styles
+                    .push(style.apply(self.highlighter.get_style(self.state.path.as_slice())));
             }
             ScopeStackOp::Pop(n) => {
                 for _ in 0..n {
