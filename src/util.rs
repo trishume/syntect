@@ -26,7 +26,7 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
                text)
             .unwrap();
     }
-    s.push_str("\x1b[0m");
+    // s.push_str("\x1b[0m");
     s
 }
 
