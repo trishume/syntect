@@ -13,6 +13,7 @@ use walkdir;
 use std::ops::DerefMut;
 use std::mem;
 use std::rc::Rc;
+use std::ascii::AsciiExt;
 
 #[derive(Debug)]
 pub struct PackageSet {
@@ -92,6 +93,24 @@ impl PackageSet {
 
     pub fn find_syntax_by_name<'a>(&'a self, name: &str) -> Option<&'a SyntaxDefinition> {
         self.syntaxes.iter().find(|&s| name == &s.name)
+    }
+
+    pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxDefinition> {
+        self.syntaxes.iter().find(|&s| s.file_extensions.iter().any(|e| e == extension))
+    }
+
+    /// Searches for a syntax first by extension and then by case-insensitive name
+    /// useful for things like Github-flavoured-markdown code block highlighting where
+    /// all you have to go on is a short token given by the user
+    pub fn find_syntax_by_token<'a>(&'a self, s: &str) -> Option<&'a SyntaxDefinition> {
+        {
+            let ext_res = self.find_syntax_by_extension(s);
+            if ext_res.is_some() {
+                return ext_res;
+            }
+        }
+        let lower = s.to_ascii_lowercase();
+        self.syntaxes.iter().find(|&s| lower == s.name.to_ascii_lowercase())
     }
 
     fn link_syntaxes(&mut self) {
@@ -181,6 +200,8 @@ mod tests {
         let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
         let rails_scope = Scope::new("source.ruby.rails").unwrap();
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+        assert_eq!(&ps.find_syntax_by_extension("rake").unwrap().name, "Ruby");
+        assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // assert!(false);
