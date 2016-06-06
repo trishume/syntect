@@ -117,7 +117,7 @@ impl SyntaxDefinition {
         let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
-                let is_prototype = (name == "prototype");
+                let is_prototype = name == "prototype";
                 let context_ptr =
                     try!(SyntaxDefinition::parse_context(val_vec, state, is_prototype));
                 if name == "main" {

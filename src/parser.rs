@@ -71,6 +71,7 @@ impl ParseState {
                 .iter()
                 .filter_map(|lvl| lvl.prototype.as_ref().map(|x| x.clone()))
                 .chain(Some(cur_level.context.clone()).into_iter());
+            // println!("{:#?}", cur_level);
             for ctx in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     let pat_context = pat_context_ptr.borrow();
@@ -120,7 +121,8 @@ impl ParseState {
         if let Some(reg_match) = cur_match {
             let (_, match_end) = reg_match.regions.pos(0).unwrap();
             *start = match_end;
-            self.exec_pattern(line, reg_match, ops);
+            let level_context = self.stack[self.stack.len() - 1].context.clone();
+            self.exec_pattern(line, reg_match, level_context, ops);
             true
         } else {
             false
@@ -130,13 +132,15 @@ impl ParseState {
     fn exec_pattern(&mut self,
                     line: &str,
                     reg_match: RegexMatch,
+                    level_context_ptr: ContextPtr,
                     ops: &mut Vec<(usize, ScopeStackOp)>) {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context.borrow();
         let pat = context.match_at(reg_match.pat_index);
+        let level_context = level_context_ptr.borrow();
         // println!("running pattern {:?}", pat);
 
-        self.push_meta_ops(true, match_start, &*context, &pat.operation, ops);
+        self.push_meta_ops(true, match_start, &*level_context, &pat.operation, ops);
         for s in pat.scope.iter() {
             // println!("pushing {:?} at {}", s, match_start);
             ops.push((match_start, ScopeStackOp::Push(s.clone())));
@@ -163,7 +167,7 @@ impl ParseState {
         if !pat.scope.is_empty() {
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
-        self.push_meta_ops(false, match_end, &*context, &pat.operation, ops);
+        self.push_meta_ops(false, match_end, &*level_context, &pat.operation, ops);
 
         self.perform_op(line, &reg_match.regions, pat);
     }
@@ -180,6 +184,11 @@ impl ParseState {
             &MatchOperation::Push(_) => false,
             &MatchOperation::None => false,
         };
+        // println!("metas ops for {:?}, is pop: {}, initial: {}",
+        //          match_op,
+        //          involves_pop,
+        //          initial);
+        // println!("{:?}", cur_context.meta_scope);
         if involves_pop {
             let v = if initial {
                 &cur_context.meta_content_scope

@@ -12,7 +12,7 @@ use std::fs::File;
 fn main() {
     let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
     let mut state = {
-        let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+        let syntax = ps.find_syntax_by_name("Rust").unwrap();
         ParseState::new(syntax)
     };
     let highlighter = Highlighter::new(PackageSet::get_theme("testdata/spacegray/base16-ocean.\
@@ -25,7 +25,7 @@ fn main() {
     let mut highlight_state = HighlightState::new(&highlighter, state.scope_stack.clone());
     for maybe_line in file.lines() {
         let line = maybe_line.unwrap();
-        // println!("{:?}", highlight_state);
+        // println!("{}", state.scope_stack);
         let ops = state.parse_line(&line);
         // debug_print_ops(&line, &ops);
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], &line, &highlighter);
