@@ -30,9 +30,9 @@ pub struct HighlightIterator<'a> {
 
 impl HighlightState {
     pub fn new(highlighter: &Highlighter, initial_stack: ScopeStack) -> HighlightState {
-        let mut initial_styles = Vec::with_capacity(initial_stack.len());
+        let mut initial_styles = vec![highlighter.get_default()];
         for i in 0..initial_stack.len() {
-            let style = highlighter.get_default();
+            let style = initial_styles[i];
             style.apply(highlighter.get_style(initial_stack.bottom_n(i)));
             initial_styles.push(style);
         }

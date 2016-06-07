@@ -32,11 +32,9 @@ impl ParseState {
             prototype: None,
             captures: None,
         };
-        let mut scope_stack = ScopeStack::new();
-        scope_stack.push(syntax.scope);
         ParseState {
             stack: vec![start_state],
-            scope_stack: scope_stack,
+            scope_stack: ScopeStack::new(),
             first_line: true,
         }
     }
@@ -46,6 +44,15 @@ impl ParseState {
                 "Somehow main context was popped from the stack");
         let mut match_start = 0;
         let mut res = Vec::new();
+        if self.first_line {
+            let cur_level = &self.stack[self.stack.len() - 1];
+            let context = cur_level.context.borrow();
+            if !context.meta_content_scope.is_empty() {
+                res.push((0, ScopeStackOp::Push(context.meta_content_scope[0])));
+            }
+            self.first_line = false;
+        }
+
         // TODO push file syntax on first line
         // TODO set regex parameters correctly for start of file
         while self.parse_next_token(line, &mut match_start, &mut res) {
@@ -283,6 +290,7 @@ mod tests {
         debug_print_ops(line, &ops);
 
         let test_ops = vec![
+            (0, Push(Scope::new("source.ruby.rails").unwrap())),
             (0, Push(Scope::new("meta.module.ruby").unwrap())),
             (0, Push(Scope::new("keyword.control.module.ruby").unwrap())),
             (6, Pop(1)),

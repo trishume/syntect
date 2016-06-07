@@ -7,20 +7,30 @@ use syntect::util::{as_24_bit_terminal_escaped, debug_print_ops};
 
 use std::io::BufReader;
 use std::io::BufRead;
+use std::path::Path;
 use std::fs::File;
 
 fn main() {
     let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
-    let mut state = {
-        let syntax = ps.find_syntax_by_name("Rust").unwrap();
-        ParseState::new(syntax)
-    };
     let highlighter = Highlighter::new(PackageSet::get_theme("testdata/spacegray/base16-ocean.\
                                                               dark.tmTheme")
         .unwrap());
 
-    let f = File::open("src/scope.rs").unwrap();
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        println!("Please pass in a file to highlight");
+        return;
+    }
+
+    let path = Path::new(&args[1]);
+    let extension = path.extension().unwrap().to_str().unwrap();
+    let f = File::open(path).unwrap();
     let file = BufReader::new(&f);
+
+    let mut state = {
+        let syntax = ps.find_syntax_by_extension(extension).unwrap();
+        ParseState::new(syntax)
+    };
 
     let mut highlight_state = HighlightState::new(&highlighter, state.scope_stack.clone());
     for maybe_line in file.lines() {
