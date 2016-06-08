@@ -55,7 +55,8 @@ impl ParseState {
 
         // TODO push file syntax on first line
         // TODO set regex parameters correctly for start of file
-        while self.parse_next_token(line, &mut match_start, &mut res) {
+        let mut regions = Region::with_capacity(8);
+        while self.parse_next_token(line, &mut match_start, &mut regions, &mut res) {
         }
         // apply operations to our scope to keep up
         // TODO do we even need to keep a scope stack in the parser state?
@@ -68,6 +69,7 @@ impl ParseState {
     fn parse_next_token(&mut self,
                         line: &str,
                         start: &mut usize,
+                        regions: &mut Region,
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
         let cur_match = {
@@ -96,13 +98,12 @@ impl ParseState {
                     } else {
                         match_pat.regex.as_ref().unwrap()
                     };
-                    let mut regions = Region::new();
                     // TODO caching
                     let matched = regex.search_with_options(line,
                                                             *start,
                                                             line.len(),
                                                             onig::SEARCH_OPTION_NONE,
-                                                            Some(&mut regions));
+                                                            Some(regions));
                     if let Some(match_start) = matched {
                         let match_end = regions.pos(0).unwrap().1;
                         // this is necessary to avoid infinite looping on dumb patterns
@@ -114,7 +115,7 @@ impl ParseState {
                             min_start = match_start;
                             // TODO pass by immutable ref and re-use context and regions
                             cur_match = Some(RegexMatch {
-                                regions: regions,
+                                regions: regions.clone(),
                                 context: pat_context_ptr.clone(),
                                 pat_index: pat_index,
                             });
