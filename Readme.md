@@ -10,6 +10,7 @@ It is currently mostly complete and can parse, interpret and highlight based on 
 
 There's currently an example program called `syncat` that prints one of the source files using hard-coded themes and syntaxes using 24-bit terminal escape sequences supported by many newer terminals. These screenshots don't look as good as they could for two reasons: first the sRGB colours aren't corrected properly, and second the Rust syntax definition uses some fancy labels that these themes don't have highlighting for.
 
+![Nested languages](http://i.imgur.com/bByxb1E.png)
 ![Base 16 Ocean Dark](http://i.imgur.com/CwiPOwZ.png)
 ![Solarized Light](http://i.imgur.com/l3zcO4J.png)
 

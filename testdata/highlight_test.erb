@@ -1,0 +1,30 @@
+<script type="text/javascript">
+  var lol = "JS nesting";
+  class WithES6 extends THREE.Mesh {
+    static highQuality() { // such classes
+      return this.toString();
+    }
+  }
+  <%
+    # The outer syntax is HTML (Rails) detected from the .erb extension
+    puts "Ruby #{'nesting' * 2}"
+    here = <<-WOWCOOL
+      high quality parsing even supports custom heredoc endings
+      #{
+      nested = 5 * <<-ZOMG
+        nested heredocs! (no highlighting: 5 * 6, yes highlighting: #{5 * 6})
+      ZOMG
+      }
+    WOWCOOL
+    sql = <<-SQL
+      select * from heredocs where there_are_special_heredoc_names = true
+    SQL
+  %>
+</script>
+<style type="text/css">
+  /* the HTML syntax also supports CSS of course */
+  .stuff #wow {
+    border: 5px #ffffff;
+    background: url("wow");
+  }
+</style>
