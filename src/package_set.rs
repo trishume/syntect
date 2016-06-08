@@ -53,29 +53,29 @@ impl From<ParseSyntaxError> for PackageError {
     }
 }
 
-fn load_syntax_file(p: &Path) -> Result<SyntaxDefinition, PackageError> {
+fn load_syntax_file(p: &Path, lines_include_newline: bool) -> Result<SyntaxDefinition, PackageError> {
     let mut f = try!(File::open(p));
     let mut s = String::new();
     try!(f.read_to_string(&mut s));
 
-    Ok(try!(SyntaxDefinition::load_from_str(&s)))
+    Ok(try!(SyntaxDefinition::load_from_str(&s, lines_include_newline)))
 }
 
 impl PackageSet {
+    pub fn new() -> PackageSet {
+        PackageSet { syntaxes: Vec::new() }
+    }
+
+    /// Convenience constructor calling `new` and then `load_syntaxes` on the resulting set
+    /// defaults to lines given not including newline characters, see the
+    /// `load_syntaxes` method docs for an explanation as to why this might not be the best.
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<PackageSet, PackageError> {
-        let mut syntaxes = Vec::new();
-        for entry in WalkDir::new(folder) {
-            let entry = try!(entry.map_err(|e| PackageError::WalkDir(e)));
-            if entry.path().extension().map(|e| e == "sublime-syntax").unwrap_or(false) {
-                // println!("{}", entry.path().display());
-                syntaxes.push(try!(load_syntax_file(entry.path())));
-            }
-        }
-        let mut ps = PackageSet { syntaxes: syntaxes };
-        ps.link_syntaxes();
+        let mut ps = Self::new();
+        try!(ps.load_syntaxes(folder, false));
         Ok(ps)
     }
 
+    /// Returns all the themes found in a folder, good for enumerating before loading one with get_theme
     pub fn discover_themes<P: AsRef<Path>>(folder: P) -> Result<Vec<PathBuf>, PackageError> {
         let mut themes = Vec::new();
         for entry in WalkDir::new(folder) {
@@ -85,6 +85,29 @@ impl PackageSet {
             }
         }
         Ok(themes)
+    }
+
+    /// Loads all the .sublime-syntax files in a folder and links them together into this package set
+    ///
+    /// The `lines_include_newline` parameter is used to work around the fact that Sublime Text normally
+    /// passes line strings including newline characters (`\n`) to its regex engine. This results in many
+    /// syntaxes having regexes matching `\n`, which doesn't work if you don't pass in newlines.
+    /// It is recommended that if you can you pass in lines with newlines if you can and pass `true` for this parameter.
+    /// If that is inconvenient pass `false` and the loader will do some hacky find and replaces on the
+    /// match regexes that seem to work for the default syntax set, but may not work for any other syntaxes.
+    ///
+    /// In the future I might include a "slow mode" that copies the lines passed in and appends a newline if there isn't one.
+    /// but in the interest of performance currently this hacky fix will have to do.
+    pub fn load_syntaxes<P: AsRef<Path>>(&mut self, folder: P, lines_include_newline: bool) -> Result<(), PackageError> {
+        for entry in WalkDir::new(folder) {
+            let entry = try!(entry.map_err(|e| PackageError::WalkDir(e)));
+            if entry.path().extension().map(|e| e == "sublime-syntax").unwrap_or(false) {
+                // println!("{}", entry.path().display());
+                self.syntaxes.push(try!(load_syntax_file(entry.path(), lines_include_newline)));
+            }
+        }
+        self.link_syntaxes();
+        Ok(())
     }
 
     pub fn find_syntax_by_scope<'a>(&'a self, scope: Scope) -> Option<&'a SyntaxDefinition> {

@@ -43,10 +43,11 @@ struct ParserState<'a> {
     backref_regex: Regex,
     short_multibyte_regex: Regex,
     top_level_scope: Scope,
+    lines_include_newline: bool,
 }
 
 impl SyntaxDefinition {
-    pub fn load_from_str(s: &str) -> Result<SyntaxDefinition, ParseSyntaxError> {
+    pub fn load_from_str(s: &str, lines_include_newline: bool) -> Result<SyntaxDefinition, ParseSyntaxError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
             Err(e) => return Err(ParseSyntaxError::InvalidYaml(e)),
@@ -56,11 +57,12 @@ impl SyntaxDefinition {
         }
         let doc = &docs[0];
         let mut scope_repo = SCOPE_REPO.lock().unwrap();
-        SyntaxDefinition::parse_top_level(doc, scope_repo.deref_mut())
+        SyntaxDefinition::parse_top_level(doc, scope_repo.deref_mut(), lines_include_newline)
     }
 
     fn parse_top_level(doc: &Yaml,
-                       scope_repo: &mut ScopeRepository)
+                       scope_repo: &mut ScopeRepository,
+                       lines_include_newline: bool)
                        -> Result<SyntaxDefinition, ParseSyntaxError> {
         let h = try!(doc.as_hash().ok_or(ParseSyntaxError::TypeMismatch));
 
@@ -83,6 +85,7 @@ impl SyntaxDefinition {
             backref_regex: Regex::new(r"\\\d").unwrap(),
             short_multibyte_regex: Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
             top_level_scope: top_level_scope,
+            lines_include_newline: lines_include_newline,
         };
 
         let contexts = try!(SyntaxDefinition::parse_contexts(contexts_hash, &mut state));
@@ -221,9 +224,20 @@ impl SyntaxDefinition {
             state.variables.get(caps.at(1).unwrap_or("")).map(|x| &**x).unwrap_or("").to_owned()
         });
         // bug triggered by CSS.sublime-syntax, dunno why this is necessary
-        let regex_str = state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &Captures| {
+        let regex_str_2 = state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &Captures| {
             format!("\\x{{000000{}}}", caps.at(1).unwrap_or(""))
         });
+        // if the passed in strings don't include newlines (unlike Sublime) we can't match on them
+        let regex_str = if state.lines_include_newline {
+            regex_str_2
+        } else {
+            regex_str_2
+                .replace("\\n?","") // fails with invalid operand of repeat expression
+                .replace("(?:\\n)?","") // fails with invalid operand of repeat expression
+                .replace("(?<!\\n)","") // fails with invalid pattern in look-behind
+                .replace("(?<=\\n)","") // fails with invalid pattern in look-behind
+                .replace("\\n","\\z")
+        };
         // println!("{:?}", regex_str);
 
         // if it contains back references we can't resolve it until runtime
