@@ -48,7 +48,7 @@ Currently `syntect` is reasonably fast but not as fast as it could be. The follo
 
 The current perf numbers are below. These numbers should get vastly better once I implement more of the things above, but they may be sufficient for some use cases.
 - ~220ms to load and link all the syntax definitions in the default Sublime package set. This is ~60% regex compilation and ~35% YAML parsing.
-- ~3.3ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 9000 lines/second or 239 kilobytes/second.
+- ~1.9ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 16,000 lines/second or 422 kilobytes/second.
 - ~250ms end to end for `syncat` to start, load the definitions, highlight the test file and shut down. This is mostly spent loading.
 
 ## License and Acknowledgements
