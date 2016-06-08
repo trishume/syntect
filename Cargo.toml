@@ -12,3 +12,6 @@ lazy_static = "0.2.1"
 bitflags = "^0.4"
 plist = "0.0.13"
 rustc-serialize = "0.3"
+
+[profile.release]
+debug = true
