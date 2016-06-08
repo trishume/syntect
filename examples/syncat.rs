@@ -5,8 +5,7 @@ use syntect::theme::highlighter::*;
 use syntect::theme::style::*;
 use syntect::util::{as_24_bit_terminal_escaped, debug_print_ops};
 
-use std::io::BufReader;
-use std::io::BufRead;
+use std::io::Read;
 use std::path::Path;
 use std::fs::File;
 
@@ -24,23 +23,23 @@ fn main() {
 
     let path = Path::new(&args[1]);
     let extension = path.extension().unwrap().to_str().unwrap();
-    let f = File::open(path).unwrap();
-    let file = BufReader::new(&f);
+    let mut f = File::open(path).unwrap();
+    let mut s = String::new();
+    f.read_to_string(&mut s).unwrap();
 
-    let mut state = {
-        let syntax = ps.find_syntax_by_extension(extension).unwrap();
-        ParseState::new(syntax)
-    };
+    let syntax = ps.find_syntax_by_extension(extension).unwrap();
 
-    let mut highlight_state = HighlightState::new(&highlighter, state.scope_stack.clone());
-    for maybe_line in file.lines() {
-        let line = maybe_line.unwrap();
-        // println!("{}", state.scope_stack);
-        let ops = state.parse_line(&line);
-        // debug_print_ops(&line, &ops);
-        let iter = HighlightIterator::new(&mut highlight_state, &ops[..], &line, &highlighter);
-        let regions: Vec<(Style, &str)> = iter.collect();
-        let escaped = as_24_bit_terminal_escaped(&regions[..], true);
-        println!("{}", escaped);
+    for _ in 1..10000 {
+        let mut state = ParseState::new(syntax);
+        let mut highlight_state = HighlightState::new(&highlighter, state.scope_stack.clone());
+        for line in s.lines() {
+            // println!("{}", state.scope_stack);
+            let ops = state.parse_line(&line);
+            // debug_print_ops(&line, &ops);
+            let iter = HighlightIterator::new(&mut highlight_state, &ops[..], &line, &highlighter);
+            let regions: Vec<(Style, &str)> = iter.collect();
+            // let escaped = as_24_bit_terminal_escaped(&regions[..], true);
+            print!("{}", regions.len());
+        }
     }
 }
