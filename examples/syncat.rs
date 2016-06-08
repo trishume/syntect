@@ -1,4 +1,5 @@
 extern crate syntect;
+use syntect::scope::ScopeStack;
 use syntect::package_set::PackageSet;
 use syntect::parser::*;
 use syntect::theme::highlighter::*;
@@ -32,7 +33,7 @@ fn main() {
         ParseState::new(syntax)
     };
 
-    let mut highlight_state = HighlightState::new(&highlighter, state.scope_stack.clone());
+    let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
     for maybe_line in file.lines() {
         let line = maybe_line.unwrap();
         // println!("{}", state.scope_stack);

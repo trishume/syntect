@@ -5,6 +5,7 @@ extern crate syntect;
 use test::Bencher;
 
 use syntect::package_set::PackageSet;
+use syntect::scope::ScopeStack;
 use syntect::parser::*;
 use syntect::theme::highlighter::*;
 use syntect::theme::style::*;
@@ -23,7 +24,7 @@ fn bench_highlighting(b: &mut Bencher) {
     let syntax = ps.find_syntax_by_extension("erb").unwrap();
     b.iter(|| {
         let mut state = ParseState::new(syntax);
-        let mut highlight_state = HighlightState::new(&highlighter, state.scope_stack.clone());
+        let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         for line in s.lines() {
             let ops = state.parse_line(&line);
             let iter = HighlightIterator::new(&mut highlight_state, &ops[..], &line, &highlighter);

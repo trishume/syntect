@@ -136,6 +136,7 @@ impl Highlighter {
 #[cfg(test)]
 mod tests {
     use package_set::PackageSet;
+    use scope::ScopeStack;
     use parser::*;
     use theme::highlighter::*;
     use theme::style::*;
@@ -151,7 +152,7 @@ mod tests {
                                                                   tmbundle/Themes/Amy.tmTheme")
             .unwrap());
 
-        let mut highlight_state = HighlightState::new(&highlighter, state.scope_stack.clone());
+        let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         let line = "module Bob::Wow::Troll::Five; 5; end";
         let ops = state.parse_line(line);
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);

@@ -7,7 +7,6 @@ use std::i32;
 #[derive(Debug, Clone)]
 pub struct ParseState {
     stack: Vec<StateLevel>,
-    pub scope_stack: ScopeStack,
     first_line: bool,
 }
 
@@ -34,7 +33,6 @@ impl ParseState {
         };
         ParseState {
             stack: vec![start_state],
-            scope_stack: ScopeStack::new(),
             first_line: true,
         }
     }
@@ -53,15 +51,9 @@ impl ParseState {
             self.first_line = false;
         }
 
-        // TODO push file syntax on first line
         // TODO set regex parameters correctly for start of file
         let mut regions = Region::with_capacity(8);
         while self.parse_next_token(line, &mut match_start, &mut regions, &mut res) {
-        }
-        // apply operations to our scope to keep up
-        // TODO do we even need to keep a scope stack in the parser state?
-        for &(_, ref op) in res.iter() {
-            self.scope_stack.apply(op);
         }
         return res;
     }
@@ -336,9 +328,11 @@ mod tests {
         test_stack.push(Scope::new("source.ruby.rails.embedded.html").unwrap());
         test_stack.push(Scope::new("meta.function.method.with-arguments.ruby").unwrap());
         test_stack.push(Scope::new("variable.parameter.function.ruby").unwrap());
-        println!("{:?}", state2.scope_stack);
-        println!("{:?}", test_stack);
-        assert_eq!(state2.scope_stack, test_stack);
+        let mut test_stack2 = ScopeStack::new();
+        for &(_, ref op) in ops3.iter() {
+            test_stack2.apply(op);
+        }
+        assert_eq!(test_stack2, test_stack);
 
         // for testing backrefs
         let line4 = "lol = <<-END wow END";
