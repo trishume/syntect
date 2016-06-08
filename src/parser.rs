@@ -51,7 +51,6 @@ impl ParseState {
             self.first_line = false;
         }
 
-        // TODO set regex parameters correctly for start of file
         let mut regions = Region::with_capacity(8);
         while self.parse_next_token(line, &mut match_start, &mut regions, &mut res) {
         }
@@ -105,7 +104,6 @@ impl ParseState {
                         };
                         if match_start < min_start && does_something {
                             min_start = match_start;
-                            // TODO pass by immutable ref and re-use context and regions
                             cur_match = Some(RegexMatch {
                                 regions: regions.clone(),
                                 context: pat_context_ptr.clone(),
@@ -243,7 +241,6 @@ impl ParseState {
             let captures = {
                 let ctx = ctx_ptr.borrow();
                 if ctx.uses_backrefs {
-                    // TODO maybe move the Region instead of cloning
                     Some((regions.clone(), line.to_owned()))
                 } else {
                     None

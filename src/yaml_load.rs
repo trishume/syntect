@@ -282,7 +282,7 @@ impl SyntaxDefinition {
         };
 
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
-            // TODO should a with_prototype include the prototype? I don't think so.
+            // should a with_prototype include the prototype? I don't think so.
             Some(try!(SyntaxDefinition::parse_context(v, state, true)))
         } else {
             None

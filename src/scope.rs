@@ -124,8 +124,7 @@ impl Scope {
         } else if index < 8 {
             (self.b >> ((7 - index) * 16))
         } else {
-            // panic!("atom index out of bounds {:?}", index);
-            panic!(); // TODO test if this is actually faster
+            panic!("atom index out of bounds {:?}", index);
         };
         (shifted & 0xFFFF) as u16
     }
