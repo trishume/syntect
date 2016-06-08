@@ -11,6 +11,7 @@ It is currently mostly complete and can parse, interpret and highlight based on 
 - Work with many languages (accomplished through using existing grammar formats)
 - Be super fast
 - API that is both easy to use, and allows use in fancy text editors with piece tables and incremental re-highlighting and the like
+- Expose internals of the parsing process so text editors can do things like cache parse states and use semantic info for code intelligence
 - High quality highlighting, supporting things like heredocs and complex syntaxes (like Rust's).
 
 ## Screenshots
@@ -34,6 +35,21 @@ There's currently an example program called `syncat` that prints one of the sour
 - [ ] Add sRGB colour correction (not sure if this is necessary, could be the job of the text editor)
 - [ ] Make it really fast (mosty two hot-paths need caching, same places Textmate 2 caches)
 - [ ] Add C bindings so it can be used as a C library from other languages.
+
+## Performance
+
+Currently `syntect` is reasonably fast but not as fast as it could be. The following perf features are done and to-be-done:
+- [x] Pre-link references between languages (e.g `<script>` tags) so there are no tree traversal string lookups in the hot-path
+- [x] Compact binary representation of scopes to allow quickly passing and copying them around
+- [x] Determine if a scope is a prefix of another scope using bit manipulation in only a few instructions
+- [ ] Cache regex matches to reduce number of times oniguruma is asked to search a line
+- [ ] Cache scope lookups to reduce how much scope matching has to be done to highlight a list of scope operations
+- [ ] Lazily compile regexes so startup time isn't taken compiling a thousand regexs for Actionscript that nobody will use
+
+The current perf numbers are below. These numbers should get vastly better once I implement more of the things above, but they may be sufficient for some use cases.
+- ~220ms to load and link all the syntax definitions in the default Sublime package set. This is ~60% regex compilation and ~35% YAML parsing.
+- ~3.3ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 9000 lines/second or 239 kilobytes/second.
+- ~250ms end to end for `syncat` to start, load the definitions, highlight the test file and shut down. This is mostly spent loading.
 
 ## License and Acknowledgements
 

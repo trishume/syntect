@@ -47,7 +47,9 @@ struct ParserState<'a> {
 }
 
 impl SyntaxDefinition {
-    pub fn load_from_str(s: &str, lines_include_newline: bool) -> Result<SyntaxDefinition, ParseSyntaxError> {
+    pub fn load_from_str(s: &str,
+                         lines_include_newline: bool)
+                         -> Result<SyntaxDefinition, ParseSyntaxError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
             Err(e) => return Err(ParseSyntaxError::InvalidYaml(e)),
@@ -224,9 +226,10 @@ impl SyntaxDefinition {
             state.variables.get(caps.at(1).unwrap_or("")).map(|x| &**x).unwrap_or("").to_owned()
         });
         // bug triggered by CSS.sublime-syntax, dunno why this is necessary
-        let regex_str_2 = state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &Captures| {
-            format!("\\x{{000000{}}}", caps.at(1).unwrap_or(""))
-        });
+        let regex_str_2 =
+            state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &Captures| {
+                format!("\\x{{000000{}}}", caps.at(1).unwrap_or(""))
+            });
         // if the passed in strings don't include newlines (unlike Sublime) we can't match on them
         let regex_str = if state.lines_include_newline {
             regex_str_2
@@ -320,7 +323,8 @@ mod tests {
         use syntax_definition::*;
         use scope::*;
         let defn: SyntaxDefinition =
-            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}")
+            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}",
+                                            false)
                 .unwrap();
         assert_eq!(defn.name, "C");
         assert_eq!(defn.scope, Scope::new("source.c").unwrap());
@@ -359,7 +363,8 @@ mod tests {
               scope: constant.character.escape.c
             - match: '\"'
               pop: true
-        ")
+        ",
+                                            false)
                 .unwrap();
         assert_eq!(defn2.name, "C");
         assert_eq!(defn2.scope, Scope::new("source.c").unwrap());
