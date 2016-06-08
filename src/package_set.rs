@@ -53,7 +53,9 @@ impl From<ParseSyntaxError> for PackageError {
     }
 }
 
-fn load_syntax_file(p: &Path, lines_include_newline: bool) -> Result<SyntaxDefinition, PackageError> {
+fn load_syntax_file(p: &Path,
+                    lines_include_newline: bool)
+                    -> Result<SyntaxDefinition, PackageError> {
     let mut f = try!(File::open(p));
     let mut s = String::new();
     try!(f.read_to_string(&mut s));
@@ -98,7 +100,10 @@ impl PackageSet {
     ///
     /// In the future I might include a "slow mode" that copies the lines passed in and appends a newline if there isn't one.
     /// but in the interest of performance currently this hacky fix will have to do.
-    pub fn load_syntaxes<P: AsRef<Path>>(&mut self, folder: P, lines_include_newline: bool) -> Result<(), PackageError> {
+    pub fn load_syntaxes<P: AsRef<Path>>(&mut self,
+                                         folder: P,
+                                         lines_include_newline: bool)
+                                         -> Result<(), PackageError> {
         for entry in WalkDir::new(folder) {
             let entry = try!(entry.map_err(|e| PackageError::WalkDir(e)));
             if entry.path().extension().map(|e| e == "sublime-syntax").unwrap_or(false) {
