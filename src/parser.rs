@@ -24,6 +24,9 @@ struct RegexMatch {
     pat_index: usize,
 }
 
+// TODO cache actual matching regions
+type MatchCache = Vec<bool>;
+
 impl ParseState {
     pub fn new(syntax: &SyntaxDefinition) -> ParseState {
         let start_state = StateLevel {
@@ -52,7 +55,8 @@ impl ParseState {
         }
 
         let mut regions = Region::with_capacity(8);
-        while self.parse_next_token(line, &mut match_start, &mut regions, &mut res) {
+        let mut match_cache: MatchCache = Vec::with_capacity(64); // TODO find best capacity
+        while self.parse_next_token(line, &mut match_start, &mut match_cache, &mut regions, &mut res) {
         }
         return res;
     }
@@ -60,6 +64,7 @@ impl ParseState {
     fn parse_next_token(&mut self,
                         line: &str,
                         start: &mut usize,
+                        cache: &mut MatchCache,
                         regions: &mut Region,
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
@@ -72,8 +77,13 @@ impl ParseState {
                 .filter_map(|lvl| lvl.prototype.as_ref().map(|x| x.clone()))
                 .chain(Some(cur_level.context.clone()).into_iter());
             // println!("{:#?}", cur_level);
+            let mut overall_index = 0;
             for ctx in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
+                    if overall_index < cache.len() && cache[overall_index] == false {
+                        overall_index += 1;
+                        continue; // we've determined this pattern doesn't match this line anywhere
+                    }
                     let pat_context = pat_context_ptr.borrow();
                     let match_pat = pat_context.match_at(pat_index);
 
@@ -89,12 +99,14 @@ impl ParseState {
                     } else {
                         match_pat.regex.as_ref().unwrap()
                     };
-                    // TODO caching
                     let matched = regex.search_with_options(line,
                                                             *start,
                                                             line.len(),
                                                             onig::SEARCH_OPTION_NONE,
                                                             Some(regions));
+                    if overall_index >= cache.len() { // add it to the cache
+                        cache.push(matched.is_some());
+                    } // TODO update the cache even if this is another time over
                     if let Some(match_start) = matched {
                         let match_end = regions.pos(0).unwrap().1;
                         // this is necessary to avoid infinite looping on dumb patterns
@@ -111,6 +123,8 @@ impl ParseState {
                             });
                         }
                     }
+
+                    overall_index += 1;
                 }
             }
             cur_match
@@ -120,18 +134,22 @@ impl ParseState {
             let (_, match_end) = reg_match.regions.pos(0).unwrap();
             *start = match_end;
             let level_context = self.stack[self.stack.len() - 1].context.clone();
-            self.exec_pattern(line, reg_match, level_context, ops);
+            let stack_changed = self.exec_pattern(line, reg_match, level_context, ops);
+            if stack_changed {
+                cache.clear();
+            }
             true
         } else {
             false
         }
     }
 
+    /// Returns true if the stack was changed
     fn exec_pattern(&mut self,
                     line: &str,
                     reg_match: RegexMatch,
                     level_context_ptr: ContextPtr,
-                    ops: &mut Vec<(usize, ScopeStackOp)>) {
+                    ops: &mut Vec<(usize, ScopeStackOp)>) -> bool {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context.borrow();
         let pat = context.match_at(reg_match.pat_index);
@@ -167,7 +185,7 @@ impl ParseState {
         }
         self.push_meta_ops(false, match_end, &*level_context, &pat.operation, ops);
 
-        self.perform_op(line, &reg_match.regions, pat);
+        self.perform_op(line, &reg_match.regions, pat)
     }
 
     fn push_meta_ops(&self,
@@ -218,7 +236,8 @@ impl ParseState {
         }
     }
 
-    fn perform_op(&mut self, line: &str, regions: &Region, pat: &MatchPattern) {
+    /// Returns true if the stack was changed
+    fn perform_op(&mut self, line: &str, regions: &Region, pat: &MatchPattern) -> bool {
         let ctx_refs = match pat.operation {
             MatchOperation::Push(ref ctx_refs) => ctx_refs,
             MatchOperation::Set(ref ctx_refs) => {
@@ -227,9 +246,9 @@ impl ParseState {
             }
             MatchOperation::Pop => {
                 self.stack.pop();
-                return;
+                return true;
             }
-            MatchOperation::None => return,
+            MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
             let proto = if i == 0 {
@@ -252,6 +271,7 @@ impl ParseState {
                 captures: captures,
             });
         }
+        true
     }
 }
 
