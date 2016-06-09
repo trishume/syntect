@@ -10,18 +10,20 @@ use syntect::parser::*;
 use syntect::theme::highlighter::*;
 use syntect::theme::style::*;
 use std::fs::File;
+use std::path::Path;
 use std::io::Read;
 
-#[bench]
-fn bench_highlighting(b: &mut Bencher) {
+fn highlight_file(b: &mut Bencher, path_s: &str) {
     let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
     let highlighter = Highlighter::new(PackageSet::get_theme("testdata/spacegray/base16-ocean.\
                                                               dark.tmTheme")
         .unwrap());
-    let mut f = File::open("testdata/highlight_test.erb").unwrap();
+    let path = Path::new(path_s);
+    let extension = path.extension().unwrap().to_str().unwrap();
+    let mut f = File::open(path).unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
-    let syntax = ps.find_syntax_by_extension("erb").unwrap();
+    let syntax = ps.find_syntax_by_extension(extension).unwrap();
     b.iter(|| {
         let mut state = ParseState::new(syntax);
         let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
@@ -32,4 +34,14 @@ fn bench_highlighting(b: &mut Bencher) {
             test::black_box(&regions);
         }
     });
+}
+
+#[bench]
+fn bench_highlighting_nesting(b: &mut Bencher) {
+    highlight_file(b, "testdata/highlight_test.erb");
+}
+
+#[bench]
+fn bench_highlighting_jquery(b: &mut Bencher) {
+    highlight_file(b, "testdata/jquery.js");
 }
