@@ -45,3 +45,8 @@ fn bench_highlighting_nesting(b: &mut Bencher) {
 fn bench_highlighting_jquery(b: &mut Bencher) {
     highlight_file(b, "testdata/jquery.js");
 }
+
+#[bench]
+fn bench_highlighting_rustc(b: &mut Bencher) {
+    highlight_file(b, "testdata/parser.rs");
+}
