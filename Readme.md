@@ -39,14 +39,23 @@ There's currently an example program called `syncat` that prints one of the sour
 ## Performance
 
 Currently `syntect` is reasonably fast but not as fast as it could be. The following perf features are done and to-be-done:
+
 - [x] Pre-link references between languages (e.g `<script>` tags) so there are no tree traversal string lookups in the hot-path
 - [x] Compact binary representation of scopes to allow quickly passing and copying them around
 - [x] Determine if a scope is a prefix of another scope using bit manipulation in only a few instructions
 - [ ] Cache regex matches to reduce number of times oniguruma is asked to search a line
 - [ ] Cache scope lookups to reduce how much scope matching has to be done to highlight a list of scope operations
 - [ ] Lazily compile regexes so startup time isn't taken compiling a thousand regexs for Actionscript that nobody will use
+- [ ] Use a better regex engine, perhaps the in progress fancy-regex crate
 
-The current perf numbers are below. These numbers should get vastly better once I implement more of the things above, but they may be sufficient for some use cases.
+The current perf numbers are below. These numbers should get better once I implement more of the things above, but they're on par with many other text editors.
+
+- Highlighting 9200 lines of jQuery 2.1 takes 1.76s. For comparison:
+    - Textmate 2, Spacemacs and Visual Studio Code all take around the same time (2ish seconds)
+    - Atom takes 6s
+    - Sublime Text 3 dev build takes ~0.22s, despite having a super fancy javascript syntax definition
+    - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors.
+    - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex defintion for ES6 syntax.
 - ~220ms to load and link all the syntax definitions in the default Sublime package set. This is ~60% regex compilation and ~35% YAML parsing.
 - ~1.9ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 16,000 lines/second or 422 kilobytes/second.
 - ~250ms end to end for `syncat` to start, load the definitions, highlight the test file and shut down. This is mostly spent loading.
