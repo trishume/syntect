@@ -13,3 +13,12 @@ fn bench_load_syntaxes(b: &mut Bencher) {
         ps.load_syntaxes("testdata/Packages", false).unwrap();
     });
 }
+
+#[bench]
+fn bench_link_syntaxes(b: &mut Bencher) {
+    let mut ps = PackageSet::new();
+    ps.load_syntaxes("testdata/Packages", false).unwrap();
+    b.iter(|| {
+        ps.link_syntaxes();
+    });
+}
