@@ -182,7 +182,7 @@ impl PackageSet {
             Direct(_) => None,
         };
         if let Some(new_context) = maybe_new_context {
-            let mut new_ref = Direct(Rc::downgrade(&new_context));
+            let mut new_ref = Direct(LinkerLink {link: Rc::downgrade(&new_context)});
             mem::swap(context_ref, &mut new_ref);
         }
     }

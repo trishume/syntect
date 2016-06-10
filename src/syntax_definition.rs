@@ -4,23 +4,24 @@ use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use scope::*;
 use regex_syntax::quote;
+use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
 pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
 pub type ContextPtr = Rc<RefCell<Context>>;
 
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable, RustcDecodable)]
 pub struct SyntaxDefinition {
     pub name: String,
     pub file_extensions: Vec<String>,
     pub scope: Scope,
-    pub first_line_match: Option<Regex>,
+    pub first_line_match: Option<String>,
     pub hidden: bool,
 
     pub variables: HashMap<String, String>,
     pub contexts: HashMap<String, ContextPtr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable, RustcDecodable)]
 pub struct Context {
     pub meta_scope: Vec<Scope>,
     pub meta_content_scope: Vec<Scope>,
@@ -30,13 +31,13 @@ pub struct Context {
     pub patterns: Vec<Pattern>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable, RustcDecodable)]
 pub enum Pattern {
     Match(MatchPattern),
     Include(ContextReference),
 }
 
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable, RustcDecodable)]
 pub struct MatchIter {
     ctx_stack: Vec<ContextPtr>,
     index_stack: Vec<usize>,
@@ -44,8 +45,8 @@ pub struct MatchIter {
 
 #[derive(Debug)]
 pub struct MatchPattern {
+    pub has_captures: bool,
     pub regex_str: String,
-    // present unless contains backrefs and has to be dynamically compiled
     pub regex: Option<Regex>,
     pub scope: Vec<Scope>,
     pub captures: Option<CaptureMapping>,
@@ -54,6 +55,11 @@ pub struct MatchPattern {
 }
 
 #[derive(Debug)]
+pub struct LinkerLink {
+    pub link: Weak<RefCell<Context>>,
+}
+
+#[derive(Debug, RustcEncodable, RustcDecodable)]
 pub enum ContextReference {
     Named(String),
     ByScope {
@@ -65,10 +71,10 @@ pub enum ContextReference {
         sub_context: Option<String>,
     },
     Inline(ContextPtr),
-    Direct(Weak<RefCell<Context>>),
+    Direct(LinkerLink),
 }
 
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable, RustcDecodable)]
 pub enum MatchOperation {
     Push(Vec<ContextReference>),
     Set(Vec<ContextReference>),
@@ -95,7 +101,7 @@ impl Iterator for MatchIter {
                     Pattern::Include(ref ctx_ref) => {
                         let ctx_ptr = match ctx_ref {
                             &ContextReference::Inline(ref ctx_ptr) => ctx_ptr.clone(),
-                            &ContextReference::Direct(ref ctx_ptr) => ctx_ptr.upgrade().unwrap(),
+                            &ContextReference::Direct(ref ctx_ptr) => ctx_ptr.link.upgrade().unwrap(),
                             _ => panic!("Can only iterate patterns after linking: {:?}", ctx_ref),
                         };
                         self.ctx_stack.push(ctx_ptr);
@@ -127,6 +133,13 @@ impl Context {
             _ => panic!("bad index to match_at"),
         }
     }
+
+    pub fn match_at_mut(&mut self, index: usize) -> &mut MatchPattern {
+        match self.patterns[index] {
+            Pattern::Match(ref mut match_pat) => match_pat,
+            _ => panic!("bad index to match_at"),
+        }
+    }
 }
 
 impl ContextReference {
@@ -134,7 +147,7 @@ impl ContextReference {
     pub fn resolve(&self) -> ContextPtr {
         match self {
             &ContextReference::Inline(ref ptr) => ptr.clone(),
-            &ContextReference::Direct(ref ptr) => ptr.upgrade().unwrap(),
+            &ContextReference::Direct(ref ptr) => ptr.link.upgrade().unwrap(),
             _ => panic!("Can only call resolve on linked references: {:?}", self),
         }
     }
@@ -167,12 +180,77 @@ impl MatchPattern {
         reg_str
     }
 
+    /// Used by the parser to compile a regex which needs to reference
+    /// regions from another matched pattern.
     pub fn compile_with_refs(&self, region: &Region, s: &str) -> Regex {
         // TODO don't panic on invalid regex
         Regex::with_options(&self.regex_with_substitutes(region, s),
                             onig::REGEX_OPTION_CAPTURE_GROUP,
                             Syntax::default())
             .unwrap()
+    }
+
+    fn compile_regex(&mut self) {
+        let compiled = Regex::with_options(&self.regex_str,
+                            onig::REGEX_OPTION_CAPTURE_GROUP,
+                            Syntax::default())
+            .unwrap();
+        self.regex = Some(compiled);
+    }
+
+    /// Makes sure the regex is compiled if it doesn't have captures.
+    /// May compile the regex if it isn't, panicing if compilation fails.
+    #[inline]
+    pub fn ensure_compiled_if_possible(&mut self) {
+        if self.regex.is_none() && !self.has_captures { self.compile_regex(); }
+    }
+}
+
+/// Only valid to use this on a syntax which hasn't been linked up to other syntaxes yet
+impl Encodable for MatchPattern {
+    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+        s.emit_struct("MatchPattern", 6, |s| {
+            try!(s.emit_struct_field("has_captures", 0, |s| self.has_captures.encode(s)));
+            try!(s.emit_struct_field("regex_str", 1, |s| self.regex_str.encode(s)));
+            try!(s.emit_struct_field("scope", 2, |s| self.scope.encode(s)));
+            try!(s.emit_struct_field("captures", 3, |s| self.captures.encode(s)));
+            try!(s.emit_struct_field("operation", 4, |s| self.operation.encode(s)));
+            try!(s.emit_struct_field("with_prototype", 5, |s| self.with_prototype.encode(s)));
+            Ok(())
+        })
+    }
+}
+
+/// Syntaxes decoded by this won't have compiled regexes
+impl Decodable for MatchPattern {
+  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
+    d.read_struct("MatchPattern", 6, |d| {
+      let match_pat = MatchPattern {
+        has_captures: try!(d.read_struct_field("has_captures", 0, Decodable::decode)),
+        regex: None,
+        regex_str: try!(d.read_struct_field("regex_str", 1, Decodable::decode)),
+        scope: try!(d.read_struct_field("scope", 2, Decodable::decode)),
+        captures: try!(d.read_struct_field("captures", 3, Decodable::decode)),
+        operation: try!(d.read_struct_field("operation", 4, Decodable::decode)),
+        with_prototype: try!(d.read_struct_field("with_prototype", 5, Decodable::decode)),
+      };
+
+      Ok(match_pat)
+    })
+  }
+}
+
+/// Just panics, we can't do anything with linked up syntaxes
+impl Encodable for LinkerLink {
+    fn encode<S: Encoder>(&self, _: &mut S) -> Result<(), S::Error> {
+        panic!("Can't encode syntax definitions which have been linked")
+    }
+}
+
+/// Just panics, we can't do anything with linked up syntaxes
+impl Decodable for LinkerLink {
+    fn decode<D: Decoder>(_: &mut D) -> Result<LinkerLink, D::Error> {
+        panic!("No linked syntax should ever have gotten encoded")
     }
 }
 
@@ -183,6 +261,7 @@ mod tests {
     fn can_compile_refs() {
         use onig::{self, Regex, Region};
         let pat = MatchPattern {
+            has_captures: true,
             regex_str: String::from(r"lol \\ \2 \1 '\9' \wz"),
             regex: None,
             scope: vec![],

@@ -84,11 +84,12 @@ impl ParseState {
                         overall_index += 1;
                         continue; // we've determined this pattern doesn't match this line anywhere
                     }
-                    let pat_context = pat_context_ptr.borrow();
-                    let match_pat = pat_context.match_at(pat_index);
+                    let mut pat_context = pat_context_ptr.borrow_mut();
+                    let mut match_pat = pat_context.match_at_mut(pat_index);
 
                     // println!("{:?}", match_pat.regex_str);
-                    let refs_regex = if cur_level.captures.is_some() && match_pat.regex.is_none() {
+                    match_pat.ensure_compiled_if_possible();
+                    let refs_regex = if cur_level.captures.is_some() && match_pat.has_captures {
                         let &(ref region, ref s) = cur_level.captures.as_ref().unwrap();
                         Some(match_pat.compile_with_refs(region, s))
                     } else {
