@@ -9,6 +9,7 @@ extern crate bincode;
 extern crate rustc_serialize;
 #[macro_use]
 extern crate bitflags;
+extern crate flate2;
 pub mod syntax_definition;
 pub mod yaml_load;
 pub mod package_set;

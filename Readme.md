@@ -6,13 +6,16 @@ If you are writing a text editor (or something else needing highlighting) in Rus
 
 It is currently mostly complete and can parse, interpret and highlight based on Sublime Text syntax and `tmTheme` files.
 
-## Goals
+## Features/Goals
 
-- Work with many languages (accomplished through using existing grammar formats)
-- Be super fast, both in terms of highlighting and startup time
-- API that is both easy to use, and allows use in fancy text editors with piece tables and incremental re-highlighting and the like
-- Expose internals of the parsing process so text editors can do things like cache parse states and use semantic info for code intelligence
-- High quality highlighting, supporting things like heredocs and complex syntaxes (like Rust's).
+- [x] Work with many languages (accomplished through using existing grammar formats)
+- [ ] Highlight super quickly, as fast as Sublime Text (not there yet but matching most editors)
+- [x] Load up quickly, currently in around 23ms but could potentially be even faster.
+- [ ] Include easy to use API for basic cases
+- [x] API allows use in fancy text editors with piece tables and incremental re-highlighting and the like.
+- [x] Expose internals of the parsing process so text editors can do things like cache parse states and use semantic info for code intelligence
+- [x] High quality highlighting, supporting things like heredocs and complex syntaxes (like Rust's).
+- [x] Include a compressed dump of all the default syntax definitions in the library binary so users don't have to manage a folder of syntaxes.
 
 ## Screenshots
 
@@ -30,7 +33,7 @@ There's currently an example program called `syncat` that prints one of the sour
 - [x] Parse TextMate/Sublime Text theme files
 - [x] Highlight a scope-annotated iterator into a colour-annotated iterator for display.
 - [x] Ability to dump loaded packages as binary file and load them with lazy regex compilation for fast start up times.
-- [ ] Bundle dumped default syntaxes into the library binary so library users don't need an assets folder with Sublime Text packages.
+- [x] Bundle dumped default syntaxes into the library binary so library users don't need an assets folder with Sublime Text packages.
 - [ ] Add nice API wrappers for simple use cases. The base APIs are designed for deep high performance integration with arbitrary text editor data structures.
 - [ ] Make syncat a better demo, and maybe more demo programs
 - [ ] Document the API better and make things private that don't need to be public
@@ -59,7 +62,7 @@ The current perf numbers are below. These numbers should get better once I imple
     - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors.
     - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex defintion for ES6 syntax.
 - ~220ms to load and link all the syntax definitions in the default Sublime package set. This is ~60% regex compilation and ~35% YAML parsing.
-    - but only ~16ms to load and link all the syntax definitions from a pre-made binary dump with lazy regex compilation.
+    - but only ~23ms to load and link all the syntax definitions from an internal pre-made binary dump with lazy regex compilation.
 - ~1.9ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 16,000 lines/second or 422 kilobytes/second.
 - ~250ms end to end for `syncat` to start, load the definitions, highlight the test file and shut down. This is mostly spent loading.
 

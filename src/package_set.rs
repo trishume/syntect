@@ -15,6 +15,13 @@ use std::mem;
 use std::rc::Rc;
 use std::ascii::AsciiExt;
 
+/// A package set holds a bunch of syntaxes and manages
+/// loading them and the crucial operation of *linking*.
+///
+/// Linking replaces the references between syntaxes with direct
+/// pointers. See `link_syntaxes` for more.
+/// Linking, followed by adding more unlinked syntaxes with `load_syntaxes`
+/// and then linking again is allowed.
 #[derive(Debug, RustcEncodable, RustcDecodable)]
 pub struct PackageSet {
     pub syntaxes: Vec<SyntaxDefinition>,
@@ -152,6 +159,7 @@ impl PackageSet {
     /// It is necessary to do this before parsing anything with these syntaxes.
     /// However, it is not possible to serialize a package set that has been linked,
     /// which is why it isn't done by default, except by the load_from_folder constructor.
+    /// This operation is idempotent, but takes time even on already linked package sets.
     pub fn link_syntaxes(&mut self) {
         for syntax in self.syntaxes.iter() {
             for (_, ref context_ptr) in syntax.contexts.iter() {

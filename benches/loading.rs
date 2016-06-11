@@ -15,6 +15,14 @@ fn bench_load_syntax_dump(b: &mut Bencher) {
 }
 
 #[bench]
+fn bench_load_internal_dump(b: &mut Bencher) {
+    b.iter(|| {
+        let ps = PackageSet::load_defaults_newlines();
+        test::black_box(&ps);
+    });
+}
+
+#[bench]
 fn bench_load_syntaxes(b: &mut Bencher) {
     b.iter(|| {
         let mut ps = PackageSet::new();
