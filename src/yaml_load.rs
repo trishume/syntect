@@ -1,6 +1,6 @@
 use syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap};
 use onig::{self, Regex, Captures, Syntax};
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -37,7 +37,7 @@ fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Result<Vec<Scope>, Pars
 
 struct ParserState<'a> {
     scope_repo: &'a mut ScopeRepository,
-    variables: HashMap<String, String>,
+    variables: BTreeMap<String, String>,
     has_prototype: bool,
     variable_regex: Regex,
     backref_regex: Regex,
@@ -68,7 +68,7 @@ impl SyntaxDefinition {
                        -> Result<SyntaxDefinition, ParseSyntaxError> {
         let h = try!(doc.as_hash().ok_or(ParseSyntaxError::TypeMismatch));
 
-        let mut variables = HashMap::new();
+        let mut variables = BTreeMap::new();
         if let Ok(map) = get_key(h, "variables", |x| x.as_hash()) {
             for (key, value) in map.iter() {
                 if let (Some(key_str), Some(val_str)) = (key.as_str(), value.as_str()) {
@@ -117,8 +117,8 @@ impl SyntaxDefinition {
 
     fn parse_contexts(map: &BTreeMap<Yaml, Yaml>,
                       state: &mut ParserState)
-                      -> Result<HashMap<String, ContextPtr>, ParseSyntaxError> {
-        let mut contexts = HashMap::new();
+                      -> Result<BTreeMap<String, ContextPtr>, ParseSyntaxError> {
+        let mut contexts = BTreeMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
                 let is_prototype = name == "prototype";
@@ -258,7 +258,7 @@ impl SyntaxDefinition {
             .unwrap_or_else(|| Ok(vec![])));
 
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
-            let mut res_map = HashMap::new();
+            let mut res_map = BTreeMap::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
                     res_map.insert(key_int as usize,

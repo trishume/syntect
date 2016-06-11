@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use onig::{self, Regex, Region, Syntax};
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
@@ -6,7 +6,7 @@ use scope::*;
 use regex_syntax::quote;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
-pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
+pub type CaptureMapping = BTreeMap<usize, Vec<Scope>>;
 pub type ContextPtr = Rc<RefCell<Context>>;
 
 #[derive(Debug, RustcEncodable, RustcDecodable)]
@@ -17,8 +17,8 @@ pub struct SyntaxDefinition {
     pub first_line_match: Option<String>,
     pub hidden: bool,
 
-    pub variables: HashMap<String, String>,
-    pub contexts: HashMap<String, ContextPtr>,
+    pub variables: BTreeMap<String, String>,
+    pub contexts: BTreeMap<String, ContextPtr>,
 }
 
 #[derive(Debug, RustcEncodable, RustcDecodable)]
