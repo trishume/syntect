@@ -101,7 +101,9 @@ impl Iterator for MatchIter {
                     Pattern::Include(ref ctx_ref) => {
                         let ctx_ptr = match ctx_ref {
                             &ContextReference::Inline(ref ctx_ptr) => ctx_ptr.clone(),
-                            &ContextReference::Direct(ref ctx_ptr) => ctx_ptr.link.upgrade().unwrap(),
+                            &ContextReference::Direct(ref ctx_ptr) => {
+                                ctx_ptr.link.upgrade().unwrap()
+                            }
                             _ => panic!("Can only iterate patterns after linking: {:?}", ctx_ref),
                         };
                         self.ctx_stack.push(ctx_ptr);
@@ -192,8 +194,8 @@ impl MatchPattern {
 
     fn compile_regex(&mut self) {
         let compiled = Regex::with_options(&self.regex_str,
-                            onig::REGEX_OPTION_CAPTURE_GROUP,
-                            Syntax::default())
+                                           onig::REGEX_OPTION_CAPTURE_GROUP,
+                                           Syntax::default())
             .unwrap();
         self.regex = Some(compiled);
     }
@@ -202,7 +204,9 @@ impl MatchPattern {
     /// May compile the regex if it isn't, panicing if compilation fails.
     #[inline]
     pub fn ensure_compiled_if_possible(&mut self) {
-        if self.regex.is_none() && !self.has_captures { self.compile_regex(); }
+        if self.regex.is_none() && !self.has_captures {
+            self.compile_regex();
+        }
     }
 }
 
@@ -223,21 +227,21 @@ impl Encodable for MatchPattern {
 
 /// Syntaxes decoded by this won't have compiled regexes
 impl Decodable for MatchPattern {
-  fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-    d.read_struct("MatchPattern", 6, |d| {
-      let match_pat = MatchPattern {
-        has_captures: try!(d.read_struct_field("has_captures", 0, Decodable::decode)),
-        regex: None,
-        regex_str: try!(d.read_struct_field("regex_str", 1, Decodable::decode)),
-        scope: try!(d.read_struct_field("scope", 2, Decodable::decode)),
-        captures: try!(d.read_struct_field("captures", 3, Decodable::decode)),
-        operation: try!(d.read_struct_field("operation", 4, Decodable::decode)),
-        with_prototype: try!(d.read_struct_field("with_prototype", 5, Decodable::decode)),
-      };
+    fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
+        d.read_struct("MatchPattern", 6, |d| {
+            let match_pat = MatchPattern {
+                has_captures: try!(d.read_struct_field("has_captures", 0, Decodable::decode)),
+                regex: None,
+                regex_str: try!(d.read_struct_field("regex_str", 1, Decodable::decode)),
+                scope: try!(d.read_struct_field("scope", 2, Decodable::decode)),
+                captures: try!(d.read_struct_field("captures", 3, Decodable::decode)),
+                operation: try!(d.read_struct_field("operation", 4, Decodable::decode)),
+                with_prototype: try!(d.read_struct_field("with_prototype", 5, Decodable::decode)),
+            };
 
-      Ok(match_pat)
-    })
-  }
+            Ok(match_pat)
+        })
+    }
 }
 
 /// Just panics, we can't do anything with linked up syntaxes

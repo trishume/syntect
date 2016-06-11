@@ -66,7 +66,10 @@ fn load_syntax_file(p: &Path,
 
 impl PackageSet {
     pub fn new() -> PackageSet {
-        PackageSet { syntaxes: Vec::new(), is_linked: true }
+        PackageSet {
+            syntaxes: Vec::new(),
+            is_linked: true,
+        }
     }
 
     /// Convenience constructor calling `new` and then `load_syntaxes` on the resulting set
@@ -191,7 +194,7 @@ impl PackageSet {
             Direct(_) => None,
         };
         if let Some(new_context) = maybe_new_context {
-            let mut new_ref = Direct(LinkerLink {link: Rc::downgrade(&new_context)});
+            let mut new_ref = Direct(LinkerLink { link: Rc::downgrade(&new_context) });
             mem::swap(context_ref, &mut new_ref);
         }
     }
