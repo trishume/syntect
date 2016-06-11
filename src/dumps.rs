@@ -6,6 +6,33 @@ use package_set::PackageSet;
 use std::path::Path;
 
 impl PackageSet {
+    /// Instantiates a new package set from a binary dump of
+    /// Sublime Text's default open source syntax definitions and then links it.
+    /// These dumps are included in this library's binary for convenience.
+    /// This method loads the version for parsing line strings with no `\n` characters at the end.
+    ///
+    /// This is the recommended way of creating a package set for
+    /// non-advanced use cases. It is also significantly faster than loading the YAML files.
+    ///
+    /// Note that you can load additional syntaxes after doing this,
+    /// you'll just have to link again. If you want you can even
+    /// use the fact that SyntaxDefinitions are serializable with
+    /// the bincode crate to cache dumps of additional syntaxes yourself.
+    pub fn load_defaults_nonewlines() -> PackageSet {
+        let mut ps = Self::from_binary(include_bytes!("../assets/default_nonewlines.packdump"));
+        ps.link_syntaxes();
+        ps
+    }
+
+    /// Same as `load_defaults_nonewlines` but for parsing line strings with newlines at the end.
+    /// These are separate methods because thanks to linker garbage collection, only the serialized
+    /// dumps for the method(s) you call will be included in the binary (each is ~1MB for now).
+    pub fn load_defaults_newlines() -> PackageSet {
+        let mut ps = Self::from_binary(include_bytes!("../assets/default_newlines.packdump"));
+        ps.link_syntaxes();
+        ps
+    }
+
     pub fn dump_binary(&self) -> Vec<u8> {
         assert!(!self.is_linked);
         encode(self, SizeLimit::Infinite).unwrap()
@@ -18,8 +45,8 @@ impl PackageSet {
 
     /// Returns a fully loaded and linked package set from
     /// a binary dump. Panics if the dump is invalid.
-    pub fn from_binary(v: Vec<u8>) -> PackageSet {
-        let mut ps: PackageSet = decode(&v[..]).unwrap();
+    pub fn from_binary(v: &[u8]) -> PackageSet {
+        let mut ps: PackageSet = decode(v).unwrap();
         ps.link_syntaxes();
         ps
     }
@@ -42,7 +69,7 @@ mod tests {
         ps.load_syntaxes("testdata/Packages", false).unwrap();
 
         let bin = ps.dump_binary();
-        let ps2 = PackageSet::from_binary(bin);
+        let ps2 = PackageSet::from_binary(&bin[..]);
         assert_eq!(ps.syntaxes.len(), ps2.syntaxes.len());
     }
 }

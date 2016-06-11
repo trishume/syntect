@@ -12,7 +12,7 @@ use std::path::Path;
 use std::fs::File;
 
 fn main() {
-    let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
+    let ps = PackageSet::load_defaults_nonewlines();
     let highlighter = Highlighter::new(PackageSet::get_theme("testdata/spacegray/base16-ocean.\
                                                               dark.tmTheme")
         .unwrap());
