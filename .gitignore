@@ -1,2 +1,4 @@
 target
 Cargo.lock
+# Ignore the dumps for now until the format stabilizes
+assets/*

@@ -5,6 +5,7 @@ extern crate regex_syntax;
 #[macro_use]
 extern crate lazy_static;
 extern crate plist;
+extern crate bincode;
 extern crate rustc_serialize;
 #[macro_use]
 extern crate bitflags;
@@ -15,3 +16,4 @@ pub mod scope;
 pub mod parser;
 pub mod theme;
 pub mod util;
+pub mod dumps;

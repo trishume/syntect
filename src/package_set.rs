@@ -116,7 +116,6 @@ impl PackageSet {
                 self.syntaxes.push(try!(load_syntax_file(entry.path(), lines_include_newline)));
             }
         }
-        self.link_syntaxes();
         Ok(())
     }
 
