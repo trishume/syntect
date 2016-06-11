@@ -9,7 +9,7 @@ It is currently mostly complete and can parse, interpret and highlight based on 
 ## Goals
 
 - Work with many languages (accomplished through using existing grammar formats)
-- Be super fast
+- Be super fast, both in terms of highlighting and startup time
 - API that is both easy to use, and allows use in fancy text editors with piece tables and incremental re-highlighting and the like
 - Expose internals of the parsing process so text editors can do things like cache parse states and use semantic info for code intelligence
 - High quality highlighting, supporting things like heredocs and complex syntaxes (like Rust's).
@@ -29,6 +29,8 @@ There's currently an example program called `syncat` that prints one of the sour
 - [x] Write an interpreter for the `.sublime-syntax` state machine that highlights an incoming iterator of file lines into an iterator of scope-annotated text.
 - [x] Parse TextMate/Sublime Text theme files
 - [x] Highlight a scope-annotated iterator into a colour-annotated iterator for display.
+- [x] Ability to dump loaded packages as binary file and load them with lazy regex compilation for fast start up times.
+- [ ] Bundle dumped default syntaxes into the library binary so library users don't need an assets folder with Sublime Text packages.
 - [ ] Add nice API wrappers for simple use cases. The base APIs are designed for deep high performance integration with arbitrary text editor data structures.
 - [ ] Make syncat a better demo, and maybe more demo programs
 - [ ] Document the API better and make things private that don't need to be public
@@ -45,7 +47,7 @@ Currently `syntect` is reasonably fast but not as fast as it could be. The follo
 - [x] Determine if a scope is a prefix of another scope using bit manipulation in only a few instructions
 - [ ] Cache regex matches to reduce number of times oniguruma is asked to search a line
 - [ ] Cache scope lookups to reduce how much scope matching has to be done to highlight a list of scope operations
-- [ ] Lazily compile regexes so startup time isn't taken compiling a thousand regexs for Actionscript that nobody will use
+- [x] Lazily compile regexes so startup time isn't taken compiling a thousand regexs for Actionscript that nobody will use
 - [ ] Use a better regex engine, perhaps the in progress fancy-regex crate
 
 The current perf numbers are below. These numbers should get better once I implement more of the things above, but they're on par with many other text editors.
@@ -57,6 +59,7 @@ The current perf numbers are below. These numbers should get better once I imple
     - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors.
     - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex defintion for ES6 syntax.
 - ~220ms to load and link all the syntax definitions in the default Sublime package set. This is ~60% regex compilation and ~35% YAML parsing.
+    - but only ~16ms to load and link all the syntax definitions from a pre-made binary dump with lazy regex compilation.
 - ~1.9ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 16,000 lines/second or 422 kilobytes/second.
 - ~250ms end to end for `syncat` to start, load the definitions, highlight the test file and shut down. This is mostly spent loading.
 

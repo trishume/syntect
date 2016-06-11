@@ -56,7 +56,11 @@ impl ParseState {
 
         let mut regions = Region::with_capacity(8);
         let mut match_cache: MatchCache = Vec::with_capacity(64); // TODO find best capacity
-        while self.parse_next_token(line, &mut match_start, &mut match_cache, &mut regions, &mut res) {
+        while self.parse_next_token(line,
+                                    &mut match_start,
+                                    &mut match_cache,
+                                    &mut regions,
+                                    &mut res) {
         }
         return res;
     }
@@ -84,11 +88,12 @@ impl ParseState {
                         overall_index += 1;
                         continue; // we've determined this pattern doesn't match this line anywhere
                     }
-                    let pat_context = pat_context_ptr.borrow();
-                    let match_pat = pat_context.match_at(pat_index);
+                    let mut pat_context = pat_context_ptr.borrow_mut();
+                    let mut match_pat = pat_context.match_at_mut(pat_index);
 
                     // println!("{:?}", match_pat.regex_str);
-                    let refs_regex = if cur_level.captures.is_some() && match_pat.regex.is_none() {
+                    match_pat.ensure_compiled_if_possible();
+                    let refs_regex = if cur_level.captures.is_some() && match_pat.has_captures {
                         let &(ref region, ref s) = cur_level.captures.as_ref().unwrap();
                         Some(match_pat.compile_with_refs(region, s))
                     } else {
@@ -104,7 +109,7 @@ impl ParseState {
                                                             line.len(),
                                                             onig::SEARCH_OPTION_NONE,
                                                             Some(regions));
-                    if overall_index >= cache.len() { // add it to the cache
+                    if overall_index >= cache.len() {
                         cache.push(matched.is_some());
                     } // TODO update the cache even if this is another time over
                     if let Some(match_start) = matched {
@@ -149,7 +154,8 @@ impl ParseState {
                     line: &str,
                     reg_match: RegexMatch,
                     level_context_ptr: ContextPtr,
-                    ops: &mut Vec<(usize, ScopeStackOp)>) -> bool {
+                    ops: &mut Vec<(usize, ScopeStackOp)>)
+                    -> bool {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context.borrow();
         let pat = context.match_at(reg_match.pat_index);

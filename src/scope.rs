@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::fmt;
 use std::str::FromStr;
 use std::u64;
+use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
 lazy_static! {
     pub static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
@@ -129,7 +130,7 @@ impl Scope {
         (shifted & 0xFFFF) as u16
     }
 
-    #[inline(always)]
+    #[inline]
     fn missing_atoms(self) -> u32 {
         let trail = if self.b == 0 {
             self.a.trailing_zeros() + 64
@@ -143,6 +144,13 @@ impl Scope {
     #[inline(always)]
     pub fn len(self) -> u32 {
         8 - self.missing_atoms()
+    }
+
+    /// returns a string representation of this scope, this requires locking a
+    /// global repo and shouldn't be done frequently.
+    fn build_string(self) -> String {
+        let repo = SCOPE_REPO.lock().unwrap();
+        repo.to_string(self)
     }
 
     /// Tests if this scope is a prefix of another scope.
@@ -202,17 +210,29 @@ impl FromStr for Scope {
 
 impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let repo = SCOPE_REPO.lock().unwrap();
-        let s = repo.to_string(*self);
+        let s = self.build_string();
         write!(f, "{}", s)
     }
 }
 
 impl fmt::Debug for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let repo = SCOPE_REPO.lock().unwrap();
-        let s = repo.to_string(*self);
+        let s = self.build_string();
         write!(f, "<{}>", s)
+    }
+}
+
+impl Encodable for Scope {
+    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+        let st = self.build_string();
+        s.emit_str(&st)
+    }
+}
+
+impl Decodable for Scope {
+    fn decode<D: Decoder>(d: &mut D) -> Result<Scope, D::Error> {
+        let s: String = try!(d.read_str());
+        Ok(Scope::new(&s).unwrap())
     }
 }
 

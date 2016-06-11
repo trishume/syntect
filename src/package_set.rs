@@ -15,9 +15,10 @@ use std::mem;
 use std::rc::Rc;
 use std::ascii::AsciiExt;
 
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable, RustcDecodable)]
 pub struct PackageSet {
     pub syntaxes: Vec<SyntaxDefinition>,
+    pub is_linked: bool,
 }
 
 #[derive(Debug)]
@@ -65,15 +66,20 @@ fn load_syntax_file(p: &Path,
 
 impl PackageSet {
     pub fn new() -> PackageSet {
-        PackageSet { syntaxes: Vec::new() }
+        PackageSet {
+            syntaxes: Vec::new(),
+            is_linked: true,
+        }
     }
 
     /// Convenience constructor calling `new` and then `load_syntaxes` on the resulting set
     /// defaults to lines given not including newline characters, see the
     /// `load_syntaxes` method docs for an explanation as to why this might not be the best.
+    /// It also links all the syntaxes together, see `link_syntaxes` for what that means.
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<PackageSet, PackageError> {
         let mut ps = Self::new();
         try!(ps.load_syntaxes(folder, false));
+        ps.link_syntaxes();
         Ok(ps)
     }
 
@@ -89,7 +95,8 @@ impl PackageSet {
         Ok(themes)
     }
 
-    /// Loads all the .sublime-syntax files in a folder and links them together into this package set
+    /// Loads all the .sublime-syntax files in a folder into this package set.
+    /// It does not link the syntaxes, in case you want to serialize this package set.
     ///
     /// The `lines_include_newline` parameter is used to work around the fact that Sublime Text normally
     /// passes line strings including newline characters (`\n`) to its regex engine. This results in many
@@ -104,6 +111,7 @@ impl PackageSet {
                                          folder: P,
                                          lines_include_newline: bool)
                                          -> Result<(), PackageError> {
+        self.is_linked = false;
         for entry in WalkDir::new(folder) {
             let entry = try!(entry.map_err(|e| PackageError::WalkDir(e)));
             if entry.path().extension().map(|e| e == "sublime-syntax").unwrap_or(false) {
@@ -111,7 +119,6 @@ impl PackageSet {
                 self.syntaxes.push(try!(load_syntax_file(entry.path(), lines_include_newline)));
             }
         }
-        self.link_syntaxes();
         Ok(())
     }
 
@@ -141,13 +148,18 @@ impl PackageSet {
         self.syntaxes.iter().find(|&s| lower == s.name.to_ascii_lowercase())
     }
 
-    fn link_syntaxes(&mut self) {
+    /// This links all the syntaxes in this set directly with pointers for performance purposes.
+    /// It is necessary to do this before parsing anything with these syntaxes.
+    /// However, it is not possible to serialize a package set that has been linked,
+    /// which is why it isn't done by default, except by the load_from_folder constructor.
+    pub fn link_syntaxes(&mut self) {
         for syntax in self.syntaxes.iter() {
             for (_, ref context_ptr) in syntax.contexts.iter() {
                 let mut mut_ref = context_ptr.borrow_mut();
                 self.link_context(syntax, mut_ref.deref_mut());
             }
         }
+        self.is_linked = true;
     }
 
     fn link_context(&self, syntax: &SyntaxDefinition, context: &mut Context) {
@@ -182,7 +194,7 @@ impl PackageSet {
             Direct(_) => None,
         };
         if let Some(new_context) = maybe_new_context {
-            let mut new_ref = Direct(Rc::downgrade(&new_context));
+            let mut new_ref = Direct(LinkerLink { link: Rc::downgrade(&new_context) });
             mem::swap(context_ref, &mut new_ref);
         }
     }
@@ -213,6 +225,7 @@ impl PackageSet {
         Ok(try!(read_plist(try!(Self::read_file(path)))))
     }
 
+    /// Loads a theme given a path to a .tmTheme file
     pub fn get_theme<P: AsRef<Path>>(path: P) -> Result<Theme, PackageError> {
         Ok(try!(Theme::parse_settings(try!(Self::read_plist(path.as_ref())))))
     }

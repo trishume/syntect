@@ -4,7 +4,7 @@ use syntect::package_set::PackageSet;
 use syntect::parser::*;
 use syntect::theme::highlighter::*;
 use syntect::theme::style::*;
-use syntect::util::{as_24_bit_terminal_escaped, debug_print_ops};
+use syntect::util::as_24_bit_terminal_escaped;
 
 use std::io::BufReader;
 use std::io::BufRead;

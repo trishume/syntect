@@ -103,11 +103,10 @@ impl SyntaxDefinition {
                     .map(|v| v.iter().filter_map(|y| y.as_str()).map(|x| x.to_owned()).collect())
                     .unwrap_or_else(|_| Vec::new())
             },
-            first_line_match: if let Ok(s) = get_key(h, "first_line_match", |x| x.as_str()) {
-                Some(try!(Regex::new(s).map_err(|e| ParseSyntaxError::RegexCompileError(e))))
-            } else {
-                None
-            },
+            // TODO maybe cache a compiled version of this Regex
+            first_line_match: get_key(h, "first_line_match", |x| x.as_str())
+                .ok()
+                .map(|s| s.to_owned()),
             hidden: get_key(h, "hidden", |x| x.as_bool()).unwrap_or(false),
 
             variables: state.variables.clone(),
@@ -289,6 +288,7 @@ impl SyntaxDefinition {
         };
 
         let pattern = MatchPattern {
+            has_captures: regex.is_none(),
             regex_str: regex_str,
             regex: regex,
             scope: scope,
