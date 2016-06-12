@@ -1,3 +1,7 @@
+# Optimization/Design notes
+
+This is my scratch pad for optimization ideas. Some of this I will implement, some I have implemented, some are just speculative.
+
 # Scopes
 
 ## Representation ideas:
@@ -45,3 +49,49 @@ XXXXQQQQ00000000 # non-prefix
 XXXXYYYYZZZZ0000 # testee
 0000BBBBZZZZ0000 # = xored
 ```
+
+# Parsing
+
+Problem: need to reduce number of regex search calls
+Solution: cache better
+
+## Stats
+
+```
+# On stats branch
+$cargo run --release --example syncat testdata/jquery.js | grep cmiss | wc -l
+     Running `target/release/examples/syncat testdata/jquery.js`
+   61266
+$cargo run --release --example syncat testdata/jquery.js | grep ptoken | wc -l
+   Compiling syntect v0.1.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
+     Running `target/release/examples/syncat testdata/jquery.js`
+   98714
+$wc -l testdata/jquery.js
+    9210 testdata/jquery.js
+$cargo run --release --example syncat testdata/jquery.js | grep cclear | wc -l
+   Compiling syntect v0.1.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
+     Running `target/release/examples/syncat testdata/jquery.js`
+   71302
+$cargo run --release --example syncat testdata/jquery.js | grep regsearch | wc -l
+   Compiling syntect v0.1.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
+     Running `target/release/examples/syncat testdata/jquery.js`
+ 2858742
+$cargo run --release --example syncat testdata/jquery.js | grep freshcachetoken | wc -l
+    Compiling syntect v0.1.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
+      Running `target/release/examples/syncat testdata/jquery.js`
+    80512
+```
+
+Ideally we should have only a couple fresh cache searches per line, not ~10 like the stats show (freshcachetoken/linecount).
+In a fantabulous world these stats mean a possible 10x speed improvement, but since caching does have a cost and we can't always
+cache it likely will be nice but not that high.
+
+## Issues
+- Stack transitions always bust cache, even when for example JS just pushes another group
+- Doesn't cache actual matches, only if it matched or not
+
+## Attacks
+- cache based on actual context, only search if it is a prototype we haven't searched before
+  - hash maps based on casting RC ref to pointer and hashing? (there is a Hash impl for pointers)
+- for new searches, store matched regexes for context in BTreeMap like textmate
+  - for subsequent tokens in same context, just pop off btreemap and re-search if before curpos
