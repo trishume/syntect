@@ -36,7 +36,7 @@ fn main() {
     let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
     for maybe_line in file.lines() {
         let line = maybe_line.unwrap();
-        // println!("{}", state.scope_stack);
+        // println!("{}", highlight_state.path);
         let ops = state.parse_line(&line);
         // debug_print_ops(&line, &ops);
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], &line, &highlighter);

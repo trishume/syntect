@@ -15,7 +15,7 @@ pub struct Highlighter {
 #[derive(Debug, Clone)]
 pub struct HighlightState {
     styles: Vec<Style>,
-    path: ScopeStack,
+    pub path: ScopeStack,
 }
 
 #[derive(Debug)]

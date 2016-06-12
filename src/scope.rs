@@ -6,6 +6,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::u64;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
+use std::cmp::Ordering;
 
 lazy_static! {
     pub static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
@@ -236,6 +237,17 @@ impl Decodable for Scope {
     }
 }
 
+/// Wrapper to get around the fact Rust f64 doesn't implement Ord
+/// and there is no non-NaN float type
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
+pub struct MatchPower(pub f64);
+impl Eq for MatchPower {}
+impl Ord for MatchPower {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
 impl ScopeStack {
     pub fn new() -> ScopeStack {
         ScopeStack { scopes: Vec::new() }
@@ -288,34 +300,35 @@ impl ScopeStack {
     /// matches. Scores are ordered according to the rules found
     /// at https://manual.macromates.com/en/scope_selectors
     ///
-    /// It accomplishes this ordering through some bit manipulation
+    /// It accomplishes this ordering through some floating point math
     /// ensuring deeper and longer matches matter.
-    /// Unfortunately it currently will only return reasonable results
-    /// up to stack depths of 16.
+    /// Unfortunately it is only guaranteed to return perfectly accurate results
+    /// up to stack depths of 17, but it should be reasonably good even afterwards.
+    /// Textmate has the exact same limitation, dunno about Sublime.
     /// # Examples
     /// ```
-    /// use syntect::scope::ScopeStack;
+    /// use syntect::scope::{ScopeStack, MatchPower};
     /// use std::str::FromStr;
     /// assert_eq!(ScopeStack::from_str("a.b c e.f").unwrap()
     ///     .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-    ///     Some(0x212));
+    ///     Some(MatchPower(0o212u64 as f64)));
     /// assert_eq!(ScopeStack::from_str("a c.d.e").unwrap()
     ///     .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
     ///     None);
     /// ```
-    pub fn does_match(&self, stack: &[Scope]) -> Option<u64> {
-        const ATOM_LEN_BITS: u16 = 4;
+    pub fn does_match(&self, stack: &[Scope]) -> Option<MatchPower> {
+        const ATOM_LEN_BITS: u16 = 3;
         let mut sel_index: usize = 0;
-        let mut score: u64 = 0;
+        let mut score: f64 = 0.0;
         for (i, scope) in stack.iter().enumerate() {
             let sel_scope = self.scopes[sel_index];
             if sel_scope.is_prefix_of(*scope) {
                 let len = sel_scope.len();
-                // TODO this breaks on stacks larger than 16 things, maybe use doubles?
-                score |= (len as u64) << (ATOM_LEN_BITS * (i as u16));
+                // equivalent to score |= len << (ATOM_LEN_BITS*i) on a large unsigned
+                score += (len as f64) * ((ATOM_LEN_BITS * (i as u16)) as f64).exp2();
                 sel_index += 1;
                 if sel_index >= self.scopes.len() {
-                    return Some(score);
+                    return Some(MatchPower(score));
                 }
             }
         }
@@ -411,7 +424,7 @@ mod tests {
         assert_eq!(ScopeStack::from_str("string")
                        .unwrap()
                        .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
-                   Some(1));
+                   Some(MatchPower(0o1u64 as f64)));
         assert_eq!(ScopeStack::from_str("source")
                        .unwrap()
                        .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
@@ -419,23 +432,23 @@ mod tests {
         assert_eq!(ScopeStack::from_str("a.b e.f")
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(0x202));
+                   Some(MatchPower(0o202u64 as f64)));
         assert_eq!(ScopeStack::from_str("c e.f")
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(0x210));
+                   Some(MatchPower(0o210u64 as f64)));
         assert_eq!(ScopeStack::from_str("c.d e.f")
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(0x220));
+                   Some(MatchPower(0o220u64 as f64)));
         assert_eq!(ScopeStack::from_str("a.b c e.f")
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(0x212));
+                   Some(MatchPower(0o212u64 as f64)));
         assert_eq!(ScopeStack::from_str("a c.d")
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(0x021));
+                   Some(MatchPower(0o021u64 as f64)));
         assert_eq!(ScopeStack::from_str("a c.d.e")
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
