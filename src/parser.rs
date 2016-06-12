@@ -80,13 +80,19 @@ impl ParseState {
                 .iter()
                 .filter_map(|lvl| lvl.prototype.as_ref().map(|x| x.clone()))
                 .chain(Some(cur_level.context.clone()).into_iter());
-            // println!("{:#?}", cur_level);
+            println!("ptoken");
             let mut overall_index = 0;
+            if cache.is_empty() {
+                println!("freshcachetoken");
+            }
             for ctx in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     if overall_index < cache.len() && cache[overall_index] == false {
                         overall_index += 1;
                         continue; // we've determined this pattern doesn't match this line anywhere
+                    }
+                    if overall_index < cache.len() {
+                        println!("cmiss");
                     }
                     let mut pat_context = pat_context_ptr.borrow_mut();
                     let mut match_pat = pat_context.match_at_mut(pat_index);
@@ -104,6 +110,7 @@ impl ParseState {
                     } else {
                         match_pat.regex.as_ref().unwrap()
                     };
+                    println!("regsearch");
                     let matched = regex.search_with_options(line,
                                                             *start,
                                                             line.len(),
@@ -142,6 +149,7 @@ impl ParseState {
             let stack_changed = self.exec_pattern(line, reg_match, level_context, ops);
             if stack_changed {
                 cache.clear();
+                println!("cclear");
             }
             true
         } else {
