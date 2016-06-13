@@ -136,6 +136,7 @@ impl Highlighter {
 #[cfg(test)]
 mod tests {
     use package_set::PackageSet;
+    use theme_set::ThemeSet;
     use scope::ScopeStack;
     use parser::*;
     use theme::highlighter::*;
@@ -148,7 +149,7 @@ mod tests {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)
         };
-        let highlighter = Highlighter::new(PackageSet::get_theme("testdata/themes.\
+        let highlighter = Highlighter::new(ThemeSet::get_theme("testdata/themes.\
                                                                   tmbundle/Themes/Amy.tmTheme")
             .unwrap());
 

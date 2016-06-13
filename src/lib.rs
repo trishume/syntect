@@ -13,6 +13,7 @@ extern crate flate2;
 pub mod syntax_definition;
 pub mod yaml_load;
 pub mod package_set;
+pub mod theme_set;
 pub mod scope;
 pub mod parser;
 pub mod theme;
