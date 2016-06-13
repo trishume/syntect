@@ -4,13 +4,13 @@
 use scope::*;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeSelector {
     path: ScopeStack,
     exclude: Option<ScopeStack>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeSelectors {
     pub selectors: Vec<ScopeSelector>,
 }
