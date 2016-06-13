@@ -24,6 +24,14 @@ fn bench_load_internal_themes(b: &mut Bencher) {
 }
 
 #[bench]
+fn bench_load_theme(b: &mut Bencher) {
+    b.iter(|| {
+        let theme = ThemeSet::get_theme("testdata/spacegray/base16-ocean.dark.tmTheme");
+        test::black_box(&theme);
+    });
+}
+
+#[bench]
 fn bench_load_syntaxes(b: &mut Bencher) {
     b.iter(|| {
         let mut ps = PackageSet::new();

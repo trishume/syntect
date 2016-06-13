@@ -91,20 +91,20 @@ mod tests {
         let all_themes: Vec<&str> = themes.themes.keys().map(|x| &**x).collect();
         println!("{:?}", all_themes);
 
-        let theme = ThemeSet::get_theme("testdata/themes.tmbundle/Themes/Amy.tmTheme").unwrap();
-        assert_eq!(theme.name.unwrap(), "Amy");
+        let theme = ThemeSet::get_theme("testdata/spacegray/base16-ocean.dark.tmTheme").unwrap();
+        assert_eq!(theme.name.unwrap(), "Base16 Ocean Dark");
         assert_eq!(theme.settings.selection.unwrap(),
                    Color {
-                       r: 0x80,
-                       g: 0x00,
-                       b: 0x00,
-                       a: 0x80,
+                       r: 0x4f,
+                       g: 0x5b,
+                       b: 0x66,
+                       a: 0xff,
                    });
         assert_eq!(theme.scopes[0].style.foreground.unwrap(),
                    Color {
-                       r: 0x40,
-                       g: 0x40,
-                       b: 0x80,
+                       r: 0xc0,
+                       g: 0xc5,
+                       b: 0xce,
                        a: 0xFF,
                    });
         // assert!(false);

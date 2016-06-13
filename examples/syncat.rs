@@ -14,9 +14,8 @@ use std::fs::File;
 
 fn main() {
     let ps = PackageSet::load_defaults_nonewlines();
-    let highlighter = Highlighter::new(ThemeSet::get_theme("testdata/spacegray/base16-ocean.\
-                                                              dark.tmTheme")
-        .unwrap());
+    let ts = ThemeSet::load_defaults();
+    let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
