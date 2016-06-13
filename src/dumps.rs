@@ -54,7 +54,8 @@ impl PackageSet {
     /// use the fact that SyntaxDefinitions are serializable with
     /// the bincode crate to cache dumps of additional syntaxes yourself.
     pub fn load_defaults_nonewlines() -> PackageSet {
-        let mut ps: PackageSet = from_binary(include_bytes!("../assets/default_nonewlines.packdump"));
+        let mut ps: PackageSet = from_binary(include_bytes!("../assets/default_nonewlines.\
+                                                             packdump"));
         ps.link_syntaxes();
         ps
     }

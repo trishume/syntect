@@ -2,8 +2,8 @@ use syntax_definition::*;
 use scope::*;
 use yaml_load::*;
 
-use std::path::{Path};
-use std::io::{Error as IoError};
+use std::path::Path;
+use std::io::Error as IoError;
 use walkdir::WalkDir;
 use std::io::{self, Read};
 use std::fs::File;

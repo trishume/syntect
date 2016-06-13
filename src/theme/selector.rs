@@ -96,7 +96,7 @@ mod tests {
     }
     #[test]
     fn matching_works() {
-        use scope::{ScopeStack,MatchPower};
+        use scope::{ScopeStack, MatchPower};
         use theme::selector::*;
         use std::str::FromStr;
         assert_eq!(ScopeSelectors::from_str("a.b, a e, e.f")
