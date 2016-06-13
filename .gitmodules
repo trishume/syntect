@@ -1,9 +1,6 @@
 [submodule "testdata/Packages"]
 	path = testdata/Packages
 	url = https://github.com/sublimehq/Packages
-[submodule "testdata/themes.tmbundle"]
-	path = testdata/themes.tmbundle
-	url = https://github.com/textmate/themes.tmbundle.git
 [submodule "testdata/InspiredGitHub.tmtheme"]
 	path = testdata/InspiredGitHub.tmtheme
 	url = https://github.com/sethlopezme/InspiredGitHub.tmtheme.git

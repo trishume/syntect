@@ -3,6 +3,7 @@ use bincode::rustc_serialize::*;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use package_set::PackageSet;
+use theme_set::ThemeSet;
 use std::path::Path;
 use flate2::write::ZlibEncoder;
 use flate2::read::ZlibDecoder;
@@ -68,9 +69,18 @@ impl PackageSet {
     }
 }
 
+impl ThemeSet {
+    /// Loads the set of default themes
+    /// Currently includes Solarized light/dark, Base16 ocean/mocha/eighties and InspiredGithub
+    pub fn load_defaults() -> ThemeSet {
+        from_binary(include_bytes!("../assets/default.themedump"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use package_set::PackageSet;
+    use theme_set::ThemeSet;
     use dumps::*;
     #[test]
     fn can_dump_and_load() {
@@ -80,5 +90,8 @@ mod tests {
         let bin = dump_binary(&ps);
         let ps2: PackageSet = from_binary(&bin[..]);
         assert_eq!(ps.syntaxes.len(), ps2.syntaxes.len());
+
+        let themes = ThemeSet::load_defaults();
+        assert!(themes.themes.len() > 4);
     }
 }

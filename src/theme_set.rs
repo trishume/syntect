@@ -10,7 +10,7 @@ use walkdir;
 
 #[derive(Debug, RustcEncodable, RustcDecodable)]
 pub struct ThemeSet {
-  themes: BTreeMap<String, Theme>,
+    pub themes: BTreeMap<String, Theme>,
 }
 
 #[derive(Debug)]
