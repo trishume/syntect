@@ -4,13 +4,13 @@
 use scope::*;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeSelector {
     path: ScopeStack,
     exclude: Option<ScopeStack>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeSelectors {
     pub selectors: Vec<ScopeSelector>,
 }
@@ -96,7 +96,7 @@ mod tests {
     }
     #[test]
     fn matching_works() {
-        use scope::{ScopeStack,MatchPower};
+        use scope::{ScopeStack, MatchPower};
         use theme::selector::*;
         use std::str::FromStr;
         assert_eq!(ScopeSelectors::from_str("a.b, a e, e.f")

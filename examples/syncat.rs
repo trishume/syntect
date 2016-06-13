@@ -1,6 +1,7 @@
 extern crate syntect;
 use syntect::scope::ScopeStack;
 use syntect::package_set::PackageSet;
+use syntect::theme_set::ThemeSet;
 use syntect::parser::*;
 use syntect::theme::highlighter::*;
 use syntect::theme::style::*;
@@ -13,9 +14,8 @@ use std::fs::File;
 
 fn main() {
     let ps = PackageSet::load_defaults_nonewlines();
-    let highlighter = Highlighter::new(PackageSet::get_theme("testdata/spacegray/base16-ocean.\
-                                                              dark.tmTheme")
-        .unwrap());
+    let ts = ThemeSet::load_defaults();
+    let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {

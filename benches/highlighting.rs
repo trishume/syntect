@@ -5,6 +5,7 @@ extern crate syntect;
 use test::Bencher;
 
 use syntect::package_set::PackageSet;
+use syntect::theme_set::ThemeSet;
 use syntect::scope::ScopeStack;
 use syntect::parser::*;
 use syntect::theme::highlighter::*;
@@ -15,7 +16,7 @@ use std::io::Read;
 
 fn highlight_file(b: &mut Bencher, path_s: &str) {
     let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
-    let highlighter = Highlighter::new(PackageSet::get_theme("testdata/spacegray/base16-ocean.\
+    let highlighter = Highlighter::new(ThemeSet::get_theme("testdata/spacegray/base16-ocean.\
                                                               dark.tmTheme")
         .unwrap());
     let path = Path::new(path_s);

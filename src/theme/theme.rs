@@ -10,7 +10,7 @@ use scope::ParseScopeError;
 
 use self::ParseThemeError::*;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, RustcEncodable, RustcDecodable)]
 pub struct Theme {
     pub name: Option<String>,
     pub author: Option<String>,
@@ -18,7 +18,7 @@ pub struct Theme {
     pub scopes: Vec<ThemeItem>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, RustcEncodable, RustcDecodable)]
 pub struct ThemeSettings {
     /// Foreground color for the view.
     pub foreground: Option<Color>,
@@ -89,14 +89,14 @@ pub struct ThemeSettings {
     pub highlight_foreground: Option<Color>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, RustcEncodable, RustcDecodable)]
 pub struct ThemeItem {
     /// Target scope name.
     pub scope: ScopeSelectors,
     pub style: StyleModifier,
 }
 
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable, RustcDecodable)]
 pub enum UnderlineOption {
     None,
     Underline,

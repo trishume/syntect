@@ -1,11 +1,9 @@
 use syntax_definition::*;
 use scope::*;
 use yaml_load::*;
-use theme::theme::{Theme, ParseThemeError};
-use theme::settings::*;
 
-use std::path::{Path, PathBuf};
-use std::io::{Error as IoError, BufReader};
+use std::path::Path;
+use std::io::Error as IoError;
 use walkdir::WalkDir;
 use std::io::{self, Read};
 use std::fs::File;
@@ -33,25 +31,11 @@ pub enum PackageError {
     WalkDir(walkdir::Error),
     Io(io::Error),
     ParseSyntax(ParseSyntaxError),
-    ParseTheme(ParseThemeError),
-    ReadSettings(SettingsError),
-}
-
-impl From<SettingsError> for PackageError {
-    fn from(error: SettingsError) -> PackageError {
-        PackageError::ReadSettings(error)
-    }
 }
 
 impl From<IoError> for PackageError {
     fn from(error: IoError) -> PackageError {
         PackageError::Io(error)
-    }
-}
-
-impl From<ParseThemeError> for PackageError {
-    fn from(error: ParseThemeError) -> PackageError {
-        PackageError::ParseTheme(error)
     }
 }
 
@@ -88,18 +72,6 @@ impl PackageSet {
         try!(ps.load_syntaxes(folder, false));
         ps.link_syntaxes();
         Ok(ps)
-    }
-
-    /// Returns all the themes found in a folder, good for enumerating before loading one with get_theme
-    pub fn discover_themes<P: AsRef<Path>>(folder: P) -> Result<Vec<PathBuf>, PackageError> {
-        let mut themes = Vec::new();
-        for entry in WalkDir::new(folder) {
-            let entry = try!(entry.map_err(|e| PackageError::WalkDir(e)));
-            if entry.path().extension().map(|e| e == "tmTheme").unwrap_or(false) {
-                themes.push(entry.path().to_owned());
-            }
-        }
-        Ok(themes)
     }
 
     /// Loads all the .sublime-syntax files in a folder into this package set.
@@ -223,20 +195,6 @@ impl PackageSet {
             self.link_context(syntax, mut_ref.deref_mut());
         }
     }
-
-    fn read_file(path: &Path) -> Result<BufReader<File>, PackageError> {
-        let reader = try!(File::open(path));
-        Ok(BufReader::new(reader))
-    }
-
-    fn read_plist(path: &Path) -> Result<Settings, PackageError> {
-        Ok(try!(read_plist(try!(Self::read_file(path)))))
-    }
-
-    /// Loads a theme given a path to a .tmTheme file
-    pub fn get_theme<P: AsRef<Path>>(path: P) -> Result<Theme, PackageError> {
-        Ok(try!(Theme::parse_settings(try!(Self::read_plist(path.as_ref())))))
-    }
 }
 
 #[cfg(test)]
@@ -257,33 +215,5 @@ mod tests {
         let main_context = syntax.contexts.get("main").unwrap();
         let count = context_iter(main_context.clone()).count();
         assert_eq!(count, 91);
-    }
-    #[test]
-    fn can_parse_common_themes() {
-        use package_set::PackageSet;
-        use theme::style::Color;
-        let theme_paths = PackageSet::discover_themes("testdata/themes.tmbundle").unwrap();
-        for theme_path in theme_paths.iter() {
-            println!("{:?}", theme_path);
-            PackageSet::get_theme(theme_path).unwrap();
-        }
-
-        let theme = PackageSet::get_theme("testdata/themes.tmbundle/Themes/Amy.tmTheme").unwrap();
-        assert_eq!(theme.name.unwrap(), "Amy");
-        assert_eq!(theme.settings.selection.unwrap(),
-                   Color {
-                       r: 0x80,
-                       g: 0x00,
-                       b: 0x00,
-                       a: 0x80,
-                   });
-        assert_eq!(theme.scopes[0].style.foreground.unwrap(),
-                   Color {
-                       r: 0x40,
-                       g: 0x40,
-                       b: 0x80,
-                       a: 0xFF,
-                   });
-        // assert!(false);
     }
 }

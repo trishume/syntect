@@ -5,20 +5,29 @@ extern crate syntect;
 use test::Bencher;
 
 use syntect::package_set::PackageSet;
-
-#[bench]
-fn bench_load_syntax_dump(b: &mut Bencher) {
-    b.iter(|| {
-        let ps = PackageSet::from_dump_file("assets/default_newlines.packdump");
-        test::black_box(&ps);
-    });
-}
+use syntect::theme_set::ThemeSet;
 
 #[bench]
 fn bench_load_internal_dump(b: &mut Bencher) {
     b.iter(|| {
         let ps = PackageSet::load_defaults_newlines();
         test::black_box(&ps);
+    });
+}
+
+#[bench]
+fn bench_load_internal_themes(b: &mut Bencher) {
+    b.iter(|| {
+        let ts = ThemeSet::load_defaults();
+        test::black_box(&ts);
+    });
+}
+
+#[bench]
+fn bench_load_theme(b: &mut Bencher) {
+    b.iter(|| {
+        let theme = ThemeSet::get_theme("testdata/spacegray/base16-ocean.dark.tmTheme");
+        test::black_box(&theme);
     });
 }
 

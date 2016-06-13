@@ -8,8 +8,8 @@ use theme::theme::Theme;
 use theme::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};
 
 #[derive(Debug)]
-pub struct Highlighter {
-    theme: Theme, // TODO add caching or accelerator structure
+pub struct Highlighter<'a> {
+    theme: &'a Theme, // TODO add caching or accelerator structure
 }
 
 #[derive(Debug, Clone)]
@@ -24,7 +24,7 @@ pub struct HighlightIterator<'a> {
     pos: usize,
     changes: &'a [(usize, ScopeStackOp)],
     text: &'a str,
-    highlighter: &'a Highlighter,
+    highlighter: &'a Highlighter<'a>,
     state: &'a mut HighlightState,
 }
 
@@ -101,8 +101,8 @@ impl<'a> Iterator for HighlightIterator<'a> {
     }
 }
 
-impl Highlighter {
-    pub fn new(theme: Theme) -> Highlighter {
+impl<'a> Highlighter<'a> {
+    pub fn new(theme: &'a Theme) -> Highlighter<'a> {
         Highlighter { theme: theme }
     }
 
@@ -136,6 +136,7 @@ impl Highlighter {
 #[cfg(test)]
 mod tests {
     use package_set::PackageSet;
+    use theme_set::ThemeSet;
     use scope::ScopeStack;
     use parser::*;
     use theme::highlighter::*;
@@ -148,28 +149,27 @@ mod tests {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)
         };
-        let highlighter = Highlighter::new(PackageSet::get_theme("testdata/themes.\
-                                                                  tmbundle/Themes/Amy.tmTheme")
-            .unwrap());
+        let ts = ThemeSet::load_defaults();
+        let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
 
         let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         let line = "module Bob::Wow::Troll::Five; 5; end";
         let ops = state.parse_line(line);
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();
-        println!("{:#?}", regions);
+        // println!("{:#?}", regions);
         assert_eq!(regions[11],
                    (Style {
                        foreground: Color {
-                           r: 0x70,
-                           g: 0x90,
-                           b: 0xB0,
+                           r: 208,
+                           g: 135,
+                           b: 112,
                            a: 0xFF,
                        },
                        background: Color {
-                           r: 0x20,
-                           g: 0x00,
-                           b: 0x20,
+                           r: 43,
+                           g: 48,
+                           b: 59,
                            a: 0xFF,
                        },
                        font_style: FontStyle::empty(),

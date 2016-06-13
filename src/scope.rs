@@ -34,7 +34,7 @@ pub struct ScopeRepository {
     atom_index_map: HashMap<String, usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeStack {
     scopes: Vec<Scope>,
 }
