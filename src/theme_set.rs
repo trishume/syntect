@@ -19,6 +19,7 @@ pub enum ThemeSetError {
     Io(io::Error),
     ParseTheme(ParseThemeError),
     ReadSettings(SettingsError),
+    BadPath,
 }
 
 impl From<SettingsError> for ThemeSetError {
@@ -65,20 +66,30 @@ impl ThemeSet {
     pub fn get_theme<P: AsRef<Path>>(path: P) -> Result<Theme, ThemeSetError> {
       Ok(try!(Theme::parse_settings(try!(Self::read_plist(path.as_ref())))))
     }
+
+    /// Loads all the themes in a folder
+    pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<ThemeSet, ThemeSetError> {
+        let paths = try!(Self::discover_theme_paths(folder));
+        let mut map = BTreeMap::new();
+        for p in paths.iter() {
+            let theme = try!(Self::get_theme(p));
+            let basename = try!(p.file_stem().and_then(|x| x.to_str()).ok_or(ThemeSetError::BadPath));
+            map.insert(basename.to_owned(), theme);
+        }
+        Ok(ThemeSet { themes: map })
+    }
 }
 
 
 #[cfg(test)]
 mod tests {
+    use theme_set::ThemeSet;
     #[test]
     fn can_parse_common_themes() {
-        use theme_set::ThemeSet;
         use theme::style::Color;
-        let theme_paths = ThemeSet::discover_theme_paths("testdata/themes.tmbundle").unwrap();
-        for theme_path in theme_paths.iter() {
-            println!("{:?}", theme_path);
-            ThemeSet::get_theme(theme_path).unwrap();
-        }
+        let themes = ThemeSet::load_from_folder("testdata").unwrap();
+        let all_themes: Vec<&str> = themes.themes.keys().map(|x| &**x).collect();
+        println!("{:?}", all_themes);
 
         let theme = ThemeSet::get_theme("testdata/themes.tmbundle/Themes/Amy.tmTheme").unwrap();
         assert_eq!(theme.name.unwrap(), "Amy");
