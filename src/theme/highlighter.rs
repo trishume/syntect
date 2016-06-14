@@ -19,11 +19,11 @@ pub struct HighlightState {
 }
 
 #[derive(Debug)]
-pub struct HighlightIterator<'a> {
+pub struct HighlightIterator<'a,'b> {
     index: usize,
     pos: usize,
     changes: &'a [(usize, ScopeStackOp)],
-    text: &'a str,
+    text: &'b str,
     highlighter: &'a Highlighter<'a>,
     state: &'a mut HighlightState,
 }
@@ -44,12 +44,12 @@ impl HighlightState {
     }
 }
 
-impl<'a> HighlightIterator<'a> {
+impl<'a,'b> HighlightIterator<'a,'b> {
     pub fn new(state: &'a mut HighlightState,
                changes: &'a [(usize, ScopeStackOp)],
-               text: &'a str,
+               text: &'b str,
                highlighter: &'a Highlighter)
-               -> HighlightIterator<'a> {
+               -> HighlightIterator<'a,'b> {
         HighlightIterator {
             index: 0,
             pos: 0,
@@ -61,10 +61,10 @@ impl<'a> HighlightIterator<'a> {
     }
 }
 
-impl<'a> Iterator for HighlightIterator<'a> {
-    type Item = (Style, &'a str);
+impl<'a,'b> Iterator for HighlightIterator<'a,'b> {
+    type Item = (Style, &'b str);
 
-    fn next(&mut self) -> Option<(Style, &'a str)> {
+    fn next(&mut self) -> Option<(Style, &'b str)> {
         if self.pos == self.text.len() && self.index >= self.changes.len() {
             return None;
         }

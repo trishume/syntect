@@ -1,11 +1,9 @@
 extern crate syntect;
-use syntect::scope::ScopeStack;
 use syntect::package_set::PackageSet;
 use syntect::theme_set::ThemeSet;
-use syntect::parser::*;
-use syntect::theme::highlighter::*;
-use syntect::theme::style::*;
+use syntect::theme::style::Style;
 use syntect::util::as_24_bit_terminal_escaped;
+use syntect::easy::HighlightLines;
 
 use std::io::BufReader;
 use std::io::BufRead;
@@ -15,7 +13,6 @@ use std::fs::File;
 fn main() {
     let ps = PackageSet::load_defaults_nonewlines();
     let ts = ThemeSet::load_defaults();
-    let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
@@ -28,19 +25,11 @@ fn main() {
     let f = File::open(path).unwrap();
     let file = BufReader::new(&f);
 
-    let mut state = {
-        let syntax = ps.find_syntax_by_extension(extension).unwrap();
-        ParseState::new(syntax)
-    };
-
-    let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+    let syntax = ps.find_syntax_by_extension(extension).unwrap();
+    let mut highlighter = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
     for maybe_line in file.lines() {
         let line = maybe_line.unwrap();
-        // println!("{}", highlight_state.path);
-        let ops = state.parse_line(&line);
-        // debug_print_ops(&line, &ops);
-        let iter = HighlightIterator::new(&mut highlight_state, &ops[..], &line, &highlighter);
-        let regions: Vec<(Style, &str)> = iter.collect();
+        let regions: Vec<(Style, &str)> = highlighter.highlight(&line);
         let escaped = as_24_bit_terminal_escaped(&regions[..], true);
         println!("{}", escaped);
     }

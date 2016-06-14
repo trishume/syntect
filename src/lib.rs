@@ -19,3 +19,4 @@ pub mod parser;
 pub mod theme;
 pub mod util;
 pub mod dumps;
+pub mod easy;
