@@ -1,13 +1,11 @@
 use super::syntax_definition::*;
 use super::scope::*;
-use super::yaml_load::*;
+use super::super::LoadingError;
 
 use std::path::Path;
-use std::io::Error as IoError;
 use walkdir::WalkDir;
-use std::io::{self, Read};
+use std::io::Read;
 use std::fs::File;
-use walkdir;
 use std::ops::DerefMut;
 use std::mem;
 use std::rc::Rc;
@@ -26,28 +24,9 @@ pub struct PackageSet {
     pub is_linked: bool,
 }
 
-#[derive(Debug)]
-pub enum PackageError {
-    WalkDir(walkdir::Error),
-    Io(io::Error),
-    ParseSyntax(ParseSyntaxError),
-}
-
-impl From<IoError> for PackageError {
-    fn from(error: IoError) -> PackageError {
-        PackageError::Io(error)
-    }
-}
-
-impl From<ParseSyntaxError> for PackageError {
-    fn from(error: ParseSyntaxError) -> PackageError {
-        PackageError::ParseSyntax(error)
-    }
-}
-
 fn load_syntax_file(p: &Path,
                     lines_include_newline: bool)
-                    -> Result<SyntaxDefinition, PackageError> {
+                    -> Result<SyntaxDefinition, LoadingError> {
     let mut f = try!(File::open(p));
     let mut s = String::new();
     try!(f.read_to_string(&mut s));
@@ -67,7 +46,7 @@ impl PackageSet {
     /// defaults to lines given not including newline characters, see the
     /// `load_syntaxes` method docs for an explanation as to why this might not be the best.
     /// It also links all the syntaxes together, see `link_syntaxes` for what that means.
-    pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<PackageSet, PackageError> {
+    pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<PackageSet, LoadingError> {
         let mut ps = Self::new();
         try!(ps.load_syntaxes(folder, false));
         ps.link_syntaxes();
@@ -89,10 +68,10 @@ impl PackageSet {
     pub fn load_syntaxes<P: AsRef<Path>>(&mut self,
                                          folder: P,
                                          lines_include_newline: bool)
-                                         -> Result<(), PackageError> {
+                                         -> Result<(), LoadingError> {
         self.is_linked = false;
         for entry in WalkDir::new(folder) {
-            let entry = try!(entry.map_err(|e| PackageError::WalkDir(e)));
+            let entry = try!(entry.map_err(|e| LoadingError::WalkDir(e)));
             if entry.path().extension().map(|e| e == "sublime-syntax").unwrap_or(false) {
                 // println!("{}", entry.path().display());
                 self.syntaxes.push(try!(load_syntax_file(entry.path(), lines_include_newline)));

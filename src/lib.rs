@@ -15,3 +15,41 @@ pub mod parsing;
 pub mod util;
 pub mod dumps;
 pub mod easy;
+
+use std::io::Error as IoError;
+use parsing::ParseSyntaxError;
+use highlighting::{ParseThemeError, SettingsError};
+
+#[derive(Debug)]
+pub enum LoadingError {
+    WalkDir(walkdir::Error),
+    Io(IoError),
+    ParseSyntax(ParseSyntaxError),
+    ParseTheme(ParseThemeError),
+    ReadSettings(SettingsError),
+    BadPath,
+}
+
+impl From<SettingsError> for LoadingError {
+    fn from(error: SettingsError) -> LoadingError {
+        LoadingError::ReadSettings(error)
+    }
+}
+
+impl From<IoError> for LoadingError {
+    fn from(error: IoError) -> LoadingError {
+        LoadingError::Io(error)
+    }
+}
+
+impl From<ParseThemeError> for LoadingError {
+    fn from(error: ParseThemeError) -> LoadingError {
+        LoadingError::ParseTheme(error)
+    }
+}
+
+impl From<ParseSyntaxError> for LoadingError {
+    fn from(error: ParseSyntaxError) -> LoadingError {
+        LoadingError::ParseSyntax(error)
+    }
+}
