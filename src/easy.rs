@@ -5,7 +5,7 @@ use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style}
 /// Simple way to go directly from lines of text to coloured
 /// tokens.
 ///
-/// Depending on how you load the packages (see the `PackageSet` docs)
+/// Depending on how you load the syntaxes (see the `SyntaxSet` docs)
 /// you can either pass this strings with trailing `\n`s or without.
 ///
 /// # Examples
@@ -13,12 +13,12 @@ use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style}
 ///
 /// ```
 /// use syntect::easy::HighlightLines;
-/// use syntect::parsing::PackageSet;
+/// use syntect::parsing::SyntaxSet;
 /// use syntect::highlighting::{ThemeSet, Style};
 /// use syntect::util::as_24_bit_terminal_escaped;
 ///
 /// // Load these once at the start of your program
-/// let ps = PackageSet::load_defaults_nonewlines();
+/// let ps = SyntaxSet::load_defaults_nonewlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_extension("rs").unwrap();
@@ -61,11 +61,11 @@ impl<'a> HighlightLines<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::PackageSet;
+    use parsing::SyntaxSet;
     use highlighting::ThemeSet;
     #[test]
     fn can_highlight_lines() {
-        let ps = PackageSet::load_defaults_nonewlines();
+        let ps = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
         let syntax = ps.find_syntax_by_extension("rs").unwrap();
         let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);

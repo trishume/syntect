@@ -136,12 +136,12 @@ impl<'a> Highlighter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{PackageSet, ScopeStack, ParseState};
+    use parsing::{SyntaxSet, ScopeStack, ParseState};
     use highlighting::{ThemeSet, Style, Color, FontStyle};
 
     #[test]
     fn can_parse() {
-        let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)

@@ -284,13 +284,13 @@ impl ParseState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{PackageSet, Scope, ScopeStack};
+    use parsing::{SyntaxSet, Scope, ScopeStack};
     use util::debug_print_ops;
 
     #[test]
     fn can_parse() {
         use parsing::ScopeStackOp::{Push, Pop};
-        let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)

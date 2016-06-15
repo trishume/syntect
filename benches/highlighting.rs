@@ -4,7 +4,7 @@ extern crate test;
 extern crate syntect;
 use test::Bencher;
 
-use syntect::parsing::PackageSet;
+use syntect::parsing::SyntaxSet;
 use syntect::highlighting::ThemeSet;
 use syntect::easy::HighlightLines;
 use std::fs::File;
@@ -13,7 +13,7 @@ use std::io::Read;
 
 fn highlight_file(b: &mut Bencher, path_s: &str) {
     // don't load from dump so we don't count lazy regex compilation time
-    let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
+    let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
     let ts = ThemeSet::load_defaults();
 
     let path = Path::new(path_s);

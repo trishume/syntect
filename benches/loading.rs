@@ -4,13 +4,13 @@ extern crate test;
 extern crate syntect;
 use test::Bencher;
 
-use syntect::parsing::PackageSet;
+use syntect::parsing::SyntaxSet;
 use syntect::highlighting::ThemeSet;
 
 #[bench]
 fn bench_load_internal_dump(b: &mut Bencher) {
     b.iter(|| {
-        let ps = PackageSet::load_defaults_newlines();
+        let ps = SyntaxSet::load_defaults_newlines();
         test::black_box(&ps);
     });
 }
@@ -34,14 +34,14 @@ fn bench_load_theme(b: &mut Bencher) {
 #[bench]
 fn bench_load_syntaxes(b: &mut Bencher) {
     b.iter(|| {
-        let mut ps = PackageSet::new();
+        let mut ps = SyntaxSet::new();
         ps.load_syntaxes("testdata/Packages", false).unwrap();
     });
 }
 
 #[bench]
 fn bench_link_syntaxes(b: &mut Bencher) {
-    let mut ps = PackageSet::new();
+    let mut ps = SyntaxSet::new();
     ps.load_syntaxes("testdata/Packages", false).unwrap();
     b.iter(|| {
         ps.link_syntaxes();

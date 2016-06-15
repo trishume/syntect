@@ -1,5 +1,5 @@
 extern crate syntect;
-use syntect::parsing::PackageSet;
+use syntect::parsing::SyntaxSet;
 use syntect::highlighting::{ThemeSet, Style};
 use syntect::util::as_24_bit_terminal_escaped;
 use syntect::easy::HighlightLines;
@@ -10,7 +10,7 @@ use std::path::Path;
 use std::fs::File;
 
 fn main() {
-    let ps = PackageSet::load_defaults_nonewlines();
+    let ps = SyntaxSet::load_defaults_nonewlines();
     let ts = ThemeSet::load_defaults();
 
     let args: Vec<String> = std::env::args().collect();
