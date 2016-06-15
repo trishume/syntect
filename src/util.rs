@@ -1,6 +1,6 @@
-use theme::style::Style;
+use highlighting::Style;
 use std::fmt::Write;
-use scope::*;
+use parsing::ScopeStackOp;
 
 /// Formats the styled fragments using 24-bit colour
 /// terminal escape codes. Meant for debugging and testing.

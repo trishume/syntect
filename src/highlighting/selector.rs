@@ -1,7 +1,7 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs
 /// released under the MIT license by @defuz
 
-use scope::*;
+use parsing::{Scope, ScopeStack, MatchPower, ParseScopeError};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
@@ -60,10 +60,12 @@ impl FromStr for ScopeSelectors {
     /// if so it returns a match score, higher match scores are stronger
     /// matches. Scores are ordered according to the rules found
     /// at https://manual.macromates.com/en/scope_selectors
+    ///
     /// # Examples
+    ///
     /// ```
-    /// use syntect::scope::{ScopeStack, MatchPower};
-    /// use syntect::theme::selector::ScopeSelectors;
+    /// use syntect::parsing::{ScopeStack, MatchPower};
+    /// use syntect::highlighting::ScopeSelectors;
     /// use std::str::FromStr;
     /// assert_eq!(ScopeSelectors::from_str("a.b, a e.f - c k, e.f - a.b").unwrap()
     ///     .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
@@ -80,9 +82,9 @@ impl FromStr for ScopeSelectors {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[test]
     fn selectors_work() {
-        use theme::selector::*;
         use std::str::FromStr;
         let sels = ScopeSelectors::from_str("source.php meta.preprocessor - string.quoted, \
                                              source string")
@@ -96,8 +98,7 @@ mod tests {
     }
     #[test]
     fn matching_works() {
-        use scope::{ScopeStack, MatchPower};
-        use theme::selector::*;
+        use parsing::{ScopeStack, MatchPower};
         use std::str::FromStr;
         assert_eq!(ScopeSelectors::from_str("a.b, a e, e.f")
                        .unwrap()

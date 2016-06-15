@@ -1,6 +1,6 @@
 extern crate syntect;
-use syntect::package_set::PackageSet;
-use syntect::theme_set::ThemeSet;
+use syntect::parsing::PackageSet;
+use syntect::highlighting::ThemeSet;
 use syntect::dumps::*;
 
 fn main() {

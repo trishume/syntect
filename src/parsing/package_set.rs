@@ -1,6 +1,6 @@
-use syntax_definition::*;
-use scope::*;
-use yaml_load::*;
+use super::syntax_definition::*;
+use super::scope::*;
+use super::yaml_load::*;
 
 use std::path::Path;
 use std::io::Error as IoError;
@@ -153,7 +153,7 @@ impl PackageSet {
 
     fn link_ref(&self, syntax: &SyntaxDefinition, context_ref: &mut ContextReference) {
         // println!("{:?}", context_ref);
-        use syntax_definition::ContextReference::*;
+        use super::syntax_definition::ContextReference::*;
         let maybe_new_context = match *context_ref {
             Named(ref s) => syntax.contexts.get(s),
             Inline(ref context_ptr) => {
@@ -199,11 +199,10 @@ impl PackageSet {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use parsing::{Scope, syntax_definition};
     #[test]
     fn can_load() {
-        use package_set::PackageSet;
-        use syntax_definition::*;
-        use scope::*;
         let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
         let rails_scope = Scope::new("source.ruby.rails").unwrap();
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
@@ -213,7 +212,7 @@ mod tests {
         assert_eq!(syntax.scope, rails_scope);
         // assert!(false);
         let main_context = syntax.contexts.get("main").unwrap();
-        let count = context_iter(main_context.clone()).count();
+        let count = syntax_definition::context_iter(main_context.clone()).count();
         assert_eq!(count, 91);
     }
 }

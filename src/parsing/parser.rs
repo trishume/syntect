@@ -1,5 +1,5 @@
-use syntax_definition::*;
-use scope::*;
+use super::syntax_definition::*;
+use super::scope::*;
 use onig::{self, Region};
 use std::usize;
 use std::i32;
@@ -283,14 +283,13 @@ impl ParseState {
 
 #[cfg(test)]
 mod tests {
-    use package_set::PackageSet;
-    use parser::*;
-    use scope::*;
+    use super::*;
+    use parsing::{PackageSet, Scope, ScopeStack};
     use util::debug_print_ops;
 
     #[test]
     fn can_parse() {
-        use scope::ScopeStackOp::{Push, Pop};
+        use parsing::ScopeStackOp::{Push, Pop};
         let ps = PackageSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();

@@ -3,9 +3,9 @@
 
 use std::iter::Iterator;
 
-use scope::{Scope, ScopeStack, ScopeStackOp};
-use theme::theme::Theme;
-use theme::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};
+use parsing::{Scope, ScopeStack, ScopeStackOp};
+use super::theme::Theme;
+use super::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};
 
 #[derive(Debug)]
 pub struct Highlighter<'a> {
@@ -19,7 +19,7 @@ pub struct HighlightState {
 }
 
 #[derive(Debug)]
-pub struct HighlightIterator<'a,'b> {
+pub struct HighlightIterator<'a, 'b> {
     index: usize,
     pos: usize,
     changes: &'a [(usize, ScopeStackOp)],
@@ -44,12 +44,12 @@ impl HighlightState {
     }
 }
 
-impl<'a,'b> HighlightIterator<'a,'b> {
+impl<'a, 'b> HighlightIterator<'a, 'b> {
     pub fn new(state: &'a mut HighlightState,
                changes: &'a [(usize, ScopeStackOp)],
                text: &'b str,
                highlighter: &'a Highlighter)
-               -> HighlightIterator<'a,'b> {
+               -> HighlightIterator<'a, 'b> {
         HighlightIterator {
             index: 0,
             pos: 0,
@@ -61,7 +61,7 @@ impl<'a,'b> HighlightIterator<'a,'b> {
     }
 }
 
-impl<'a,'b> Iterator for HighlightIterator<'a,'b> {
+impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
     type Item = (Style, &'b str);
 
     fn next(&mut self) -> Option<(Style, &'b str)> {
@@ -135,12 +135,9 @@ impl<'a> Highlighter<'a> {
 
 #[cfg(test)]
 mod tests {
-    use package_set::PackageSet;
-    use theme_set::ThemeSet;
-    use scope::ScopeStack;
-    use parser::*;
-    use theme::highlighter::*;
-    use theme::style::*;
+    use super::*;
+    use parsing::{PackageSet, ScopeStack, ParseState};
+    use highlighting::{ThemeSet, Style, Color, FontStyle};
 
     #[test]
     fn can_parse() {

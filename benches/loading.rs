@@ -4,8 +4,8 @@ extern crate test;
 extern crate syntect;
 use test::Bencher;
 
-use syntect::package_set::PackageSet;
-use syntect::theme_set::ThemeSet;
+use syntect::parsing::PackageSet;
+use syntect::highlighting::ThemeSet;
 
 #[bench]
 fn bench_load_internal_dump(b: &mut Bencher) {

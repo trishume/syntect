@@ -2,8 +2,8 @@ use bincode::SizeLimit;
 use bincode::rustc_serialize::*;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
-use package_set::PackageSet;
-use theme_set::ThemeSet;
+use parsing::PackageSet;
+use highlighting::ThemeSet;
 use std::path::Path;
 use flate2::write::ZlibEncoder;
 use flate2::read::ZlibDecoder;
@@ -80,9 +80,9 @@ impl ThemeSet {
 
 #[cfg(test)]
 mod tests {
-    use package_set::PackageSet;
-    use theme_set::ThemeSet;
-    use dumps::*;
+    use super::*;
+    use parsing::PackageSet;
+    use highlighting::ThemeSet;
     #[test]
     fn can_dump_and_load() {
         let mut ps = PackageSet::new();

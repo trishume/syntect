@@ -4,8 +4,8 @@ extern crate test;
 extern crate syntect;
 use test::Bencher;
 
-use syntect::package_set::PackageSet;
-use syntect::theme_set::ThemeSet;
+use syntect::parsing::PackageSet;
+use syntect::highlighting::ThemeSet;
 use syntect::easy::HighlightLines;
 use std::fs::File;
 use std::path::Path;

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use onig::{self, Regex, Region, Syntax};
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
-use scope::*;
+use super::scope::*;
 use regex_syntax::quote;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
@@ -260,7 +260,7 @@ impl Decodable for LinkerLink {
 
 #[cfg(test)]
 mod tests {
-    use syntax_definition::*;
+    use super::*;
     #[test]
     fn can_compile_refs() {
         use onig::{self, Regex, Region};

@@ -161,7 +161,7 @@ impl Scope {
     /// # Examples
     ///
     /// ```
-    /// use syntect::scope::Scope;
+    /// use syntect::parsing::Scope;
     /// assert!( Scope::new("string").unwrap()
     ///         .is_prefix_of(Scope::new("string.quoted").unwrap()));
     /// assert!( Scope::new("string.quoted").unwrap()
@@ -307,7 +307,7 @@ impl ScopeStack {
     /// Textmate has the exact same limitation, dunno about Sublime.
     /// # Examples
     /// ```
-    /// use syntect::scope::{ScopeStack, MatchPower};
+    /// use syntect::parsing::{ScopeStack, MatchPower};
     /// use std::str::FromStr;
     /// assert_eq!(ScopeStack::from_str("a.b c e.f").unwrap()
     ///     .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
@@ -359,6 +359,7 @@ impl fmt::Display for ScopeStack {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[test]
     fn misc() {
         // use std::mem;
@@ -369,7 +370,6 @@ mod tests {
     }
     #[test]
     fn repo_works() {
-        use scope::*;
         let mut repo = ScopeRepository::new();
         assert_eq!(repo.build("source.php").unwrap(),
                    repo.build("source.php").unwrap());
@@ -385,7 +385,6 @@ mod tests {
     }
     #[test]
     fn global_repo_works() {
-        use scope::*;
         use std::str::FromStr;
         assert_eq!(Scope::new("source.php").unwrap(),
                    Scope::new("source.php").unwrap());
@@ -394,7 +393,6 @@ mod tests {
     }
     #[test]
     fn prefixes_work() {
-        use scope::Scope;
         assert!(Scope::new("1.2.3.4.5.6.7.8")
             .unwrap()
             .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
@@ -419,7 +417,6 @@ mod tests {
     }
     #[test]
     fn matching_works() {
-        use scope::*;
         use std::str::FromStr;
         assert_eq!(ScopeStack::from_str("string")
                        .unwrap()

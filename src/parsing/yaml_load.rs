@@ -1,10 +1,10 @@
-use syntax_definition::*;
+use super::scope::*;
+use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
 use onig::{self, Regex, Captures, Syntax};
 use std::rc::Rc;
 use std::cell::RefCell;
-use scope::*;
 use std::path::Path;
 use std::ops::DerefMut;
 
@@ -318,10 +318,10 @@ impl SyntaxDefinition {
 
 #[cfg(test)]
 mod tests {
+    use parsing::syntax_definition::*;
+    use parsing::Scope;
     #[test]
     fn can_parse() {
-        use syntax_definition::*;
-        use scope::*;
         let defn: SyntaxDefinition =
             SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}",
                                             false)
@@ -399,7 +399,7 @@ mod tests {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
                 assert_eq!(&m[&1], &vec![Scope::new("meta.preprocessor.c++").unwrap()]);
-                use syntax_definition::ContextReference::*;
+                use parsing::syntax_definition::ContextReference::*;
 
                 // this is sadly necessary because Context is not Eq because of the Regex
                 let expected = MatchOperation::Push(vec![

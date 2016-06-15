@@ -3,10 +3,10 @@
 
 use std::str::FromStr;
 
-use theme::settings::{ParseSettings, Settings};
-use theme::style::*;
-use theme::selector::*;
-use scope::ParseScopeError;
+use super::settings::{ParseSettings, Settings};
+use super::style::*;
+use super::selector::*;
+use parsing::ParseScopeError;
 
 use self::ParseThemeError::*;
 

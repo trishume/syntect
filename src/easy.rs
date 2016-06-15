@@ -1,9 +1,5 @@
-use scope::ScopeStack;
-use parser::*;
-use theme::highlighter::*;
-use theme::style::*;
-use theme::theme::Theme;
-use syntax_definition::SyntaxDefinition;
+use parsing::{ScopeStack, ParseState, SyntaxDefinition};
+use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
 // use util::debug_print_ops;
 
 /// Simple way to go directly from lines of text to coloured
@@ -12,14 +8,13 @@ use syntax_definition::SyntaxDefinition;
 /// Depending on how you load the packages (see the `PackageSet` docs)
 /// you can either pass this strings with trailing `\n`s or without.
 ///
-/// # Example
+/// # Examples
 /// Prints coloured lines of a string to the terminal
 ///
 /// ```
 /// use syntect::easy::HighlightLines;
-/// use syntect::package_set::PackageSet;
-/// use syntect::theme_set::ThemeSet;
-/// use syntect::theme::style::Style;
+/// use syntect::parsing::PackageSet;
+/// use syntect::highlighting::{ThemeSet, Style};
 /// use syntect::util::as_24_bit_terminal_escaped;
 ///
 /// // Load these once at the start of your program
@@ -57,18 +52,19 @@ impl<'a> HighlightLines<'a> {
         // println!("{}", self.highlight_state.path);
         let ops = self.parse_state.parse_line(&line);
         // debug_print_ops(line, &ops);
-        let iter = HighlightIterator::new(&mut self.highlight_state, &ops[..], line, &self.highlighter);
+        let iter =
+            HighlightIterator::new(&mut self.highlight_state, &ops[..], line, &self.highlighter);
         iter.collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use easy::*;
+    use super::*;
+    use parsing::PackageSet;
+    use highlighting::ThemeSet;
     #[test]
     fn can_highlight_lines() {
-        use package_set::PackageSet;
-        use theme_set::ThemeSet;
         let ps = PackageSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
         let syntax = ps.find_syntax_by_extension("rs").unwrap();

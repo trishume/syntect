@@ -10,13 +10,8 @@ extern crate rustc_serialize;
 #[macro_use]
 extern crate bitflags;
 extern crate flate2;
-pub mod syntax_definition;
-pub mod yaml_load;
-pub mod package_set;
-pub mod theme_set;
-pub mod scope;
-pub mod parser;
-pub mod theme;
+pub mod highlighting;
+pub mod parsing;
 pub mod util;
 pub mod dumps;
 pub mod easy;

@@ -1,7 +1,6 @@
 extern crate syntect;
-use syntect::package_set::PackageSet;
-use syntect::theme_set::ThemeSet;
-use syntect::theme::style::Style;
+use syntect::parsing::PackageSet;
+use syntect::highlighting::{ThemeSet, Style};
 use syntect::util::as_24_bit_terminal_escaped;
 use syntect::easy::HighlightLines;
 

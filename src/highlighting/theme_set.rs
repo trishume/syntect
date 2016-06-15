@@ -1,5 +1,5 @@
-use theme::theme::{Theme, ParseThemeError};
-use theme::settings::*;
+use super::theme::{Theme, ParseThemeError};
+use super::settings::*;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::io::{Error as IoError, BufReader};
@@ -84,10 +84,9 @@ impl ThemeSet {
 
 #[cfg(test)]
 mod tests {
-    use theme_set::ThemeSet;
+    use highlighting::{ThemeSet, Color};
     #[test]
     fn can_parse_common_themes() {
-        use theme::style::Color;
         let themes = ThemeSet::load_from_folder("testdata").unwrap();
         let all_themes: Vec<&str> = themes.themes.keys().map(|x| &**x).collect();
         println!("{:?}", all_themes);
