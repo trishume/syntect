@@ -6,6 +6,8 @@ If you are writing a text editor (or something else needing highlighting) in Rus
 
 It is currently mostly complete and can parse, interpret and highlight based on Sublime Text syntax and `tmTheme` files.
 
+Rendered docs: <http://thume.ca/rustdoc/syntect/syntect/>
+
 ## Features/Goals
 
 - [x] Work with many languages (accomplished through using existing grammar formats)
