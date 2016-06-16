@@ -11,7 +11,7 @@ It is currently mostly complete and can parse, interpret and highlight based on 
 - [x] Work with many languages (accomplished through using existing grammar formats)
 - [ ] Highlight super quickly, as fast as Sublime Text (not there yet but matching most editors)
 - [x] Load up quickly, currently in around 23ms but could potentially be even faster.
-- [ ] Include easy to use API for basic cases
+- [x] Include easy to use API for basic cases
 - [x] API allows use in fancy text editors with piece tables and incremental re-highlighting and the like.
 - [x] Expose internals of the parsing process so text editors can do things like cache parse states and use semantic info for code intelligence
 - [x] High quality highlighting, supporting things like heredocs and complex syntaxes (like Rust's).
@@ -34,7 +34,7 @@ There's currently an example program called `syncat` that prints one of the sour
 - [x] Highlight a scope-annotated iterator into a colour-annotated iterator for display.
 - [x] Ability to dump loaded packages as binary file and load them with lazy regex compilation for fast start up times.
 - [x] Bundle dumped default syntaxes into the library binary so library users don't need an assets folder with Sublime Text packages.
-- [ ] Add nice API wrappers for simple use cases. The base APIs are designed for deep high performance integration with arbitrary text editor data structures.
+- [x] Add nice API wrappers for simple use cases. The base APIs are designed for deep high performance integration with arbitrary text editor data structures.
 - [ ] Make syncat a better demo, and maybe more demo programs
 - [ ] Document the API better and make things private that don't need to be public
 - [ ] Add sRGB colour correction (not sure if this is necessary, could be the job of the text editor)

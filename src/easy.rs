@@ -1,5 +1,8 @@
-use parsing::{ScopeStack, ParseState, SyntaxDefinition};
+use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet};
 use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
+use std::io::{BufReader, self};
+use std::fs::File;
+use std::path::Path;
 // use util::debug_print_ops;
 
 /// Simple way to go directly from lines of text to coloured
@@ -58,6 +61,51 @@ impl<'a> HighlightLines<'a> {
     }
 }
 
+/// Convenience struct containing everything you need to highlight a file.
+/// Use the `reader` to get the lines of the file and the `highlight_lines` to highlight them.
+/// See the `new` method docs for more information.
+pub struct HighlightFile<'a> {
+    pub reader: BufReader<File>,
+    pub highlight_lines: HighlightLines<'a>,
+}
+
+impl<'a> HighlightFile<'a> {
+    /// Constructs a file reader and a line highlighter to get you reading files as fast as possible.
+    /// Auto-detects the syntax from the extension and constructs a `HighlightLines` with the correct syntax and theme.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use syntect::parsing::SyntaxSet;
+    /// use syntect::highlighting::{ThemeSet, Style};
+    /// use syntect::util::as_24_bit_terminal_escaped;
+    /// use syntect::easy::HighlightFile;
+    /// use std::io::BufRead;
+    ///
+    /// let ss = SyntaxSet::load_defaults_nonewlines();
+    /// let ts = ThemeSet::load_defaults();
+    ///
+    /// let mut highlighter = HighlightFile::new("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
+    /// for maybe_line in highlighter.reader.lines() {
+    ///     let line = maybe_line.unwrap();
+    ///     let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
+    ///     println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
+    /// }
+    /// ```
+    pub fn new<P: AsRef<Path>>(path_obj: P, ss: &SyntaxSet, theme: &'a Theme) -> io::Result<HighlightFile<'a>> {
+        let path: &Path = path_obj.as_ref();
+        let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
+        let f = try!(File::open(path));
+        let reader = BufReader::new(f);
+        // TODO use first line detection
+        let syntax = ss.find_syntax_by_extension(extension).unwrap_or_else(|| ss.find_syntax_plain_text());
+        Ok(HighlightFile {
+            reader: reader,
+            highlight_lines: HighlightLines::new(syntax, theme),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,5 +119,12 @@ mod tests {
         let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
         let ranges = h.highlight("pub struct Wow { hi: u64 }");
         assert!(ranges.len() > 4);
+    }
+
+    #[test]
+    fn can_highlight_file() {
+        let ss = SyntaxSet::load_defaults_nonewlines();
+        let ts = ThemeSet::load_defaults();
+        HighlightFile::new("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
     }
 }

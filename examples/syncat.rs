@@ -2,15 +2,12 @@ extern crate syntect;
 use syntect::parsing::SyntaxSet;
 use syntect::highlighting::{ThemeSet, Style};
 use syntect::util::as_24_bit_terminal_escaped;
-use syntect::easy::HighlightLines;
+use syntect::easy::HighlightFile;
 
-use std::io::BufReader;
 use std::io::BufRead;
-use std::path::Path;
-use std::fs::File;
 
 fn main() {
-    let ps = SyntaxSet::load_defaults_nonewlines();
+    let ss = SyntaxSet::load_defaults_nonewlines();
     let ts = ThemeSet::load_defaults();
 
     let args: Vec<String> = std::env::args().collect();
@@ -19,17 +16,10 @@ fn main() {
         return;
     }
 
-    let path = Path::new(&args[1]);
-    let extension = path.extension().unwrap().to_str().unwrap();
-    let f = File::open(path).unwrap();
-    let file = BufReader::new(&f);
-
-    let syntax = ps.find_syntax_by_extension(extension).unwrap();
-    let mut highlighter = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
-    for maybe_line in file.lines() {
+    let mut highlighter = HighlightFile::new(&args[1], &ss, &ts.themes["base16-ocean.dark"]).unwrap();
+    for maybe_line in highlighter.reader.lines() {
         let line = maybe_line.unwrap();
-        let regions: Vec<(Style, &str)> = highlighter.highlight(&line);
-        let escaped = as_24_bit_terminal_escaped(&regions[..], true);
-        println!("{}", escaped);
+        let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
+        println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
     }
 }

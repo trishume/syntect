@@ -80,6 +80,15 @@ impl SyntaxSet {
         Ok(())
     }
 
+    /// Rarely useful method that loads in a syntax with no highlighting rules for plain text.
+    /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some
+    /// reason the default Sublime plain text syntax is still in `.tmLanguage` format.
+    pub fn load_plain_text_syntax(&mut self) {
+        let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: {main: []}";
+        let syn = SyntaxDefinition::load_from_str(&s, false).unwrap();
+        self.syntaxes.push(syn);
+    }
+
     pub fn find_syntax_by_scope<'a>(&'a self, scope: Scope) -> Option<&'a SyntaxDefinition> {
         self.syntaxes.iter().find(|&s| s.scope == scope)
     }
@@ -104,6 +113,25 @@ impl SyntaxSet {
         }
         let lower = s.to_ascii_lowercase();
         self.syntaxes.iter().find(|&s| lower == s.name.to_ascii_lowercase())
+    }
+
+    /// Finds a syntax for plain text, which usually has no highlighting rules.
+    /// Good as a fallback when you can't find another syntax but you still want
+    /// to use the same highlighting pipeline code.
+    ///
+    /// This syntax should always be present, if not this method will panic.
+    /// If the way you load syntaxes doesn't create one, use `load_plain_text_syntax`.
+    ///
+    /// # Examples
+    /// ```
+    /// use syntect::parsing::SyntaxSet;
+    /// let mut ss = SyntaxSet::new();
+    /// ss.load_plain_text_syntax();
+    /// let syntax = ss.find_syntax_by_token("rs").unwrap_or_else(|| ss.find_syntax_plain_text());
+    /// assert_eq!(syntax.name, "Plain Text");
+    /// ```
+    pub fn find_syntax_plain_text<'a>(&'a self) -> &'a SyntaxDefinition {
+        self.find_syntax_by_name("Plain Text").expect("All syntax sets ought to have a plain text syntax")
     }
 
     /// This links all the syntaxes in this set directly with pointers for performance purposes.
@@ -182,9 +210,11 @@ mod tests {
     use parsing::{Scope, syntax_definition};
     #[test]
     fn can_load() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        ps.load_plain_text_syntax();
         let rails_scope = Scope::new("source.ruby.rails").unwrap();
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+        ps.find_syntax_plain_text();
         assert_eq!(&ps.find_syntax_by_extension("rake").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
         // println!("{:#?}", syntax);
