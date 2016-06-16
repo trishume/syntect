@@ -5,7 +5,7 @@ authors = ["Tristan Hume <tristan@thume.ca>"]
 
 [dependencies]
 yaml-rust = "0.3"
-onig = { git = "https://github.com/trishume/rust-onig.git" }
+onig = "0.6"
 walkdir = "0.1"
 regex-syntax = "0.3.3"
 lazy_static = "0.2.1"
