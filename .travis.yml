@@ -1,8 +1,4 @@
 language: rust
-# Not sure why this might be necessary on stable but nightly
-install:
-  - sudo apt-get update
-  - sudo apt-get install libonig2
 rust:
   - nightly
   - stable
