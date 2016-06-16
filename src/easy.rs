@@ -97,8 +97,8 @@ impl<'a> HighlightFile<'a> {
         let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
         let f = try!(File::open(path));
         let reader = BufReader::new(f);
-        // TODO use first line detection and don't panic
-        let syntax = ss.find_syntax_by_extension(extension).unwrap();
+        // TODO use first line detection
+        let syntax = ss.find_syntax_by_extension(extension).unwrap_or_else(|| ss.find_syntax_plain_text());
         Ok(HighlightFile {
             reader: reader,
             highlight_lines: HighlightLines::new(syntax, theme),

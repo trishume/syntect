@@ -119,6 +119,9 @@ impl SyntaxSet {
     /// Good as a fallback when you can't find another syntax but you still want
     /// to use the same highlighting pipeline code.
     ///
+    /// This syntax should always be present, if not this method will panic.
+    /// If the way you load syntaxes doesn't create one, use `load_plain_text_syntax`.
+    ///
     /// # Examples
     /// ```
     /// use syntect::parsing::SyntaxSet;
