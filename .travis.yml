@@ -1,0 +1,9 @@
+language: rust
+rust:
+  - nightly
+  - stable
+script:
+  - cargo build
+  - cargo doc
+  - cargo test
+after_success: curl https://raw.githubusercontent.com/trishume/syntect/master/scripts/travis-doc-upload.sh | sh
