@@ -35,10 +35,10 @@ There's currently an example program called `syncat` that prints one of the sour
 - [x] Ability to dump loaded packages as binary file and load them with lazy regex compilation for fast start up times.
 - [x] Bundle dumped default syntaxes into the library binary so library users don't need an assets folder with Sublime Text packages.
 - [x] Add nice API wrappers for simple use cases. The base APIs are designed for deep high performance integration with arbitrary text editor data structures.
+- [x] Document the API better and make things private that don't need to be public
 - [ ] Make syncat a better demo, and maybe more demo programs
-- [ ] Document the API better and make things private that don't need to be public
-- [ ] Add sRGB colour correction (not sure if this is necessary, could be the job of the text editor)
 - [ ] Make it really fast (mosty two hot-paths need caching, same places Textmate 2 caches)
+- [ ] Add sRGB colour correction (not sure if this is necessary, could be the job of the text editor)
 - [ ] Add C bindings so it can be used as a C library from other languages.
 
 ## Performance
