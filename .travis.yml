@@ -1,4 +1,9 @@
 language: rust
+email:
+  recipients:
+    - trishume@gmail.com
+  on_success: change # default: change
+  on_failure: change # default: always
 rust:
   - nightly
   - stable
