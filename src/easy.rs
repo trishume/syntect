@@ -1,5 +1,8 @@
-use parsing::{ScopeStack, ParseState, SyntaxDefinition};
+use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet};
 use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
+use std::io::{BufReader, self};
+use std::fs::File;
+use std::path::Path;
 // use util::debug_print_ops;
 
 /// Simple way to go directly from lines of text to coloured
@@ -55,6 +58,25 @@ impl<'a> HighlightLines<'a> {
         let iter =
             HighlightIterator::new(&mut self.highlight_state, &ops[..], line, &self.highlighter);
         iter.collect()
+    }
+}
+
+pub struct HighlightFile<'a> {
+    reader: BufReader<File>,
+    line_highlighter: HighlightLines<'a>,
+}
+
+impl<'a> HighlightFile<'a> {
+    pub fn new<P: AsRef<Path>>(path_obj: P, ss: &SyntaxSet, theme: &'a Theme) -> io::Result<HighlightFile<'a>> {
+        let path: &Path = path_obj.as_ref();
+        let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
+        let mut f = try!(File::open(path));
+        let reader = BufReader::new(f);
+        let syntax = ss.find_syntax_by_extension(extension).unwrap();
+        Ok(HighlightFile {
+            reader: reader,
+            line_highlighter: HighlightLines::new(syntax, theme),
+        })
     }
 }
 
