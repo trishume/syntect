@@ -1,5 +1,6 @@
-/// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/highlighter.rs
-/// released under the MIT license by @defuz
+//! Iterators and data structures for transforming parsing information into styled text.
+// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/highlighter.rs
+// released under the MIT license by @defuz
 
 use std::iter::Iterator;
 
@@ -7,17 +8,45 @@ use parsing::{Scope, ScopeStack, ScopeStackOp};
 use super::theme::Theme;
 use super::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};
 
+/// Basically a wrapper around a `Theme` preparing it to be used for highlighting.
+/// This is part of the API to preserve the possibility of caching
+/// matches of the selectors of the theme on various scope paths
+/// or setting up some kind of accelerator structure.
+///
+/// So for now this does very little but eventually if you keep it around between
+/// highlighting runs it will preserve its cache.
 #[derive(Debug)]
 pub struct Highlighter<'a> {
     theme: &'a Theme, // TODO add caching or accelerator structure
 }
 
-#[derive(Debug, Clone)]
+/// Keeps a stack of scopes and styles as state between highlighting different lines.
+/// If you are highlighting an entire file you create one of these at the start and use it
+/// all the way to the end.
+///
+/// # Caching
+///
+/// One reason this is exposed is that since it implements `Clone` you can actually cache
+/// these (probably along with a `ParseState`) and only re-start highlighting from the point of a change.
+/// You could also do something fancy like only highlight a bit past the end of a user's screen and resume
+/// highlighting when they scroll down on large files.
+///
+/// Alternatively you can save space by caching only the `path` field of this struct
+/// then re-create the HighlightState when needed by passing that stack as the `initial_stack`
+/// parameter to the `new` method. This takes less space but a small amount of time to re-create the style stack.
+///
+/// **Note:** Caching is for advanced users who have tons of time to maximize performance or want to do so eventually.
+/// It is not recommended that you try caching the first time you implement highlighting.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HighlightState {
     styles: Vec<Style>,
     pub path: ScopeStack,
 }
 
+/// Highlights a line of parsed code given a `HighlightState`
+/// and line of changes from the parser.
+///
+/// It splits a line of text into different pieces each with a `Style`
 #[derive(Debug)]
 pub struct HighlightIterator<'a, 'b> {
     index: usize,
@@ -29,6 +58,9 @@ pub struct HighlightIterator<'a, 'b> {
 }
 
 impl HighlightState {
+    /// Note that the `Highlighter` is not stored, it is used to construct the initial
+    /// stack of styles. Most of the time you'll want to pass an empty stack as `initial_stack`
+    /// but see the docs for `HighlightState` for discussion of advanced caching use cases.
     pub fn new(highlighter: &Highlighter, initial_stack: ScopeStack) -> HighlightState {
         let mut initial_styles = vec![highlighter.get_default()];
         for i in 0..initial_stack.len() {
@@ -64,6 +96,8 @@ impl<'a, 'b> HighlightIterator<'a, 'b> {
 impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
     type Item = (Style, &'b str);
 
+    /// Yields the next token of text and the associated `Style` to render that text with.
+    /// the concatenation of the strings in each token will make the original string.
     fn next(&mut self) -> Option<(Style, &'b str)> {
         if self.pos == self.text.len() && self.index >= self.changes.len() {
             return None;
@@ -106,6 +140,8 @@ impl<'a> Highlighter<'a> {
         Highlighter { theme: theme }
     }
 
+    /// The default style in the absence of any matched rules.
+    /// Basically what plain text gets highlighted as.
     pub fn get_default(&self) -> Style {
         Style {
             foreground: self.theme.settings.foreground.unwrap_or(WHITE),
@@ -114,6 +150,15 @@ impl<'a> Highlighter<'a> {
         }
     }
 
+    /// Figures out which scope selector in the theme best matches this scope stack.
+    /// It only returns any changes to the style that should be applied when the top element
+    /// is pushed on to the stack. These actually aren't guaranteed to be different than the current
+    /// style. Basically what this means is that you have to gradually apply styles starting with the
+    /// default and working your way up the stack in order to get the correct style.
+    ///
+    /// Don't worry if this sounds complex, you shouldn't need to use this method.
+    /// It's only public because I default to making things public for power users unless
+    /// I have a good argument nobody will ever need to use the method.
     pub fn get_style(&self, path: &[Scope]) -> StyleModifier {
         let max_item = self.theme
             .scopes

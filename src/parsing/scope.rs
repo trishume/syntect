@@ -12,6 +12,20 @@ lazy_static! {
     pub static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
 }
 
+/// A hierarchy of atoms with semi-standardized names
+/// used to accord semantic information to a specific piece of text.
+/// Generally written with the atoms separated by dots.
+/// By convention atoms are all lowercase alphanumeric.
+///
+/// Example scopes: `text.plain`, `punctuation.definition.string.begin.ruby`,
+/// `meta.function.parameters.rust`
+///
+/// `syntect` uses an optimized format for storing these that allows super fast comparison
+/// and determining if one scope is a prefix of another. It also always takes 16 bytes of space.
+/// It accomplishes this by using a global repository to store string values and using bit-packed
+/// 16 bit numbers to represent and compare atoms. Like "atoms" or "symbols" in other languages.
+/// This means that while comparing and prefix are fast, extracting a string is relatively slower
+/// but ideally should be very rare.
 #[derive(Clone, PartialEq, Eq, Copy, Default)]
 pub struct Scope {
     a: u64,
@@ -34,11 +48,21 @@ pub struct ScopeRepository {
     atom_index_map: HashMap<String, usize>,
 }
 
+/// A stack/sequence of scopes. This is used both to represent hierarchies for a given
+/// token of text, as well as in `ScopeSelectors`. Press `ctrl+shift+p` in Sublime Text
+/// to see the scope stack at a given point.
+/// Also see [the TextMate docs](https://manual.macromates.com/en/scope_selectors).
+///
+/// Example for a JS string inside a script tag in a Rails `ERB` file:
+/// `text.html.ruby text.html.basic source.js.embedded.html string.quoted.double.js`
 #[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeStack {
     scopes: Vec<Scope>,
 }
 
+/// A change to a scope stack. Generally `Noop` is only used internally and you don't have
+/// to worry about ever getting one back from a public function.
+/// Use `ScopeStack#apply` to apply this change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScopeStackOp {
     Push(Scope),

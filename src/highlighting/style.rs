@@ -1,5 +1,7 @@
-/// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/style.rs
-/// released under the MIT license by @defuz
+// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/style.rs
+// released under the MIT license by @defuz
+
+/// The foreground, background and font style
 #[derive(Debug, Clone, Copy, PartialEq, Eq, RustcEncodable, RustcDecodable)]
 pub struct Style {
     /// Foreground color.
@@ -10,6 +12,7 @@ pub struct Style {
     pub font_style: FontStyle,
 }
 
+/// A change to a `Style` applied incrementally by a theme rule.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, RustcEncodable, RustcDecodable)]
 pub struct StyleModifier {
     /// Foreground color.
@@ -42,6 +45,7 @@ pub struct Color {
 }
 
 bitflags! {
+    /// This can be a combination of `FONT_STYLE_BOLD`, `FONT_STYLE_UNDERLINE` and `FONT_STYLE_ITALIC`
     #[derive(RustcEncodable, RustcDecodable)]
     flags FontStyle: u8 {
         const FONT_STYLE_BOLD = 1,
@@ -51,6 +55,7 @@ bitflags! {
 }
 
 impl Style {
+    /// Applies a change to this style, yielding a new changed style
     pub fn apply(&self, modifier: StyleModifier) -> Style {
         Style {
             foreground: modifier.foreground.unwrap_or(self.foreground),

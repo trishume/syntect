@@ -1,3 +1,8 @@
+//! This module contains data structures for representing syntax definitions.
+//! Everything is public because I want this library to be useful in super
+//! integrated cases like text editors and I have no idea what kind of monkeying
+//! you might want to do with the data. Perhaps parsing your own syntax format
+//! into this data structure?
 use std::collections::HashMap;
 use onig::{self, Regex, Region, Syntax};
 use std::rc::{Rc, Weak};
@@ -9,6 +14,13 @@ use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
 pub type ContextPtr = Rc<RefCell<Context>>;
 
+/// The main data structure representing a syntax definition loaded from a
+/// `.sublime-syntax` file. You'll probably only need these as references
+/// to be passed around to parsing code.
+///
+/// Some useful public fields are the `name` field which is a human readable
+/// name to display in syntax lists, and the `hidden` field which means hide
+/// this syntax from any lists because it is for internal use.
 #[derive(Debug, RustcEncodable, RustcDecodable)]
 pub struct SyntaxDefinition {
     pub name: String,
@@ -37,6 +49,9 @@ pub enum Pattern {
     Include(ContextReference),
 }
 
+/// Used to iterate over all the match patterns in a context.
+/// Basically walks the tree of patterns and include directives
+/// in the correct order.
 #[derive(Debug, RustcEncodable, RustcDecodable)]
 pub struct MatchIter {
     ctx_stack: Vec<ContextPtr>,
@@ -54,6 +69,8 @@ pub struct MatchPattern {
     pub with_prototype: Option<ContextPtr>,
 }
 
+/// This wrapper only exists so that I can implement a serialization
+/// trait that crashes if you try and serialize this.
 #[derive(Debug)]
 pub struct LinkerLink {
     pub link: Weak<RefCell<Context>>,

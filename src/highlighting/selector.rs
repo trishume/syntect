@@ -4,12 +4,17 @@
 use parsing::{Scope, ScopeStack, MatchPower, ParseScopeError};
 use std::str::FromStr;
 
+/// A single selector consisting of a stack to match and a possible stack to exclude from being matched.
+/// You probably want `ScopeSelectors` which is this but with union support.
 #[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeSelector {
     path: ScopeStack,
     exclude: Option<ScopeStack>,
 }
 
+/// A selector set that matches anything matched by any of its component selectors.
+/// See [The TextMate Docs](https://manual.macromates.com/en/scope_selectors) for how these
+/// work.
 #[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeSelectors {
     pub selectors: Vec<ScopeSelector>,

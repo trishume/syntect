@@ -10,6 +10,8 @@ use parsing::ParseScopeError;
 
 use self::ParseThemeError::*;
 
+/// A theme parsed from a `.tmTheme` file.
+/// Contains fields useful for a theme list as well as `settings` for styling your editor.
 #[derive(Debug, Default, RustcEncodable, RustcDecodable)]
 pub struct Theme {
     pub name: Option<String>,
@@ -18,6 +20,9 @@ pub struct Theme {
     pub scopes: Vec<ThemeItem>,
 }
 
+/// Various properties meant to be used to style a text editor.
+/// Basically all the styles that aren't directly applied to text like selection colour.
+/// Use this to make your editor UI match the highlighted text.
 #[derive(Debug, Default, RustcEncodable, RustcDecodable)]
 pub struct ThemeSettings {
     /// Foreground color for the view.
@@ -89,6 +94,8 @@ pub struct ThemeSettings {
     pub highlight_foreground: Option<Color>,
 }
 
+/// A component of a theme meant to highlight a specific thing (e.g string literals)
+/// in a certain way.
 #[derive(Debug, Default, RustcEncodable, RustcDecodable)]
 pub struct ThemeItem {
     /// Target scope name.

@@ -4,6 +4,22 @@ use onig::{self, Region};
 use std::usize;
 use std::i32;
 
+/// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
+/// If you are parsing an entire file you create one of these at the start and use it
+/// all the way to the end.
+///
+/// # Caching
+///
+/// One reason this is exposed is that since it implements `Clone` you can actually cache
+/// these (probably along with a `HighlightState`) and only re-start parsing from the point of a change.
+/// See the docs for `HighlightState` for more in-depth discussion of caching.
+///
+/// This state doesn't keep track of the current scope stack and parsing only returns changes to this stack
+/// so if you want to construct scope stacks you'll need to keep track of that as well.
+/// Note that `HighlightState` contains exactly this as a public field that you can use.
+///
+/// **Note:** Caching is for advanced users who have tons of time to maximize performance or want to do so eventually.
+/// It is not recommended that you try caching the first time you implement highlighting.
 #[derive(Debug, Clone)]
 pub struct ParseState {
     stack: Vec<StateLevel>,
@@ -40,6 +56,16 @@ impl ParseState {
         }
     }
 
+    /// Parses a single line of the file. Because of the way regex engines work you unfortunately
+    /// have to pass in a single line contigous in memory. This can be bad for really long lines.
+    /// Sublime Text avoids this by just not highlighting lines that are too long (thousands of characters).
+    ///
+    /// For efficiency reasons this returns only the changes to the current scope at each point in the line.
+    /// You can use `ScopeStack#apply` on each operation in succession to get the stack for a given point.
+    /// Look at the code in `highlighter.rs` for an example of doing this for highlighting purposes.
+    ///
+    /// The vector is in order both by index to apply at (the `usize`) and also by order to apply them at a
+    /// given index (e.g popping old scopes before pusing new scopes).
     pub fn parse_line(&mut self, line: &str) -> Vec<(usize, ScopeStackOp)> {
         assert!(self.stack.len() > 0,
                 "Somehow main context was popped from the stack");
