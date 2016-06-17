@@ -12,6 +12,7 @@ pub struct ThemeSet {
     pub themes: BTreeMap<String, Theme>,
 }
 
+/// A set of themes, includes convenient methods for loading and discovering themes.
 impl ThemeSet {
     /// Returns all the themes found in a folder, good for enumerating before loading one with get_theme
     pub fn discover_theme_paths<P: AsRef<Path>>(folder: P) -> Result<Vec<PathBuf>, LoadingError> {

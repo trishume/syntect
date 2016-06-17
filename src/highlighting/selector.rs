@@ -17,10 +17,13 @@ pub struct ScopeSelector {
 /// work.
 #[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeSelectors {
+    /// the selectors, if any of them match, this matches
     pub selectors: Vec<ScopeSelector>,
 }
 
 impl ScopeSelector {
+    /// Checks if this selector matches a given scope stack.
+    /// See `ScopeSelectors#does_match` for more info.
     pub fn does_match(&self, stack: &[Scope]) -> Option<MatchPower> {
         if self.exclude.as_ref().and_then(|sel| sel.does_match(stack)).is_some() {
             return None;
@@ -32,6 +35,7 @@ impl ScopeSelector {
 impl FromStr for ScopeSelector {
     type Err = ParseScopeError;
 
+    /// Parses a scope prefix followed optionally by a " - " and then a scope prefix to exclude
     fn from_str(s: &str) -> Result<ScopeSelector, ParseScopeError> {
         match s.find(" - ") {
             Some(index) => {
@@ -53,14 +57,6 @@ impl FromStr for ScopeSelector {
 }
 
 impl ScopeSelectors {
-    pub fn does_match(&self, stack: &[Scope]) -> Option<MatchPower> {
-        self.selectors.iter().filter_map(|sel| sel.does_match(stack)).max()
-    }
-}
-
-impl FromStr for ScopeSelectors {
-    type Err = ParseScopeError;
-
     /// checks if any of these selectors match the given scope stack
     /// if so it returns a match score, higher match scores are stronger
     /// matches. Scores are ordered according to the rules found
@@ -76,6 +72,15 @@ impl FromStr for ScopeSelectors {
     ///     .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
     ///     Some(MatchPower(0o2001u64 as f64)));
     /// ```
+    pub fn does_match(&self, stack: &[Scope]) -> Option<MatchPower> {
+        self.selectors.iter().filter_map(|sel| sel.does_match(stack)).max()
+    }
+}
+
+impl FromStr for ScopeSelectors {
+    type Err = ParseScopeError;
+
+    /// Parses a series of selectors separated by commas
     fn from_str(s: &str) -> Result<ScopeSelectors, ParseScopeError> {
         let mut selectors = Vec::new();
         for selector in s.split(',') {

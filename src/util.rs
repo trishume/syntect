@@ -1,3 +1,5 @@
+//! Convenient utility methods, mostly for printing `syntect` data structures
+//! prettily to the terminal.
 use highlighting::Style;
 use std::fmt::Write;
 use parsing::ScopeStackOp;
@@ -5,6 +7,11 @@ use parsing::ScopeStackOp;
 /// Formats the styled fragments using 24-bit colour
 /// terminal escape codes. Meant for debugging and testing.
 /// It's currently fairly inefficient in its use of escape codes.
+///
+/// Note that this does not currently ever un-set the colour so that
+/// the end of a line will also get highlighted with the background.
+/// This means if you might want to use `println!("\x1b[0m");` after
+/// to clear the colouring.
 ///
 /// If `bg` is true then the background is also set
 pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {

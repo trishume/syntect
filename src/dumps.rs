@@ -1,3 +1,12 @@
+//! Methods for dumping serializable structs to a compressed binary format
+//! These are used to load and store the dumps used for fast startup times.
+//!
+//! Currently syntect serializes `SyntaxSet` structs with `dump_to_file`
+//! into `.packdump` files and likewise `ThemeSet` structs to `.themedump` files.
+//!
+//! You can use these methods to manage your own caching of compiled syntaxes and
+//! themes. And even your own rustc_serialize::Encodable structures if you want to
+//! be consistent with your format.
 use bincode::SizeLimit;
 use bincode::rustc_serialize::*;
 use std::fs::File;
@@ -10,6 +19,7 @@ use flate2::read::ZlibDecoder;
 use flate2::Compression;
 use rustc_serialize::{Encodable, Decodable};
 
+/// Dumps an object to a binary array in the same format as `dump_to_file`
 pub fn dump_binary<T: Encodable>(o: &T) -> Vec<u8> {
     let mut v = Vec::new();
     {
@@ -19,6 +29,9 @@ pub fn dump_binary<T: Encodable>(o: &T) -> Vec<u8> {
     v
 }
 
+/// Dumps an encodable object to a file at a given path. If a file already exists at that path
+/// it will be overwritten. The files created are encoded with the `bincode` crate and then
+/// compressed with the `flate2` crate.
 pub fn dump_to_file<T: Encodable, P: AsRef<Path>>(o: &T, path: P) -> EncodingResult<()> {
     let f = BufWriter::new(try!(File::create(path).map_err(EncodingError::IoError)));
     let mut encoder = ZlibEncoder::new(f, Compression::Best);

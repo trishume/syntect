@@ -10,13 +10,23 @@ use std::ops::DerefMut;
 
 #[derive(Debug)]
 pub enum ParseSyntaxError {
+    /// Invalid YAML file syntax, or at least something yaml_rust can't handle
     InvalidYaml(ScanError),
+    /// The file must contain at least on YAML document
     EmptyFile,
+    /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
+    /// Invalid regex
     RegexCompileError(onig::Error),
+    /// A scope that syntect's scope implementation can't handle
     InvalidScope(ParseScopeError),
+    /// A reference to another file that is invalid
     BadFileRef,
+    /// Syntaxes must have a context named "main"
     MainMissing,
+    /// Some part of the YAML file is the wrong type (e.g a string but should be a list)
+    /// Sorry this doesn't give you any way to narrow down where this is.
+    /// Maybe use Sublime Text to figure it out.
     TypeMismatch,
 }
 
@@ -47,6 +57,8 @@ struct ParserState<'a> {
 }
 
 impl SyntaxDefinition {
+    /// In case you want to create your own SyntaxDefinition's in memory from strings.
+    /// Generally you should use a `SyntaxSet`
     pub fn load_from_str(s: &str,
                          lines_include_newline: bool)
                          -> Result<SyntaxDefinition, ParseSyntaxError> {

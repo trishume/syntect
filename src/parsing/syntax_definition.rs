@@ -146,6 +146,7 @@ pub fn context_iter(ctx: ContextPtr) -> MatchIter {
 }
 
 impl Context {
+    /// Returns the match pattern at an index, panics if the thing isn't a match pattern
     pub fn match_at(&self, index: usize) -> &MatchPattern {
         match self.patterns[index] {
             Pattern::Match(ref match_pat) => match_pat,
@@ -153,6 +154,7 @@ impl Context {
         }
     }
 
+    /// Returns a mutable reference, otherwise like `match_at`
     pub fn match_at_mut(&mut self, index: usize) -> &mut MatchPattern {
         match self.patterns[index] {
             Pattern::Match(ref mut match_pat) => match_pat,

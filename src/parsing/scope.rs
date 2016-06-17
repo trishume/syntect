@@ -9,6 +9,8 @@ use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 use std::cmp::Ordering;
 
 lazy_static! {
+    /// The global scope repo, exposed in case you want to minimize locking and unlocking.
+    /// Shouldn't be necessary for you to use. See the `ScopeRepository` docs.
     pub static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
 }
 
@@ -32,6 +34,7 @@ pub struct Scope {
     b: u64,
 }
 
+/// Not all strings are valid scopes
 #[derive(Debug)]
 pub enum ParseScopeError {
     /// Due to a limitation of the current optimized internal representation
@@ -42,6 +45,12 @@ pub enum ParseScopeError {
     TooManyAtoms,
 }
 
+/// The structure used to keep of the mapping between scope atom numbers
+/// and their string names. It is only exposed in case you want to lock
+/// `SCOPE_REPO` and then allocate a whole bunch of scopes at once
+/// without thrashing the lock. It is recommended you just use `Scope::new()`
+///
+/// Only `Scope`s created by the same repository have valid comparison results.
 #[derive(Debug)]
 pub struct ScopeRepository {
     atoms: Vec<String>,
@@ -139,11 +148,16 @@ impl ScopeRepository {
 }
 
 impl Scope {
+    /// Parses a `Scope` from a series of atoms separated by
+    /// `.` characters. Example: `Scope::new("meta.rails.controller")`
     pub fn new(s: &str) -> Result<Scope, ParseScopeError> {
         let mut repo = SCOPE_REPO.lock().unwrap();
         repo.build(s.trim())
     }
 
+    /// Gets the atom number at a given index.
+    /// I can't think of any reason you'd find this useful.
+    /// It is used internally for turning a scope back into a string.
     pub fn atom_at(self, index: usize) -> u16 {
         let shifted = if index < 4 {
             (self.a >> ((3 - index) * 16))
@@ -285,6 +299,10 @@ impl ScopeStack {
     pub fn pop(&mut self) {
         self.scopes.pop();
     }
+
+    /// Modifies this stack according to the operation given
+    /// use this to create a stack from a `Vec` of changes
+    /// given by the parser.
     pub fn apply(&mut self, op: &ScopeStackOp) {
         match op {
             &ScopeStackOp::Push(scope) => self.scopes.push(scope),
@@ -296,6 +314,9 @@ impl ScopeStack {
             &ScopeStackOp::Noop => (),
         }
     }
+
+    /// Prints out each scope in the stack separated by spaces
+    /// and then a newline. Top of the stack at the end.
     pub fn debug_print(&self, repo: &ScopeRepository) {
         for s in self.scopes.iter() {
             print!("{} ", repo.to_string(*s));
@@ -363,6 +384,7 @@ impl ScopeStack {
 impl FromStr for ScopeStack {
     type Err = ParseScopeError;
 
+    /// Parses a scope stack from a whitespace separated list of scopes.
     fn from_str(s: &str) -> Result<ScopeStack, ParseScopeError> {
         let mut scopes = Vec::new();
         for name in s.split_whitespace() {

@@ -1,6 +1,6 @@
 # syntect
 
-`syntect` is a work-in-progress syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax). It is not quite complete but eventually the goal is for it to be used in code analysis tools and text editors.
+`syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax). It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust.
 
 If you are writing a text editor (or something else needing highlighting) in Rust and this library doesn't fit your needs, I consider that a bug and you should file an issue or email me.
 
@@ -20,6 +20,7 @@ Note: the build is currently failing on Travis Linux stable, but succeeding on n
 - [x] Expose internals of the parsing process so text editors can do things like cache parse states and use semantic info for code intelligence
 - [x] High quality highlighting, supporting things like heredocs and complex syntaxes (like Rust's).
 - [x] Include a compressed dump of all the default syntax definitions in the library binary so users don't have to manage a folder of syntaxes.
+- [x] Well documented, I've tried to add a useful documentation comment to everything that isn't utterly self explanatory.
 
 ## Screenshots
 

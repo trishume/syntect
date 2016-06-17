@@ -44,6 +44,8 @@ struct RegexMatch {
 type MatchCache = Vec<bool>;
 
 impl ParseState {
+    /// Create a state from a syntax, keeps its own reference counted
+    /// pointer to the main context of the syntax.
     pub fn new(syntax: &SyntaxDefinition) -> ParseState {
         let start_state = StateLevel {
             context: syntax.contexts["main"].clone(),

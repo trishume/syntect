@@ -37,11 +37,18 @@ use highlighting::{ParseThemeError, SettingsError};
 /// Common error type used by syntax and theme loading
 #[derive(Debug)]
 pub enum LoadingError {
+    /// error finding all the files in a directory
     WalkDir(walkdir::Error),
+    /// error reading a file
     Io(IoError),
+    /// a syntax file was invalid in some way
     ParseSyntax(ParseSyntaxError),
+    /// a theme file was invalid in some way
     ParseTheme(ParseThemeError),
+    /// a theme's Plist syntax was invalid in some way
     ReadSettings(SettingsError),
+    /// A path given to a method was invalid.
+    /// Possibly because it didn't reference a file or wasn't UTF-8.
     BadPath,
 }
 
