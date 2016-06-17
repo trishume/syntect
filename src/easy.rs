@@ -1,3 +1,7 @@
+//! API wrappers for common use cases like highlighting strings and
+//! files without caring about intermediate semantic representation
+//! and caching.
+
 use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet};
 use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
 use std::io::{BufReader, self};
