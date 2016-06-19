@@ -9,6 +9,13 @@ rust:
   - stable
 script:
   - cargo build
-  - cargo doc
+  - |
+    if [ "$TRAVIS_OS_NAME" == "linux" ]
+    then
+      p=$(cd ./target/debug/build/onig_sys-*/out/lib/ && pwd)
+      echo "adding $p to linker path"
+      export LD_LIBRARY_PATH="${p}:${LD_LIBRARY_PATH}"
+    fi
   - cargo test
+  - cargo doc
 after_success: curl https://raw.githubusercontent.com/trishume/syntect/master/scripts/travis-doc-upload.sh | sh

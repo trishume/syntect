@@ -1,4 +1,5 @@
 # syntect
+[![Build Status](https://travis-ci.org/trishume/syntect.svg?branch=master)](https://travis-ci.org/trishume/syntect)
 
 `syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax). It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust.
 
@@ -6,7 +7,7 @@ If you are writing a text editor (or something else needing highlighting) in Rus
 
 It is currently mostly complete and can parse, interpret and highlight based on Sublime Text syntax and `tmTheme` files.
 
-Note: the build is currently failing on Travis Linux stable, but succeeding on nightly. The tests work fine on stable for me on OSX so it might just be a Linux issue, or a Travis issue. I'll see if I can figure it out.
+Note: with stable Rust on Linux there is a possibility you might have to add `./target/debug/build/onig_sys-*/out/lib/` to your `LD_LIBRARY_PATH` environment variable. I dunno why or even if this happens on other places than Travis, but see `travis.yml` for what it does to make it work. Do this if you see `libonig.so: cannot open shared object file`.
 
 ### Rendered docs: <http://thume.ca/rustdoc/syntect/syntect/>
 
