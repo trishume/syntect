@@ -1,3 +1,7 @@
+//! This program is mainly intended for generating the dumps that are compiled in to
+//! syntect, not as a helpful example for beginners.
+//! Although it is a valid example for serializing syntaxes, you probably won't need
+//! to do this yourself unless you want to cache your own compiled grammars.
 extern crate syntect;
 use syntect::parsing::SyntaxSet;
 use syntect::highlighting::ThemeSet;

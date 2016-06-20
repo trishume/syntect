@@ -1,7 +1,16 @@
 [package]
 name = "syntect"
-version = "0.1.0"
+description = "library for high quality syntax highlighting and code intelligence using Sublime Text's grammars"
+documentation = "http://thume.ca/rustdoc/syntect/syntect/"
+repository = "https://github.com/trishume/syntect"
+keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
+readme = "Readme.md"
+license = "MIT"
+version = "0.3.2"
 authors = ["Tristan Hume <tristan@thume.ca>"]
+exclude = [
+    "testdata/*",
+]
 
 [dependencies]
 yaml-rust = "0.3"
@@ -13,7 +22,7 @@ bitflags = "^0.4"
 plist = "0.0.13"
 rustc-serialize = "0.3"
 bincode = "0.5"
-flate2 = "*"
+flate2 = "0.2"
 
 # [profile.release]
 # debug = true

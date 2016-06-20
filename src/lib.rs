@@ -2,6 +2,8 @@
 //! These are still a work in progress but a lot of the important things have
 //! been documented already.
 //!
+//! Much more info about syntect is available on the [Github Page](https://github.com/trishume/syntect).
+//!
 //! May I suggest that you start by reading the `Readme.md` file in the main repo.
 //! Once you're done with that you can look at the docs for `parsing::SyntaxSet`
 //! and for the `easy` module.

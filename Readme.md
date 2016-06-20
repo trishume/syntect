@@ -7,9 +7,19 @@ If you are writing a text editor (or something else needing highlighting) in Rus
 
 It is currently mostly complete and can parse, interpret and highlight based on Sublime Text syntax and `tmTheme` files.
 
-Note: with stable Rust on Linux there is a possibility you might have to add `./target/debug/build/onig_sys-*/out/lib/` to your `LD_LIBRARY_PATH` environment variable. I dunno why or even if this happens on other places than Travis, but see `travis.yml` for what it does to make it work. Do this if you see `libonig.so: cannot open shared object file`.
-
 ### Rendered docs: <http://thume.ca/rustdoc/syntect/syntect/>
+
+## Getting Started
+
+`syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
+
+```toml
+syntect = "0.3.2"
+```
+
+After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/syntect/) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
+
+Note: with stable Rust on Linux there is a possibility you might have to add `./target/debug/build/onig_sys-*/out/lib/` to your `LD_LIBRARY_PATH` environment variable. I dunno why or even if this happens on other places than Travis, but see `travis.yml` for what it does to make it work. Do this if you see `libonig.so: cannot open shared object file`.
 
 ## Features/Goals
 
