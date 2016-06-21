@@ -6,7 +6,7 @@ repository = "https://github.com/trishume/syntect"
 keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
 readme = "Readme.md"
 license = "MIT"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Tristan Hume <tristan@thume.ca>"]
 exclude = [
     "testdata/*",
