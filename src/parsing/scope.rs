@@ -131,7 +131,7 @@ impl ScopeRepository {
             if i != 0 {
                 s.push_str(".");
             }
-            s.push_str(&self.atoms[(atom_number - 1) as usize]);
+            s.push_str(self.atom_str(atom_number));
         }
         s
     }
@@ -144,6 +144,11 @@ impl ScopeRepository {
         let index = self.atoms.len() - 1;
         self.atom_index_map.insert(atom.to_owned(), index);
         return index;
+    }
+
+    /// Return the string for an atom number returned by `Scope#atom_at`
+    pub fn atom_str(&self, atom_number: u16) -> &str {
+        return &self.atoms[(atom_number - 1) as usize];
     }
 }
 
@@ -187,7 +192,7 @@ impl Scope {
 
     /// returns a string representation of this scope, this requires locking a
     /// global repo and shouldn't be done frequently.
-    fn build_string(self) -> String {
+    pub fn build_string(self) -> String {
         let repo = SCOPE_REPO.lock().unwrap();
         repo.to_string(self)
     }
