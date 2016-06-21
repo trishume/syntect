@@ -99,10 +99,10 @@ mod tests {
     use highlighting::{ThemeSet, Style, Highlighter, HighlightIterator, HighlightState};
     #[test]
     fn tokens() {
-        let ps = SyntaxSet::load_defaults_nonewlines();
-        let syntax = ps.find_syntax_by_name("Ruby").unwrap();
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ps.find_syntax_by_name("Markdown").unwrap();
         let mut state = ParseState::new(syntax);
-        let line = "module Five; 5; end";
+        let line = "[w](t.co) *hi* **five**";
         let ops = state.parse_line(line);
 
         // use util::debug_print_ops;
@@ -112,7 +112,7 @@ mod tests {
         assert_eq!(html, include_str!("../testdata/test2.html").trim_right());
 
         let ts = ThemeSet::load_defaults();
-        let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
+        let highlighter = Highlighter::new(&ts.themes["InspiredGitHub"]);
         let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();

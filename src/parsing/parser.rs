@@ -119,7 +119,7 @@ impl ParseState {
                     let mut pat_context = pat_context_ptr.borrow_mut();
                     let mut match_pat = pat_context.match_at_mut(pat_index);
 
-                    println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
+                    // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
                     match_pat.ensure_compiled_if_possible();
                     let refs_regex = if cur_level.captures.is_some() && match_pat.has_captures {
                         let &(ref region, ref s) = cur_level.captures.as_ref().unwrap();

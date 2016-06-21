@@ -2,7 +2,7 @@ use super::scope::*;
 use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
-use onig::{self, Regex, Captures, Syntax};
+use onig::{self, Regex, Captures};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::path::Path;
@@ -254,16 +254,6 @@ impl SyntaxDefinition {
         };
         // println!("{:?}", regex_str);
 
-        // if it contains back references we can't resolve it until runtime
-        let regex_res = Regex::with_options(&regex_str,
-                                            onig::REGEX_OPTION_CAPTURE_GROUP,
-                                            Syntax::default());
-        let regex = if regex_res.is_err() && state.backref_regex.find(&regex_str).is_some() {
-            None
-        } else {
-            Some(try!(regex_res.map_err(|e| ParseSyntaxError::RegexCompileError(e))))
-        };
-
         let scope = try!(get_key(map, "scope", |x| x.as_str())
             .ok()
             .map(|s| str_to_scopes(s, state.scope_repo))
@@ -282,7 +272,10 @@ impl SyntaxDefinition {
             None
         };
 
+        let mut has_captures = false;
         let operation = if let Ok(_) = get_key(map, "pop", |x| Some(x)) {
+            // Thanks @wbond for letting me know this is the correct way to check for captures
+            has_captures = state.backref_regex.find(&regex_str).is_some();
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", |x| Some(x)) {
             MatchOperation::Push(try!(SyntaxDefinition::parse_pushargs(y, state)))
@@ -300,9 +293,9 @@ impl SyntaxDefinition {
         };
 
         let pattern = MatchPattern {
-            has_captures: regex.is_none(),
+            has_captures: has_captures,
             regex_str: regex_str,
-            regex: regex,
+            regex: None,
             scope: scope,
             captures: captures,
             operation: operation,
@@ -428,13 +421,6 @@ mod tests {
                 assert_eq!(match_pat.scope,
                            vec![Scope::new("keyword.control.c").unwrap(),
                                 Scope::new("keyword.looping.c").unwrap()]);
-
-                let r = match_pat.regex.as_ref().unwrap();
-                assert!(r.is_match("else"));
-                assert!(!r.is_match("elses"));
-                assert!(!r.is_match("elose"));
-                assert!(r.is_match("QYYQQQ"));
-                assert!(!r.is_match("QYYQZQQ"));
 
                 assert!(match_pat.with_prototype.is_some());
             }

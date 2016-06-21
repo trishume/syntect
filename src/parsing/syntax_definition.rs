@@ -212,6 +212,7 @@ impl MatchPattern {
     }
 
     fn compile_regex(&mut self) {
+        // TODO don't panic on invalid regex
         let compiled = Regex::with_options(&self.regex_str,
                                            onig::REGEX_OPTION_CAPTURE_GROUP,
                                            Syntax::default())

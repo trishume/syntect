@@ -58,6 +58,7 @@ impl<'a> HighlightLines<'a> {
     pub fn highlight<'b>(&mut self, line: &'b str) -> Vec<(Style, &'b str)> {
         // println!("{}", self.highlight_state.path);
         let ops = self.parse_state.parse_line(&line);
+        // use util::debug_print_ops;
         // debug_print_ops(line, &ops);
         let iter =
             HighlightIterator::new(&mut self.highlight_state, &ops[..], line, &self.highlighter);

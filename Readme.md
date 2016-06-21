@@ -19,7 +19,7 @@ syntect = "0.3.2"
 
 After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/syntect/) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
 
-Note: with stable Rust on Linux there is a possibility you might have to add `./target/debug/build/onig_sys-*/out/lib/` to your `LD_LIBRARY_PATH` environment variable. I dunno why or even if this happens on other places than Travis, but see `travis.yml` for what it does to make it work. Do this if you see `libonig.so: cannot open shared object file`.
+**Note:** with stable Rust on Linux there is a possibility you might have to add `./target/debug/build/onig_sys-*/out/lib/` to your `LD_LIBRARY_PATH` environment variable. I dunno why or even if this happens on other places than Travis, but see `travis.yml` for what it does to make it work. Do this if you see `libonig.so: cannot open shared object file`.
 
 ## Features/Goals
 
@@ -77,7 +77,7 @@ The current perf numbers are below. These numbers should get better once I imple
     - Sublime Text 3 dev build takes ~0.22s, despite having a super fancy javascript syntax definition
     - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors.
     - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex defintion for ES6 syntax.
-- ~220ms to load and link all the syntax definitions in the default Sublime package set. This is ~60% regex compilation and ~35% YAML parsing.
+- ~138ms to load and link all the syntax definitions in the default Sublime package set.
     - but only ~23ms to load and link all the syntax definitions from an internal pre-made binary dump with lazy regex compilation.
 - ~1.9ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 16,000 lines/second or 422 kilobytes/second.
 - ~250ms end to end for `syncat` to start, load the definitions, highlight the test file and shut down. This is mostly spent loading.

@@ -85,7 +85,11 @@ impl SyntaxSet {
 
 impl ThemeSet {
     /// Loads the set of default themes
-    /// Currently includes Solarized light/dark, Base16 ocean/mocha/eighties and InspiredGithub
+    /// Currently includes (these are the keys for the map):
+    ///
+    /// - `base16-ocean.dark`,`base16-eighties.dark`,`base16-mocha.dark`,`base16-ocean.light`
+    /// - `InspiredGitHub` from [here](https://github.com/sethlopezme/InspiredGitHub.tmtheme)
+    /// - `Solarized (dark)` and `Solarized (light)`
     pub fn load_defaults() -> ThemeSet {
         from_binary(include_bytes!("../assets/default.themedump"))
     }
