@@ -202,6 +202,9 @@ impl ParseState {
             let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
             for (cap_index, scopes) in capture_map.iter() {
                 if let Some((cap_start, cap_end)) = reg_match.regions.pos(*cap_index) {
+                    // marking up empty captures causes pops to be sorted wrong
+                    if cap_start == cap_end { continue; }
+                    // println!("capture {:?} at {:?}-{:?}", scopes[0], cap_start, cap_end);
                     for scope in scopes.iter() {
                         map.push(((cap_start, -((cap_end - cap_start) as i32)),
                                   ScopeStackOp::Push(scope.clone())));
@@ -215,6 +218,7 @@ impl ParseState {
             }
         }
         if !pat.scope.is_empty() {
+            // println!("popping at {}", match_end);
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
         self.push_meta_ops(false, match_end, &*level_context, &pat.operation, ops);
