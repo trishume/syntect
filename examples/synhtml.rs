@@ -15,7 +15,12 @@ fn main() {
         return;
     }
 
-    println!("<head><title>{}</title></head>", &args[1]);
+    let style = "
+        pre {
+            font-size:13px;
+            font-family: Consolas, \"Liberation Mono\", Menlo, Courier, monospace;
+        }";
+    println!("<head><title>{}</title><style>{}</style></head>", &args[1], style);
     let theme = &ts.themes["base16-ocean.dark"];
     let c = theme.settings.background.unwrap_or(highlighting::WHITE);
     println!("<body style=\"background-color:#{:02x}{:02x}{:02x};\">\n", c.r, c.g, c.b);

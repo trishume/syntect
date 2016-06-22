@@ -1,4 +1,5 @@
 //! Iterators and data structures for transforming parsing information into styled text.
+
 // Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/highlighter.rs
 // released under the MIT license by @defuz
 

@@ -84,7 +84,8 @@ impl SyntaxSet {
     /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some
     /// reason the default Sublime plain text syntax is still in `.tmLanguage` format.
     pub fn load_plain_text_syntax(&mut self) {
-        let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: {main: []}";
+        let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: \
+                 {main: []}";
         let syn = SyntaxDefinition::load_from_str(&s, false).unwrap();
         self.syntaxes.push(syn);
     }
@@ -134,7 +135,8 @@ impl SyntaxSet {
     /// assert_eq!(syntax.name, "Plain Text");
     /// ```
     pub fn find_syntax_plain_text<'a>(&'a self) -> &'a SyntaxDefinition {
-        self.find_syntax_by_name("Plain Text").expect("All syntax sets ought to have a plain text syntax")
+        self.find_syntax_by_name("Plain Text")
+            .expect("All syntax sets ought to have a plain text syntax")
     }
 
     /// This links all the syntaxes in this set directly with pointers for performance purposes.

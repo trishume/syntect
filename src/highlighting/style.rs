@@ -57,14 +57,14 @@ pub struct Color {
 }
 
 bitflags! {
-    /// This can be a combination of `FONT_STYLE_BOLD`, `FONT_STYLE_UNDERLINE` and `FONT_STYLE_ITALIC`
+/// This can be a combination of `FONT_STYLE_BOLD`, `FONT_STYLE_UNDERLINE` and `FONT_STYLE_ITALIC`
     #[derive(RustcEncodable, RustcDecodable)]
     flags FontStyle: u8 {
-        /// A bitfield constant FontStyle
+/// A bitfield constant FontStyle
         const FONT_STYLE_BOLD = 1,
-        /// A bitfield constant FontStyle
+/// A bitfield constant FontStyle
         const FONT_STYLE_UNDERLINE = 2,
-        /// A bitfield constant FontStyle
+/// A bitfield constant FontStyle
         const FONT_STYLE_ITALIC = 4,
     }
 }

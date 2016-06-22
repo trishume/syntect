@@ -4,7 +4,7 @@
 
 use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet};
 use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
-use std::io::{BufReader, self};
+use std::io::{self, BufReader};
 use std::fs::File;
 use std::path::Path;
 // use util::debug_print_ops;
@@ -97,13 +97,17 @@ impl<'a> HighlightFile<'a> {
     ///     println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
     /// }
     /// ```
-    pub fn new<P: AsRef<Path>>(path_obj: P, ss: &SyntaxSet, theme: &'a Theme) -> io::Result<HighlightFile<'a>> {
+    pub fn new<P: AsRef<Path>>(path_obj: P,
+                               ss: &SyntaxSet,
+                               theme: &'a Theme)
+                               -> io::Result<HighlightFile<'a>> {
         let path: &Path = path_obj.as_ref();
         let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
         let f = try!(File::open(path));
         let reader = BufReader::new(f);
         // TODO use first line detection
-        let syntax = ss.find_syntax_by_extension(extension).unwrap_or_else(|| ss.find_syntax_plain_text());
+        let syntax = ss.find_syntax_by_extension(extension)
+            .unwrap_or_else(|| ss.find_syntax_plain_text());
         Ok(HighlightFile {
             reader: reader,
             highlight_lines: HighlightLines::new(syntax, theme),
@@ -130,6 +134,9 @@ mod tests {
     fn can_highlight_file() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
-        HighlightFile::new("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
+        HighlightFile::new("testdata/highlight_test.erb",
+                           &ss,
+                           &ts.themes["base16-ocean.dark"])
+            .unwrap();
     }
 }

@@ -2,9 +2,9 @@
 use std::fmt::Write;
 use parsing::{ScopeStackOp, Scope, SyntaxDefinition, SyntaxSet, SCOPE_REPO};
 use easy::{HighlightLines, HighlightFile};
-use highlighting::{Style, Theme, Color, self};
+use highlighting::{self, Style, Theme, Color};
 use escape::Escape;
-use std::io::{BufRead, self};
+use std::io::{self, BufRead};
 use std::path::Path;
 
 /// Only one style for now, I may add more class styles later.
@@ -42,7 +42,12 @@ pub fn highlighted_snippet_for_string(s: &str, syntax: &SyntaxDefinition, theme:
     let mut output = String::new();
     let mut highlighter = HighlightLines::new(syntax, theme);
     let c = theme.settings.background.unwrap_or(highlighting::WHITE);
-    write!(output, "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n", c.r, c.g, c.b).unwrap();
+    write!(output,
+           "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
+           c.r,
+           c.g,
+           c.b)
+        .unwrap();
     for line in s.lines() {
         let regions = highlighter.highlight(line);
         let html = styles_to_coloured_html(&regions[..], IncludeBackground::IfDifferent(c));
@@ -60,12 +65,20 @@ pub fn highlighted_snippet_for_string(s: &str, syntax: &SyntaxDefinition, theme:
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for no newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_nonewlines()`. If you think this is the wrong
 /// choice of `SyntaxSet` to accept, I'm not sure of it either, email me.
-pub fn highlighted_snippet_for_file<P: AsRef<Path>>(path: P, ss: &SyntaxSet, theme: &Theme) -> io::Result<String> {
+pub fn highlighted_snippet_for_file<P: AsRef<Path>>(path: P,
+                                                    ss: &SyntaxSet,
+                                                    theme: &Theme)
+                                                    -> io::Result<String> {
     // TODO reduce code duplication with highlighted_snippet_for_string
     let mut output = String::new();
     let mut highlighter = try!(HighlightFile::new(path, ss, theme));
     let c = theme.settings.background.unwrap_or(highlighting::WHITE);
-    write!(output, "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n", c.r, c.g, c.b).unwrap();
+    write!(output,
+           "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
+           c.r,
+           c.g,
+           c.b)
+        .unwrap();
     for maybe_line in highlighter.reader.lines() {
         let line = try!(maybe_line);
         let regions = highlighter.highlight_lines.highlight(&line);
@@ -85,8 +98,11 @@ pub fn highlighted_snippet_for_file<P: AsRef<Path>>(path: P, ss: &SyntaxSet, the
 /// For this to work correctly you must concatenate all the lines in a `<pre>`
 /// tag since some span tags opened on a line may not be closed on that line
 /// and later lines may close tags from previous lines.
-pub fn tokens_to_classed_html(line: &str, ops: &[(usize, ScopeStackOp)], style: ClassStyle) -> String {
-    let mut s = String::with_capacity(line.len()+ops.len()*8); // a guess
+pub fn tokens_to_classed_html(line: &str,
+                              ops: &[(usize, ScopeStackOp)],
+                              style: ClassStyle)
+                              -> String {
+    let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
     let mut cur_index = 0;
     for &(i, ref op) in ops {
         if i > cur_index {
@@ -98,13 +114,13 @@ pub fn tokens_to_classed_html(line: &str, ops: &[(usize, ScopeStackOp)], style: 
                 s.push_str("<span class=\"");
                 scope_to_classes(&mut s, scope, style);
                 s.push_str("\">");
-            },
+            }
             &ScopeStackOp::Pop(n) => {
                 for _ in 0..n {
                     s.push_str("</span>");
                 }
-            },
-            &ScopeStackOp::Noop => panic!("ops shouldn't have no-ops")
+            }
+            &ScopeStackOp::Noop => panic!("ops shouldn't have no-ops"),
         }
     }
     s
@@ -148,7 +164,7 @@ pub enum IncludeBackground {
 pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> String {
     let mut s: String = String::new();
     for &(ref style, text) in v.iter() {
-        write!(s,"<span style=\"").unwrap();
+        write!(s, "<span style=\"").unwrap();
         let include_bg = match bg {
             IncludeBackground::Yes => true,
             IncludeBackground::No => false,
@@ -193,7 +209,10 @@ pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> St
 /// helper for that :-)
 pub fn start_coloured_html_snippet(t: &Theme) -> String {
     let c = t.settings.background.unwrap_or(highlighting::WHITE);
-    format!("<pre style=\"background-color:#{:02x}{:02x}{:02x}\">\n", c.r, c.g, c.b)
+    format!("<pre style=\"background-color:#{:02x}{:02x}{:02x}\">\n",
+            c.r,
+            c.g,
+            c.b)
 }
 
 #[cfg(test)]
@@ -234,7 +253,10 @@ mod tests {
         let html = highlighted_snippet_for_string(s, syntax, &ts.themes["base16-ocean.dark"]);
         println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test3.html"));
-        let html2 = highlighted_snippet_for_file("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
+        let html2 = highlighted_snippet_for_file("testdata/highlight_test.erb",
+                                                 &ss,
+                                                 &ts.themes["base16-ocean.dark"])
+            .unwrap();
         assert_eq!(html2, html);
     }
 }
