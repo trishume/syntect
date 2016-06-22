@@ -1,7 +1,11 @@
 //! Rendering highlighted code as HTML+CSS
 use std::fmt::Write;
-use parsing::{ScopeStackOp, Scope, SCOPE_REPO};
-use highlighting::{Style, self};
+use parsing::{ScopeStackOp, Scope, SyntaxDefinition, SyntaxSet, SCOPE_REPO};
+use easy::{HighlightLines, HighlightFile};
+use highlighting::{Style, Theme, Color, self};
+use escape::Escape;
+use std::io::{BufRead, self};
+use std::path::Path;
 
 /// Only one style for now, I may add more class styles later.
 /// Just here so I don't have to change the API
@@ -27,16 +31,66 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
     }
 }
 
+/// Convenience method that combines `start_coloured_html_snippet`, `styles_to_coloured_html`
+/// and `HighlightLines` from `syntect::easy` to create a full highlighted HTML snippet for
+/// a string (which can contain many lines).
+///
+/// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for no newline characters.
+/// This is easy to get with `SyntaxSet::load_defaults_nonewlines()`. If you think this is the wrong
+/// choice of `SyntaxSet` to accept, I'm not sure of it either, email me.
+pub fn highlighted_snippet_for_string(s: &str, syntax: &SyntaxDefinition, theme: &Theme) -> String {
+    let mut output = String::new();
+    let mut highlighter = HighlightLines::new(syntax, theme);
+    let c = theme.settings.background.unwrap_or(highlighting::WHITE);
+    write!(output, "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n", c.r, c.g, c.b).unwrap();
+    for line in s.lines() {
+        let regions = highlighter.highlight(line);
+        let html = styles_to_coloured_html(&regions[..], IncludeBackground::IfDifferent(c));
+        output.push_str(&html);
+        output.push('\n');
+    }
+    output.push_str("</pre>\n");
+    output
+}
+
+/// Convenience method that combines `start_coloured_html_snippet`, `styles_to_coloured_html`
+/// and `HighlightFile` from `syntect::easy` to create a full highlighted HTML snippet for
+/// a file.
+///
+/// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for no newline characters.
+/// This is easy to get with `SyntaxSet::load_defaults_nonewlines()`. If you think this is the wrong
+/// choice of `SyntaxSet` to accept, I'm not sure of it either, email me.
+pub fn highlighted_snippet_for_file<P: AsRef<Path>>(path: P, ss: &SyntaxSet, theme: &Theme) -> io::Result<String> {
+    // TODO reduce code duplication with highlighted_snippet_for_string
+    let mut output = String::new();
+    let mut highlighter = try!(HighlightFile::new(path, ss, theme));
+    let c = theme.settings.background.unwrap_or(highlighting::WHITE);
+    write!(output, "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n", c.r, c.g, c.b).unwrap();
+    for maybe_line in highlighter.reader.lines() {
+        let line = try!(maybe_line);
+        let regions = highlighter.highlight_lines.highlight(&line);
+        let html = styles_to_coloured_html(&regions[..], IncludeBackground::IfDifferent(c));
+        output.push_str(&html);
+        output.push('\n');
+    }
+    output.push_str("</pre>\n");
+    Ok(output)
+}
+
 /// Output HTML for a line of code with `<span>` elements
 /// specifying classes for each token. The span elements are nested
 /// like the scope stack and the scopes are mapped to classes based
 /// on the `ClassStyle` (see it's docs).
+///
+/// For this to work correctly you must concatenate all the lines in a `<pre>`
+/// tag since some span tags opened on a line may not be closed on that line
+/// and later lines may close tags from previous lines.
 pub fn tokens_to_classed_html(line: &str, ops: &[(usize, ScopeStackOp)], style: ClassStyle) -> String {
     let mut s = String::with_capacity(line.len()+ops.len()*8); // a guess
     let mut cur_index = 0;
     for &(i, ref op) in ops {
         if i > cur_index {
-            s.push_str(&line[cur_index..i]);
+            write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
             cur_index = i
         }
         match op {
@@ -56,15 +110,51 @@ pub fn tokens_to_classed_html(line: &str, ops: &[(usize, ScopeStackOp)], style: 
     s
 }
 
+/// Determines how background colour attributes are generated
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum IncludeBackground {
+    /// Don't include `background-color`, for performance or so that you can use your own background.
+    No,
+    /// Set background colour attributes on every node
+    Yes,
+    /// Only set the `background-color` if it is different than the default (presumably set on a parent element)
+    IfDifferent(Color),
+}
+
 /// Output HTML for a line of code with `<span>` elements using inline
 /// `style` attributes to set the correct font attributes.
 /// The `bg` attribute determines if the spans will have the `background-color`
-/// attribute set. This adds a lot more text but allows different backgrounds.
-pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: bool) -> String {
+/// attribute set. See the `IncludeBackground` enum's docs.
+///
+/// The lines returned don't include a newline at the end.
+/// # Examples
+///
+/// ```
+/// use syntect::easy::HighlightLines;
+/// use syntect::parsing::SyntaxSet;
+/// use syntect::highlighting::{ThemeSet, Style};
+/// use syntect::html::{styles_to_coloured_html, IncludeBackground};
+///
+/// // Load these once at the start of your program
+/// let ps = SyntaxSet::load_defaults_nonewlines();
+/// let ts = ThemeSet::load_defaults();
+///
+/// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
+/// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+/// let regions = h.highlight("5");
+/// let html = styles_to_coloured_html(&regions[..], IncludeBackground::No);
+/// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
+/// ```
+pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> String {
     let mut s: String = String::new();
     for &(ref style, text) in v.iter() {
         write!(s,"<span style=\"").unwrap();
-        if bg {
+        let include_bg = match bg {
+            IncludeBackground::Yes => true,
+            IncludeBackground::No => false,
+            IncludeBackground::IfDifferent(c) => (style.background != c),
+        };
+        if include_bg {
             write!(s,
                    "background-color:#{:02x}{:02x}{:02x};",
                    style.background.r,
@@ -86,10 +176,24 @@ pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: bool) -> String {
                style.foreground.r,
                style.foreground.g,
                style.foreground.b,
-               text)
+               Escape(text))
             .unwrap();
     }
     s
+}
+
+/// Returns a `<pre style="...">\n` tag with the correct background color for the given theme.
+/// This is for if you want to roll your own HTML output, you probably just want to use
+/// `highlighted_snippet_for_string`.
+///
+/// If you don't care about the background color you can just prefix the lines from
+/// `styles_to_coloured_html` with a `<pre>`. This is meant to be used with `IncludeBackground::IfDifferent`.
+///
+/// You're responsible for creating the string `</pre>` to close this, I'm not gonna provide a
+/// helper for that :-)
+pub fn start_coloured_html_snippet(t: &Theme) -> String {
+    let c = t.settings.background.unwrap_or(highlighting::WHITE);
+    format!("<pre style=\"background-color:#{:02x}{:02x}{:02x}\">\n", c.r, c.g, c.b)
 }
 
 #[cfg(test)]
@@ -99,7 +203,7 @@ mod tests {
     use highlighting::{ThemeSet, Style, Highlighter, HighlightIterator, HighlightState};
     #[test]
     fn tokens() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ps = SyntaxSet::load_defaults_nonewlines();
         let syntax = ps.find_syntax_by_name("Markdown").unwrap();
         let mut state = ParseState::new(syntax);
         let line = "[w](t.co) *hi* **five**";
@@ -117,7 +221,20 @@ mod tests {
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();
 
-        let html2 = styles_to_coloured_html(&regions[..], true);
+        let html2 = styles_to_coloured_html(&regions[..], IncludeBackground::Yes);
         assert_eq!(html2, include_str!("../testdata/test1.html").trim_right());
+    }
+
+    #[test]
+    fn strings() {
+        let ss = SyntaxSet::load_defaults_nonewlines();
+        let ts = ThemeSet::load_defaults();
+        let s = include_str!("../testdata/highlight_test.erb");
+        let syntax = ss.find_syntax_by_extension("erb").unwrap();
+        let html = highlighted_snippet_for_string(s, syntax, &ts.themes["base16-ocean.dark"]);
+        println!("{}", html);
+        assert_eq!(html, include_str!("../testdata/test3.html"));
+        let html2 = highlighted_snippet_for_file("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
+        assert_eq!(html2, html);
     }
 }

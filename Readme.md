@@ -14,7 +14,7 @@ It is currently mostly complete and can parse, interpret and highlight based on 
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "0.3.3"
+syntect = "0.4.0"
 ```
 
 After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/syntect/) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
@@ -32,6 +32,7 @@ After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/sy
 - [x] High quality highlighting, supporting things like heredocs and complex syntaxes (like Rust's).
 - [x] Include a compressed dump of all the default syntax definitions in the library binary so users don't have to manage a folder of syntaxes.
 - [x] Well documented, I've tried to add a useful documentation comment to everything that isn't utterly self explanatory.
+- [x] Built-in output to coloured HTML `<pre>` tags or 24-bit colour ANSI terminal escape sequences.
 
 ## Screenshots
 
