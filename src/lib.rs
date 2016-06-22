@@ -32,6 +32,7 @@ pub mod util;
 pub mod dumps;
 pub mod easy;
 pub mod html;
+mod escape;
 
 use std::io::Error as IoError;
 use parsing::ParseSyntaxError;

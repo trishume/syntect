@@ -144,8 +144,8 @@ impl<'a> Highlighter<'a> {
     /// Basically what plain text gets highlighted as.
     pub fn get_default(&self) -> Style {
         Style {
-            foreground: self.theme.settings.foreground.unwrap_or(WHITE),
-            background: self.theme.settings.background.unwrap_or(BLACK),
+            foreground: self.theme.settings.foreground.unwrap_or(BLACK),
+            background: self.theme.settings.background.unwrap_or(WHITE),
             font_style: FontStyle::empty(),
         }
     }
