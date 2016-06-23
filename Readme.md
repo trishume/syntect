@@ -41,6 +41,7 @@ There's currently an example program called `syncat` that prints one of the sour
 ![Nested languages](http://i.imgur.com/bByxb1E.png)
 ![Base 16 Ocean Dark](http://i.imgur.com/CwiPOwZ.png)
 ![Solarized Light](http://i.imgur.com/l3zcO4J.png)
+![InspiredGithub](http://i.imgur.com/a7U1r2j.png)
 
 ## Roadmap
 
@@ -53,6 +54,7 @@ There's currently an example program called `syncat` that prints one of the sour
 - [x] Bundle dumped default syntaxes into the library binary so library users don't need an assets folder with Sublime Text packages.
 - [x] Add nice API wrappers for simple use cases. The base APIs are designed for deep high performance integration with arbitrary text editor data structures.
 - [x] Document the API better and make things private that don't need to be public
+- [ ] Detect file syntax based on first line
 - [ ] Make syncat a better demo, and maybe more demo programs
 - [ ] Make it really fast (mosty two hot-paths need caching, same places Textmate 2 caches)
 - [ ] Add sRGB colour correction (not sure if this is necessary, could be the job of the text editor)
@@ -76,7 +78,7 @@ The current perf numbers are below. These numbers should get better once I imple
     - Textmate 2, Spacemacs and Visual Studio Code all take around the same time (2ish seconds)
     - Atom takes 6s
     - Sublime Text 3 dev build takes ~0.22s, despite having a super fancy javascript syntax definition
-    - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors.
+    - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors (Compare [vim's grammar](https://github.com/vim/vim/blob/master/runtime/syntax/javascript.vim) to [Sublime's](https://github.com/sublimehq/Packages/blob/master/JavaScript/JavaScript.sublime-syntax)).
     - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex defintion for ES6 syntax.
 - ~138ms to load and link all the syntax definitions in the default Sublime package set.
     - but only ~23ms to load and link all the syntax definitions from an internal pre-made binary dump with lazy regex compilation.
