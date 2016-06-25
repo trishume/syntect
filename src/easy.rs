@@ -102,14 +102,12 @@ impl<'a> HighlightFile<'a> {
                                theme: &'a Theme)
                                -> io::Result<HighlightFile<'a>> {
         let path: &Path = path_obj.as_ref();
-        let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
         let f = try!(File::open(path));
-        let reader = BufReader::new(f);
-        // TODO use first line detection
-        let syntax = ss.find_syntax_by_extension(extension)
+        let syntax = try!(ss.find_syntax_for_file(path))
             .unwrap_or_else(|| ss.find_syntax_plain_text());
+
         Ok(HighlightFile {
-            reader: reader,
+            reader: BufReader::new(f),
             highlight_lines: HighlightLines::new(syntax, theme),
         })
     }

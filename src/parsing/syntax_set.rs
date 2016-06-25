@@ -4,7 +4,7 @@ use super::super::LoadingError;
 
 use std::path::Path;
 use walkdir::WalkDir;
-use std::io::Read;
+use std::io::{Read, self, BufRead, BufReader};
 use std::fs::File;
 use std::ops::DerefMut;
 use std::mem;
@@ -148,6 +148,38 @@ impl SyntaxSet {
             }
         }
         None
+    }
+
+    /// Convenience method that tries to find the syntax for a file path,
+    /// first by extension and then by first line of the file if that doesn't work.
+    /// May IO Error because it sometimes tries to read the first line of the file.
+    ///
+    /// # Examples
+    /// When determining how to highlight a file, use this in combination with a fallback to plain text:
+    ///
+    /// ```
+    /// use syntect::parsing::SyntaxSet;
+    /// let ss = SyntaxSet::load_defaults_nonewlines();
+    /// let syntax = ss.find_syntax_for_file("testdata/highlight_test.erb")
+    ///     .unwrap() // for IO errors, you may want to use try!() or another plain text fallback
+    ///     .unwrap_or_else(|| ss.find_syntax_plain_text());
+    /// assert_eq!(syntax.name, "HTML (Rails)");
+    /// ```
+    pub fn find_syntax_for_file<'a, P: AsRef<Path>>(&'a self, path_obj: P) -> io::Result<Option<&'a SyntaxDefinition>> {
+        let path: &Path = path_obj.as_ref();
+        let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
+        let ext_syntax = self.find_syntax_by_extension(extension);
+        let line_syntax = if ext_syntax.is_none() {
+            let mut line = String::new();
+            let f = try!(File::open(path));
+            let mut line_reader = BufReader::new(&f);
+            try!(line_reader.read_line(&mut line));
+            self.find_syntax_by_first_line(&line)
+        } else {
+            None
+        };
+        let syntax = ext_syntax.or(line_syntax);
+        Ok(syntax)
     }
 
     /// Finds a syntax for plain text, which usually has no highlighting rules.
@@ -313,6 +345,8 @@ mod tests {
         assert_eq!(&ps.find_syntax_by_extension("rake").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line").unwrap().name, "C");
+        assert_eq!(&ps.find_syntax_for_file("testdata/parser.rs").unwrap().unwrap().name, "Rust");
+        assert_eq!(&ps.find_syntax_for_file("testdata/test_first_line.test").unwrap().unwrap().name, "Go");
         assert!(&ps.find_syntax_by_first_line("derp derp hi lol").is_none());
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
