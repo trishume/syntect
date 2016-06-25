@@ -107,7 +107,7 @@ mod tests {
 
         let bin = dump_binary(&ps);
         let ps2: SyntaxSet = from_binary(&bin[..]);
-        assert_eq!(ps.syntaxes.len(), ps2.syntaxes.len());
+        assert_eq!(ps.syntaxes().len(), ps2.syntaxes().len());
 
         let themes = ThemeSet::load_defaults();
         assert!(themes.themes.len() > 4);

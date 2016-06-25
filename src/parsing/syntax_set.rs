@@ -4,12 +4,15 @@ use super::super::LoadingError;
 
 use std::path::Path;
 use walkdir::WalkDir;
-use std::io::Read;
+use std::io::{Read, self, BufRead, BufReader};
 use std::fs::File;
 use std::ops::DerefMut;
 use std::mem;
 use std::rc::Rc;
 use std::ascii::AsciiExt;
+use std::sync::Mutex;
+use onig::Regex;
+use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
 /// A syntax set holds a bunch of syntaxes and manages
 /// loading them and the crucial operation of *linking*.
@@ -18,10 +21,11 @@ use std::ascii::AsciiExt;
 /// pointers. See `link_syntaxes` for more.
 /// Linking, followed by adding more unlinked syntaxes with `load_syntaxes`
 /// and then linking again is allowed.
-#[derive(Debug, RustcEncodable, RustcDecodable)]
+#[derive(Debug)]
 pub struct SyntaxSet {
-    pub syntaxes: Vec<SyntaxDefinition>,
+    syntaxes: Vec<SyntaxDefinition>,
     pub is_linked: bool,
+    first_line_cache: Mutex<FirstLineCache>,
 }
 
 fn load_syntax_file(p: &Path,
@@ -39,6 +43,7 @@ impl SyntaxSet {
         SyntaxSet {
             syntaxes: Vec::new(),
             is_linked: true,
+            first_line_cache: Mutex::new(FirstLineCache::new()),
         }
     }
 
@@ -80,6 +85,18 @@ impl SyntaxSet {
         Ok(())
     }
 
+    /// Add a syntax to the set. If the set was linked it is now only partially linked
+    /// and you'll have to link it again for full linking.
+    pub fn add_syntax(&mut self, syntax: SyntaxDefinition) {
+        self.is_linked = false;
+        self.syntaxes.push(syntax);
+    }
+
+    /// The list of syntaxes in the set
+    pub fn syntaxes(&self) -> &[SyntaxDefinition] {
+        return &self.syntaxes[..];
+    }
+
     /// Rarely useful method that loads in a syntax with no highlighting rules for plain text.
     /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some
     /// reason the default Sublime plain text syntax is still in `.tmLanguage` format.
@@ -117,6 +134,52 @@ impl SyntaxSet {
         }
         let lower = s.to_ascii_lowercase();
         self.syntaxes.iter().find(|&s| lower == s.name.to_ascii_lowercase())
+    }
+
+    /// Try to find the syntax for a file based on its first line.
+    /// This uses regexes that come with some sublime syntax grammars
+    /// for matching things like shebangs and mode lines like `-*- Mode: C -*-`
+    pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxDefinition> {
+        let mut cache = self.first_line_cache.lock().unwrap();
+        cache.ensure_filled(self.syntaxes());
+        for &(ref reg, i) in cache.regexes.iter() {
+            if reg.find(s).is_some() {
+                return Some(&self.syntaxes[i]);
+            }
+        }
+        None
+    }
+
+    /// Convenience method that tries to find the syntax for a file path,
+    /// first by extension and then by first line of the file if that doesn't work.
+    /// May IO Error because it sometimes tries to read the first line of the file.
+    ///
+    /// # Examples
+    /// When determining how to highlight a file, use this in combination with a fallback to plain text:
+    ///
+    /// ```
+    /// use syntect::parsing::SyntaxSet;
+    /// let ss = SyntaxSet::load_defaults_nonewlines();
+    /// let syntax = ss.find_syntax_for_file("testdata/highlight_test.erb")
+    ///     .unwrap() // for IO errors, you may want to use try!() or another plain text fallback
+    ///     .unwrap_or_else(|| ss.find_syntax_plain_text());
+    /// assert_eq!(syntax.name, "HTML (Rails)");
+    /// ```
+    pub fn find_syntax_for_file<'a, P: AsRef<Path>>(&'a self, path_obj: P) -> io::Result<Option<&'a SyntaxDefinition>> {
+        let path: &Path = path_obj.as_ref();
+        let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
+        let ext_syntax = self.find_syntax_by_extension(extension);
+        let line_syntax = if ext_syntax.is_none() {
+            let mut line = String::new();
+            let f = try!(File::open(path));
+            let mut line_reader = BufReader::new(&f);
+            try!(line_reader.read_line(&mut line));
+            self.find_syntax_by_first_line(&line)
+        } else {
+            None
+        };
+        let syntax = ext_syntax.or(line_syntax);
+        Ok(syntax)
     }
 
     /// Finds a syntax for plain text, which usually has no highlighting rules.
@@ -209,6 +272,64 @@ impl SyntaxSet {
     }
 }
 
+#[derive(Debug)]
+struct FirstLineCache {
+    /// (first line regex, syntax index) pairs for all syntaxes with a first line regex
+    /// built lazily on first use of `find_syntax_by_first_line`.
+    regexes: Vec<(Regex, usize)>,
+    /// To what extent the first line cache has been built
+    cached_until: usize,
+}
+
+impl FirstLineCache {
+    fn new() -> FirstLineCache {
+        FirstLineCache {
+            regexes: Vec::new(),
+            cached_until: 0,
+        }
+    }
+
+    fn ensure_filled(&mut self, syntaxes: &[SyntaxDefinition]) {
+        if self.cached_until >= syntaxes.len() {
+            return;
+        }
+
+        for (i, syntax) in syntaxes[self.cached_until..].iter().enumerate() {
+            if let Some(ref reg_str) = syntax.first_line_match {
+                if let Ok(reg) = Regex::new(reg_str) {
+                    self.regexes.push((reg,i));
+                }
+            }
+        }
+
+        self.cached_until = syntaxes.len();
+    }
+}
+
+impl Encodable for SyntaxSet {
+    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+        s.emit_struct("SyntaxSet", 2, |s| {
+            try!(s.emit_struct_field("syntaxes", 0, |s| self.syntaxes.encode(s)));
+            try!(s.emit_struct_field("is_linked", 1, |s| self.is_linked.encode(s)));
+            Ok(())
+        })
+    }
+}
+
+impl Decodable for SyntaxSet {
+    fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
+        d.read_struct("SyntaxSet", 2, |d| {
+            let ss = SyntaxSet {
+                syntaxes: try!(d.read_struct_field("syntaxes", 0, Decodable::decode)),
+                is_linked: try!(d.read_struct_field("is_linked", 1, Decodable::decode)),
+                first_line_cache: Mutex::new(FirstLineCache::new()),
+            };
+
+            Ok(ss)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,12 +337,17 @@ mod tests {
     #[test]
     fn can_load() {
         let mut ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        assert_eq!(&ps.find_syntax_by_first_line("#!/usr/bin/env node").unwrap().name, "JavaScript");
         ps.load_plain_text_syntax();
         let rails_scope = Scope::new("source.ruby.rails").unwrap();
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         ps.find_syntax_plain_text();
         assert_eq!(&ps.find_syntax_by_extension("rake").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
+        assert_eq!(&ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line").unwrap().name, "C");
+        assert_eq!(&ps.find_syntax_for_file("testdata/parser.rs").unwrap().unwrap().name, "Rust");
+        assert_eq!(&ps.find_syntax_for_file("testdata/test_first_line.test").unwrap().unwrap().name, "Go");
+        assert!(&ps.find_syntax_by_first_line("derp derp hi lol").is_none());
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // assert!(false);
