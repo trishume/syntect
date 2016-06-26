@@ -1,0 +1,16 @@
+<pre style="background-color:#ffffff;">
+<span style="color:#323232;">%</span><span style="font-weight:bold;color:#a71d5d;">YAML</span><span style="color:#323232;"> </span><span style="color:#0086b3;">1.2</span>
+<span style="color:#323232;">---</span>
+<span style="font-style:italic;color:#969896;">#</span><span style="font-style:italic;color:#969896;"> http://www.sublimetext.com/docs/3/syntax.html</span>
+<span style="color:#63a35c;">name</span><span style="color:#323232;">:</span><span style="color:#323232;"> </span><span style="color:#183691;">Cargo Build Results</span>
+<span style="color:#63a35c;">scope</span><span style="color:#323232;">:</span><span style="color:#323232;"> </span><span style="color:#183691;">source.build_results</span>
+<span style="color:#63a35c;">hidden</span><span style="color:#323232;">:</span><span style="color:#323232;"> </span><span style="color:#0086b3;">true</span>
+<span style="color:#63a35c;">contexts:</span>
+<span style="color:#323232;">  </span><span style="color:#63a35c;">main:</span>
+<span style="color:#323232;">    </span><span style="color:#323232;">-</span><span style="color:#323232;"> </span><span style="color:#63a35c;">match</span><span style="color:#323232;">:</span><span style="color:#323232;"> </span><span style="color:#183691;">&#39;</span><span style="color:#183691;">^(..[^:\n]*):([0-9]+):?([0-9]+)?:? </span><span style="color:#183691;">&#39;</span>
+<span style="color:#323232;">      </span><span style="color:#63a35c;">scope</span><span style="color:#323232;">:</span><span style="color:#323232;"> </span><span style="color:#183691;">entity.name.filename</span>
+<span style="color:#323232;">    </span><span style="color:#323232;">-</span><span style="color:#323232;"> </span><span style="color:#63a35c;">match</span><span style="color:#323232;">:</span><span style="color:#323232;"> </span><span style="color:#183691;">&#39;</span><span style="color:#183691;">\berror: </span><span style="color:#183691;">&#39;</span>
+<span style="color:#323232;">      </span><span style="color:#63a35c;">scope</span><span style="color:#323232;">:</span><span style="color:#323232;"> </span><span style="color:#183691;">message.error</span>
+<span style="color:#323232;">    </span><span style="color:#323232;">-</span><span style="color:#323232;"> </span><span style="color:#63a35c;">match</span><span style="color:#323232;">:</span><span style="color:#323232;"> </span><span style="color:#183691;">&#39;</span><span style="color:#183691;">^\[.+\]$</span><span style="color:#183691;">&#39;</span>
+<span style="color:#323232;">      </span><span style="color:#63a35c;">scope</span><span style="color:#323232;">:</span><span style="color:#323232;"> </span><span style="color:#183691;">comment</span>
+</pre>

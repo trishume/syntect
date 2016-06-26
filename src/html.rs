@@ -251,12 +251,33 @@ mod tests {
         let s = include_str!("../testdata/highlight_test.erb");
         let syntax = ss.find_syntax_by_extension("erb").unwrap();
         let html = highlighted_snippet_for_string(s, syntax, &ts.themes["base16-ocean.dark"]);
-        println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test3.html"));
         let html2 = highlighted_snippet_for_file("testdata/highlight_test.erb",
                                                  &ss,
                                                  &ts.themes["base16-ocean.dark"])
             .unwrap();
         assert_eq!(html2, html);
+
+        // YAML is a tricky syntax and InspiredGitHub is a fancy theme, this is basically an integration test
+        let html3 = highlighted_snippet_for_file("testdata/Packages/Rust/Cargo.sublime-syntax",
+                                                 &ss,
+                                                 &ts.themes["InspiredGitHub"])
+            .unwrap();
+        println!("{}", html3);
+        assert_eq!(html3, include_str!("../testdata/test4.html"));
+    }
+
+    #[test]
+    fn tricky_test_syntax() {
+        // This syntax I wrote tests edge cases of prototypes
+        // I verified the output HTML against what ST3 does with the same syntax and file
+        let ss = SyntaxSet::load_from_folder("testdata").unwrap();
+        let ts = ThemeSet::load_defaults();
+        let html = highlighted_snippet_for_file("testdata/testing-syntax.testsyntax",
+                                                &ss,
+                                                &ts.themes["base16-ocean.dark"])
+            .unwrap();
+        println!("{}", html);
+        assert_eq!(html, include_str!("../testdata/test5.html"));
     }
 }

@@ -28,6 +28,8 @@ pub struct SyntaxDefinition {
     pub scope: Scope,
     pub first_line_match: Option<String>,
     pub hidden: bool,
+    /// Filled in at link time to avoid serializing it multiple times
+    pub prototype: Option<ContextPtr>,
 
     pub variables: HashMap<String, String>,
     pub contexts: HashMap<String, ContextPtr>,
@@ -37,7 +39,13 @@ pub struct SyntaxDefinition {
 pub struct Context {
     pub meta_scope: Vec<Scope>,
     pub meta_content_scope: Vec<Scope>,
+    /// This being set false in the syntax file implies this field being set false,
+    /// but it can also be set falso for contexts that don't include the prototype for other reasons
     pub meta_include_prototype: bool,
+    /// This is filled in by the linker at link time
+    /// for contexts that have `meta_include_prototype==true`
+    /// and are not included from the prototype.
+    pub prototype: Option<ContextPtr>,
     pub uses_backrefs: bool,
 
     pub patterns: Vec<Pattern>,

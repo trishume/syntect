@@ -48,7 +48,6 @@ fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Result<Vec<Scope>, Pars
 struct ParserState<'a> {
     scope_repo: &'a mut ScopeRepository,
     variables: HashMap<String, String>,
-    has_prototype: bool,
     variable_regex: Regex,
     backref_regex: Regex,
     short_multibyte_regex: Regex,
@@ -94,7 +93,6 @@ impl SyntaxDefinition {
         let mut state = ParserState {
             scope_repo: scope_repo,
             variables: variables,
-            has_prototype: contexts_hash.contains_key(&Yaml::String(String::from("prototype"))),
             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
             backref_regex: Regex::new(r"\\\d").unwrap(),
             short_multibyte_regex: Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
@@ -123,6 +121,7 @@ impl SyntaxDefinition {
 
             variables: state.variables.clone(),
             contexts: contexts,
+            prototype: None,
         };
         Ok(defn)
     }
@@ -155,33 +154,34 @@ impl SyntaxDefinition {
         let mut context = Context {
             meta_scope: Vec::new(),
             meta_content_scope: Vec::new(),
-            meta_include_prototype: true,
+            meta_include_prototype: !is_prototype,
             uses_backrefs: false,
             patterns: Vec::new(),
+            prototype: None,
         };
-        let mut seen_pattern = false;
         for y in vec.iter() {
             let map = try!(y.as_hash().ok_or(ParseSyntaxError::TypeMismatch));
 
+            let mut is_special = false;
             if let Some(x) = get_key(map, "meta_scope", |x| x.as_str()).ok() {
                 context.meta_scope = try!(str_to_scopes(x, state.scope_repo));
-            } else if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
+                is_special = true;
+            }
+            if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
                 context.meta_content_scope = try!(str_to_scopes(x, state.scope_repo));
-            } else if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
+                is_special = true;
+            }
+            if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
                 context.meta_include_prototype = x;
-            } else {
-                if !seen_pattern && context.meta_include_prototype && state.has_prototype &&
-                   !is_prototype {
-                    seen_pattern = true;
-                    context.patterns
-                        .push(Pattern::Include(ContextReference::Named(String::from("prototype"))));
-                }
+                is_special = true;
+            }
+            if !is_special {
                 if let Some(x) = get_key(map, "include", |x| Some(x)).ok() {
                     let reference = try!(SyntaxDefinition::parse_reference(x, state));
                     context.patterns.push(Pattern::Include(reference));
                 } else {
                     let pattern = try!(SyntaxDefinition::parse_match_pattern(map, state));
-                    if pattern.regex.is_none() {
+                    if pattern.has_captures {
                         context.uses_backrefs = true;
                     }
                     context.patterns.push(Pattern::Match(pattern));
@@ -229,13 +229,19 @@ impl SyntaxDefinition {
         }
     }
 
+    fn resolve_variables(raw_regex: &str, state: &ParserState) -> String {
+        state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
+            let var_regex_raw =
+                state.variables.get(caps.at(1).unwrap_or("")).map(|x| &**x).unwrap_or("");
+            Self::resolve_variables(var_regex_raw, state)
+        })
+    }
+
     fn parse_match_pattern(map: &BTreeMap<Yaml, Yaml>,
                            state: &mut ParserState)
                            -> Result<MatchPattern, ParseSyntaxError> {
         let raw_regex = try!(get_key(map, "match", |x| x.as_str()));
-        let regex_str_1 = state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
-            state.variables.get(caps.at(1).unwrap_or("")).map(|x| &**x).unwrap_or("").to_owned()
-        });
+        let regex_str_1 = Self::resolve_variables(raw_regex, state);
         // bug triggered by CSS.sublime-syntax, dunno why this is necessary
         let regex_str_2 =
             state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &Captures| {
@@ -250,6 +256,7 @@ impl SyntaxDefinition {
                 .replace("(?:\\n)?","") // fails with invalid operand of repeat expression
                 .replace("(?<!\\n)","") // fails with invalid pattern in look-behind
                 .replace("(?<=\\n)","") // fails with invalid pattern in look-behind
+                .replace("  :\\s","  :(\\s|\\z)") // hack specific to YAML.sublime-syntax
                 .replace("\\n","\\z")
         };
         // println!("{:?}", regex_str);
@@ -385,21 +392,7 @@ mod tests {
         assert_eq!(defn2.contexts["main"].borrow().meta_include_prototype, true);
         assert_eq!(defn2.contexts["string"].borrow().meta_scope,
                    vec![Scope::new("string.quoted.double.c").unwrap()]);
-        {
-            let proto_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];
-            match proto_pattern {
-                &Pattern::Include(ContextReference::Named(_)) => (),
-                _ => assert!(false, "Prototype should be included"),
-            }
-            let not_proto_pattern: &Pattern = &defn2.contexts["string"].borrow().patterns[0];
-            match not_proto_pattern {
-                &Pattern::Include(ContextReference::Named(_)) => {
-                    assert!(false, "Prototype shouldn't be included")
-                }
-                _ => (),
-            }
-        }
-        let first_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[1];
+        let first_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");

@@ -8,6 +8,8 @@ use std::io::BufRead;
 
 fn main() {
     let ss = SyntaxSet::load_defaults_nonewlines();
+    // use this format to load your own set of packages
+    // let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
     let ts = ThemeSet::load_defaults();
 
     let args: Vec<String> = std::env::args().collect();

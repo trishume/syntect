@@ -4,7 +4,7 @@ use super::super::LoadingError;
 
 use std::path::Path;
 use walkdir::WalkDir;
-use std::io::{Read, self, BufRead, BufReader};
+use std::io::{self, Read, BufRead, BufReader};
 use std::fs::File;
 use std::ops::DerefMut;
 use std::mem;
@@ -165,7 +165,9 @@ impl SyntaxSet {
     ///     .unwrap_or_else(|| ss.find_syntax_plain_text());
     /// assert_eq!(syntax.name, "HTML (Rails)");
     /// ```
-    pub fn find_syntax_for_file<'a, P: AsRef<Path>>(&'a self, path_obj: P) -> io::Result<Option<&'a SyntaxDefinition>> {
+    pub fn find_syntax_for_file<'a, P: AsRef<Path>>(&'a self,
+                                                    path_obj: P)
+                                                    -> io::Result<Option<&'a SyntaxDefinition>> {
         let path: &Path = path_obj.as_ref();
         let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
         let ext_syntax = self.find_syntax_by_extension(extension);
@@ -208,8 +210,16 @@ impl SyntaxSet {
     /// which is why it isn't done by default, except by the load_from_folder constructor.
     /// This operation is idempotent, but takes time even on already linked syntax sets.
     pub fn link_syntaxes(&mut self) {
+        // 2 loops necessary to satisfy borrow checker :-(
+        for syntax in self.syntaxes.iter_mut() {
+            if let Some(ref proto_ptr) = syntax.contexts.get("prototype") {
+                let mut mut_ref = proto_ptr.borrow_mut();
+                Self::recursively_mark_no_prototype(syntax, mut_ref.deref_mut());
+                syntax.prototype = Some((*proto_ptr).clone());
+            }
+        }
         for syntax in self.syntaxes.iter() {
-            for (_, ref context_ptr) in syntax.contexts.iter() {
+            for (_, context_ptr) in syntax.contexts.iter() {
                 let mut mut_ref = context_ptr.borrow_mut();
                 self.link_context(syntax, mut_ref.deref_mut());
             }
@@ -217,7 +227,46 @@ impl SyntaxSet {
         self.is_linked = true;
     }
 
+    /// Anything recursively included by the prototype shouldn't include the prototype.
+    /// This marks them as such.
+    fn recursively_mark_no_prototype(syntax: &SyntaxDefinition, context: &mut Context) {
+        context.meta_include_prototype = false;
+        for pattern in context.patterns.iter_mut() {
+            match *pattern {
+                /// Apparently inline blocks also don't include the prototype when within the prototype.
+                /// This is really weird, but necessary to run the YAML syntax.
+                Pattern::Match(ref mut match_pat) => {
+                    let maybe_context_refs = match match_pat.operation {
+                        MatchOperation::Push(ref context_refs) => Some(context_refs),
+                        MatchOperation::Set(ref context_refs) => Some(context_refs),
+                        MatchOperation::Pop | MatchOperation::None => None,
+                    };
+                    if let Some(context_refs) = maybe_context_refs {
+                        for context_ref in context_refs.iter() {
+                            if let &ContextReference::Inline(ref context_ptr) = context_ref {
+                                let mut mut_ref = context_ptr.borrow_mut();
+                                Self::recursively_mark_no_prototype(syntax, mut_ref.deref_mut());
+                            }
+                        }
+                    }
+                }
+                Pattern::Include(ContextReference::Named(ref s)) => {
+                    if let Some(context_ptr) = syntax.contexts.get(s) {
+                        let mut mut_ref = context_ptr.borrow_mut();
+                        Self::recursively_mark_no_prototype(syntax, mut_ref.deref_mut());
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
+
     fn link_context(&self, syntax: &SyntaxDefinition, context: &mut Context) {
+        if context.meta_include_prototype == true {
+            if let Some(ref proto_ptr) = syntax.prototype {
+                context.prototype = Some((*proto_ptr).clone());
+            }
+        }
         for pattern in context.patterns.iter_mut() {
             match *pattern {
                 Pattern::Match(ref mut match_pat) => self.link_match_pat(syntax, match_pat),
@@ -297,7 +346,7 @@ impl FirstLineCache {
         for (i, syntax) in syntaxes[self.cached_until..].iter().enumerate() {
             if let Some(ref reg_str) = syntax.first_line_match {
                 if let Ok(reg) = Regex::new(reg_str) {
-                    self.regexes.push((reg,i));
+                    self.regexes.push((reg, i));
                 }
             }
         }
@@ -337,16 +386,23 @@ mod tests {
     #[test]
     fn can_load() {
         let mut ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
-        assert_eq!(&ps.find_syntax_by_first_line("#!/usr/bin/env node").unwrap().name, "JavaScript");
+        assert_eq!(&ps.find_syntax_by_first_line("#!/usr/bin/env node").unwrap().name,
+                   "JavaScript");
         ps.load_plain_text_syntax();
         let rails_scope = Scope::new("source.ruby.rails").unwrap();
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         ps.find_syntax_plain_text();
         assert_eq!(&ps.find_syntax_by_extension("rake").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
-        assert_eq!(&ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line").unwrap().name, "C");
-        assert_eq!(&ps.find_syntax_for_file("testdata/parser.rs").unwrap().unwrap().name, "Rust");
-        assert_eq!(&ps.find_syntax_for_file("testdata/test_first_line.test").unwrap().unwrap().name, "Go");
+        assert_eq!(&ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line").unwrap().name,
+                   "C");
+        assert_eq!(&ps.find_syntax_for_file("testdata/parser.rs").unwrap().unwrap().name,
+                   "Rust");
+        assert_eq!(&ps.find_syntax_for_file("testdata/test_first_line.test")
+                       .unwrap()
+                       .unwrap()
+                       .name,
+                   "Go");
         assert!(&ps.find_syntax_by_first_line("derp derp hi lol").is_none());
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);

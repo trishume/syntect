@@ -57,7 +57,10 @@ impl SyntaxSet {
     /// Instantiates a new syntax set from a binary dump of
     /// Sublime Text's default open source syntax definitions and then links it.
     /// These dumps are included in this library's binary for convenience.
+    ///
     /// This method loads the version for parsing line strings with no `\n` characters at the end.
+    /// If you're able to efficiently include newlines at the end of strings, use `load_defaults_newlines`
+    /// since it works better. See `SyntaxSet#load_syntaxes` for more info on this issue.
     ///
     /// This is the recommended way of creating a syntax set for
     /// non-advanced use cases. It is also significantly faster than loading the YAML files.

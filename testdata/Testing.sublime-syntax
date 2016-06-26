@@ -1,0 +1,54 @@
+%YAML 1.2
+---
+name: Sublime Syntax Testing
+scope: source.thumetesting
+file_extensions:
+  - testsyntax
+hidden: false
+contexts:
+  prototype:
+    - match: lol
+      scope: storage
+    - include: zoom
+  main:
+    - meta_include_prototype: false
+    - match: hi
+      scope: comment
+    - match: troll
+      push: wow
+    - match: inline
+      push:
+        - match: testing
+          scope: constant
+        - match: inout
+          pop: true
+    - match: html
+      push: scope:text.html.basic
+      with_prototype:
+        - match: htmout
+          pop: true
+    - include: wow
+  wow:
+    - meta_scope: wow
+    - match: wow
+      scope: string
+    - match: out
+      set: zoom
+  zoom:
+    - meta_scope: zoom
+    - match: zoom
+      scope: constant
+    - match: zout
+      set: bamf
+    - match: nested
+      push:
+        - meta_scope: nested
+        - match: doopadoop
+          scope: comment
+        - match: outnested
+          pop: true
+    - include: bamf
+  bamf:
+    - meta_scope: bamf
+    - match: bamf
+      scope: keyword

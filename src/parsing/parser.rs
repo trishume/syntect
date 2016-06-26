@@ -104,9 +104,14 @@ impl ParseState {
             let cur_level = &self.stack[self.stack.len() - 1];
             let mut min_start = usize::MAX;
             let mut cur_match: Option<RegexMatch> = None;
+            let prototype: Option<ContextPtr> = {
+                let ctx_ref = cur_level.context.borrow();
+                ctx_ref.prototype.clone()
+            };
             let context_chain = self.stack
                 .iter()
                 .filter_map(|lvl| lvl.prototype.as_ref().map(|x| x.clone()))
+                .chain(prototype.into_iter())
                 .chain(Some(cur_level.context.clone()).into_iter());
             // println!("{:#?}", cur_level);
             let mut overall_index = 0;
@@ -188,7 +193,7 @@ impl ParseState {
         let context = reg_match.context.borrow();
         let pat = context.match_at(reg_match.pat_index);
         let level_context = level_context_ptr.borrow();
-        // println!("running pattern {:?}", pat);
+        // println!("running pattern {:?} on '{}' at {}", pat.regex_str, line, match_start);
 
         self.push_meta_ops(true, match_start, &*level_context, &pat.operation, ops);
         for s in pat.scope.iter() {
