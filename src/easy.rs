@@ -79,6 +79,9 @@ impl<'a> HighlightFile<'a> {
     /// Auto-detects the syntax from the extension and constructs a `HighlightLines` with the correct syntax and theme.
     ///
     /// # Examples
+    /// This example uses `reader.lines()` to get lines without a newline character.
+    /// See the `syncat` example for an example of reading lines with a newline character, which gets slightly more robust
+    /// and fast syntax highlighting, at the cost of a couple extra lines of code.
     ///
     /// ```
     /// use syntect::parsing::SyntaxSet;
