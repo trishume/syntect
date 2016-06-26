@@ -107,6 +107,10 @@ impl Iterator for MatchIter {
             if self.ctx_stack.is_empty() {
                 return None;
             }
+            // uncomment for debugging infinite recursion
+            // println!("{:?}", self.index_stack);
+            // use std::thread::sleep_ms;
+            // sleep_ms(500);
             let last_index = self.ctx_stack.len() - 1;
             let context_ref = self.ctx_stack[last_index].clone();
             let context = context_ref.borrow();
