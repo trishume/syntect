@@ -40,6 +40,11 @@ fn bench_highlighting_xml(b: &mut Bencher) {
 }
 
 #[bench]
+fn bench_highlighting_yaml(b: &mut Bencher) {
+    highlight_file(b, "testdata/Packages/Ruby/Ruby.sublime-syntax");
+}
+
+#[bench]
 fn bench_highlighting_jquery(b: &mut Bencher) {
     highlight_file(b, "testdata/jquery.js");
 }
