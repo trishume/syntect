@@ -1,6 +1,7 @@
 use super::syntax_definition::*;
 use super::scope::*;
 use onig::{self, Region};
+use std::collections::HashSet;
 use std::usize;
 use std::i32;
 
@@ -83,13 +84,16 @@ impl ParseState {
         }
 
         let mut regions = Region::with_capacity(8);
+        let mut reg_set = HashSet::new();
         let mut match_cache: MatchCache = Vec::with_capacity(64); // TODO find best capacity
         while self.parse_next_token(line,
                                     &mut match_start,
                                     &mut match_cache,
                                     &mut regions,
+                                    &mut reg_set,
                                     &mut res) {
         }
+        println!("uniquereg {:?}", reg_set.len());
         return res;
     }
 
@@ -98,6 +102,7 @@ impl ParseState {
                         start: &mut usize,
                         cache: &mut MatchCache,
                         regions: &mut Region,
+                        reg_set: &mut HashSet<String>,
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
         let cur_match = {
@@ -119,6 +124,7 @@ impl ParseState {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     if overall_index < cache.len() && cache[overall_index] == false {
                         overall_index += 1;
+                        println!("cachehit");
                         continue; // we've determined this pattern doesn't match this line anywhere
                     }
                     let mut pat_context = pat_context_ptr.borrow_mut();
@@ -137,6 +143,7 @@ impl ParseState {
                     } else {
                         match_pat.regex.as_ref().unwrap()
                     };
+                    reg_set.insert(match_pat.regex_str.clone());
                     let matched = regex.search_with_options(line,
                                                             *start,
                                                             line.len(),
