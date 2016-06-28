@@ -72,15 +72,28 @@ $cargo run --release --example syncat testdata/jquery.js | grep cclear | wc -l
    Compiling syntect v0.1.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
      Running `target/release/examples/syncat testdata/jquery.js`
    71302
-$cargo run --release --example syncat testdata/jquery.js | grep regsearch | wc -l
-   Compiling syntect v0.1.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
-     Running `target/release/examples/syncat testdata/jquery.js`
- 2858742
 $cargo run --release --example syncat testdata/jquery.js | grep freshcachetoken | wc -l
     Compiling syntect v0.1.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
       Running `target/release/examples/syncat testdata/jquery.js`
-    80512
+   80512
+# On stats-2 branch
+$cargo run --example syncat testdata/jquery.js | grep cachehit | wc -l
+     Running `target/debug/examples/syncat testdata/jquery.js`
+  527774
+$cargo run --example syncat testdata/jquery.js | grep regsearch | wc -l
+     Running `target/debug/examples/syncat testdata/jquery.js`
+ 2862948
+$cargo run --example syncat testdata/jquery.js | grep regmatch | wc -l
+   Compiling syntect v0.6.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
+     Running `target/debug/examples/syncat testdata/jquery.js`
+  296127
+$cargo run --example syncat testdata/jquery.js | grep leastmatch | wc -l
+   Compiling syntect v0.6.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
+     Running `target/debug/examples/syncat testdata/jquery.js`
+  137842
 ```
+
+Average unique regexes per line is 87.58, average non-unique is regsearch/lines = 317
 
 Ideally we should have only a couple fresh cache searches per line, not ~10 like the stats show (freshcachetoken/linecount).
 In a fantabulous world these stats mean a possible 10x speed improvement, but since caching does have a cost and we can't always
@@ -95,3 +108,4 @@ cache it likely will be nice but not that high.
   - hash maps based on casting RC ref to pointer and hashing? (there is a Hash impl for pointers)
 - for new searches, store matched regexes for context in BTreeMap like textmate
   - for subsequent tokens in same context, just pop off btreemap and re-search if before curpos
+- cache per Regex

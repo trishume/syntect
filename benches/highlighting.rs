@@ -53,3 +53,8 @@ fn bench_highlighting_jquery(b: &mut Bencher) {
 fn bench_highlighting_rustc(b: &mut Bencher) {
     highlight_file(b, "testdata/parser.rs");
 }
+
+#[bench]
+fn bench_highlighting_scope(b: &mut Bencher) {
+    highlight_file(b, "src/parsing/scope.rs");
+}
