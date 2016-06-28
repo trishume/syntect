@@ -149,10 +149,12 @@ impl ParseState {
                                                             line.len(),
                                                             onig::SEARCH_OPTION_NONE,
                                                             Some(regions));
+                    println!("regsearch");
                     if overall_index >= cache.len() {
                         cache.push(matched.is_some());
                     } // TODO update the cache even if this is another time over
                     if let Some(match_start) = matched {
+                        println!("regmatch");
                         let match_end = regions.pos(0).unwrap().1;
                         // this is necessary to avoid infinite looping on dumb patterns
                         let does_something = match match_pat.operation {
