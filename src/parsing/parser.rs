@@ -162,6 +162,7 @@ impl ParseState {
                             _ => true,
                         };
                         if match_start < min_start && does_something {
+                            println!("leastmatch");
                             min_start = match_start;
                             cur_match = Some(RegexMatch {
                                 regions: regions.clone(),
