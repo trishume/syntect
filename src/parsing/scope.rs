@@ -82,8 +82,7 @@ pub enum ScopeStackOp {
 fn pack_as_u16s(atoms: &[usize]) -> Result<Scope, ParseScopeError> {
     let mut res = Scope { a: 0, b: 0 };
 
-    for i in 0..(atoms.len()) {
-        let n = atoms[i];
+    for (i, &n) in atoms.iter().enumerate() {
         if n >= (u16::MAX as usize) - 2 {
             return Err(ParseScopeError::TooManyAtoms);
         }
@@ -140,15 +139,17 @@ impl ScopeRepository {
         if let Some(index) = self.atom_index_map.get(atom) {
             return *index;
         }
+
         self.atoms.push(atom.to_owned());
         let index = self.atoms.len() - 1;
         self.atom_index_map.insert(atom.to_owned(), index);
-        return index;
+
+        index
     }
 
     /// Return the string for an atom number returned by `Scope#atom_at`
     pub fn atom_str(&self, atom_number: u16) -> &str {
-        return &self.atoms[(atom_number - 1) as usize];
+        &self.atoms[(atom_number - 1) as usize]
     }
 }
 
@@ -188,6 +189,10 @@ impl Scope {
     #[inline(always)]
     pub fn len(self) -> u32 {
         8 - self.missing_atoms()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// returns a string representation of this scope, this requires locking a
@@ -309,21 +314,21 @@ impl ScopeStack {
     /// use this to create a stack from a `Vec` of changes
     /// given by the parser.
     pub fn apply(&mut self, op: &ScopeStackOp) {
-        match op {
-            &ScopeStackOp::Push(scope) => self.scopes.push(scope),
-            &ScopeStackOp::Pop(count) => {
+        match *op {
+            ScopeStackOp::Push(scope) => self.scopes.push(scope),
+            ScopeStackOp::Pop(count) => {
                 for _ in 0..count {
                     self.scopes.pop();
                 }
             }
-            &ScopeStackOp::Noop => (),
+            ScopeStackOp::Noop => (),
         }
     }
 
     /// Prints out each scope in the stack separated by spaces
     /// and then a newline. Top of the stack at the end.
     pub fn debug_print(&self, repo: &ScopeRepository) {
-        for s in self.scopes.iter() {
+        for s in &self.scopes {
             print!("{} ", repo.to_string(*s));
         }
         println!("");
@@ -343,6 +348,10 @@ impl ScopeStack {
     /// Return the height/length of this stack
     pub fn len(&self) -> usize {
         self.scopes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// checks if this stack as a selector matches the given stack

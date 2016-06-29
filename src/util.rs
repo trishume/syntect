@@ -39,18 +39,18 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
 
 /// Print out the various push and pop operations in a vector
 /// with visual alignment to the line. Obviously for debugging.
-pub fn debug_print_ops(line: &str, ops: &Vec<(usize, ScopeStackOp)>) {
+pub fn debug_print_ops(line: &str, ops: &[(usize, ScopeStackOp)]) {
     for &(i, ref op) in ops.iter() {
         println!("{}", line.trim_right());
         print!("{: <1$}", "", i);
-        match op {
-            &ScopeStackOp::Push(s) => {
+        match *op {
+            ScopeStackOp::Push(s) => {
                 println!("^ +{}", s);
             }
-            &ScopeStackOp::Pop(count) => {
+            ScopeStackOp::Pop(count) => {
                 println!("^ pop {}", count);
             }
-            &ScopeStackOp::Noop => println!("noop"),
+            ScopeStackOp::Noop => println!("noop"),
         }
     }
 }

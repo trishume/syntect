@@ -44,7 +44,7 @@ struct RegexMatch {
 }
 
 /// maps the pattern to the start index, which is -1 if not found.
-type SearchCache = HashMap<*const MatchPattern,Option<Region>,BuildHasherDefault<FnvHasher>>;
+type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
 
 impl ParseState {
     /// Create a state from a syntax, keeps its own reference counted
@@ -76,6 +76,7 @@ impl ParseState {
                 "Somehow main context was popped from the stack");
         let mut match_start = 0;
         let mut res = Vec::new();
+
         if self.first_line {
             let cur_level = &self.stack[self.stack.len() - 1];
             let context = cur_level.context.borrow();
@@ -88,13 +89,15 @@ impl ParseState {
         let mut regions = Region::with_capacity(8);
         let fnv = BuildHasherDefault::<FnvHasher>::default();
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
+
         while self.parse_next_token(line,
                                     &mut match_start,
                                     &mut search_cache,
                                     &mut regions,
                                     &mut res) {
         }
-        return res;
+
+        res
     }
 
     fn parse_next_token(&mut self,
@@ -114,7 +117,7 @@ impl ParseState {
             };
             let context_chain = self.stack
                 .iter()
-                .filter_map(|lvl| lvl.prototype.as_ref().map(|x| x.clone()))
+                .filter_map(|lvl| lvl.prototype.as_ref().cloned())
                 .chain(prototype.into_iter())
                 .chain(Some(cur_level.context.clone()).into_iter());
             // println!("{:#?}", cur_level);
@@ -125,7 +128,8 @@ impl ParseState {
                     let mut match_pat = pat_context.match_at_mut(pat_index);
                     // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
 
-                    if let Some(maybe_region) = search_cache.get(&(match_pat as *const MatchPattern)) {
+                    if let Some(maybe_region) =
+                           search_cache.get(&(match_pat as *const MatchPattern)) {
                         let mut valid_entry = true;
                         if let &Some(ref region) = maybe_region {
                             let match_start = region.pos(0).unwrap().0;
@@ -218,7 +222,7 @@ impl ParseState {
         // println!("running pattern {:?} on '{}' at {}", pat.regex_str, line, match_start);
 
         self.push_meta_ops(true, match_start, &*level_context, &pat.operation, ops);
-        for s in pat.scope.iter() {
+        for s in &pat.scope {
             // println!("pushing {:?} at {}", s, match_start);
             ops.push((match_start, ScopeStackOp::Push(s.clone())));
         }
@@ -261,11 +265,11 @@ impl ParseState {
                      cur_context: &Context,
                      match_op: &MatchOperation,
                      ops: &mut Vec<(usize, ScopeStackOp)>) {
-        let involves_pop = match match_op {
-            &MatchOperation::Pop => true,
-            &MatchOperation::Set(_) => true,
-            &MatchOperation::Push(_) => false,
-            &MatchOperation::None => false,
+        let involves_pop = match *match_op {
+            MatchOperation::Pop |
+            MatchOperation::Set(_) => true,
+            MatchOperation::Push(_) |
+            MatchOperation::None => false,
         };
         // println!("metas ops for {:?}, is pop: {}, initial: {}",
         //          match_op,

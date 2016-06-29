@@ -109,18 +109,18 @@ pub fn tokens_to_classed_html(line: &str,
             write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
             cur_index = i
         }
-        match op {
-            &ScopeStackOp::Push(scope) => {
+        match *op {
+            ScopeStackOp::Push(scope) => {
                 s.push_str("<span class=\"");
                 scope_to_classes(&mut s, scope, style);
                 s.push_str("\">");
             }
-            &ScopeStackOp::Pop(n) => {
+            ScopeStackOp::Pop(n) => {
                 for _ in 0..n {
                     s.push_str("</span>");
                 }
             }
-            &ScopeStackOp::Noop => panic!("ops shouldn't have no-ops"),
+            ScopeStackOp::Noop => panic!("ops shouldn't have no-ops"),
         }
     }
     s

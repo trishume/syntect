@@ -18,7 +18,7 @@ impl ThemeSet {
     pub fn discover_theme_paths<P: AsRef<Path>>(folder: P) -> Result<Vec<PathBuf>, LoadingError> {
         let mut themes = Vec::new();
         for entry in WalkDir::new(folder) {
-            let entry = try!(entry.map_err(|e| LoadingError::WalkDir(e)));
+            let entry = try!(entry.map_err(LoadingError::WalkDir));
             if entry.path().extension().map(|e| e == "tmTheme").unwrap_or(false) {
                 themes.push(entry.path().to_owned());
             }
@@ -44,7 +44,7 @@ impl ThemeSet {
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<ThemeSet, LoadingError> {
         let paths = try!(Self::discover_theme_paths(folder));
         let mut map = BTreeMap::new();
-        for p in paths.iter() {
+        for p in &paths {
             let theme = try!(Self::get_theme(p));
             let basename =
                 try!(p.file_stem().and_then(|x| x.to_str()).ok_or(LoadingError::BadPath));
