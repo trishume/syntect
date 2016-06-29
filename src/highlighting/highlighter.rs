@@ -114,6 +114,7 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
         match command {
             ScopeStackOp::Push(scope) => {
                 self.state.path.push(scope);
+                // println!("{}", self.state.path);
                 self.state
                     .styles
                     .push(style.apply(self.highlighter.get_style(self.state.path.as_slice())));

@@ -91,6 +91,14 @@ $cargo run --example syncat testdata/jquery.js | grep leastmatch | wc -l
    Compiling syntect v0.6.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
      Running `target/debug/examples/syncat testdata/jquery.js`
   137842
+# With search caching
+$cargo run --example syncat testdata/jquery.js | grep searchcached | wc -l
+   Compiling syntect v0.6.0 (file:///Users/tristan/Box/Dev/Projects/syntect)
+     Running `target/debug/examples/syncat testdata/jquery.js`
+ 2440527
+$cargo run --example syncat testdata/jquery.js | grep regsearch | wc -l
+     Running `target/debug/examples/syncat testdata/jquery.js`
+  950195
 ```
 
 Average unique regexes per line is 87.58, average non-unique is regsearch/lines = 317

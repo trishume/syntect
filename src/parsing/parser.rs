@@ -2,6 +2,7 @@ use super::syntax_definition::*;
 use super::scope::*;
 use onig::{self, Region};
 use std::usize;
+use std::collections::HashMap;
 use std::i32;
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
@@ -40,8 +41,8 @@ struct RegexMatch {
     pat_index: usize,
 }
 
-// TODO cache actual matching regions
-type MatchCache = Vec<bool>;
+/// maps the pattern to the start index, which is -1 if not found.
+type SearchCache = HashMap<*const MatchPattern,Option<Region>>;
 
 impl ParseState {
     /// Create a state from a syntax, keeps its own reference counted
@@ -83,10 +84,10 @@ impl ParseState {
         }
 
         let mut regions = Region::with_capacity(8);
-        let mut match_cache: MatchCache = Vec::with_capacity(64); // TODO find best capacity
+        let mut search_cache: SearchCache = HashMap::with_capacity(128); // TODO find the best capacity
         while self.parse_next_token(line,
                                     &mut match_start,
-                                    &mut match_cache,
+                                    &mut search_cache,
                                     &mut regions,
                                     &mut res) {
         }
@@ -96,7 +97,7 @@ impl ParseState {
     fn parse_next_token(&mut self,
                         line: &str,
                         start: &mut usize,
-                        cache: &mut MatchCache,
+                        search_cache: &mut SearchCache,
                         regions: &mut Region,
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
@@ -114,19 +115,37 @@ impl ParseState {
                 .chain(prototype.into_iter())
                 .chain(Some(cur_level.context.clone()).into_iter());
             // println!("{:#?}", cur_level);
-            let mut overall_index = 0;
+            // println!("token at {} on {}", start, line.trim_right());
             for ctx in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
-                    if overall_index < cache.len() && cache[overall_index] == false {
-                        overall_index += 1;
-                        continue; // we've determined this pattern doesn't match this line anywhere
-                    }
                     let mut pat_context = pat_context_ptr.borrow_mut();
                     let mut match_pat = pat_context.match_at_mut(pat_index);
-
                     // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
+
+                    if let Some(maybe_region) = search_cache.get(&(match_pat as *const MatchPattern)) {
+                        let mut valid_entry = true;
+                        if let &Some(ref region) = maybe_region {
+                            let match_start = region.pos(0).unwrap().0;
+                            if match_start < *start {
+                                valid_entry = false;
+                            }
+                            if match_start < min_start && valid_entry {
+                                // print!("match {} at {} on {}", match_pat.regex_str, match_start, line);
+                                min_start = match_start;
+                                cur_match = Some(RegexMatch {
+                                    regions: region.clone(),
+                                    context: pat_context_ptr.clone(),
+                                    pat_index: pat_index,
+                                });
+                            }
+                        }
+                        if valid_entry {
+                            continue;
+                        }
+                    }
+
                     match_pat.ensure_compiled_if_possible();
-                    let refs_regex = if cur_level.captures.is_some() && match_pat.has_captures {
+                    let refs_regex = if match_pat.has_captures && cur_level.captures.is_some() {
                         let &(ref region, ref s) = cur_level.captures.as_ref().unwrap();
                         Some(match_pat.compile_with_refs(region, s))
                     } else {
@@ -142,9 +161,6 @@ impl ParseState {
                                                             line.len(),
                                                             onig::SEARCH_OPTION_NONE,
                                                             Some(regions));
-                    if overall_index >= cache.len() {
-                        cache.push(matched.is_some());
-                    } // TODO update the cache even if this is another time over
                     if let Some(match_start) = matched {
                         let match_end = regions.pos(0).unwrap().1;
                         // this is necessary to avoid infinite looping on dumb patterns
@@ -152,7 +168,11 @@ impl ParseState {
                             MatchOperation::None => match_start != match_end,
                             _ => true,
                         };
+                        if refs_regex.is_none() && does_something {
+                            search_cache.insert(match_pat, Some(regions.clone()));
+                        }
                         if match_start < min_start && does_something {
+                            // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
                             min_start = match_start;
                             cur_match = Some(RegexMatch {
                                 regions: regions.clone(),
@@ -160,9 +180,11 @@ impl ParseState {
                                 pat_index: pat_index,
                             });
                         }
+                    } else {
+                        if refs_regex.is_none() {
+                            search_cache.insert(match_pat, None);
+                        }
                     }
-
-                    overall_index += 1;
                 }
             }
             cur_match
@@ -172,10 +194,7 @@ impl ParseState {
             let (_, match_end) = reg_match.regions.pos(0).unwrap();
             *start = match_end;
             let level_context = self.stack[self.stack.len() - 1].context.clone();
-            let stack_changed = self.exec_pattern(line, reg_match, level_context, ops);
-            if stack_changed {
-                cache.clear();
-            }
+            self.exec_pattern(line, reg_match, level_context, ops);
             true
         } else {
             false
