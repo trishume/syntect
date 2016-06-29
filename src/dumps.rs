@@ -5,7 +5,7 @@
 //! into `.packdump` files and likewise `ThemeSet` structs to `.themedump` files.
 //!
 //! You can use these methods to manage your own caching of compiled syntaxes and
-//! themes. And even your own rustc_serialize::Encodable structures if you want to
+//! themes. And even your own `rustc_serialize::Encodable` structures if you want to
 //! be consistent with your format.
 use bincode::SizeLimit;
 use bincode::rustc_serialize::*;

@@ -38,13 +38,19 @@ fn load_syntax_file(p: &Path,
     Ok(try!(SyntaxDefinition::load_from_str(&s, lines_include_newline)))
 }
 
-impl SyntaxSet {
-    pub fn new() -> SyntaxSet {
+impl Default for SyntaxSet {
+    fn default() -> Self {
         SyntaxSet {
             syntaxes: Vec::new(),
             is_linked: true,
             first_line_cache: Mutex::new(FirstLineCache::new()),
         }
+    }
+}
+
+impl SyntaxSet {
+    pub fn new() -> SyntaxSet {
+        SyntaxSet::default()
     }
 
     /// Convenience constructor calling `new` and then `load_syntaxes` on the resulting set
@@ -76,7 +82,7 @@ impl SyntaxSet {
                                          -> Result<(), LoadingError> {
         self.is_linked = false;
         for entry in WalkDir::new(folder) {
-            let entry = try!(entry.map_err(|e| LoadingError::WalkDir(e)));
+            let entry = try!(entry.map_err(LoadingError::WalkDir));
             if entry.path().extension().map(|e| e == "sublime-syntax").unwrap_or(false) {
                 // println!("{}", entry.path().display());
                 self.syntaxes.push(try!(load_syntax_file(entry.path(), lines_include_newline)));
@@ -94,7 +100,7 @@ impl SyntaxSet {
 
     /// The list of syntaxes in the set
     pub fn syntaxes(&self) -> &[SyntaxDefinition] {
-        return &self.syntaxes[..];
+        &self.syntaxes[..]
     }
 
     /// Rarely useful method that loads in a syntax with no highlighting rules for plain text.
@@ -103,14 +109,14 @@ impl SyntaxSet {
     pub fn load_plain_text_syntax(&mut self) {
         let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: \
                  {main: []}";
-        let syn = SyntaxDefinition::load_from_str(&s, false).unwrap();
+        let syn = SyntaxDefinition::load_from_str(s, false).unwrap();
         self.syntaxes.push(syn);
     }
 
     /// Finds a syntax by its default scope, for example `source.regexp` finds the regex syntax.
     /// This and all similar methods below do a linear search of syntaxes, this should be fast
     /// because there aren't many syntaxes, but don't think you can call it a bajillion times per second.
-    pub fn find_syntax_by_scope<'a>(&'a self, scope: Scope) -> Option<&'a SyntaxDefinition> {
+    pub fn find_syntax_by_scope(&self, scope: Scope) -> Option<&SyntaxDefinition> {
         self.syntaxes.iter().find(|&s| s.scope == scope)
     }
 
@@ -142,7 +148,7 @@ impl SyntaxSet {
     pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxDefinition> {
         let mut cache = self.first_line_cache.lock().unwrap();
         cache.ensure_filled(self.syntaxes());
-        for &(ref reg, i) in cache.regexes.iter() {
+        for &(ref reg, i) in &cache.regexes {
             if reg.find(s).is_some() {
                 return Some(&self.syntaxes[i]);
             }
@@ -165,9 +171,9 @@ impl SyntaxSet {
     ///     .unwrap_or_else(|| ss.find_syntax_plain_text());
     /// assert_eq!(syntax.name, "HTML (Rails)");
     /// ```
-    pub fn find_syntax_for_file<'a, P: AsRef<Path>>(&'a self,
-                                                    path_obj: P)
-                                                    -> io::Result<Option<&'a SyntaxDefinition>> {
+    pub fn find_syntax_for_file<P: AsRef<Path>>(&self,
+                                                path_obj: P)
+                                                -> io::Result<Option<&SyntaxDefinition>> {
         let path: &Path = path_obj.as_ref();
         let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
         let ext_syntax = self.find_syntax_by_extension(extension);
@@ -199,7 +205,7 @@ impl SyntaxSet {
     /// let syntax = ss.find_syntax_by_token("rs").unwrap_or_else(|| ss.find_syntax_plain_text());
     /// assert_eq!(syntax.name, "Plain Text");
     /// ```
-    pub fn find_syntax_plain_text<'a>(&'a self) -> &'a SyntaxDefinition {
+    pub fn find_syntax_plain_text(&self) -> &SyntaxDefinition {
         self.find_syntax_by_name("Plain Text")
             .expect("All syntax sets ought to have a plain text syntax")
     }
@@ -218,8 +224,8 @@ impl SyntaxSet {
                 syntax.prototype = Some((*proto_ptr).clone());
             }
         }
-        for syntax in self.syntaxes.iter() {
-            for (_, context_ptr) in syntax.contexts.iter() {
+        for syntax in &self.syntaxes {
+            for (_, context_ptr) in &syntax.contexts {
                 let mut mut_ref = context_ptr.borrow_mut();
                 self.link_context(syntax, mut_ref.deref_mut());
             }
@@ -231,13 +237,13 @@ impl SyntaxSet {
     /// This marks them as such.
     fn recursively_mark_no_prototype(syntax: &SyntaxDefinition, context: &mut Context) {
         context.meta_include_prototype = false;
-        for pattern in context.patterns.iter_mut() {
+        for pattern in &mut context.patterns {
             match *pattern {
                 /// Apparently inline blocks also don't include the prototype when within the prototype.
                 /// This is really weird, but necessary to run the YAML syntax.
                 Pattern::Match(ref mut match_pat) => {
                     let maybe_context_refs = match match_pat.operation {
-                        MatchOperation::Push(ref context_refs) => Some(context_refs),
+                        MatchOperation::Push(ref context_refs) |
                         MatchOperation::Set(ref context_refs) => Some(context_refs),
                         MatchOperation::Pop | MatchOperation::None => None,
                     };
@@ -262,12 +268,12 @@ impl SyntaxSet {
     }
 
     fn link_context(&self, syntax: &SyntaxDefinition, context: &mut Context) {
-        if context.meta_include_prototype == true {
+        if context.meta_include_prototype {
             if let Some(ref proto_ptr) = syntax.prototype {
                 context.prototype = Some((*proto_ptr).clone());
             }
         }
-        for pattern in context.patterns.iter_mut() {
+        for pattern in &mut context.patterns {
             match *pattern {
                 Pattern::Match(ref mut match_pat) => self.link_match_pat(syntax, match_pat),
                 Pattern::Include(ref mut context_ref) => self.link_ref(syntax, context_ref),
@@ -298,14 +304,14 @@ impl SyntaxSet {
             Direct(_) => None,
         };
         if let Some(new_context) = maybe_new_context {
-            let mut new_ref = Direct(LinkerLink { link: Rc::downgrade(&new_context) });
+            let mut new_ref = Direct(LinkerLink { link: Rc::downgrade(new_context) });
             mem::swap(context_ref, &mut new_ref);
         }
     }
 
     fn link_match_pat(&self, syntax: &SyntaxDefinition, match_pat: &mut MatchPattern) {
         let maybe_context_refs = match match_pat.operation {
-            MatchOperation::Push(ref mut context_refs) => Some(context_refs),
+            MatchOperation::Push(ref mut context_refs) |
             MatchOperation::Set(ref mut context_refs) => Some(context_refs),
             MatchOperation::Pop | MatchOperation::None => None,
         };

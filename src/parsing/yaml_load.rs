@@ -65,7 +65,7 @@ impl SyntaxDefinition {
             Ok(x) => x,
             Err(e) => return Err(ParseSyntaxError::InvalidYaml(e)),
         };
-        if docs.len() == 0 {
+        if docs.is_empty() {
             return Err(ParseSyntaxError::EmptyFile);
         }
         let doc = &docs[0];
@@ -144,10 +144,10 @@ impl SyntaxDefinition {
                 contexts.insert(name.to_owned(), context_ptr);
             }
         }
-        return Ok(contexts);
+        Ok(contexts)
     }
 
-    fn parse_context(vec: &Vec<Yaml>,
+    fn parse_context(vec: &[Yaml],
                      state: &mut ParserState,
                      is_prototype: bool)
                      -> Result<ContextPtr, ParseSyntaxError> {
@@ -176,7 +176,7 @@ impl SyntaxDefinition {
                 is_special = true;
             }
             if !is_special {
-                if let Some(x) = get_key(map, "include", |x| Some(x)).ok() {
+                if let Some(x) = get_key(map, "include", Some).ok() {
                     let reference = try!(SyntaxDefinition::parse_reference(x, state));
                     context.patterns.push(Pattern::Include(reference));
                 } else {
@@ -189,14 +189,14 @@ impl SyntaxDefinition {
             }
 
         }
-        return Ok(Rc::new(RefCell::new(context)));
+        Ok(Rc::new(RefCell::new(context)))
     }
 
     fn parse_reference(y: &Yaml,
                        state: &mut ParserState)
                        -> Result<ContextReference, ParseSyntaxError> {
         if let Some(s) = y.as_str() {
-            let parts: Vec<&str> = s.split("#").collect();
+            let parts: Vec<&str> = s.split('#').collect();
             let sub_context = if parts.len() > 1 {
                 Some(parts[1].to_owned())
             } else {
@@ -280,13 +280,13 @@ impl SyntaxDefinition {
         };
 
         let mut has_captures = false;
-        let operation = if let Ok(_) = get_key(map, "pop", |x| Some(x)) {
+        let operation = if let Ok(_) = get_key(map, "pop", Some) {
             // Thanks @wbond for letting me know this is the correct way to check for captures
             has_captures = state.backref_regex.find(&regex_str).is_some();
             MatchOperation::Pop
-        } else if let Ok(y) = get_key(map, "push", |x| Some(x)) {
+        } else if let Ok(y) = get_key(map, "push", Some) {
             MatchOperation::Push(try!(SyntaxDefinition::parse_pushargs(y, state)))
-        } else if let Ok(y) = get_key(map, "set", |x| Some(x)) {
+        } else if let Ok(y) = get_key(map, "set", Some) {
             MatchOperation::Set(try!(SyntaxDefinition::parse_pushargs(y, state)))
         } else {
             MatchOperation::None
@@ -308,7 +308,7 @@ impl SyntaxDefinition {
             operation: operation,
             with_prototype: with_prototype,
         };
-        return Ok(pattern);
+        Ok(pattern)
     }
 
     fn parse_pushargs(y: &Yaml,

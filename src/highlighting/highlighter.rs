@@ -33,7 +33,7 @@ pub struct Highlighter<'a> {
 /// highlighting when they scroll down on large files.
 ///
 /// Alternatively you can save space by caching only the `path` field of this struct
-/// then re-create the HighlightState when needed by passing that stack as the `initial_stack`
+/// then re-create the `HighlightState` when needed by passing that stack as the `initial_stack`
 /// parameter to the `new` method. This takes less space but a small amount of time to re-create the style stack.
 ///
 /// **Note:** Caching is for advanced users who have tons of time to maximize performance or want to do so eventually.
