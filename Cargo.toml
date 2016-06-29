@@ -23,6 +23,7 @@ plist = "0.0.13"
 rustc-serialize = "0.3"
 bincode = "0.5"
 flate2 = "0.2"
+fnv = "1.0.2"
 
 # [profile.release]
 # debug = true

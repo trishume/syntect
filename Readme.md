@@ -74,7 +74,7 @@ Currently `syntect` is reasonably fast but not as fast as it could be. The follo
 
 The current perf numbers are below. These numbers should get better once I implement more of the things above, but they're on par with many other text editors.
 
-- Highlighting 9200 lines/247kb of jQuery 2.1 takes 1.0s. For comparison:
+- Highlighting 9200 lines/247kb of jQuery 2.1 takes 0.94s. For comparison:
     - Textmate 2, Spacemacs and Visual Studio Code all take around 2ish seconds (measured by hand with a stopwatch, hence approximate).
     - Atom takes 6s
     - Sublime Text 3 dev build takes ~0.22s, despite having a super fancy javascript syntax definition

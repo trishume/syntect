@@ -4,6 +4,8 @@ use onig::{self, Region};
 use std::usize;
 use std::collections::HashMap;
 use std::i32;
+use std::hash::BuildHasherDefault;
+use fnv::FnvHasher;
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
 /// If you are parsing an entire file you create one of these at the start and use it
@@ -42,7 +44,7 @@ struct RegexMatch {
 }
 
 /// maps the pattern to the start index, which is -1 if not found.
-type SearchCache = HashMap<*const MatchPattern,Option<Region>>;
+type SearchCache = HashMap<*const MatchPattern,Option<Region>,BuildHasherDefault<FnvHasher>>;
 
 impl ParseState {
     /// Create a state from a syntax, keeps its own reference counted
@@ -84,7 +86,8 @@ impl ParseState {
         }
 
         let mut regions = Region::with_capacity(8);
-        let mut search_cache: SearchCache = HashMap::with_capacity(128); // TODO find the best capacity
+        let fnv = BuildHasherDefault::<FnvHasher>::default();
+        let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
         while self.parse_next_token(line,
                                     &mut match_start,
                                     &mut search_cache,

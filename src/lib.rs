@@ -26,6 +26,7 @@ extern crate rustc_serialize;
 #[macro_use]
 extern crate bitflags;
 extern crate flate2;
+extern crate fnv;
 pub mod highlighting;
 pub mod parsing;
 pub mod util;
