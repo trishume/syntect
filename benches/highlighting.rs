@@ -4,11 +4,19 @@ extern crate test;
 extern crate syntect;
 use test::Bencher;
 
-use syntect::parsing::SyntaxSet;
-use syntect::highlighting::ThemeSet;
+use syntect::parsing::{SyntaxSet, SyntaxDefinition};
+use syntect::highlighting::{ThemeSet, Theme};
 use syntect::easy::HighlightLines;
 use std::fs::File;
 use std::io::Read;
+
+fn do_highlight(s: &str, syntax: &SyntaxDefinition, theme: &Theme) {
+    let mut h = HighlightLines::new(syntax, theme);
+    for line in s.lines() {
+        let regions = h.highlight(line);
+        test::black_box(&regions);
+    }
+}
 
 fn highlight_file(b: &mut Bencher, path_s: &str) {
     // don't load from dump so we don't count lazy regex compilation time
@@ -20,12 +28,9 @@ fn highlight_file(b: &mut Bencher, path_s: &str) {
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
-    let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+    do_highlight(&s, syntax, &ts.themes["base16-ocean.dark"]);
     b.iter(|| {
-        for line in s.lines() {
-            let regions = h.highlight(line);
-            test::black_box(&regions);
-        }
+        do_highlight(&s, syntax, &ts.themes["base16-ocean.dark"]);
     });
 }
 

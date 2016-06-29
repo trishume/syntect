@@ -4,9 +4,17 @@ extern crate test;
 extern crate syntect;
 use test::Bencher;
 
-use syntect::parsing::{SyntaxSet, ParseState};
+use syntect::parsing::{SyntaxSet, ParseState, SyntaxDefinition};
 use std::fs::File;
 use std::io::Read;
+
+fn do_parse(s: &str, syntax: &SyntaxDefinition) {
+    let mut state = ParseState::new(syntax);
+    for line in s.lines() {
+        let ops = state.parse_line(line);
+        test::black_box(&ops);
+    }
+}
 
 fn parse_file(b: &mut Bencher, path_s: &str) {
     // don't load from dump so we don't count lazy regex compilation time
@@ -17,12 +25,9 @@ fn parse_file(b: &mut Bencher, path_s: &str) {
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
-    let mut state = ParseState::new(syntax);
+    do_parse(&s, syntax);
     b.iter(|| {
-        for line in s.lines() {
-            let ops = state.parse_line(line);
-            test::black_box(&ops);
-        }
+        do_parse(&s, syntax);
     });
 }
 
