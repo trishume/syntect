@@ -30,6 +30,14 @@ impl ScopeSelector {
         }
         self.path.does_match(stack)
     }
+
+    /// If this selector is really just a single scope, return it
+    pub fn extract_single_scope(&self) -> Option<Scope> {
+        if self.path.len() > 1 || self.exclude.is_some() || self.path.is_empty() {
+            return None;
+        }
+        Some(self.path.as_slice()[0])
+    }
 }
 
 impl FromStr for ScopeSelector {

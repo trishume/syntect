@@ -18,7 +18,10 @@ use super::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};
 /// highlighting runs it will preserve its cache.
 #[derive(Debug)]
 pub struct Highlighter<'a> {
-    theme: &'a Theme, // TODO add caching or accelerator structure
+    theme: &'a Theme,
+    /// Cache of the selectors in the theme that are only one scope
+    /// In most themes this is the majority, hence the usefullness
+    single_selectors: Vec<(Scope, usize)>,
 }
 
 /// Keeps a stack of scopes and styles as state between highlighting different lines.
@@ -139,7 +142,20 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
 
 impl<'a> Highlighter<'a> {
     pub fn new(theme: &'a Theme) -> Highlighter<'a> {
-        Highlighter { theme: theme }
+        let mut single_selectors = Vec::new();
+        for (i,item) in theme.scopes.iter().enumerate() {
+            for sel in &item.scope.selectors {
+                if let Some(scope) = sel.extract_single_scope() {
+                    single_selectors.push((scope, i));
+                }
+            }
+        }
+        println!("{:?}", single_selectors);
+
+        Highlighter {
+            theme: theme,
+            single_selectors: single_selectors,
+        }
     }
 
     /// The default style in the absence of any matched rules.
