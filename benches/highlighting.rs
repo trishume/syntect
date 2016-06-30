@@ -4,9 +4,10 @@ extern crate test;
 extern crate syntect;
 use test::Bencher;
 
-use syntect::parsing::{SyntaxSet, SyntaxDefinition};
+use syntect::parsing::{SyntaxSet, SyntaxDefinition, ScopeStack};
 use syntect::highlighting::{ThemeSet, Theme};
 use syntect::easy::HighlightLines;
+use std::str::FromStr;
 use std::fs::File;
 use std::io::Read;
 
@@ -62,4 +63,15 @@ fn bench_highlighting_rustc(b: &mut Bencher) {
 #[bench]
 fn bench_highlighting_scope(b: &mut Bencher) {
     highlight_file(b, "src/parsing/scope.rs");
+}
+
+#[bench]
+fn bench_stack_matching(b: &mut Bencher) {
+    let s = "source.js meta.group.js meta.group.js meta.block.js meta.function-call.method.js meta.group.js meta.object-literal.js meta.block.js meta.function-call.method.js meta.group.js variable.other.readwrite.js";
+    let stack = ScopeStack::from_str(s).unwrap();
+    let selector = ScopeStack::from_str("source meta.function-call.method").unwrap();
+    b.iter(|| {
+        let res = selector.does_match(stack.as_slice());
+        test::black_box(res);
+    });
 }
