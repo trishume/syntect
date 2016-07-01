@@ -180,6 +180,7 @@ impl FromStr for FontStyle {
                 "underline" => FONT_STYLE_UNDERLINE,
                 "italic" => FONT_STYLE_ITALIC,
                 "normal" => FontStyle::empty(),
+                "regular" => FontStyle::empty(),
                 s => return Err(IncorrectFontStyle(s.to_owned())),
             })
         }

@@ -5,7 +5,8 @@
 
 use std::iter::Iterator;
 
-use parsing::{Scope, ScopeStack, ScopeStackOp};
+use parsing::{Scope, ScopeStack, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
+use super::selector::ScopeSelector;
 use super::theme::Theme;
 use super::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};
 
@@ -21,7 +22,10 @@ pub struct Highlighter<'a> {
     theme: &'a Theme,
     /// Cache of the selectors in the theme that are only one scope
     /// In most themes this is the majority, hence the usefullness
-    single_selectors: Vec<(Scope, usize)>,
+    single_selectors: Vec<(Scope, StyleModifier)>,
+    multi_selectors: Vec<(ScopeSelector, StyleModifier)>,
+    // TODO
+    // single_cache: HashMap<Scope, StyleModifier, BuildHasherDefault<FnvHasher>>,
 }
 
 /// Keeps a stack of scopes and styles as state between highlighting different lines.
@@ -120,7 +124,7 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
                 // println!("{}", self.state.path);
                 self.state
                     .styles
-                    .push(style.apply(self.highlighter.get_style(self.state.path.as_slice())));
+                    .push(style.apply(self.highlighter.get_new_style(self.state.path.as_slice())));
             }
             ScopeStackOp::Pop(n) => {
                 for _ in 0..n {
@@ -143,18 +147,22 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
 impl<'a> Highlighter<'a> {
     pub fn new(theme: &'a Theme) -> Highlighter<'a> {
         let mut single_selectors = Vec::new();
-        for (i,item) in theme.scopes.iter().enumerate() {
+        let mut multi_selectors = Vec::new();
+        for item in theme.scopes.iter() {
             for sel in &item.scope.selectors {
                 if let Some(scope) = sel.extract_single_scope() {
-                    single_selectors.push((scope, i));
+                    single_selectors.push((scope, item.style.clone()));
+                } else {
+                    multi_selectors.push((sel.clone(), item.style.clone()));
                 }
             }
         }
-        println!("{:?}", single_selectors);
+        single_selectors.sort_by(|a,b| b.0.len().cmp(&a.0.len()));
 
         Highlighter {
             theme: theme,
             single_selectors: single_selectors,
+            multi_selectors: multi_selectors,
         }
     }
 
@@ -192,6 +200,40 @@ impl<'a> Highlighter<'a> {
             foreground: max_item.and_then(|item| item.style.foreground),
             background: max_item.and_then(|item| item.style.background),
             font_style: max_item.and_then(|item| item.style.font_style),
+        }
+    }
+
+    /// Like get_style but only guarantees returning any new style
+    /// if the last element of `path` was just pushed on to the stack.
+    /// Panics if `path` is empty.
+    pub fn get_new_style(&self, path: &[Scope]) -> StyleModifier {
+        let last_scope = path[path.len()-1];
+        let single_res = self.single_selectors
+            .iter()
+            .find(|a| a.0.is_prefix_of(last_scope));
+        let mult_res = self.multi_selectors
+            .iter()
+            .filter_map(|&(ref sel, ref style)| {
+                sel.does_match(path).map(|score| (score, style))
+            })
+            .max_by_key(|&(score, _)| score);
+        if let Some((score, style)) = mult_res {
+            let mut single_score: f64 = -1.0;
+            if let Some(&(scope,_)) = single_res {
+                single_score = (scope.len() as f64) * ((ATOM_LEN_BITS * ((path.len()-1) as u16)) as f64).exp2();
+            }
+            // println!("multi at {:?} score {:?} single score {:?}", path, score, single_score);
+            if MatchPower(single_score) < score {
+                return style.clone();
+            }
+        }
+        if let Some(&(_,ref style)) = single_res {
+            return style.clone();
+        }
+        return StyleModifier {
+            foreground: None,
+            background: None,
+            font_style: None,
         }
     }
 }
