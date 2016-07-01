@@ -8,6 +8,10 @@ use std::u64;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 use std::cmp::Ordering;
 
+/// Multiplier on the power of 2 for MatchPower.
+/// Only useful if you compute your own MatchPower scores.
+pub const ATOM_LEN_BITS: u16 = 3;
+
 lazy_static! {
     /// The global scope repo, exposed in case you want to minimize locking and unlocking.
     /// Shouldn't be necessary for you to use. See the `ScopeRepository` docs.
@@ -376,7 +380,6 @@ impl ScopeStack {
     ///     None);
     /// ```
     pub fn does_match(&self, stack: &[Scope]) -> Option<MatchPower> {
-        const ATOM_LEN_BITS: u16 = 3;
         let mut sel_index: usize = 0;
         let mut score: f64 = 0.0;
         for (i, scope) in stack.iter().enumerate() {
