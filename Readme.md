@@ -14,7 +14,7 @@ It is currently mostly complete and can parse, interpret and highlight based on 
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "0.6"
+syntect = "0.7"
 ```
 
 After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/syntect/) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
@@ -24,7 +24,7 @@ After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/sy
 ## Features/Goals
 
 - [x] Work with many languages (accomplished through using existing grammar formats)
-- [ ] Highlight super quickly, as fast as Sublime Text (not there yet but matching most editors)
+- [x] Highlight super quickly, faster than every editor except Sublime Text 3
 - [x] Load up quickly, currently in around 23ms but could potentially be even faster.
 - [x] Include easy to use API for basic cases
 - [x] API allows use in fancy text editors with piece tables and incremental re-highlighting and the like.
@@ -55,29 +55,31 @@ There's currently an example program called `syncat` that prints one of the sour
 - [x] Add nice API wrappers for simple use cases. The base APIs are designed for deep high performance integration with arbitrary text editor data structures.
 - [x] Document the API better and make things private that don't need to be public
 - [x] Detect file syntax based on first line
+- [x] Make it really fast (mosty two hot-paths need caching, same places Textmate 2 caches)
 - [ ] Make syncat a better demo, and maybe more demo programs
-- [ ] Make it really fast (mosty two hot-paths need caching, same places Textmate 2 caches)
 - [ ] Add sRGB colour correction (not sure if this is necessary, could be the job of the text editor)
 - [ ] Add C bindings so it can be used as a C library from other languages.
 
 ## Performance
 
-Currently `syntect` is reasonably fast but not as fast as it could be. The following perf features are done and to-be-done:
+Currently `syntect` is one of the faster syntax highlighting engines, but not the fastest. The following perf features are done and to-be-done:
 
 - [x] Pre-link references between languages (e.g `<script>` tags) so there are no tree traversal string lookups in the hot-path
 - [x] Compact binary representation of scopes to allow quickly passing and copying them around
 - [x] Determine if a scope is a prefix of another scope using bit manipulation in only a few instructions
-- [ ] Cache regex matches to reduce number of times oniguruma is asked to search a line
-- [ ] Cache scope lookups to reduce how much scope matching has to be done to highlight a list of scope operations
+- [x] Cache regex matches to reduce number of times oniguruma is asked to search a line
+- [x] Accelerate scope lookups to reduce how much selector matching has to be done to highlight a list of scope operations
 - [x] Lazily compile regexes so startup time isn't taken compiling a thousand regexs for Actionscript that nobody will use
 - [ ] Use a better regex engine, perhaps the in progress fancy-regex crate
+- [ ] Parallelize the highlighting. Is this even possible? Would it help? To be determined.
 
-The current perf numbers are below. These numbers should get better once I implement more of the things above, but they're on par with many other text editors.
+The current perf numbers are below. These numbers may get better if more of the things above are implemented, but they're better than many other text editors.
+All measurements were taken on a mid 2012 15" retina Macbook Pro.
 
-- Highlighting 9200 lines/247kb of jQuery 2.1 takes 0.94s. For comparison:
+- Highlighting 9200 lines/247kb of jQuery 2.1 takes 680ms. For comparison:
     - Textmate 2, Spacemacs and Visual Studio Code all take around 2ish seconds (measured by hand with a stopwatch, hence approximate).
-    - Atom takes 6s
-    - Sublime Text 3 dev build takes ~0.22s, despite having a super fancy javascript syntax definition
+    - Atom takes 6 seconds
+    - Sublime Text 3 dev build takes ~220ms, despite having a super fancy javascript syntax definition
     - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors (Compare [vim's grammar](https://github.com/vim/vim/blob/master/runtime/syntax/javascript.vim) to [Sublime's](https://github.com/sublimehq/Packages/blob/master/JavaScript/JavaScript.sublime-syntax)).
     - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex defintion for ES6 syntax.
 - Simple syntaxes are faster, JS is one of the most complex. It only takes 34ms to highlight a 1700 line 62kb XML file or 50,000 lines/sec.
@@ -85,6 +87,16 @@ The current perf numbers are below. These numbers should get better once I imple
     - but only ~23ms to load and link all the syntax definitions from an internal pre-made binary dump with lazy regex compilation.
 - ~1.9ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 16,000 lines/second or 422 kilobytes/second.
 - ~250ms end to end for `syncat` to start, load the definitions, highlight the test file and shut down. This is mostly spent loading.
+
+### Caching
+
+Because `syntect`'s API exposes internal cacheable data structures, there is a caching strategy that text editors can use that allows the text on screen to be re-rendered instantaneously regardless of the file size when a change is made after the initial highlight.
+
+Basically, on the initial parse every 1000 lines or so copy the parse state into a side-buffer for that line. When a change is made to the text, because of the way Sublime Text grammars work (and languages in general), only the highlighting after that change can be affected. Thus when a change is made to the text, search backwards in the parse state cache for the last state before the edit, then kick off a background task to start re-highlighting from there. Once the background task highlights past the end of the current editor viewport, render the new changes and continue re-highlighting the rest of the file in the background.
+
+This way from the time the edit happens to the time the new colouring gets rendered in the worst case only `999+length of viewport` lines must be re-highlighted. Given the speed of `syntect` even with a long file and the most complicated syntax and theme this should take less than 100ms. This is enough to re-highlight on every key-stroke of the world's fastest typist *in the worst possible case*. And you can reduce this asymptotically to the length of the viewport by caching parse states more often, at the cost of more memory.
+
+Any time the file is changed the latest cached state is found, the cache is cleared after that point, and a background job is started. Any already running jobs are stopped because they would be working on old state. This way you can just have one thread dedicated to highlighting that is always doing the most up-to-date work, or sleeping.
 
 ## License and Acknowledgements
 
