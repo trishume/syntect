@@ -2,7 +2,7 @@
 //! files without caring about intermediate semantic representation
 //! and caching.
 
-use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet};
+use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet, ScopeStackOp};
 use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
 use std::io::{self, BufReader};
 use std::fs::File;
@@ -116,11 +116,62 @@ impl<'a> HighlightFile<'a> {
     }
 }
 
+/// Iterator over the regions of a line which a given the operation from the parser applies.
+///
+/// To use just keep your own `ScopeStack` and then `ScopeStack.apply(op)` the operation that is yielded
+/// at the top of your `for` loop over this iterator. Now you have a substring of the line and the scope stack
+/// for that token.
+///
+/// **Note:** This will often return empty regions, just `continue` after applying the op if you don't want them.
+#[derive(Debug)]
+pub struct ScopeRegionIterator<'a> {
+    ops: &'a [(usize, ScopeStackOp)],
+    line: &'a str,
+    index: usize,
+    last_str_index: usize,
+}
+
+impl<'a> ScopeRegionIterator<'a> {
+    pub fn new(ops: &'a [(usize, ScopeStackOp)], line: &'a str) -> ScopeRegionIterator<'a> {
+        ScopeRegionIterator {
+            ops: ops,
+            line: line,
+            index: 0,
+            last_str_index: 0,
+        }
+    }
+}
+
+static NOOP_OP: ScopeStackOp = ScopeStackOp::Noop;
+impl<'a> Iterator for ScopeRegionIterator<'a> {
+    type Item = (&'a str, &'a ScopeStackOp);
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_str_i = if self.index >= self.ops.len() {
+            if self.last_str_index >= self.line.len() {
+                return None;
+            }
+            self.line.len()
+        } else {
+            self.ops[self.index].0
+        };
+        let substr = &self.line[self.last_str_index..next_str_i];
+        self.last_str_index = next_str_i;
+        let op = if self.index == 0 {
+            &NOOP_OP
+        } else {
+            &self.ops[self.index-1].1
+        };
+        self.index += 1;
+        Some((substr, op))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::SyntaxSet;
+    use parsing::{SyntaxSet, ParseState, ScopeStack};
     use highlighting::ThemeSet;
+    use std::str::FromStr;
     #[test]
     fn can_highlight_lines() {
         let ps = SyntaxSet::load_defaults_nonewlines();
@@ -139,5 +190,29 @@ mod tests {
                            &ss,
                            &ts.themes["base16-ocean.dark"])
             .unwrap();
+    }
+
+    #[test]
+    fn can_find_regions() {
+        let ss = SyntaxSet::load_defaults_nonewlines();
+        let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap());
+        let line = "lol=5+2";
+        let ops = state.parse_line(line);
+
+        let mut stack = ScopeStack::new();
+        let mut token_count = 0;
+        for (s, op) in ScopeRegionIterator::new(&ops, line) {
+            stack.apply(op);
+            if s.is_empty() { // in this case we don't care about blank tokens
+                continue;
+            }
+            if token_count == 1 {
+                assert_eq!(stack, ScopeStack::from_str("source.ruby keyword.operator.assignment.ruby").unwrap());
+                assert_eq!(s, "=");
+            }
+            token_count += 1;
+            println!("{:?} {}", s, stack);
+        }
+        assert_eq!(token_count, 5);
     }
 }
