@@ -98,6 +98,35 @@ This way from the time the edit happens to the time the new colouring gets rende
 
 Any time the file is changed the latest cached state is found, the cache is cleared after that point, and a background job is started. Any already running jobs are stopped because they would be working on old state. This way you can just have one thread dedicated to highlighting that is always doing the most up-to-date work, or sleeping.
 
+## Examples Available
+
+There's a number of examples of programs that use `syntect` in the `examples` folder and some code outside the repo:
+
+- `syncat` prints a highlighted file to the terminal using 24-bit colour ANSI escape codes. It demonstrates a simple file highlighting workflow.
+- `synhtml` prints an HTML file that will display the highlighted code. Demonstrates how syntect could be used by web servers and static site generators.
+- `synstats` collects a bunch of statistics about the code in a folder. Includes basic things like line count but also fancier things like number of functions. Demonstrates how `syntect` can be used for code analysis as well as highlighting, as well as how to use the APIs to parse out the semantic tokenization.
+- [`faiyels`](https://github.com/trishume/faiyels) is a little code minimap visualizer I wrote that uses `syntect` for highlighting.
+
+Here's that stats that `synstats` extracts from `syntect`'s codebase (not including examples and test data) as of [this commit](https://github.com/trishume/syntect/commit/10baa6888f84ea4ae35c746526302a8ff4956eb1):
+```
+################## Stats ###################
+File count:                               19
+Total characters:                     155504
+
+Function count:                          165
+Type count (structs, enums, classes):     64
+
+Code lines (traditional SLOC):          2960
+Total lines (w/ comments & blanks):     4011
+Comment lines (comment but no code):     736
+Blank lines (lines-blank-comment):       315
+
+Lines with a documentation comment:      646
+Total words written in doc comments:    4734
+Total words written in all comments:    5145
+Characters of comment:                 41099
+```
+
 ## License and Acknowledgements
 
 Thanks to [Textmate 2](https://github.com/textmate/textmate) and @defuz's [sublimate](https://github.com/defuz/sublimate) for the existing open source code I used as inspiration and in the case of sublimate's `tmTheme` loader, copy-pasted. All code (including defuz's sublimate code) is released under the MIT license.
