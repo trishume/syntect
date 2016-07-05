@@ -20,7 +20,7 @@ struct Selectors {
 impl Default for Selectors {
     fn default() -> Selectors {
         Selectors {
-            comment: ScopeSelector::from_str("comment").unwrap(),
+            comment: ScopeSelector::from_str("comment - comment.block.attribute").unwrap(),
             function: ScopeSelector::from_str("entity.name.function").unwrap(),
             types: ScopeSelectors::from_str("entity.name.class, entity.name.struct, entity.name.enum, entity.name.type").unwrap(),
         }
@@ -35,9 +35,28 @@ struct Stats {
     types: usize,
     lines: usize,
     chars: usize,
+    code_lines: usize,
     comment_lines: usize,
     comment_chars: usize,
     comment_tokens: usize,
+}
+
+fn print_stats(stats: &Stats) {
+    println!("");
+    println!("################## Stats ###################");
+    println!("File count:                           {:>6}", stats.files);
+    println!("Total characters:                     {:>6}", stats.chars);
+    println!("");
+    println!("Function count:                       {:>6}", stats.functions);
+    println!("Type count (structs, enums, classes): {:>6}", stats.types);
+    println!("");
+    println!("Code lines (traditional SLOC):        {:>6}", stats.code_lines);
+    println!("Total lines (w/ comments & blanks):   {:>6}", stats.lines);
+    println!("Comment lines (comment but no code):  {:>6}", stats.comment_lines);
+    println!("Blank lines (lines-blank-comment):    {:>6}", stats.lines-stats.code_lines-stats.comment_lines);
+    println!("");
+    println!("Number of comment tokens:             {:>6}", stats.comment_tokens);
+    println!("Characters of comment:                {:>6}", stats.comment_chars);
 }
 
 fn is_ignored(entry: &DirEntry) -> bool {
@@ -51,6 +70,8 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stats: &mut Stats) {
     stats.lines += 1;
 
     let mut stack = ScopeStack::new();
+    let mut line_has_comment = false;
+    let mut line_has_code = false;
     for (s, op) in ScopeRegionIterator::new(&ops, line) {
         stack.apply(op);
         if s.is_empty() { // in this case we don't care about blank tokens
@@ -59,6 +80,9 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stats: &mut Stats) {
         if stats.selectors.comment.does_match(stack.as_slice()).is_some() {
             stats.comment_chars += s.len();
             stats.comment_tokens += 1;
+            line_has_comment = true;
+        } else if !s.chars().all(|c| c.is_whitespace()) {
+            line_has_code = true;
         }
         if stats.selectors.function.does_match(stack.as_slice()).is_some() {
             stats.functions += 1;
@@ -66,6 +90,12 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stats: &mut Stats) {
         if stats.selectors.types.does_match(stack.as_slice()).is_some() {
             stats.types += 1;
         }
+    }
+    if line_has_comment && !line_has_code {
+        stats.comment_lines += 1;
+    }
+    if line_has_code {
+        stats.code_lines += 1;
     }
 }
 
@@ -100,15 +130,17 @@ fn main() {
         &args[1]
     };
 
+    println!("################## Files ###################");
     let mut stats = Stats::default();
     let walker = WalkDir::new(path).into_iter();
     for entry in walker.filter_entry(|e| !is_ignored(e)) {
         let entry = entry.unwrap();
-        println!("{}", entry.path().display());
         if entry.file_type().is_file() {
+            println!("{}", entry.path().display());
             count(&ss, entry.path(), &mut stats);
         }
     }
 
-    println!("{:?}", stats);
+    // println!("{:?}", stats);
+    print_stats(&stats);
 }
