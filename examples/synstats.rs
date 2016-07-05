@@ -1,3 +1,11 @@
+//! An example of using syntect for code analysis.
+//! Basically a fancy lines of code count program that works
+//! for all languages Sublime Text supports and also counts things
+//! like number of functions and number of types defined.
+//!
+//! Another thing it does that other line count programs can't always
+//! do is properly count comments in embedded syntaxes. For example
+//! JS, CSS and Ruby comments embedded in ERB files.
 extern crate syntect;
 extern crate walkdir;
 use syntect::parsing::{SyntaxSet, ParseState, ScopeStackOp, ScopeStack};
@@ -13,6 +21,7 @@ use std::str::FromStr;
 #[derive(Debug)]
 struct Selectors {
     comment: ScopeSelector,
+    doc_comment: ScopeSelectors,
     function: ScopeSelector,
     types: ScopeSelectors,
 }
@@ -21,6 +30,7 @@ impl Default for Selectors {
     fn default() -> Selectors {
         Selectors {
             comment: ScopeSelector::from_str("comment - comment.block.attribute").unwrap(),
+            doc_comment: ScopeSelectors::from_str("comment.line.documentation, comment.block.documentation").unwrap(),
             function: ScopeSelector::from_str("entity.name.function").unwrap(),
             types: ScopeSelectors::from_str("entity.name.class, entity.name.struct, entity.name.enum, entity.name.type").unwrap(),
         }
@@ -38,7 +48,9 @@ struct Stats {
     code_lines: usize,
     comment_lines: usize,
     comment_chars: usize,
-    comment_tokens: usize,
+    comment_words: usize,
+    doc_comment_lines: usize,
+    doc_comment_words: usize,
 }
 
 fn print_stats(stats: &Stats) {
@@ -55,7 +67,9 @@ fn print_stats(stats: &Stats) {
     println!("Comment lines (comment but no code):  {:>6}", stats.comment_lines);
     println!("Blank lines (lines-blank-comment):    {:>6}", stats.lines-stats.code_lines-stats.comment_lines);
     println!("");
-    println!("Number of comment tokens:             {:>6}", stats.comment_tokens);
+    println!("Lines with a documentation comment:   {:>6}", stats.doc_comment_lines);
+    println!("Total words written in doc comments:  {:>6}", stats.doc_comment_words);
+    println!("Total words written in all comments:  {:>6}", stats.comment_words);
     println!("Characters of comment:                {:>6}", stats.comment_chars);
 }
 
@@ -71,6 +85,7 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stats: &mut Stats) {
 
     let mut stack = ScopeStack::new();
     let mut line_has_comment = false;
+    let mut line_has_doc_comment = false;
     let mut line_has_code = false;
     for (s, op) in ScopeRegionIterator::new(&ops, line) {
         stack.apply(op);
@@ -78,8 +93,13 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stats: &mut Stats) {
             continue;
         }
         if stats.selectors.comment.does_match(stack.as_slice()).is_some() {
+            let words = s.split_whitespace().filter(|w| w.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '\'')).count();
+            if stats.selectors.doc_comment.does_match(stack.as_slice()).is_some() {
+                line_has_doc_comment = true;
+                stats.doc_comment_words += words;
+            }
             stats.comment_chars += s.len();
-            stats.comment_tokens += 1;
+            stats.comment_words += words;
             line_has_comment = true;
         } else if !s.chars().all(|c| c.is_whitespace()) {
             line_has_code = true;
@@ -93,6 +113,9 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stats: &mut Stats) {
     }
     if line_has_comment && !line_has_code {
         stats.comment_lines += 1;
+    }
+    if line_has_doc_comment {
+        stats.doc_comment_lines += 1;
     }
     if line_has_code {
         stats.code_lines += 1;
