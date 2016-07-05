@@ -345,15 +345,18 @@ impl ScopeStack {
     }
 
     /// Return a slice of the scopes in this stack
+    #[inline]
     pub fn as_slice(&self) -> &[Scope] {
         &self.scopes[..]
     }
 
     /// Return the height/length of this stack
+    #[inline]
     pub fn len(&self) -> usize {
         self.scopes.len()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

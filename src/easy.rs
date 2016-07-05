@@ -122,6 +122,8 @@ impl<'a> HighlightFile<'a> {
 /// at the top of your `for` loop over this iterator. Now you have a substring of the line and the scope stack
 /// for that token.
 ///
+/// See the `synstats.rs` example for an example of using this iterator.
+///
 /// **Note:** This will often return empty regions, just `continue` after applying the op if you don't want them.
 #[derive(Debug)]
 pub struct ScopeRegionIterator<'a> {
