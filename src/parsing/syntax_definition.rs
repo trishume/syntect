@@ -21,7 +21,7 @@ pub type ContextPtr = Rc<RefCell<Context>>;
 /// Some useful public fields are the `name` field which is a human readable
 /// name to display in syntax lists, and the `hidden` field which means hide
 /// this syntax from any lists because it is for internal use.
-#[derive(Clone, Debug, RustcEncodable, RustcDecodable)]
+#[derive(Clone, Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
 pub struct SyntaxDefinition {
     pub name: String,
     pub file_extensions: Vec<String>,
@@ -35,7 +35,7 @@ pub struct SyntaxDefinition {
     pub contexts: HashMap<String, ContextPtr>,
 }
 
-#[derive(Debug, RustcEncodable, RustcDecodable)]
+#[derive(Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
 pub struct Context {
     pub meta_scope: Vec<Scope>,
     pub meta_content_scope: Vec<Scope>,
@@ -51,7 +51,7 @@ pub struct Context {
     pub patterns: Vec<Pattern>,
 }
 
-#[derive(Debug, RustcEncodable, RustcDecodable)]
+#[derive(Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
 pub enum Pattern {
     Match(MatchPattern),
     Include(ContextReference),
@@ -66,7 +66,7 @@ pub struct MatchIter {
     index_stack: Vec<usize>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct MatchPattern {
     pub has_captures: bool,
     pub regex_str: String,
@@ -84,7 +84,7 @@ pub struct LinkerLink {
     pub link: Weak<RefCell<Context>>,
 }
 
-#[derive(Debug, RustcEncodable, RustcDecodable)]
+#[derive(Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
 pub enum ContextReference {
     Named(String),
     ByScope {
@@ -99,7 +99,7 @@ pub enum ContextReference {
     Direct(LinkerLink),
 }
 
-#[derive(Debug, RustcEncodable, RustcDecodable)]
+#[derive(Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
 pub enum MatchOperation {
     Push(Vec<ContextReference>),
     Set(Vec<ContextReference>),
@@ -275,6 +275,15 @@ impl Decodable for MatchPattern {
         })
     }
 }
+
+impl Eq for LinkerLink {}
+
+impl PartialEq for LinkerLink {
+    fn eq(&self, other: &LinkerLink) -> bool {
+        self.link.upgrade() == other.link.upgrade()
+    }
+}
+
 
 /// Just panics, we can't do anything with linked up syntaxes
 impl Encodable for LinkerLink {
