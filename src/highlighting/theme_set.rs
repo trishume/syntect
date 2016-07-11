@@ -3,7 +3,7 @@ use super::settings::*;
 use super::super::LoadingError;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::io::BufReader;
+use std::io::{BufReader, BufRead, Seek};
 use walkdir::WalkDir;
 use std::fs::File;
 
@@ -26,18 +26,16 @@ impl ThemeSet {
         Ok(themes)
     }
 
-    fn read_file(path: &Path) -> Result<BufReader<File>, LoadingError> {
-        let reader = try!(File::open(path));
-        Ok(BufReader::new(reader))
-    }
-
-    fn read_plist(path: &Path) -> Result<Settings, LoadingError> {
-        Ok(try!(read_plist(try!(Self::read_file(path)))))
-    }
-
     /// Loads a theme given a path to a .tmTheme file
     pub fn get_theme<P: AsRef<Path>>(path: P) -> Result<Theme, LoadingError> {
-        Ok(try!(Theme::parse_settings(try!(Self::read_plist(path.as_ref())))))
+        let file = try!(File::open(path));
+        let mut file = BufReader::new(file);
+        Self::load_from_reader(&mut file)
+    }
+
+    /// Loads a theme given a readable stream
+    pub fn load_from_reader<R: BufRead + Seek>(r: &mut R) -> Result<Theme, LoadingError> {
+        Ok(try!(Theme::parse_settings(try!(read_plist(r)))))
     }
 
     /// Loads all the themes in a folder
