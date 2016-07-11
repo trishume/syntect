@@ -21,7 +21,7 @@ pub type ContextPtr = Rc<RefCell<Context>>;
 /// Some useful public fields are the `name` field which is a human readable
 /// name to display in syntax lists, and the `hidden` field which means hide
 /// this syntax from any lists because it is for internal use.
-#[derive(Debug, RustcEncodable, RustcDecodable)]
+#[derive(Clone, Debug, RustcEncodable, RustcDecodable)]
 pub struct SyntaxDefinition {
     pub name: String,
     pub file_extensions: Vec<String>,
