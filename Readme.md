@@ -5,7 +5,10 @@
 
 If you are writing a text editor (or something else needing highlighting) in Rust and this library doesn't fit your needs, I consider that a bug and you should file an issue or email me.
 
-It is currently mostly complete and can parse, interpret and highlight based on Sublime Text syntax and `tmTheme` files.
+**Note:** I consider this project "done" in the sense that it works quite well for its intended purpose, accomplishes the major goals I had, and I'm unlikely to make any sweeping changes.
+I won't be committing much anymore because the marginal return on additional work isn't very high. Rest assured if you submit PRs I will review them and likely merge promptly.
+I'll also quite possibly still fix issues and definitely offer advice and knowledge on how the library works. Basically I'll be maintaining the library but not developing it further.
+I've spent months working on, tweaking, optimizing, documenting and testing this library. If you still have any reasons you don't think it fits your needs, file an issue or email me.
 
 ### Rendered docs: <http://thume.ca/rustdoc/syntect/syntect/>
 
@@ -14,7 +17,7 @@ It is currently mostly complete and can parse, interpret and highlight based on 
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "0.7"
+syntect = "1.0"
 ```
 
 After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/syntect/) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
