@@ -23,13 +23,13 @@ use fnv::FnvHasher;
 ///
 /// **Note:** Caching is for advanced users who have tons of time to maximize performance or want to do so eventually.
 /// It is not recommended that you try caching the first time you implement highlighting.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseState {
     stack: Vec<StateLevel>,
     first_line: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct StateLevel {
     context: ContextPtr,
     prototype: Option<ContextPtr>,
