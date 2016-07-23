@@ -90,14 +90,14 @@ fn pack_as_u16s(atoms: &[usize]) -> Result<Scope, ParseScopeError> {
         if n >= (u16::MAX as usize) - 2 {
             return Err(ParseScopeError::TooManyAtoms);
         }
-        let small = n + 1; // +1 since we reserve 0 for unused
+        let small = (n + 1) as u64; // +1 since we reserve 0 for unused
 
         if i < 4 {
             let shift = (3 - i) * 16;
-            res.a |= (small << shift) as u64;
+            res.a |= small << shift;
         } else {
             let shift = (7 - i) * 16;
-            res.b |= (small << shift) as u64;
+            res.b |= small << shift;
         }
     }
     Ok(res)
