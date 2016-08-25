@@ -131,7 +131,7 @@ impl ParseState {
                     if let Some(maybe_region) =
                            search_cache.get(&(match_pat as *const MatchPattern)) {
                         let mut valid_entry = true;
-                        if let &Some(ref region) = maybe_region {
+                        if let Some(ref region) = *maybe_region {
                             let match_start = region.pos(0).unwrap().0;
                             if match_start < *start {
                                 valid_entry = false;
@@ -187,10 +187,8 @@ impl ParseState {
                                 pat_index: pat_index,
                             });
                         }
-                    } else {
-                        if refs_regex.is_none() {
-                            search_cache.insert(match_pat, None);
-                        }
+                    } else if refs_regex.is_none() {
+                        search_cache.insert(match_pat, None);
                     }
                 }
             }
@@ -224,7 +222,7 @@ impl ParseState {
         self.push_meta_ops(true, match_start, &*level_context, &pat.operation, ops);
         for s in &pat.scope {
             // println!("pushing {:?} at {}", s, match_start);
-            ops.push((match_start, ScopeStackOp::Push(s.clone())));
+            ops.push((match_start, ScopeStackOp::Push(*s)));
         }
         if let Some(ref capture_map) = pat.captures {
             // captures could appear in an arbitrary order, have to produce ops in right order
@@ -240,7 +238,7 @@ impl ParseState {
                     // println!("capture {:?} at {:?}-{:?}", scopes[0], cap_start, cap_end);
                     for scope in scopes.iter() {
                         map.push(((cap_start, -((cap_end - cap_start) as i32)),
-                                  ScopeStackOp::Push(scope.clone())));
+                                  ScopeStackOp::Push(*scope)));
                     }
                     map.push(((cap_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
                 }
@@ -286,9 +284,9 @@ impl ParseState {
                 ops.push((index, ScopeStackOp::Pop(v.len())));
             }
         }
-        match match_op {
-            &MatchOperation::Push(ref context_refs) |
-            &MatchOperation::Set(ref context_refs) => {
+        match *match_op {
+            MatchOperation::Push(ref context_refs) |
+            MatchOperation::Set(ref context_refs) => {
                 for r in context_refs {
                     let ctx_ptr = r.resolve();
                     let ctx = ctx_ptr.borrow();
@@ -298,12 +296,12 @@ impl ParseState {
                         &ctx.meta_content_scope
                     };
                     for scope in v.iter() {
-                        ops.push((index, ScopeStackOp::Push(scope.clone())));
+                        ops.push((index, ScopeStackOp::Push(*scope)));
                     }
                 }
             }
-            &MatchOperation::None |
-            &MatchOperation::Pop => (),
+            MatchOperation::None |
+            MatchOperation::Pop => (),
         }
     }
 

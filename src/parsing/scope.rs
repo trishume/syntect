@@ -416,7 +416,7 @@ impl FromStr for ScopeStack {
 
 impl fmt::Display for ScopeStack {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for s in self.scopes.iter() {
+        for s in &self.scopes {
             try!(write!(f, "{} ", s));
         }
         Ok(())

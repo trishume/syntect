@@ -115,7 +115,7 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
             (self.text.len(), ScopeStackOp::Noop)
         };
         // println!("{} - {:?}", self.index, self.pos);
-        let style = self.state.styles.last().unwrap().clone();
+        let style = *self.state.styles.last().unwrap();
         let text = &self.text[self.pos..end];
         match command {
             ScopeStackOp::Push(scope) => {
@@ -147,12 +147,12 @@ impl<'a> Highlighter<'a> {
     pub fn new(theme: &'a Theme) -> Highlighter<'a> {
         let mut single_selectors = Vec::new();
         let mut multi_selectors = Vec::new();
-        for item in theme.scopes.iter() {
+        for item in &theme.scopes {
             for sel in &item.scope.selectors {
                 if let Some(scope) = sel.extract_single_scope() {
-                    single_selectors.push((scope, item.style.clone()));
+                    single_selectors.push((scope, item.style));
                 } else {
-                    multi_selectors.push((sel.clone(), item.style.clone()));
+                    multi_selectors.push((sel.clone(), item.style));
                 }
             }
         }
@@ -223,17 +223,17 @@ impl<'a> Highlighter<'a> {
             }
             // println!("multi at {:?} score {:?} single score {:?}", path, score, single_score);
             if MatchPower(single_score) < score {
-                return style.clone();
+                return *style;
             }
         }
         if let Some(&(_, ref style)) = single_res {
-            return style.clone();
+            return *style;
         }
-        return StyleModifier {
+        StyleModifier {
             foreground: None,
             background: None,
             font_style: None,
-        };
+        }
     }
 }
 

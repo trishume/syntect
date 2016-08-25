@@ -19,7 +19,7 @@ impl ThemeSet {
         let mut themes = Vec::new();
         for entry in WalkDir::new(folder) {
             let entry = try!(entry.map_err(LoadingError::WalkDir));
-            if entry.path().extension().map(|e| e == "tmTheme").unwrap_or(false) {
+            if entry.path().extension().map_or(false, |e| e == "tmTheme") {
                 themes.push(entry.path().to_owned());
             }
         }

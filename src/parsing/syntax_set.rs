@@ -83,7 +83,7 @@ impl SyntaxSet {
         self.is_linked = false;
         for entry in WalkDir::new(folder) {
             let entry = try!(entry.map_err(LoadingError::WalkDir));
-            if entry.path().extension().map(|e| e == "sublime-syntax").unwrap_or(false) {
+            if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 // println!("{}", entry.path().display());
                 self.syntaxes.push(try!(load_syntax_file(entry.path(), lines_include_newline)));
             }
@@ -217,15 +217,15 @@ impl SyntaxSet {
     /// This operation is idempotent, but takes time even on already linked syntax sets.
     pub fn link_syntaxes(&mut self) {
         // 2 loops necessary to satisfy borrow checker :-(
-        for syntax in self.syntaxes.iter_mut() {
-            if let Some(ref proto_ptr) = syntax.contexts.get("prototype") {
+        for syntax in &mut self.syntaxes {
+            if let Some(proto_ptr) = syntax.contexts.get("prototype") {
                 let mut mut_ref = proto_ptr.borrow_mut();
                 Self::recursively_mark_no_prototype(syntax, mut_ref.deref_mut());
                 syntax.prototype = Some((*proto_ptr).clone());
             }
         }
         for syntax in &self.syntaxes {
-            for (_, context_ptr) in &syntax.contexts {
+            for context_ptr in syntax.contexts.values() {
                 let mut mut_ref = context_ptr.borrow_mut();
                 self.link_context(syntax, mut_ref.deref_mut());
             }
@@ -249,7 +249,7 @@ impl SyntaxSet {
                     };
                     if let Some(context_refs) = maybe_context_refs {
                         for context_ref in context_refs.iter() {
-                            if let &ContextReference::Inline(ref context_ptr) = context_ref {
+                            if let ContextReference::Inline(ref context_ptr) = *context_ref {
                                 let mut mut_ref = context_ptr.borrow_mut();
                                 Self::recursively_mark_no_prototype(syntax, mut_ref.deref_mut());
                             }
@@ -293,12 +293,12 @@ impl SyntaxSet {
             }
             ByScope { scope, ref sub_context } => {
                 let other_syntax = self.find_syntax_by_scope(scope);
-                let context_name = sub_context.as_ref().map(|x| &**x).unwrap_or("main");
+                let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 other_syntax.and_then(|s| s.contexts.get(context_name))
             }
             File { ref name, ref sub_context } => {
                 let other_syntax = self.find_syntax_by_name(name);
-                let context_name = sub_context.as_ref().map(|x| &**x).unwrap_or("main");
+                let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 other_syntax.and_then(|s| s.contexts.get(context_name))
             }
             Direct(_) => None,
