@@ -232,7 +232,7 @@ impl SyntaxDefinition {
     fn resolve_variables(raw_regex: &str, state: &ParserState) -> String {
         state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
             let var_regex_raw =
-                state.variables.get(caps.at(1).unwrap_or("")).map(|x| &**x).unwrap_or("");
+                state.variables.get(caps.at(1).unwrap_or("")).map_or("", |x| &**x);
             Self::resolve_variables(var_regex_raw, state)
         })
     }
@@ -315,7 +315,7 @@ impl SyntaxDefinition {
                       state: &mut ParserState)
                       -> Result<Vec<ContextReference>, ParseSyntaxError> {
         // check for a push of multiple items
-        if y.as_vec().map(|v| !v.is_empty() && v[0].as_str().is_some()).unwrap_or(false) {
+        if y.as_vec().map_or(false, |v| !v.is_empty() && v[0].as_str().is_some()) {
             // this works because Result implements FromIterator to handle the errors
             y.as_vec()
                 .unwrap()

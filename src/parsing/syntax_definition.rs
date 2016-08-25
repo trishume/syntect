@@ -128,9 +128,9 @@ impl Iterator for MatchIter {
                 match context.patterns[index] {
                     Pattern::Match(_) => return Some((context_ref.clone(), index)),
                     Pattern::Include(ref ctx_ref) => {
-                        let ctx_ptr = match ctx_ref {
-                            &ContextReference::Inline(ref ctx_ptr) => ctx_ptr.clone(),
-                            &ContextReference::Direct(ref ctx_ptr) => {
+                        let ctx_ptr = match *ctx_ref {
+                            ContextReference::Inline(ref ctx_ptr) => ctx_ptr.clone(),
+                            ContextReference::Direct(ref ctx_ptr) => {
                                 ctx_ptr.link.upgrade().unwrap()
                             }
                             _ => panic!("Can only iterate patterns after linking: {:?}", ctx_ref),
@@ -178,9 +178,9 @@ impl Context {
 impl ContextReference {
     /// find the pointed to context, panics if ref is not linked
     pub fn resolve(&self) -> ContextPtr {
-        match self {
-            &ContextReference::Inline(ref ptr) => ptr.clone(),
-            &ContextReference::Direct(ref ptr) => ptr.link.upgrade().unwrap(),
+        match *self {
+            ContextReference::Inline(ref ptr) => ptr.clone(),
+            ContextReference::Direct(ref ptr) => ptr.link.upgrade().unwrap(),
             _ => panic!("Can only call resolve on linked references: {:?}", self),
         }
     }

@@ -179,7 +179,7 @@ impl FromStr for FontStyle {
                 "bold" => FONT_STYLE_BOLD,
                 "underline" => FONT_STYLE_UNDERLINE,
                 "italic" => FONT_STYLE_ITALIC,
-                "normal" => FontStyle::empty(),
+                "normal" |
                 "regular" => FontStyle::empty(),
                 s => return Err(IncorrectFontStyle(s.to_owned())),
             })
@@ -366,7 +366,7 @@ impl ParseSettings for ThemeSettings {
                 "highlightForeground" => {
                     settings.highlight_foreground = Color::parse_settings(value).ok()
                 }
-                "invisibles" => (), // ignored
+                "invisibles" | // ignored
                 _ => (),
             }
         }
