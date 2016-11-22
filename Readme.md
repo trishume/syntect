@@ -24,7 +24,7 @@ After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/sy
 
 **Note:** with stable Rust on Linux there is a possibility you might have to add `./target/debug/build/onig_sys-*/out/lib/` to your `LD_LIBRARY_PATH` environment variable. I dunno why or even if this happens on other places than Travis, but see `travis.yml` for what it does to make it work. Do this if you see `libonig.so: cannot open shared object file`.
 
-If you've clone this repository, be sure to run
+If you've cloned this repository, be sure to run
 
 ```
 git submodule update --init
