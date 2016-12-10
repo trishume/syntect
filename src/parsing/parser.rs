@@ -2,7 +2,7 @@ use super::syntax_definition::*;
 use super::scope::*;
 use onig::{self, Region};
 use std::usize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::i32;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
@@ -41,10 +41,12 @@ struct RegexMatch {
     regions: Region,
     context: ContextPtr,
     pat_index: usize,
+    match_ptr: *const MatchPattern,
 }
 
 /// maps the pattern to the start index, which is -1 if not found.
 type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
+type MatchedPatterns = HashSet<*const MatchPattern, BuildHasherDefault<FnvHasher>>;
 
 impl ParseState {
     /// Create a state from a syntax, keeps its own reference counted
@@ -75,6 +77,7 @@ impl ParseState {
         assert!(self.stack.len() > 0,
                 "Somehow main context was popped from the stack");
         let mut match_start = 0;
+        let mut prev_match_start = 0;
         let mut res = Vec::new();
 
         if self.first_line {
@@ -89,12 +92,21 @@ impl ParseState {
         let mut regions = Region::with_capacity(8);
         let fnv = BuildHasherDefault::<FnvHasher>::default();
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
+        let fnv2 = BuildHasherDefault::<FnvHasher>::default();
+        // Fixes issue https://github.com/trishume/syntect/issues/25
+        let mut matched: MatchedPatterns = HashSet::with_capacity_and_hasher(4, fnv2);
 
         while self.parse_next_token(line,
                                     &mut match_start,
                                     &mut search_cache,
+                                    &mut matched,
                                     &mut regions,
                                     &mut res) {
+            // We only care about not repeatedly matching things at the same location
+            if match_start != prev_match_start {
+                matched.clear();
+            }
+            prev_match_start = match_start;
         }
 
         res
@@ -104,6 +116,7 @@ impl ParseState {
                         line: &str,
                         start: &mut usize,
                         search_cache: &mut SearchCache,
+                        matched: &mut MatchedPatterns,
                         regions: &mut Region,
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
@@ -127,22 +140,28 @@ impl ParseState {
                     let mut pat_context = pat_context_ptr.borrow_mut();
                     let mut match_pat = pat_context.match_at_mut(pat_index);
                     // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
+                    let match_ptr = match_pat as *const MatchPattern;
+
+                    // Avoid matching the same pattern twice in the same place, causing an infinite loop
+                    if matched.contains(&match_ptr) {
+                        continue;
+                    }
 
                     if let Some(maybe_region) =
-                           search_cache.get(&(match_pat as *const MatchPattern)) {
+                           search_cache.get(&match_ptr) {
                         let mut valid_entry = true;
                         if let Some(ref region) = *maybe_region {
                             let match_start = region.pos(0).unwrap().0;
                             if match_start < *start {
                                 valid_entry = false;
-                            }
-                            if match_start < min_start && valid_entry {
+                            } else if match_start < min_start {
                                 // print!("match {} at {} on {}", match_pat.regex_str, match_start, line);
                                 min_start = match_start;
                                 cur_match = Some(RegexMatch {
                                     regions: region.clone(),
                                     context: pat_context_ptr.clone(),
                                     pat_index: pat_index,
+                                    match_ptr: match_ptr,
                                 });
                             }
                         }
@@ -185,6 +204,7 @@ impl ParseState {
                                 regions: regions.clone(),
                                 context: pat_context_ptr.clone(),
                                 pat_index: pat_index,
+                                match_ptr: match_ptr,
                             });
                         }
                     } else if refs_regex.is_none() {
@@ -199,6 +219,7 @@ impl ParseState {
             let (_, match_end) = reg_match.regions.pos(0).unwrap();
             *start = match_end;
             let level_context = self.stack[self.stack.len() - 1].context.clone();
+            matched.insert(reg_match.match_ptr);
             self.exec_pattern(line, reg_match, level_context, ops);
             true
         } else {
@@ -362,6 +383,10 @@ mod tests {
             let syntax = ps.find_syntax_by_name("HTML (Rails)").unwrap();
             ParseState::new(syntax)
         };
+        let mut state3 = {
+            let syntax = ps.find_syntax_by_name("C").unwrap();
+            ParseState::new(syntax)
+        };
 
         let line = "module Bob::Wow::Troll::Five; 5; end";
         let ops = state.parse_line(line);
@@ -434,6 +459,11 @@ mod tests {
             (20, Pop(1)),
         ];
         assert_eq!(ops4, test_ops4);
+
+        // test fix for issue #25
+        let line5 = "struct{estruct";
+        let ops5 = state3.parse_line(line5);
+        assert_eq!(ops5.len(), 10);
 
         // assert!(false);
     }
