@@ -155,6 +155,7 @@ impl SyntaxDefinition {
             meta_scope: Vec::new(),
             meta_content_scope: Vec::new(),
             meta_include_prototype: !is_prototype,
+            clear_scopes: None,
             uses_backrefs: false,
             patterns: Vec::new(),
             prototype: None,
@@ -173,6 +174,14 @@ impl SyntaxDefinition {
             }
             if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
                 context.meta_include_prototype = x;
+                is_special = true;
+            }
+            if let Some(true) = get_key(map, "clear_scopes", |x| x.as_bool()).ok() {
+                context.clear_scopes = Some(ClearAmount::All);
+                is_special = true;
+            }
+            if let Some(x) = get_key(map, "clear_scopes", |x| x.as_i64()).ok() {
+                context.clear_scopes = Some(ClearAmount::TopN(x as usize));
                 is_special = true;
             }
             if !is_special {
