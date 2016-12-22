@@ -396,36 +396,30 @@ mod tests {
             (0, Push(Scope::new("source.ruby.rails").unwrap())),
             (0, Push(Scope::new("meta.module.ruby").unwrap())),
             (0, Push(Scope::new("keyword.control.module.ruby").unwrap())),
-            (6, Pop(1)),
-            (7, Push(Scope::new("entity.name.type.module.ruby").unwrap())),
-            (7, Push(Scope::new("entity.other.inherited-class.module.first.ruby").unwrap())),
-            (10, Push(Scope::new("punctuation.separator.inheritance.ruby").unwrap())),
-            (12, Pop(1)),
-            (12, Pop(1)),
+            (6, Pop(2)),
+            (6, Push(Scope::new("meta.module.ruby").unwrap())),
+            (7, Pop(1)),
+            (7, Push(Scope::new("meta.module.ruby").unwrap())),
+            (7, Push(Scope::new("entity.name.module.ruby").unwrap())),
+            (7, Push(Scope::new("support.other.namespace.ruby").unwrap())),
+            (10, Pop(1)),
+            (10, Push(Scope::new("punctuation.accessor.ruby").unwrap())),
         ];
         assert_eq!(&ops[0..test_ops.len()], &test_ops[..]);
 
         let line2 = "def lol(wow = 5)";
         let ops2 = state.parse_line(line2);
         debug_print_ops(line2, &ops2);
-        let test_ops2 =
-            vec![(0, Push(Scope::new("meta.function.method.with-arguments.ruby").unwrap())),
-                 (0, Push(Scope::new("keyword.control.def.ruby").unwrap())),
-                 (3, Pop(1)),
-                 (4, Push(Scope::new("entity.name.function.ruby").unwrap())),
-                 (7, Pop(1)),
-                 (7, Push(Scope::new("punctuation.definition.parameters.ruby").unwrap())),
-                 (8, Pop(1)),
-                 (8, Push(Scope::new("variable.parameter.function.ruby").unwrap())),
-                 (12, Push(Scope::new("keyword.operator.assignment.ruby").unwrap())),
-                 (13, Pop(1)),
-                 (14, Push(Scope::new("constant.numeric.ruby").unwrap())),
-                 (15, Pop(1)),
-                 (15, Pop(1)),
-                 (15, Push(Scope::new("punctuation.definition.parameters.ruby").unwrap())),
-                 (16, Pop(1)),
-                 (16, Pop(1))];
-        assert_eq!(ops2, test_ops2);
+        let test_ops2 = vec![
+            (0, Push(Scope::new("meta.function.ruby").unwrap())),
+            (0, Push(Scope::new("keyword.control.def.ruby").unwrap())),
+            (3, Pop(2)),
+            (3, Push(Scope::new("meta.function.ruby").unwrap())),
+            (4, Pop(1)),
+            (4, Push(Scope::new("entity.name.function.ruby").unwrap())),
+            (7, Pop(1))
+        ];
+        assert_eq!(&ops2[0..test_ops2.len()], &test_ops2[..]);
 
         let line3 = "<script>var lol = '<% def wow(";
         let ops3 = state2.parse_line(line3);
@@ -436,8 +430,7 @@ mod tests {
         test_stack.push(Scope::new("source.js.embedded.html").unwrap());
         test_stack.push(Scope::new("string.quoted.single.js").unwrap());
         test_stack.push(Scope::new("source.ruby.rails.embedded.html").unwrap());
-        test_stack.push(Scope::new("meta.function.method.with-arguments.ruby").unwrap());
-        test_stack.push(Scope::new("variable.parameter.function.ruby").unwrap());
+        test_stack.push(Scope::new("meta.function.parameters.ruby").unwrap());
         let mut test_stack2 = ScopeStack::new();
         for &(_, ref op) in ops3.iter() {
             test_stack2.apply(op);
@@ -445,7 +438,7 @@ mod tests {
         assert_eq!(test_stack2, test_stack);
 
         // for testing backrefs
-        let line4 = "lol = <<-END wow END";
+        let line4 = "lol = <<-END\nwow\nEND";
         let ops4 = state.parse_line(line4);
         debug_print_ops(line4, &ops4);
         let test_ops4 = vec![
@@ -454,7 +447,7 @@ mod tests {
             (6, Push(Scope::new("string.unquoted.heredoc.ruby").unwrap())),
             (6, Push(Scope::new("punctuation.definition.string.begin.ruby").unwrap())),
             (12, Pop(1)),
-            (16, Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())),
+            (17, Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())),
             (20, Pop(1)),
             (20, Pop(1)),
         ];
