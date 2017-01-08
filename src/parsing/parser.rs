@@ -41,7 +41,6 @@ struct RegexMatch {
     regions: Region,
     context: ContextPtr,
     pat_index: usize,
-    match_ptr: *const MatchPattern,
 }
 
 /// maps the pattern to the start index, which is -1 if not found.
@@ -161,7 +160,6 @@ impl ParseState {
                                     regions: region.clone(),
                                     context: pat_context_ptr.clone(),
                                     pat_index: pat_index,
-                                    match_ptr: match_ptr,
                                 });
                             }
                         }
@@ -204,7 +202,6 @@ impl ParseState {
                                 regions: regions.clone(),
                                 context: pat_context_ptr.clone(),
                                 pat_index: pat_index,
-                                match_ptr: match_ptr,
                             });
                         }
                     } else if refs_regex.is_none() {
@@ -219,8 +216,7 @@ impl ParseState {
             let (_, match_end) = reg_match.regions.pos(0).unwrap();
             *start = match_end;
             let level_context = self.stack[self.stack.len() - 1].context.clone();
-            matched.insert(reg_match.match_ptr);
-            self.exec_pattern(line, reg_match, level_context, ops);
+            self.exec_pattern(line, reg_match, level_context, matched, ops);
             true
         } else {
             false
@@ -232,6 +228,7 @@ impl ParseState {
                     line: &str,
                     reg_match: RegexMatch,
                     level_context_ptr: ContextPtr,
+                    matched: &mut MatchedPatterns,
                     ops: &mut Vec<(usize, ScopeStackOp)>)
                     -> bool {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
@@ -239,6 +236,16 @@ impl ParseState {
         let pat = context.match_at(reg_match.pat_index);
         let level_context = level_context_ptr.borrow();
         // println!("running pattern {:?} on '{}' at {}", pat.regex_str, line, match_start);
+
+        // We only worry about keeping track to avoid infinite loops on pushes and sets
+        // So that we fix #25 but don't break like #28
+        match pat.operation {
+            MatchOperation::Push(_) |
+            MatchOperation::Set(_) => {
+                matched.insert(pat as *const MatchPattern);
+            },
+            MatchOperation::Pop | MatchOperation:: None => ()
+        };
 
         self.push_meta_ops(true, match_start, &*level_context, &pat.operation, ops);
         for s in &pat.scope {
