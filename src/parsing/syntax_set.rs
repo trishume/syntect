@@ -285,7 +285,16 @@ impl SyntaxSet {
         // println!("{:?}", context_ref);
         use super::syntax_definition::ContextReference::*;
         let maybe_new_context = match *context_ref {
-            Named(ref s) => syntax.contexts.get(s),
+            Named(ref s) => {
+                // This isn't actually correct, but it is better than nothing/crashing.
+                // This is being phased out anyhow, see https://github.com/sublimehq/Packages/issues/73
+                // Fixes issue #30
+                if s == "$top_level_main" {
+                    syntax.contexts.get("main")
+                } else {
+                    syntax.contexts.get(s)
+                }
+            }
             Inline(ref context_ptr) => {
                 let mut mut_ref = context_ptr.borrow_mut();
                 self.link_context(syntax, mut_ref.deref_mut());
