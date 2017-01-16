@@ -25,5 +25,8 @@ bincode = "0.6"
 flate2 = "0.2"
 fnv = "1.0.2"
 
+[features]
+static-onig = ["onig/static-libonig"]
+
 # [profile.release]
 # debug = true
