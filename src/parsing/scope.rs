@@ -335,9 +335,13 @@ impl ScopeStack {
             scopes: v
         }
     }
+
+    #[inline]
     pub fn push(&mut self, s: Scope) {
         self.scopes.push(s);
     }
+
+    #[inline]
     pub fn pop(&mut self) {
         self.scopes.pop();
     }
@@ -346,51 +350,25 @@ impl ScopeStack {
     /// use this to create a stack from a `Vec` of changes
     /// given by the parser.
     pub fn apply(&mut self, op: &ScopeStackOp) {
-        match *op {
-            ScopeStackOp::Push(scope) => self.scopes.push(scope),
-            ScopeStackOp::Pop(count) => {
-                for _ in 0..count {
-                    self.scopes.pop();
-                }
-            }
-            ScopeStackOp::Clear(amount) => {
-                match amount {
-                    ClearAmount::TopN(n) => {
-                        let to_leave = self.scopes.len()-n;
-                        let cleared = self.scopes.split_off(to_leave);
-                        self.clear_stack.push(cleared);
-                    }
-                    ClearAmount::All => {
-                        let mut cleared = Vec::new();
-                        mem::swap(&mut cleared, &mut self.scopes);
-                        self.clear_stack.push(cleared);
-                    }
-                }
-            }
-            ScopeStackOp::Restore => {
-                match self.clear_stack.pop() {
-                    Some(ref mut to_push) => self.scopes.append(to_push),
-                    None => panic!("tried to restore cleared scopes, but none were cleared"),
-                }
-            }
-            ScopeStackOp::Noop => (),
-        }
+        self.apply_with_hook(op, |_,_|{})
     }
 
-    /// Modifies this stack according to the operation given and returns simple operations.
-    /// Applies the operations and returns the basic pushes and pops that were performed.
-    /// Use this to get the actual changes to the scope stack
-    pub fn apply_and_get_basic_ops(&mut self, op: &ScopeStackOp) -> Vec<BasicScopeStackOp> {
-        let mut basic_ops = Vec::new();
+    /// Modifies this stack according to the operation given and calls the hook for each basic operation.
+    /// Like `apply` but calls `hook` for every basic modification (as defined by `BasicScopeStackOp`).
+    /// Use this to do things only when the scope stack changes.
+    #[inline]
+    pub fn apply_with_hook<F>(&mut self, op: &ScopeStackOp, mut hook: F)
+        where F: FnMut(BasicScopeStackOp, &[Scope])
+    {
         match *op {
             ScopeStackOp::Push(scope) => {
                 self.scopes.push(scope);
-                basic_ops.push(BasicScopeStackOp::Push(scope))
+                hook(BasicScopeStackOp::Push(scope), self.as_slice());
             }
             ScopeStackOp::Pop(count) => {
                 for _ in 0..count {
                     self.scopes.pop();
-                    basic_ops.push(BasicScopeStackOp::Pop);
+                    hook(BasicScopeStackOp::Pop, self.as_slice());
                 }
             }
             ScopeStackOp::Clear(amount) => {
@@ -408,23 +386,22 @@ impl ScopeStack {
                 let clear_amount = cleared.len();
                 self.clear_stack.push(cleared);
                 for _ in 0..clear_amount {
-                    basic_ops.push(BasicScopeStackOp::Pop);
+                    hook(BasicScopeStackOp::Pop, self.as_slice());
                 }
             }
             ScopeStackOp::Restore => {
                 match self.clear_stack.pop() {
                     Some(ref mut to_push) => {
+                        self.scopes.append(to_push);
                         for s in &*to_push {
-                            basic_ops.push(BasicScopeStackOp::Push(*s));
+                            hook(BasicScopeStackOp::Push(*s), self.as_slice());
                         }
-                        self.scopes.append(to_push)
                     }
                     None => panic!("tried to restore cleared scopes, but none were cleared"),
                 }
             }
             ScopeStackOp::Noop => (),
         }
-        return basic_ops;
     }
 
     /// Prints out each scope in the stack separated by spaces

@@ -117,21 +117,20 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
         // println!("{} - {:?}", self.index, self.pos);
         let style = *self.state.styles.last().unwrap();
         let text = &self.text[self.pos..end];
-        let ops = self.state.path.apply_and_get_basic_ops(&command);
-        for op in ops {
-            match op {
-                BasicScopeStackOp::Push(scope) => {
-                    self.state.path.push(scope);
-                    // println!("{}", self.state.path);
-                    self.state
-                        .styles
-                        .push(style.apply(self.highlighter.get_new_style(self.state.path.as_slice())));
+        {
+            let m_path = &mut self.state.path;
+            let m_styles = &mut self.state.styles;
+            let highlighter = &self.highlighter;
+            m_path.apply_with_hook(&command, |op, cur_stack| {
+                match op {
+                    BasicScopeStackOp::Push(_) => {
+                        m_styles.push(style.apply(highlighter.get_new_style(cur_stack)));
+                    }
+                    BasicScopeStackOp::Pop => {
+                        m_styles.pop();
+                    }
                 }
-                BasicScopeStackOp::Pop => {
-                    self.state.path.pop();
-                    self.state.styles.pop();
-                }
-            };
+            });
         }
         self.pos = end;
         self.index += 1;

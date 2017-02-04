@@ -110,9 +110,8 @@ pub fn tokens_to_classed_html(line: &str,
             write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
             cur_index = i
         }
-        let ops = stack.apply_and_get_basic_ops(op);
-        for op in ops {
-            match op {
+        stack.apply_with_hook(op, |basic_op, _| {
+            match basic_op {
                 BasicScopeStackOp::Push(scope) => {
                     s.push_str("<span class=\"");
                     scope_to_classes(&mut s, scope, style);
@@ -122,7 +121,7 @@ pub fn tokens_to_classed_html(line: &str,
                     s.push_str("</span>");
                 }
             }
-        }
+        });
     }
     s
 }
