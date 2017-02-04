@@ -58,12 +58,6 @@ pub enum Pattern {
     Include(ContextReference),
 }
 
-#[derive(Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
-pub enum ClearAmount {
-    TopN(usize),
-    All,
-}
-
 /// Used to iterate over all the match patterns in a context.
 /// Basically walks the tree of patterns and include directives
 /// in the correct order.

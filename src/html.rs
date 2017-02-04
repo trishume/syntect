@@ -1,6 +1,6 @@
 //! Rendering highlighted code as HTML+CSS
 use std::fmt::Write;
-use parsing::{ScopeStackOp, Scope, SyntaxDefinition, SyntaxSet, SCOPE_REPO};
+use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxDefinition, SyntaxSet, SCOPE_REPO};
 use easy::{HighlightLines, HighlightFile};
 use highlighting::{self, Style, Theme, Color};
 use escape::Escape;
@@ -104,23 +104,24 @@ pub fn tokens_to_classed_html(line: &str,
                               -> String {
     let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
     let mut cur_index = 0;
+    let mut stack = ScopeStack::new();
     for &(i, ref op) in ops {
         if i > cur_index {
             write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
             cur_index = i
         }
-        match *op {
-            ScopeStackOp::Push(scope) => {
-                s.push_str("<span class=\"");
-                scope_to_classes(&mut s, scope, style);
-                s.push_str("\">");
-            }
-            ScopeStackOp::Pop(n) => {
-                for _ in 0..n {
+        let ops = stack.apply_and_get_basic_ops(op);
+        for op in ops {
+            match op {
+                BasicScopeStackOp::Push(scope) => {
+                    s.push_str("<span class=\"");
+                    scope_to_classes(&mut s, scope, style);
+                    s.push_str("\">");
+                }
+                BasicScopeStackOp::Pop => {
                     s.push_str("</span>");
                 }
             }
-            ScopeStackOp::Noop => panic!("ops shouldn't have no-ops"),
         }
     }
     s

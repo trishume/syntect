@@ -5,7 +5,7 @@
 
 use std::iter::Iterator;
 
-use parsing::{Scope, ScopeStack, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
+use parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
 use super::selector::ScopeSelector;
 use super::theme::Theme;
 use super::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};
@@ -117,22 +117,22 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
         // println!("{} - {:?}", self.index, self.pos);
         let style = *self.state.styles.last().unwrap();
         let text = &self.text[self.pos..end];
-        match command {
-            ScopeStackOp::Push(scope) => {
-                self.state.path.push(scope);
-                // println!("{}", self.state.path);
-                self.state
-                    .styles
-                    .push(style.apply(self.highlighter.get_new_style(self.state.path.as_slice())));
-            }
-            ScopeStackOp::Pop(n) => {
-                for _ in 0..n {
+        let ops = self.state.path.apply_and_get_basic_ops(&command);
+        for op in ops {
+            match op {
+                BasicScopeStackOp::Push(scope) => {
+                    self.state.path.push(scope);
+                    // println!("{}", self.state.path);
+                    self.state
+                        .styles
+                        .push(style.apply(self.highlighter.get_new_style(self.state.path.as_slice())));
+                }
+                BasicScopeStackOp::Pop => {
                     self.state.path.pop();
                     self.state.styles.pop();
                 }
-            }
-            ScopeStackOp::Noop => (),
-        };
+            };
+        }
         self.pos = end;
         self.index += 1;
         if text.is_empty() {
