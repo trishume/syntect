@@ -114,16 +114,20 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
         } else {
             (self.text.len(), ScopeStackOp::Noop)
         };
-        // println!("{} - {:?}", self.index, self.pos);
+        // println!("{} - {:?}   {}:{}", self.index, self.pos, self.state.path.len(), self.state.styles.len());
         let style = *self.state.styles.last().unwrap();
         let text = &self.text[self.pos..end];
         {
+            // closures mess with the borrow checker's ability to see different struct fields
             let m_path = &mut self.state.path;
             let m_styles = &mut self.state.styles;
             let highlighter = &self.highlighter;
             m_path.apply_with_hook(&command, |op, cur_stack| {
+                // println!("{:?} - {:?}", op, cur_stack);
                 match op {
                     BasicScopeStackOp::Push(_) => {
+                        // we can push multiple times so this might have changed
+                        let style = *m_styles.last().unwrap();
                         m_styles.push(style.apply(highlighter.get_new_style(cur_stack)));
                     }
                     BasicScopeStackOp::Pop => {
@@ -214,6 +218,7 @@ impl<'a> Highlighter<'a> {
             .iter()
             .filter_map(|&(ref sel, ref style)| sel.does_match(path).map(|score| (score, style)))
             .max_by_key(|&(score, _)| score);
+        // println!("{:?}", single_res);
         if let Some((score, style)) = mult_res {
             let mut single_score: f64 = -1.0;
             if let Some(&(scope, _)) = single_res {

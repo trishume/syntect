@@ -304,6 +304,10 @@ impl ParseState {
             if !v.is_empty() {
                 ops.push((index, ScopeStackOp::Pop(v.len())));
             }
+
+            if initial && cur_context.clear_scopes != None {
+                ops.push((index, ScopeStackOp::Restore));
+            }
         }
         match *match_op {
             MatchOperation::Push(ref context_refs) |
@@ -311,6 +315,13 @@ impl ParseState {
                 for r in context_refs {
                     let ctx_ptr = r.resolve();
                     let ctx = ctx_ptr.borrow();
+
+                    if initial {
+                        if let Some(clear_amount) = ctx.clear_scopes {
+                            ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                        }
+                    }
+
                     let v = if initial {
                         &ctx.meta_scope
                     } else {
@@ -373,7 +384,7 @@ mod tests {
 
     #[test]
     fn can_parse() {
-        use parsing::ScopeStackOp::{Push, Pop};
+        use parsing::ScopeStackOp::{Push, Pop, Clear, Restore};
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
@@ -438,15 +449,19 @@ mod tests {
         assert_eq!(test_stack2, test_stack);
 
         // for testing backrefs
-        let line4 = "lol = <<-END\nwow\nEND";
+        let line4 = "lol = <<-SQL\nwow\nSQL";
         let ops4 = state.parse_line(line4);
         debug_print_ops(line4, &ops4);
         let test_ops4 = vec![
             (4, Push(Scope::new("keyword.operator.assignment.ruby").unwrap())),
             (5, Pop(1)),
-            (6, Push(Scope::new("string.unquoted.heredoc.ruby").unwrap())),
+            (6, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
             (6, Push(Scope::new("punctuation.definition.string.begin.ruby").unwrap())),
             (12, Pop(1)),
+            (12, Push(Scope::new("text.sql.embedded.ruby").unwrap())),
+            (12, Clear(ClearAmount::TopN(2))),
+            (12, Restore),
+            (17, Pop(1)),
             (17, Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())),
             (20, Pop(1)),
             (20, Pop(1)),

@@ -8,7 +8,7 @@
   <%
     # The outer syntax is HTML (Rails) detected from the .erb extension
     puts "Ruby #{'nesting' * 2}"
-    here = <<-WOWCOOL
+    here = <<-WOWCOOL + CORRECTLY_DOES_NOT_HIGHLIGHT_REST_OF_LINE
       high quality parsing even supports custom heredoc endings
       #{
       nested = 5 * <<-ZOMG

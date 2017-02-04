@@ -392,8 +392,8 @@ impl ScopeStack {
             ScopeStackOp::Restore => {
                 match self.clear_stack.pop() {
                     Some(ref mut to_push) => {
-                        self.scopes.append(to_push);
-                        for s in &*to_push {
+                        for s in to_push {
+                            self.scopes.push(*s);
                             hook(BasicScopeStackOp::Push(*s), self.as_slice());
                         }
                     }
