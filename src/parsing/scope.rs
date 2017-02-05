@@ -7,6 +7,7 @@ use std::str::FromStr;
 use std::u64;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 use std::cmp::Ordering;
+use std::mem;
 
 /// Multiplier on the power of 2 for MatchPower.
 /// Only useful if you compute your own MatchPower scores.
@@ -70,7 +71,14 @@ pub struct ScopeRepository {
 /// `text.html.ruby text.html.basic source.js.embedded.html string.quoted.double.js`
 #[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeStack {
+    clear_stack: Vec<Vec<Scope>>,
     scopes: Vec<Scope>,
+}
+
+#[derive(Debug, Clone, Copy, RustcEncodable, RustcDecodable, Eq, PartialEq)]
+pub enum ClearAmount {
+    TopN(usize),
+    All,
 }
 
 /// A change to a scope stack. Generally `Noop` is only used internally and you don't have
@@ -80,7 +88,18 @@ pub struct ScopeStack {
 pub enum ScopeStackOp {
     Push(Scope),
     Pop(usize),
+    /// used for the clear_scopes feature
+    Clear(ClearAmount),
+    /// restores cleared scopes
+    Restore,
     Noop,
+}
+
+/// Used for `ScopeStack#apply_and_get_basic_ops`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BasicScopeStackOp {
+    Push(Scope),
+    Pop,
 }
 
 fn pack_as_u16s(atoms: &[usize]) -> Result<Scope, ParseScopeError> {
@@ -302,14 +321,27 @@ impl Ord for MatchPower {
 
 impl ScopeStack {
     pub fn new() -> ScopeStack {
-        ScopeStack { scopes: Vec::new() }
+        ScopeStack {
+            clear_stack: Vec::new(),
+            scopes: Vec::new()
+        }
     }
+
+    /// Note: creating a ScopeStack with this doesn't contain information
+    /// on what to do when clear_scopes contexts end.
     pub fn from_vec(v: Vec<Scope>) -> ScopeStack {
-        ScopeStack { scopes: v }
+        ScopeStack {
+            clear_stack: Vec::new(),
+            scopes: v
+        }
     }
+
+    #[inline]
     pub fn push(&mut self, s: Scope) {
         self.scopes.push(s);
     }
+
+    #[inline]
     pub fn pop(&mut self) {
         self.scopes.pop();
     }
@@ -318,11 +350,54 @@ impl ScopeStack {
     /// use this to create a stack from a `Vec` of changes
     /// given by the parser.
     pub fn apply(&mut self, op: &ScopeStackOp) {
+        self.apply_with_hook(op, |_,_|{})
+    }
+
+    /// Modifies this stack according to the operation given and calls the hook for each basic operation.
+    /// Like `apply` but calls `hook` for every basic modification (as defined by `BasicScopeStackOp`).
+    /// Use this to do things only when the scope stack changes.
+    #[inline]
+    pub fn apply_with_hook<F>(&mut self, op: &ScopeStackOp, mut hook: F)
+        where F: FnMut(BasicScopeStackOp, &[Scope])
+    {
         match *op {
-            ScopeStackOp::Push(scope) => self.scopes.push(scope),
+            ScopeStackOp::Push(scope) => {
+                self.scopes.push(scope);
+                hook(BasicScopeStackOp::Push(scope), self.as_slice());
+            }
             ScopeStackOp::Pop(count) => {
                 for _ in 0..count {
                     self.scopes.pop();
+                    hook(BasicScopeStackOp::Pop, self.as_slice());
+                }
+            }
+            ScopeStackOp::Clear(amount) => {
+                let cleared = match amount {
+                    ClearAmount::TopN(n) => {
+                        let to_leave = self.scopes.len()-n;
+                        self.scopes.split_off(to_leave)
+                    }
+                    ClearAmount::All => {
+                        let mut cleared = Vec::new();
+                        mem::swap(&mut cleared, &mut self.scopes);
+                        cleared
+                    }
+                };
+                let clear_amount = cleared.len();
+                self.clear_stack.push(cleared);
+                for _ in 0..clear_amount {
+                    hook(BasicScopeStackOp::Pop, self.as_slice());
+                }
+            }
+            ScopeStackOp::Restore => {
+                match self.clear_stack.pop() {
+                    Some(ref mut to_push) => {
+                        for s in to_push {
+                            self.scopes.push(*s);
+                            hook(BasicScopeStackOp::Push(*s), self.as_slice());
+                        }
+                    }
+                    None => panic!("tried to restore cleared scopes, but none were cleared"),
                 }
             }
             ScopeStackOp::Noop => (),
@@ -410,7 +485,7 @@ impl FromStr for ScopeStack {
         for name in s.split_whitespace() {
             scopes.push(try!(Scope::from_str(name)))
         }
-        Ok(ScopeStack { scopes: scopes })
+        Ok(ScopeStack::from_vec(scopes))
     }
 }
 

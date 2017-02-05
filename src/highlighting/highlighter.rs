@@ -5,7 +5,7 @@
 
 use std::iter::Iterator;
 
-use parsing::{Scope, ScopeStack, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
+use parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
 use super::selector::ScopeSelector;
 use super::theme::Theme;
 use super::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};
@@ -114,25 +114,28 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
         } else {
             (self.text.len(), ScopeStackOp::Noop)
         };
-        // println!("{} - {:?}", self.index, self.pos);
+        // println!("{} - {:?}   {}:{}", self.index, self.pos, self.state.path.len(), self.state.styles.len());
         let style = *self.state.styles.last().unwrap();
         let text = &self.text[self.pos..end];
-        match command {
-            ScopeStackOp::Push(scope) => {
-                self.state.path.push(scope);
-                // println!("{}", self.state.path);
-                self.state
-                    .styles
-                    .push(style.apply(self.highlighter.get_new_style(self.state.path.as_slice())));
-            }
-            ScopeStackOp::Pop(n) => {
-                for _ in 0..n {
-                    self.state.path.pop();
-                    self.state.styles.pop();
+        {
+            // closures mess with the borrow checker's ability to see different struct fields
+            let m_path = &mut self.state.path;
+            let m_styles = &mut self.state.styles;
+            let highlighter = &self.highlighter;
+            m_path.apply_with_hook(&command, |op, cur_stack| {
+                // println!("{:?} - {:?}", op, cur_stack);
+                match op {
+                    BasicScopeStackOp::Push(_) => {
+                        // we can push multiple times so this might have changed
+                        let style = *m_styles.last().unwrap();
+                        m_styles.push(style.apply(highlighter.get_new_style(cur_stack)));
+                    }
+                    BasicScopeStackOp::Pop => {
+                        m_styles.pop();
+                    }
                 }
-            }
-            ScopeStackOp::Noop => (),
-        };
+            });
+        }
         self.pos = end;
         self.index += 1;
         if text.is_empty() {
@@ -215,6 +218,7 @@ impl<'a> Highlighter<'a> {
             .iter()
             .filter_map(|&(ref sel, ref style)| sel.does_match(path).map(|score| (score, style)))
             .max_by_key(|&(score, _)| score);
+        // println!("{:?}", single_res);
         if let Some((score, style)) = mult_res {
             let mut single_score: f64 = -1.0;
             if let Some(&(scope, _)) = single_res {

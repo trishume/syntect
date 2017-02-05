@@ -110,9 +110,7 @@ mod tests {
         assert_eq!(sels.selectors.len(), 2);
         let first_sel = &sels.selectors[0];
         assert_eq!(format!("{:?}", first_sel),
-                   "ScopeSelector { path: ScopeStack { scopes: [<source.php>, \
-                    <meta.preprocessor>] }, exclude: Some(ScopeStack { scopes: [<string.quoted>] \
-                    }) }");
+                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<source.php>, <meta.preprocessor>] }, exclude: Some(ScopeStack { clear_stack: [], scopes: [<string.quoted>] }) }");
     }
     #[test]
     fn matching_works() {

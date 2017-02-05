@@ -42,6 +42,7 @@ pub struct Context {
     /// This being set false in the syntax file implies this field being set false,
     /// but it can also be set falso for contexts that don't include the prototype for other reasons
     pub meta_include_prototype: bool,
+    pub clear_scopes: Option<ClearAmount>,
     /// This is filled in by the linker at link time
     /// for contexts that have `meta_include_prototype==true`
     /// and are not included from the prototype.

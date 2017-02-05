@@ -219,8 +219,7 @@ impl SyntaxSet {
         // 2 loops necessary to satisfy borrow checker :-(
         for syntax in &mut self.syntaxes {
             if let Some(proto_ptr) = syntax.contexts.get("prototype") {
-                let mut mut_ref = proto_ptr.borrow_mut();
-                Self::recursively_mark_no_prototype(syntax, mut_ref.deref_mut());
+                Self::recursively_mark_no_prototype(syntax, proto_ptr.clone());
                 syntax.prototype = Some((*proto_ptr).clone());
             }
         }
@@ -235,34 +234,35 @@ impl SyntaxSet {
 
     /// Anything recursively included by the prototype shouldn't include the prototype.
     /// This marks them as such.
-    fn recursively_mark_no_prototype(syntax: &SyntaxDefinition, context: &mut Context) {
-        context.meta_include_prototype = false;
-        for pattern in &mut context.patterns {
-            match *pattern {
-                /// Apparently inline blocks also don't include the prototype when within the prototype.
-                /// This is really weird, but necessary to run the YAML syntax.
-                Pattern::Match(ref mut match_pat) => {
-                    let maybe_context_refs = match match_pat.operation {
-                        MatchOperation::Push(ref context_refs) |
-                        MatchOperation::Set(ref context_refs) => Some(context_refs),
-                        MatchOperation::Pop | MatchOperation::None => None,
-                    };
-                    if let Some(context_refs) = maybe_context_refs {
-                        for context_ref in context_refs.iter() {
-                            if let ContextReference::Inline(ref context_ptr) = *context_ref {
-                                let mut mut_ref = context_ptr.borrow_mut();
-                                Self::recursively_mark_no_prototype(syntax, mut_ref.deref_mut());
+    fn recursively_mark_no_prototype(syntax: &SyntaxDefinition, context_ptr: ContextPtr) {
+        if let Ok(mut mut_ref) = context_ptr.try_borrow_mut() {
+            let context = mut_ref.deref_mut();
+            context.meta_include_prototype = false;
+            for pattern in &mut context.patterns {
+                match *pattern {
+                    /// Apparently inline blocks also don't include the prototype when within the prototype.
+                    /// This is really weird, but necessary to run the YAML syntax.
+                    Pattern::Match(ref mut match_pat) => {
+                        let maybe_context_refs = match match_pat.operation {
+                            MatchOperation::Push(ref context_refs) |
+                            MatchOperation::Set(ref context_refs) => Some(context_refs),
+                            MatchOperation::Pop | MatchOperation::None => None,
+                        };
+                        if let Some(context_refs) = maybe_context_refs {
+                            for context_ref in context_refs.iter() {
+                                if let ContextReference::Inline(ref context_ptr) = *context_ref {
+                                    Self::recursively_mark_no_prototype(syntax, context_ptr.clone());
+                                }
                             }
                         }
                     }
-                }
-                Pattern::Include(ContextReference::Named(ref s)) => {
-                    if let Some(context_ptr) = syntax.contexts.get(s) {
-                        let mut mut_ref = context_ptr.borrow_mut();
-                        Self::recursively_mark_no_prototype(syntax, mut_ref.deref_mut());
+                    Pattern::Include(ContextReference::Named(ref s)) => {
+                        if let Some(context_ptr) = syntax.contexts.get(s) {
+                            Self::recursively_mark_no_prototype(syntax, context_ptr.clone());
+                        }
                     }
+                    _ => (),
                 }
-                _ => (),
             }
         }
     }
@@ -424,6 +424,6 @@ mod tests {
         // assert!(false);
         let main_context = syntax.contexts.get("main").unwrap();
         let count = syntax_definition::context_iter(main_context.clone()).count();
-        assert_eq!(count, 91);
+        assert_eq!(count, 108);
     }
 }

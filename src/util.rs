@@ -50,6 +50,10 @@ pub fn debug_print_ops(line: &str, ops: &[(usize, ScopeStackOp)]) {
             ScopeStackOp::Pop(count) => {
                 println!("^ pop {}", count);
             }
+            ScopeStackOp::Clear(amount) => {
+                println!("^ clear {:?}", amount);
+            }
+            ScopeStackOp::Restore => println!("^ restore"),
             ScopeStackOp::Noop => println!("noop"),
         }
     }

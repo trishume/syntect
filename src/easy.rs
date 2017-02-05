@@ -198,7 +198,7 @@ mod tests {
     fn can_find_regions() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap());
-        let line = "lol=5+2";
+        let line = "lol =5+2";
         let ops = state.parse_line(line);
 
         let mut stack = ScopeStack::new();
