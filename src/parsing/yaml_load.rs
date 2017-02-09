@@ -3,7 +3,9 @@ use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
-use onig::{self, Regex, Captures};
+// use onig::{self, Regex, Captures};
+// use regex::Regex;
+use regex;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::path::Path;
@@ -18,7 +20,8 @@ pub enum ParseSyntaxError {
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
     /// Invalid regex
-    RegexCompileError(onig::Error),
+    // TODO fancy_regex compile errors
+    // RegexCompileError(onig::Error),
     /// A scope that syntect's scope implementation can't handle
     InvalidScope(ParseScopeError),
     /// A reference to another file that is invalid
@@ -49,8 +52,8 @@ fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Result<Vec<Scope>, Pars
 struct ParserState<'a> {
     scope_repo: &'a mut ScopeRepository,
     variables: HashMap<String, String>,
-    variable_regex: Regex,
-    backref_regex: Regex,
+    variable_regex: regex::Regex,
+    backref_regex: regex::Regex,
     lines_include_newline: bool,
 }
 
@@ -107,8 +110,8 @@ impl SyntaxDefinition {
         let mut state = ParserState {
             scope_repo: scope_repo,
             variables: variables,
-            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
-            backref_regex: Regex::new(r"\\\d").unwrap(),
+            variable_regex: regex::Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
+            backref_regex: regex::Regex::new(r"\\\d").unwrap(),
             lines_include_newline: lines_include_newline,
         };
 
@@ -240,11 +243,11 @@ impl SyntaxDefinition {
     }
 
     fn resolve_variables(raw_regex: &str, state: &ParserState) -> String {
-        state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
+        state.variable_regex.replace_all(raw_regex, |caps: &regex::Captures| {
             let var_regex_raw =
-                state.variables.get(caps.at(1).unwrap_or("")).map_or("", |x| &**x);
+                state.variables.get(caps.get(1).map(|x| x.as_str()).unwrap_or("")).map_or("", |x| &**x);
             Self::resolve_variables(var_regex_raw, state)
-        })
+        }).into_owned()
     }
 
     fn parse_match_pattern(map: &Hash,

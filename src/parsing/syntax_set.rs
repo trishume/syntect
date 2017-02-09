@@ -19,7 +19,7 @@ use std::rc::Rc;
 use std::ascii::AsciiExt;
 
 use std::sync::Mutex;
-use onig::Regex;
+use fancy_regex::Regex;
 
 /// A syntax set holds a bunch of syntaxes and manages
 /// loading them and the crucial operation of *linking*.
@@ -168,7 +168,7 @@ impl SyntaxSet {
         let mut cache = self.first_line_cache.lock().unwrap();
         cache.ensure_filled(self.syntaxes());
         for &(ref reg, i) in &cache.regexes {
-            if reg.find(s).is_some() {
+            if reg.find(s).unwrap().is_some() {
                 return Some(&self.syntaxes[i]);
             }
         }

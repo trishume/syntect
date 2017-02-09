@@ -2,6 +2,7 @@
 //! The most important struct here is `SyntaxSet`, check out the docs for that.
 #[cfg(feature = "parsing")]
 pub mod syntax_definition;
+mod util;
 #[cfg(all( feature = "parsing", feature = "yaml-load"))]
 mod yaml_load;
 #[cfg(feature = "parsing")]

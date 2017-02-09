@@ -19,8 +19,7 @@
 
 #[cfg(feature = "yaml-load")]
 extern crate yaml_rust;
-#[cfg(feature = "parsing")]
-extern crate onig;
+// extern crate onig;
 extern crate walkdir;
 #[cfg(feature = "parsing")]
 extern crate regex_syntax;
@@ -42,6 +41,11 @@ extern crate serde_json;
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;
+#[cfg(feature = "parsing")]
+extern crate regex;
+#[cfg(feature = "parsing")]
+extern crate fancy_regex;
+
 pub mod highlighting;
 pub mod parsing;
 pub mod util;
