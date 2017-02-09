@@ -15,7 +15,7 @@
 //! Some docs have example code but a good place to look is the `syncat` example as well as the source code
 //! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
 extern crate yaml_rust;
-extern crate onig;
+// extern crate onig;
 extern crate walkdir;
 extern crate regex_syntax;
 #[macro_use]
@@ -27,6 +27,8 @@ extern crate rustc_serialize;
 extern crate bitflags;
 extern crate flate2;
 extern crate fnv;
+extern crate fancy_regex;
+extern crate regex;
 pub mod highlighting;
 pub mod parsing;
 pub mod util;

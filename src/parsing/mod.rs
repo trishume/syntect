@@ -1,6 +1,7 @@
 //! Everything about parsing text into text annotated with scopes.
 //! The most important struct here is `SyntaxSet`, check out the docs for that.
 pub mod syntax_definition;
+mod util;
 mod yaml_load;
 mod syntax_set;
 mod scope;

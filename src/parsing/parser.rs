@@ -1,6 +1,6 @@
 use super::syntax_definition::*;
 use super::scope::*;
-use onig::{self, Region};
+use super::util::Region;
 use std::usize;
 use std::collections::{HashMap, HashSet};
 use std::i32;
@@ -88,7 +88,6 @@ impl ParseState {
             self.first_line = false;
         }
 
-        let mut regions = Region::with_capacity(8);
         let fnv = BuildHasherDefault::<FnvHasher>::default();
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
         let fnv2 = BuildHasherDefault::<FnvHasher>::default();
@@ -99,7 +98,6 @@ impl ParseState {
                                     &mut match_start,
                                     &mut search_cache,
                                     &mut matched,
-                                    &mut regions,
                                     &mut res) {
             // We only care about not repeatedly matching things at the same location
             if match_start != prev_match_start {
@@ -116,7 +114,6 @@ impl ParseState {
                         start: &mut usize,
                         search_cache: &mut SearchCache,
                         matched: &mut MatchedPatterns,
-                        regions: &mut Region,
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
         let cur_match = {
@@ -180,13 +177,12 @@ impl ParseState {
                     } else {
                         match_pat.regex.as_ref().unwrap()
                     };
-                    let matched = regex.search_with_options(line,
-                                                            *start,
-                                                            line.len(),
-                                                            onig::SEARCH_OPTION_NONE,
-                                                            Some(regions));
-                    if let Some(match_start) = matched {
-                        let match_end = regions.pos(0).unwrap().1;
+                    // TODO don't panic on regex error
+                    let matched = regex.captures_from_pos(line, *start).unwrap();
+                    if let Some(captures) = matched {
+                        let match_start = captures.pos(0).unwrap().0;
+                        let match_end = captures.pos(0).unwrap().1;
+                        let regions = Region::from_captures(&captures);
                         // this is necessary to avoid infinite looping on dumb patterns
                         let does_something = match match_pat.operation {
                             MatchOperation::None => match_start != match_end,

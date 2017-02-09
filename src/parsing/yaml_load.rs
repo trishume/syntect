@@ -2,7 +2,9 @@ use super::scope::*;
 use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
-use onig::{self, Regex, Captures};
+// use onig::{self, Regex, Captures};
+// use regex::Regex;
+use regex;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::path::Path;
@@ -17,7 +19,8 @@ pub enum ParseSyntaxError {
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
     /// Invalid regex
-    RegexCompileError(onig::Error),
+    // TODO fancy_regex compile errors
+    // RegexCompileError(onig::Error),
     /// A scope that syntect's scope implementation can't handle
     InvalidScope(ParseScopeError),
     /// A reference to another file that is invalid
@@ -48,9 +51,9 @@ fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Result<Vec<Scope>, Pars
 struct ParserState<'a> {
     scope_repo: &'a mut ScopeRepository,
     variables: HashMap<String, String>,
-    variable_regex: Regex,
-    backref_regex: Regex,
-    short_multibyte_regex: Regex,
+    variable_regex: regex::Regex,
+    backref_regex: regex::Regex,
+    short_multibyte_regex: regex::Regex,
     top_level_scope: Scope,
     lines_include_newline: bool,
 }
@@ -93,9 +96,9 @@ impl SyntaxDefinition {
         let mut state = ParserState {
             scope_repo: scope_repo,
             variables: variables,
-            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
-            backref_regex: Regex::new(r"\\\d").unwrap(),
-            short_multibyte_regex: Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
+            variable_regex: regex::Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
+            backref_regex: regex::Regex::new(r"\\\d").unwrap(),
+            short_multibyte_regex: regex::Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
             top_level_scope: top_level_scope,
             lines_include_newline: lines_include_newline,
         };
@@ -239,11 +242,11 @@ impl SyntaxDefinition {
     }
 
     fn resolve_variables(raw_regex: &str, state: &ParserState) -> String {
-        state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
+        state.variable_regex.replace_all(raw_regex, |caps: &regex::Captures| {
             let var_regex_raw =
-                state.variables.get(caps.at(1).unwrap_or("")).map_or("", |x| &**x);
+                state.variables.get(caps.get(1).map(|x| x.as_str()).unwrap_or("")).map_or("", |x| &**x);
             Self::resolve_variables(var_regex_raw, state)
-        })
+        }).into_owned()
     }
 
     fn parse_match_pattern(map: &BTreeMap<Yaml, Yaml>,
@@ -253,9 +256,9 @@ impl SyntaxDefinition {
         let regex_str_1 = Self::resolve_variables(raw_regex, state);
         // bug triggered by CSS.sublime-syntax, dunno why this is necessary
         let regex_str_2 =
-            state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &Captures| {
-                format!("\\x{{000000{}}}", caps.at(1).unwrap_or(""))
-            });
+            state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &regex::Captures| {
+                format!("\\x{{000000{}}}", caps.get(1).map(|x| x.as_str()).unwrap_or(""))
+            }).into_owned();
         // if the passed in strings don't include newlines (unlike Sublime) we can't match on them
         let regex_str = if state.lines_include_newline {
             regex_str_2

@@ -17,13 +17,15 @@ yaml-rust = "0.3"
 onig = "1.1.0"
 walkdir = "0.1"
 regex-syntax = "0.3.3"
-lazy_static = "0.2.1"
+lazy_static = "^0.2"
 bitflags = "0.7"
 plist = "0.0.14"
 rustc-serialize = "0.3"
 bincode = "0.6"
 flate2 = "0.2"
 fnv = "1.0.2"
+regex = "*"
+fancy-regex = { git = "https://github.com/trishume/fancy-regex.git" }
 
 [features]
 static-onig = ["onig/static-libonig"]
