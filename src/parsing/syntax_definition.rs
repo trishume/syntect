@@ -8,7 +8,7 @@ use onig::{self, Regex, Region, Syntax};
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use super::scope::*;
-use regex_syntax::quote;
+use regex_syntax::escape;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
 pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
@@ -199,7 +199,7 @@ impl MatchPattern {
             if last_was_escape && c.is_digit(10) {
                 let val = c.to_digit(10).unwrap();
                 if let Some((start, end)) = region.pos(val as usize) {
-                    let escaped = quote(&s[start..end]);
+                    let escaped = escape(&s[start..end]);
                     reg_str.push_str(&escaped);
                 }
             } else if last_was_escape {
