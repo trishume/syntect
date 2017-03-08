@@ -9,7 +9,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
 pub struct ScopeSelector {
     path: ScopeStack,
-    exclude: Option<ScopeStack>,
+    excludes: Vec<ScopeStack>,
 }
 
 /// A selector set that matches anything matched by any of its component selectors.
@@ -25,15 +25,21 @@ impl ScopeSelector {
     /// Checks if this selector matches a given scope stack.
     /// See `ScopeSelectors#does_match` for more info.
     pub fn does_match(&self, stack: &[Scope]) -> Option<MatchPower> {
-        if self.exclude.as_ref().and_then(|sel| sel.does_match(stack)).is_some() {
+        // if there are any exclusions, and any one of them matches, then this selector doesn't match
+        if self.excludes.iter().any(|sel| sel.is_empty() || sel.does_match(stack).is_some()) {
             return None;
         }
-        self.path.does_match(stack)
+        if self.path.is_empty() {
+            // an empty scope selector always matches with a score of 1
+            Some(MatchPower(0o1u64 as f64))
+        } else {
+            self.path.does_match(stack)
+        }
     }
 
     /// If this selector is really just a single scope, return it
     pub fn extract_single_scope(&self) -> Option<Scope> {
-        if self.path.len() > 1 || self.exclude.is_some() || self.path.is_empty() {
+        if self.path.len() > 1 || !self.excludes.is_empty() || self.path.is_empty() {
             return None;
         }
         Some(self.path.as_slice()[0])
@@ -43,24 +49,21 @@ impl ScopeSelector {
 impl FromStr for ScopeSelector {
     type Err = ParseScopeError;
 
-    /// Parses a scope prefix followed optionally by a " - " and then a scope prefix to exclude
+    /// Parses a scope stack followed optionally by (one or more) " -" and then a scope stack to exclude
     fn from_str(s: &str) -> Result<ScopeSelector, ParseScopeError> {
-        match s.find(" - ") {
-            Some(index) => {
-                let (path_str, exclude_with_dash) = s.split_at(index);
-                let exclude_str = &exclude_with_dash[3..];
-                Ok(ScopeSelector {
-                    path: try!(ScopeStack::from_str(path_str)),
-                    exclude: Some(try!(ScopeStack::from_str(exclude_str))),
-                })
-            }
-            None => {
-                Ok(ScopeSelector {
-                    path: try!(ScopeStack::from_str(s)),
-                    exclude: None,
-                })
+        let mut excludes = Vec::new();
+        let mut path_str: &str = "";
+        for (i, selector) in s.split(" -").enumerate() {
+            if i == 0 {
+                path_str = selector;
+            } else {
+                excludes.push(try!(ScopeStack::from_str(selector)));
             }
         }
+        Ok(ScopeSelector {
+            path: try!(ScopeStack::from_str(path_str)),
+            excludes: excludes,
+        })
     }
 }
 
@@ -88,10 +91,10 @@ impl ScopeSelectors {
 impl FromStr for ScopeSelectors {
     type Err = ParseScopeError;
 
-    /// Parses a series of selectors separated by commas
+    /// Parses a series of selectors separated by commas or pipes
     fn from_str(s: &str) -> Result<ScopeSelectors, ParseScopeError> {
         let mut selectors = Vec::new();
-        for selector in s.split(',') {
+        for selector in s.split(&[',', '|'][..]) {
             selectors.push(try!(ScopeSelector::from_str(selector)))
         }
         Ok(ScopeSelectors { selectors: selectors })
@@ -110,7 +113,49 @@ mod tests {
         assert_eq!(sels.selectors.len(), 2);
         let first_sel = &sels.selectors[0];
         assert_eq!(format!("{:?}", first_sel),
-                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<source.php>, <meta.preprocessor>] }, exclude: Some(ScopeStack { clear_stack: [], scopes: [<string.quoted>] }) }");
+                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<source.php>, <meta.preprocessor>] }, excludes: [ScopeStack { clear_stack: [], scopes: [<string.quoted>] }] }");
+        
+        let sels = ScopeSelectors::from_str("source.php meta.preprocessor -string.quoted|\
+                                             source string")
+            .unwrap();
+        assert_eq!(sels.selectors.len(), 2);
+        let first_sel = &sels.selectors[0];
+        assert_eq!(format!("{:?}", first_sel),
+                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<source.php>, <meta.preprocessor>] }, excludes: [ScopeStack { clear_stack: [], scopes: [<string.quoted>] }] }");
+        
+        let sels = ScopeSelectors::from_str("text.xml meta.tag.preprocessor.xml punctuation.separator.key-value.xml")
+            .unwrap();
+        assert_eq!(sels.selectors.len(), 1);
+        let first_sel = &sels.selectors[0];
+        assert_eq!(format!("{:?}", first_sel),
+                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<text.xml>, <meta.tag.preprocessor.xml>, <punctuation.separator.key-value.xml>] }, excludes: [] }");
+        
+        let sels = ScopeSelectors::from_str("text.xml meta.tag.preprocessor.xml punctuation.separator.key-value.xml - text.html - string")
+            .unwrap();
+        assert_eq!(sels.selectors.len(), 1);
+        let first_sel = &sels.selectors[0];
+        assert_eq!(format!("{:?}", first_sel),
+                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<text.xml>, <meta.tag.preprocessor.xml>, <punctuation.separator.key-value.xml>] }, excludes: [ScopeStack { clear_stack: [], scopes: [<text.html>] }, ScopeStack { clear_stack: [], scopes: [<string>] }] }");
+        
+        let sels = ScopeSelectors::from_str("text.xml meta.tag.preprocessor.xml punctuation.separator.key-value.xml - text.html - string, source - comment")
+            .unwrap();
+        assert_eq!(sels.selectors.len(), 2);
+        let first_sel = &sels.selectors[0];
+        assert_eq!(format!("{:?}", first_sel),
+                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<text.xml>, <meta.tag.preprocessor.xml>, <punctuation.separator.key-value.xml>] }, excludes: [ScopeStack { clear_stack: [], scopes: [<text.html>] }, ScopeStack { clear_stack: [], scopes: [<string>] }] }");
+        let second_sel = &sels.selectors[1];
+        assert_eq!(format!("{:?}", second_sel),
+                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<source>] }, excludes: [ScopeStack { clear_stack: [], scopes: [<comment>] }] }");
+        
+        let sels = ScopeSelectors::from_str(" -a.b|j.g")
+            .unwrap();
+        assert_eq!(sels.selectors.len(), 2);
+        let first_sel = &sels.selectors[0];
+        assert_eq!(format!("{:?}", first_sel),
+                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [] }, excludes: [ScopeStack { clear_stack: [], scopes: [<a.b>] }] }");
+        let second_sel = &sels.selectors[1];
+        assert_eq!(format!("{:?}", second_sel),
+                   "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<j.g>] }, excludes: [] }");
     }
     #[test]
     fn matching_works() {
@@ -136,5 +181,142 @@ mod tests {
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
                    Some(MatchPower(0o2001u64 as f64)));
+        assert_eq!(ScopeSelectors::from_str("a.b|a e.f -d, e.f -a.b")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o201u64 as f64)));
+    }
+    
+    #[test]
+    fn empty_stack_matching_works() {
+        use parsing::{ScopeStack, MatchPower};
+        use std::str::FromStr;
+        assert_eq!(ScopeSelector::from_str(" - a.b")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str("")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o1u64 as f64)));
+        assert_eq!(ScopeSelector::from_str("")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("").unwrap().as_slice()),
+                   Some(MatchPower(0o1u64 as f64)));
+        assert_eq!(ScopeSelector::from_str(" - a.b")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("").unwrap().as_slice()),
+                   Some(MatchPower(0o1u64 as f64)));
+        assert_eq!(ScopeSelector::from_str("a.b - ")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str("a.b - ")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str(" - ")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str(" - a.b")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str(" - g.h")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o1u64 as f64)));
+        
+        assert_eq!(ScopeSelector::from_str(" -a.b")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str("")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o1u64 as f64)));
+        assert_eq!(ScopeSelector::from_str(" -a.b")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("").unwrap().as_slice()),
+                   Some(MatchPower(0o1u64 as f64)));
+        assert_eq!(ScopeSelector::from_str("a.b -")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str("a.b -")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str(" -")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str(" -a.b")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str(" -g.h")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o1u64 as f64)));
+    }
+    
+    #[test]
+    fn multiple_excludes_matching_works() {
+        use parsing::{ScopeStack, MatchPower};
+        use std::str::FromStr;
+        assert_eq!(ScopeSelector::from_str(" - a.b - c.d")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str(" - a.b - c.d")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("").unwrap().as_slice()),
+                   Some(MatchPower(0o1u64 as f64)));
+        assert_eq!(ScopeSelector::from_str("a.b - c.d -e.f")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str("a.b - c.d -")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelector::from_str(" -g.h - h.i")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o1u64 as f64)));
+        assert_eq!(ScopeSelector::from_str("a.b")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o2u64 as f64)));
+        assert_eq!(ScopeSelector::from_str("a.b -g.h - h.i")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o2u64 as f64)));
+        assert_eq!(ScopeSelector::from_str("c.d")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o20u64 as f64)));
+        assert_eq!(ScopeSelector::from_str("c.d - j.g - h.i")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o20u64 as f64)));
+        assert_eq!(ScopeSelectors::from_str("j.g| -a.b")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelectors::from_str(" -a.b|j.g")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   None);
+        assert_eq!(ScopeSelectors::from_str(" -a.b,c.d - j.g - h.i")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o20u64 as f64)));
+        assert_eq!(ScopeSelectors::from_str(" -a.b, -d.c -f.e")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
+                   Some(MatchPower(0o01u64 as f64)));
     }
 }
