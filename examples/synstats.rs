@@ -80,10 +80,9 @@ fn is_ignored(entry: &DirEntry) -> bool {
          .unwrap_or(false)
 }
 
-fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stats: &mut Stats) {
+fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stack: &mut ScopeStack, stats: &mut Stats) {
     stats.lines += 1;
 
-    let mut stack = ScopeStack::new();
     let mut line_has_comment = false;
     let mut line_has_doc_comment = false;
     let mut line_has_code = false;
@@ -133,11 +132,12 @@ fn count(ss: &SyntaxSet, path: &Path, stats: &mut Stats) {
     let f = File::open(path).unwrap();
     let mut reader = BufReader::new(f);
     let mut line = String::new();
+    let mut stack = ScopeStack::new();
     while reader.read_line(&mut line).unwrap() > 0 {
         {
             let ops = state.parse_line(&line);
             stats.chars += line.len();
-            count_line(&ops, &line, stats);
+            count_line(&ops, &line, &mut stack, stats);
         }
         line.clear();
     }
