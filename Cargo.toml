@@ -27,6 +27,9 @@ fnv = "^1.0"
 
 [features]
 static-onig = ["onig/static-libonig"]
+assets = []
+html = ["assets"]
+default = ["assets", "html"]
 
 # [profile.release]
 # debug = true

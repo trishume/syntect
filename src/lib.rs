@@ -32,7 +32,9 @@ pub mod parsing;
 pub mod util;
 pub mod dumps;
 pub mod easy;
+#[cfg(feature = "html")]
 pub mod html;
+#[cfg(feature = "html")]
 mod escape;
 
 use std::io::Error as IoError;

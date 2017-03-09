@@ -18,5 +18,9 @@ script:
     fi
   - cargo test
   - make assets
+  - rm -Rf examples
   - cargo doc
+  # default features are required for examples to build - so remove them from sight.
+  # Doc-tests may also use default features
+  - rm -Rf examples && cargo test --lib --no-default-features
 after_success: curl https://raw.githubusercontent.com/trishume/syntect/master/scripts/travis-doc-upload.sh | sh
