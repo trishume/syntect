@@ -11,7 +11,9 @@ use bincode::SizeLimit;
 use bincode::rustc_serialize::*;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
+#[cfg(feature = "assets")]
 use parsing::SyntaxSet;
+#[cfg(feature = "assets")]
 use highlighting::ThemeSet;
 use std::path::Path;
 use flate2::write::ZlibEncoder;
@@ -53,6 +55,7 @@ pub fn from_dump_file<T: Decodable, P: AsRef<Path>>(path: P) -> DecodingResult<T
     decode_from(&mut decoder, SizeLimit::Infinite)
 }
 
+#[cfg(feature = "assets")]
 impl SyntaxSet {
     /// Instantiates a new syntax set from a binary dump of
     /// Sublime Text's default open source syntax definitions and then links it.
@@ -86,6 +89,7 @@ impl SyntaxSet {
     }
 }
 
+#[cfg(feature = "assets")]
 impl ThemeSet {
     /// Loads the set of default themes
     /// Currently includes (these are the keys for the map):
@@ -101,10 +105,9 @@ impl ThemeSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::SyntaxSet;
-    use highlighting::ThemeSet;
     #[test]
     fn can_dump_and_load() {
+        use parsing::SyntaxSet;
         let mut ps = SyntaxSet::new();
         ps.load_syntaxes("testdata/Packages", false).unwrap();
 
@@ -112,6 +115,12 @@ mod tests {
         let ps2: SyntaxSet = from_binary(&bin[..]);
         assert_eq!(ps.syntaxes().len(), ps2.syntaxes().len());
 
+    }
+    
+    #[cfg(feature = "assets")]
+    #[test]
+    fn has_default_themes() {
+        use highlighting::ThemeSet;
         let themes = ThemeSet::load_defaults();
         assert!(themes.themes.len() > 4);
     }

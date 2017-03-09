@@ -168,12 +168,14 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
     }
 }
 
+#[cfg(feature = "assets")]
 #[cfg(test)]
 mod tests {
     use super::*;
     use parsing::{SyntaxSet, ParseState, ScopeStack};
     use highlighting::ThemeSet;
     use std::str::FromStr;
+    
     #[test]
     fn can_highlight_lines() {
         let ps = SyntaxSet::load_defaults_nonewlines();
