@@ -17,7 +17,8 @@ script:
       export LD_LIBRARY_PATH="${p}:${LD_LIBRARY_PATH}"
     fi
   - cargo test
-  - rm -Rf examples 
+  - make assets
+  - rm -Rf examples
   - cargo doc
   # default features are required for examples to build - so remove them from sight.
   # Doc-tests may also use default features
