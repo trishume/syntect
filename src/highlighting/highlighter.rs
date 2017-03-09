@@ -241,12 +241,13 @@ impl<'a> Highlighter<'a> {
     }
 }
 
+#[cfg(feature = "assets")]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, ScopeStack, ParseState};
     use highlighting::{ThemeSet, Style, Color, FontStyle};
-
+    use parsing::{ SyntaxSet, ScopeStack, ParseState};
+    
     #[test]
     fn can_parse() {
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
@@ -280,7 +281,5 @@ mod tests {
                        font_style: FontStyle::empty(),
                    },
                     "5"));
-
-        // assert!(false);
     }
 }
