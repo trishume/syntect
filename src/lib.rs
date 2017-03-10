@@ -14,6 +14,7 @@
 //!
 //! Some docs have example code but a good place to look is the `syncat` example as well as the source code
 //! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
+#[cfg(feature = "yaml-load")]
 extern crate yaml_rust;
 extern crate onig;
 extern crate walkdir;
@@ -38,6 +39,7 @@ pub mod html;
 mod escape;
 
 use std::io::Error as IoError;
+#[cfg(feature = "yaml-load")]
 use parsing::ParseSyntaxError;
 use highlighting::{ParseThemeError, SettingsError};
 
@@ -49,6 +51,7 @@ pub enum LoadingError {
     /// error reading a file
     Io(IoError),
     /// a syntax file was invalid in some way
+    #[cfg(feature = "yaml-load")]
     ParseSyntax(ParseSyntaxError),
     /// a theme file was invalid in some way
     ParseTheme(ParseThemeError),
@@ -77,6 +80,7 @@ impl From<ParseThemeError> for LoadingError {
     }
 }
 
+#[cfg(feature = "yaml-load")]
 impl From<ParseSyntaxError> for LoadingError {
     fn from(error: ParseSyntaxError) -> LoadingError {
         LoadingError::ParseSyntax(error)

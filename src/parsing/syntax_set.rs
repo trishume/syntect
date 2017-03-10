@@ -1,10 +1,14 @@
 use super::syntax_definition::*;
 use super::scope::*;
+#[cfg(feature = "yaml-load")]
 use super::super::LoadingError;
 
 use std::path::Path;
+#[cfg(feature = "yaml-load")]
 use walkdir::WalkDir;
-use std::io::{self, Read, BufRead, BufReader};
+#[cfg(feature = "yaml-load")]
+use std::io::Read;
+use std::io::{self, BufRead, BufReader};
 use std::fs::File;
 use std::ops::DerefMut;
 use std::mem;
@@ -28,6 +32,7 @@ pub struct SyntaxSet {
     first_line_cache: Mutex<FirstLineCache>,
 }
 
+#[cfg(feature = "yaml-load")]
 fn load_syntax_file(p: &Path,
                     lines_include_newline: bool)
                     -> Result<SyntaxDefinition, LoadingError> {
@@ -57,6 +62,7 @@ impl SyntaxSet {
     /// defaults to lines given not including newline characters, see the
     /// `load_syntaxes` method docs for an explanation as to why this might not be the best.
     /// It also links all the syntaxes together, see `link_syntaxes` for what that means.
+    #[cfg(feature = "yaml-load")]
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<SyntaxSet, LoadingError> {
         let mut ps = Self::new();
         try!(ps.load_syntaxes(folder, false));
@@ -76,6 +82,7 @@ impl SyntaxSet {
     ///
     /// In the future I might include a "slow mode" that copies the lines passed in and appends a newline if there isn't one.
     /// but in the interest of performance currently this hacky fix will have to do.
+    #[cfg(feature = "yaml-load")]
     pub fn load_syntaxes<P: AsRef<Path>>(&mut self,
                                          folder: P,
                                          lines_include_newline: bool)
@@ -106,6 +113,7 @@ impl SyntaxSet {
     /// Rarely useful method that loads in a syntax with no highlighting rules for plain text.
     /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some
     /// reason the default Sublime plain text syntax is still in `.tmLanguage` format.
+    #[cfg(feature = "yaml-load")]
     pub fn load_plain_text_syntax(&mut self) {
         let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: \
                  {main: []}";
