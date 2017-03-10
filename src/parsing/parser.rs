@@ -383,6 +383,7 @@ impl ParseState {
     }
 }
 
+#[cfg(feature = "yaml-load")]
 #[cfg(test)]
 mod tests {
     use super::*;

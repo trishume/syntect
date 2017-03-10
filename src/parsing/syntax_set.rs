@@ -402,6 +402,7 @@ impl Decodable for SyntaxSet {
     }
 }
 
+#[cfg(feature = "yaml-load")]
 #[cfg(test)]
 mod tests {
     use super::*;
