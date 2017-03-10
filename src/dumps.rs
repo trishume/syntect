@@ -104,9 +104,10 @@ impl ThemeSet {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    #[cfg(feature = "yaml-load")]
     #[test]
     fn can_dump_and_load() {
+        use super::*;
         use parsing::SyntaxSet;
         let mut ps = SyntaxSet::new();
         ps.load_syntaxes("testdata/Packages", false).unwrap();

@@ -13,7 +13,7 @@ exclude = [
 ]
 
 [dependencies]
-yaml-rust = "0.3.5"
+yaml-rust = { version = "0.3.5", optional = true }
 onig = "1.2.0"
 walkdir = "^1.0"
 regex-syntax = "^0.4"
@@ -29,7 +29,8 @@ fnv = "^1.0"
 static-onig = ["onig/static-libonig"]
 assets = []
 html = ["assets"]
-default = ["assets", "html"]
+yaml-load = ["yaml-rust"]
+default = ["assets", "html", "yaml-load"]
 
 # [profile.release]
 # debug = true
