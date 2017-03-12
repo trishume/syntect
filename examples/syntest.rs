@@ -89,13 +89,23 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
 fn process_assertions(assertion: &AssertionRange, test_against_line_scopes: &Vec<ScopedText>) -> Vec<RangeTestResult> {
     let selector = ScopeSelectors::from_str(assertion.scope_selector_text).unwrap();
     // find the scope at the specified start column, and start matching the selector through the rest of the tokens on the line from there until the end column is reached
-    // TODO: don't ignore assertions after the newline, they should be treated as though they are asserting against the newline
     let mut results = Vec::new();
     for scoped_text in test_against_line_scopes.iter().skip_while(|s|s.char_start + s.text_len <= assertion.begin_char).take_while(|s|s.char_start < assertion.end_char) {
         let match_value = selector.does_match(scoped_text.scope.as_slice());
         let result = RangeTestResult {
             column_begin: max(scoped_text.char_start, assertion.begin_char),
             column_end: min(scoped_text.char_start + scoped_text.text_len, assertion.end_char),
+            success: match_value.is_some()
+        };
+        results.push(result);
+    }
+    // don't ignore assertions after the newline, they should be treated as though they are asserting against the newline
+    let last = test_against_line_scopes.last().unwrap();
+    if last.char_start + last.text_len < assertion.end_char {
+        let match_value = selector.does_match(last.scope.as_slice());
+        let result = RangeTestResult {
+            column_begin: max(last.char_start + last.text_len, assertion.begin_char),
+            column_end: assertion.end_char,
             success: match_value.is_some()
         };
         results.push(result);
@@ -155,7 +165,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
                             assertion.scope_selector_text.trim(),
                             current_line_number, test_against_line_number, failure.column_begin, failure.column_end,
                             chars,
-                            scopes_on_line_being_tested.iter().skip_while(|s|s.char_start + s.text_len <= failure.column_begin).next().unwrap().scope
+                            scopes_on_line_being_tested.iter().skip_while(|s|s.char_start + s.text_len <= failure.column_begin).next().unwrap_or(scopes_on_line_being_tested.last().unwrap()).scope
                         );
                         assertion_failures += failure.column_end - failure.column_begin;
                     }
