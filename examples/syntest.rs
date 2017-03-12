@@ -87,7 +87,9 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
 }
 
 fn process_assertions(assertion: &AssertionRange, test_against_line_scopes: &Vec<ScopedText>) -> Vec<RangeTestResult> {
-    let selector = ScopeSelectors::from_str(assertion.scope_selector_text).unwrap();
+    // format the scope selector to include a space at the beginning, because, currently, ScopeSelector expects excludes to begin with " -"
+    // and they are sometimes in the syntax test as ^^^-comment, for example
+    let selector = ScopeSelectors::from_str(&format!(" {}", &assertion.scope_selector_text)).unwrap();
     // find the scope at the specified start column, and start matching the selector through the rest of the tokens on the line from there until the end column is reached
     let mut results = Vec::new();
     for scoped_text in test_against_line_scopes.iter().skip_while(|s|s.char_start + s.text_len <= assertion.begin_char).take_while(|s|s.char_start < assertion.end_char) {
