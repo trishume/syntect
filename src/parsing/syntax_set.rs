@@ -15,7 +15,6 @@ use std::mem;
 use std::rc::Rc;
 use std::ascii::AsciiExt;
 use std::sync::Mutex;
-use std::collections::HashMap;
 use onig::Regex;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
@@ -31,7 +30,8 @@ pub struct SyntaxSet {
     syntaxes: Vec<SyntaxDefinition>,
     pub is_linked: bool,
     first_line_cache: Mutex<FirstLineCache>,
-    path_scope_map: HashMap<String, Scope>,
+    /// Stores the syntax index for every path that was loaded
+    path_syntaxes: Vec<(String, usize)>,
 }
 
 #[cfg(feature = "yaml-load")]
@@ -51,7 +51,7 @@ impl Default for SyntaxSet {
             syntaxes: Vec::new(),
             is_linked: true,
             first_line_cache: Mutex::new(FirstLineCache::new()),
-            path_scope_map: HashMap::new(),
+            path_syntaxes: Vec::new(),
         }
     }
 }
@@ -96,7 +96,9 @@ impl SyntaxSet {
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 // println!("{}", entry.path().display());
                 let syntax = try!(load_syntax_file(entry.path(), lines_include_newline));
-                self.path_scope_map.insert(entry.path().to_str().unwrap().to_string(), syntax.scope);
+                if let Some(path_str) = entry.path().to_str() {
+                    self.path_syntaxes.push((path_str.to_string(), self.syntaxes.len()));
+                }
                 self.syntaxes.push(syntax);
             }
         }
@@ -175,7 +177,7 @@ impl SyntaxSet {
     /// others may just have SyntaxName.sublime-syntax
     /// this caters for these by matching the end of the path of the loaded syntax definition files
     pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxDefinition> {
-        return self.path_scope_map.keys().find(|p| p.ends_with(path)).and_then(|p| self.syntaxes.iter().find(|&s| &s.scope == self.path_scope_map.get(p).unwrap()));
+        return self.path_syntaxes.iter().find(|t| t.0.ends_with(path)).map(|&(_,i)| &self.syntaxes[i]);
     }
 
     /// Convenience method that tries to find the syntax for a file path,
@@ -397,7 +399,7 @@ impl Encodable for SyntaxSet {
         s.emit_struct("SyntaxSet", 3, |s| {
             try!(s.emit_struct_field("syntaxes", 0, |s| self.syntaxes.encode(s)));
             try!(s.emit_struct_field("is_linked", 1, |s| self.is_linked.encode(s)));
-            try!(s.emit_struct_field("path_scope_map", 2, |s| self.path_scope_map.encode(s)));
+            try!(s.emit_struct_field("path_syntaxes", 2, |s| self.path_syntaxes.encode(s)));
             Ok(())
         })
     }
@@ -410,7 +412,7 @@ impl Decodable for SyntaxSet {
                 syntaxes: try!(d.read_struct_field("syntaxes", 0, Decodable::decode)),
                 is_linked: try!(d.read_struct_field("is_linked", 1, Decodable::decode)),
                 first_line_cache: Mutex::new(FirstLineCache::new()),
-                path_scope_map: try!(d.read_struct_field("path_scope_map", 2, Decodable::decode)),
+                path_syntaxes: try!(d.read_struct_field("path_syntaxes", 2, Decodable::decode)),
             };
 
             Ok(ss)
@@ -444,6 +446,8 @@ mod tests {
                        .name,
                    "Go");
         assert!(&ps.find_syntax_by_first_line("derp derp hi lol").is_none());
+        assert_eq!(&ps.find_syntax_by_path("Packages/Rust/Rust.sublime-syntax").unwrap().name,
+                   "Rust");
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // assert!(false);
