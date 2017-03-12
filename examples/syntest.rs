@@ -132,10 +132,9 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
             let testtoken_end = captures.name("testtoken_end").map_or(None, |c|Some(c.as_str()));
             let syntax_file = captures.name("syntax_file").unwrap().as_str();
             
-            // find the relevant syntax definition to parse the file with
-            // TODO: use the syntax definition file specified in the test file header, rather than relying on file extension
+            // find the relevant syntax definition to parse the file with - case is important!
             println!("The test file references syntax definition file: {}", syntax_file);
-            let syntax = match ss.find_syntax_for_file(path).unwrap_or(None) {
+            let syntax = match ss.find_syntax_by_path(syntax_file) {
                 Some(syntax) => syntax,
                 None => return Err(SyntaxTestHeaderError::SyntaxDefinitionNotFound)
             };

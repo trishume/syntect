@@ -15,6 +15,7 @@ use std::mem;
 use std::rc::Rc;
 use std::ascii::AsciiExt;
 use std::sync::Mutex;
+use std::collections::HashMap;
 use onig::Regex;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
@@ -30,6 +31,7 @@ pub struct SyntaxSet {
     syntaxes: Vec<SyntaxDefinition>,
     pub is_linked: bool,
     first_line_cache: Mutex<FirstLineCache>,
+    path_scope_map: HashMap<String, Scope>,
 }
 
 #[cfg(feature = "yaml-load")]
@@ -49,6 +51,7 @@ impl Default for SyntaxSet {
             syntaxes: Vec::new(),
             is_linked: true,
             first_line_cache: Mutex::new(FirstLineCache::new()),
+            path_scope_map: HashMap::new(),
         }
     }
 }
@@ -92,7 +95,9 @@ impl SyntaxSet {
             let entry = try!(entry.map_err(LoadingError::WalkDir));
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 // println!("{}", entry.path().display());
-                self.syntaxes.push(try!(load_syntax_file(entry.path(), lines_include_newline)));
+                let syntax = try!(load_syntax_file(entry.path(), lines_include_newline));
+                self.path_scope_map.insert(entry.path().to_str().unwrap().to_string(), syntax.scope);
+                self.syntaxes.push(syntax);
             }
         }
         Ok(())
@@ -162,6 +167,15 @@ impl SyntaxSet {
             }
         }
         None
+    }
+
+    /// Searches for a syntax by it's original file path when it was first loaded from disk
+    /// primarily useful for syntax tests
+    /// some may specify a Packages/PackageName/SyntaxName.sublime-syntax path
+    /// others may just have SyntaxName.sublime-syntax
+    /// this caters for these by matching the end of the path of the loaded syntax definition files
+    pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxDefinition> {
+        return self.path_scope_map.keys().find(|p| p.ends_with(path)).and_then(|p| self.syntaxes.iter().find(|&s| &s.scope == self.path_scope_map.get(p).unwrap()));
     }
 
     /// Convenience method that tries to find the syntax for a file path,
@@ -380,9 +394,10 @@ impl FirstLineCache {
 
 impl Encodable for SyntaxSet {
     fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        s.emit_struct("SyntaxSet", 2, |s| {
+        s.emit_struct("SyntaxSet", 3, |s| {
             try!(s.emit_struct_field("syntaxes", 0, |s| self.syntaxes.encode(s)));
             try!(s.emit_struct_field("is_linked", 1, |s| self.is_linked.encode(s)));
+            try!(s.emit_struct_field("path_scope_map", 2, |s| self.path_scope_map.encode(s)));
             Ok(())
         })
     }
@@ -390,11 +405,12 @@ impl Encodable for SyntaxSet {
 
 impl Decodable for SyntaxSet {
     fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-        d.read_struct("SyntaxSet", 2, |d| {
+        d.read_struct("SyntaxSet", 3, |d| {
             let ss = SyntaxSet {
                 syntaxes: try!(d.read_struct_field("syntaxes", 0, Decodable::decode)),
                 is_linked: try!(d.read_struct_field("is_linked", 1, Decodable::decode)),
                 first_line_cache: Mutex::new(FirstLineCache::new()),
+                path_scope_map: try!(d.read_struct_field("path_scope_map", 2, Decodable::decode)),
             };
 
             Ok(ss)
