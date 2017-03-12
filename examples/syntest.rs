@@ -48,7 +48,8 @@ lazy_static! {
 struct AssertionRange<'a> {
     begin_char: usize,
     end_char: usize,
-    scope_selector_text: &'a str
+    scope_selector_text: &'a str,
+    is_pure_assertion_line: bool,
 }
 
 #[derive(Debug)]
@@ -69,18 +70,18 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
     // if the test start token specified in the test file's header is on the line
     if let Some(index) = line.find(testtoken_start) {
         let (before_token_start, token_and_rest_of_line) = line.split_at(index);
-        if before_token_start.trim_left().is_empty() { // if only whitespace precedes the test token on the line
-            if let Some(captures) = SYNTAX_TEST_ASSERTION_PATTERN.captures(&token_and_rest_of_line[testtoken_start.len()..]) {
-                let mut sst = captures.get(3).unwrap().as_str().trim_right(); // get the scope selector text
-                if let Some(token) = testtoken_end { // if there is an end token defined in the test file header
-                    sst = sst.trim_right_matches(&token); // trim it from the scope selector text
-                }
-                return Some(AssertionRange {
-                    begin_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().start() } else { 0 },
-                    end_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().end() } else { 1 },
-                    scope_selector_text: sst
-                })
+        
+        if let Some(captures) = SYNTAX_TEST_ASSERTION_PATTERN.captures(&token_and_rest_of_line[testtoken_start.len()..]) {
+            let mut sst = captures.get(3).unwrap().as_str().trim_right(); // get the scope selector text
+            if let Some(token) = testtoken_end { // if there is an end token defined in the test file header
+                sst = sst.trim_right_matches(&token); // trim it from the scope selector text
             }
+            return Some(AssertionRange {
+                begin_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().start() } else { 0 },
+                end_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().end() } else { 1 },
+                scope_selector_text: sst,
+                is_pure_assertion_line: before_token_start.trim_left().is_empty(), // if only whitespace precedes the test token on the line, then it is a pure assertion line
+            })
         }
     }
     None
@@ -153,6 +154,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
             let mut total_assertions: usize = 0;
             
             loop {
+                let mut line_only_has_assertion = false;
                 let mut line_has_assertion = false;
                 if let Some(assertion) = get_line_assertion_details(testtoken_start, testtoken_end, &line) {
                     let result = process_assertions(&assertion, &scopes_on_line_being_tested);
@@ -170,10 +172,11 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
                         );
                         assertion_failures += failure.column_end - failure.column_begin;
                     }
+                    line_only_has_assertion = assertion.is_pure_assertion_line;
                     line_has_assertion = true;
                 }
-                if !line_has_assertion || parse_test_lines {
-                    if !line_has_assertion {
+                if !line_only_has_assertion || parse_test_lines {
+                    if !line_has_assertion { // ST seems to ignore lines that have assertions when calculating which line the assertion tests against
                         scopes_on_line_being_tested.clear();
                         test_against_line_number = current_line_number;
                         previous_non_assertion_line = line.to_string();
