@@ -70,7 +70,7 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
     // if the test start token specified in the test file's header is on the line
     if let Some(index) = line.find(testtoken_start) {
         let (before_token_start, token_and_rest_of_line) = line.split_at(index);
-        
+
         if let Some(captures) = SYNTAX_TEST_ASSERTION_PATTERN.captures(&token_and_rest_of_line[testtoken_start.len()..]) {
             let mut sst = captures.get(3).unwrap().as_str().trim_right(); // get the scope selector text
             if let Some(token) = testtoken_end { // if there is an end token defined in the test file header
@@ -116,109 +116,106 @@ fn process_assertions(assertion: &AssertionRange, test_against_line_scopes: &Vec
     results
 }
 
+/// If `parse_test_lines` is `false` then lines that only contain assertions are not parsed
 fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
     let f = File::open(path).unwrap();
     let mut reader = BufReader::new(f);
     let mut line = String::new();
-    
+
     // read the first line from the file - if we have reached EOF already, it's an invalid file
     if reader.read_line(&mut line).unwrap() == 0 {
         return Err(SyntaxTestHeaderError::MalformedHeader);
     }
-    
+
     line = line.replace("\r", &"");
-    
+
     // parse the syntax test header in the first line of the file
-    match SYNTAX_TEST_HEADER_PATTERN.captures(&line.to_string()) {
-        Some(captures) => {
-            let testtoken_start = captures.name("testtoken_start").unwrap().as_str();
-            let testtoken_end = captures.name("testtoken_end").map_or(None, |c|Some(c.as_str()));
-            let syntax_file = captures.name("syntax_file").unwrap().as_str();
-            
-            // find the relevant syntax definition to parse the file with - case is important!
-            println!("The test file references syntax definition file: {}", syntax_file);
-            let syntax = match ss.find_syntax_by_path(syntax_file) {
-                Some(syntax) => syntax,
-                None => return Err(SyntaxTestHeaderError::SyntaxDefinitionNotFound)
-            };
-            
-            let mut state = ParseState::new(syntax);
-            let mut stack = ScopeStack::new();
-            
-            let mut current_line_number = 1;
-            let mut test_against_line_number = 1;
-            let mut scopes_on_line_being_tested = Vec::new();
-            let mut previous_non_assertion_line = line.to_string();
-            
-            let mut assertion_failures: usize = 0;
-            let mut total_assertions: usize = 0;
-            
-            loop {
-                let mut line_only_has_assertion = false;
-                let mut line_has_assertion = false;
-                if let Some(assertion) = get_line_assertion_details(testtoken_start, testtoken_end, &line) {
-                    let result = process_assertions(&assertion, &scopes_on_line_being_tested);
-                    total_assertions += &assertion.end_char - &assertion.begin_char;
-                    for failure in result.iter().filter(|r|!r.success) {
-                        let chars: Vec<char> = previous_non_assertion_line.chars().skip(failure.column_begin).take(failure.column_end - failure.column_begin).collect();
-                        println!("  Assertion selector {:?} \
-                            from line {:?} failed against line {:?}, column range {:?}-{:?} \
-                            (with text {:?}) \
-                            has scope {:?}",
-                            assertion.scope_selector_text.trim(),
-                            current_line_number, test_against_line_number, failure.column_begin, failure.column_end,
-                            chars,
-                            scopes_on_line_being_tested.iter().skip_while(|s|s.char_start + s.text_len <= failure.column_begin).next().unwrap_or(scopes_on_line_being_tested.last().unwrap()).scope
-                        );
-                        assertion_failures += failure.column_end - failure.column_begin;
-                    }
-                    line_only_has_assertion = assertion.is_pure_assertion_line;
-                    line_has_assertion = true;
-                }
-                if !line_only_has_assertion || parse_test_lines {
-                    if !line_has_assertion { // ST seems to ignore lines that have assertions when calculating which line the assertion tests against
-                        scopes_on_line_being_tested.clear();
-                        test_against_line_number = current_line_number;
-                        previous_non_assertion_line = line.to_string();
-                    }
-                    let ops = state.parse_line(&line);
-                    let mut col: usize = 0;
-                    for (s, op) in ScopeRegionIterator::new(&ops, &line) {
-                        stack.apply(op);
-                        if s.is_empty() { // in this case we don't care about blank tokens
-                            continue;
-                        } else if !line_has_assertion {
-                            // if the line has no assertions on it, remember the scopes on the line so we can test against them later
-                            let len = s.chars().count();
-                            scopes_on_line_being_tested.push(
-                                ScopedText {
-                                    char_start: col,
-                                    text_len: len,
-                                    scope: stack.as_slice().to_vec()
-                                }
-                            );
-                            // TODO: warn when there are duplicate adjacent (non-meta?) scopes, as it is almost always undesired
-                            col += len;
-                        }
-                    }
-                }
-                
-                line.clear();
-                current_line_number += 1;
-                if reader.read_line(&mut line).unwrap() == 0 {
-                    break;
-                }
-                line = line.replace("\r", &"");
+    let header_line = line.clone();
+    let search_result = SYNTAX_TEST_HEADER_PATTERN.captures(&header_line);
+    let captures = try!(search_result.ok_or(SyntaxTestHeaderError::MalformedHeader));
+
+    let testtoken_start = captures.name("testtoken_start").unwrap().as_str();
+    let testtoken_end = captures.name("testtoken_end").map_or(None, |c|Some(c.as_str()));
+    let syntax_file = captures.name("syntax_file").unwrap().as_str();
+
+    // find the relevant syntax definition to parse the file with - case is important!
+    println!("The test file references syntax definition file: {}", syntax_file);
+    let syntax = try!(ss.find_syntax_by_path(syntax_file).ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound));
+
+    // iterate over the lines of the file, testing them
+    let mut state = ParseState::new(syntax);
+    let mut stack = ScopeStack::new();
+
+    let mut current_line_number = 1;
+    let mut test_against_line_number = 1;
+    let mut scopes_on_line_being_tested = Vec::new();
+    let mut previous_non_assertion_line = line.to_string();
+
+    let mut assertion_failures: usize = 0;
+    let mut total_assertions: usize = 0;
+
+    loop { // over lines of file, starting with the header line
+        let mut line_only_has_assertion = false;
+        let mut line_has_assertion = false;
+        if let Some(assertion) = get_line_assertion_details(testtoken_start, testtoken_end, &line) {
+            let result = process_assertions(&assertion, &scopes_on_line_being_tested);
+            total_assertions += &assertion.end_char - &assertion.begin_char;
+            for failure in result.iter().filter(|r|!r.success) {
+                let chars = &previous_non_assertion_line[failure.column_begin..failure.column_end];
+                println!("  Assertion selector {:?} \
+                    from line {:?} failed against line {:?}, column range {:?}-{:?} \
+                    (with text {:?}) \
+                    has scope {:?}",
+                    assertion.scope_selector_text.trim(),
+                    current_line_number, test_against_line_number, failure.column_begin, failure.column_end,
+                    chars,
+                    scopes_on_line_being_tested.iter().skip_while(|s|s.char_start + s.text_len <= failure.column_begin).next().unwrap_or(scopes_on_line_being_tested.last().unwrap()).scope
+                );
+                assertion_failures += failure.column_end - failure.column_begin;
             }
-            Ok(
-                if assertion_failures > 0 {
-                    SyntaxTestFileResult::FailedAssertions(assertion_failures, total_assertions)
-                } else {
-                    SyntaxTestFileResult::Success(total_assertions)
+            line_only_has_assertion = assertion.is_pure_assertion_line;
+            line_has_assertion = true;
+        }
+        if !line_only_has_assertion || parse_test_lines {
+            if !line_has_assertion { // ST seems to ignore lines that have assertions when calculating which line the assertion tests against
+                scopes_on_line_being_tested.clear();
+                test_against_line_number = current_line_number;
+                previous_non_assertion_line = line.to_string();
+            }
+            let ops = state.parse_line(&line);
+            let mut col: usize = 0;
+            for (s, op) in ScopeRegionIterator::new(&ops, &line) {
+                stack.apply(op);
+                if s.is_empty() { // in this case we don't care about blank tokens
+                    continue;
                 }
-            )
-        },
-        None => Err(SyntaxTestHeaderError::MalformedHeader)
+                if !line_has_assertion {
+                    // if the line has no assertions on it, remember the scopes on the line so we can test against them later
+                    let len = s.chars().count();
+                    scopes_on_line_being_tested.push(
+                        ScopedText {
+                            char_start: col,
+                            text_len: len,
+                            scope: stack.as_slice().to_vec()
+                        }
+                    );
+                    // TODO: warn when there are duplicate adjacent (non-meta?) scopes, as it is almost always undesired
+                    col += len;
+                }
+            }
+        }
+
+        line.clear();
+        current_line_number += 1;
+        if reader.read_line(&mut line).unwrap() == 0 {
+            break;
+        }
+        line = line.replace("\r", &"");
+    }
+    if assertion_failures > 0 {
+        Ok(SyntaxTestFileResult::FailedAssertions(assertion_failures, total_assertions))
+    } else {
+        Ok(SyntaxTestFileResult::Success(total_assertions))
     }
 }
 
