@@ -6,7 +6,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::u64;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
-use std::cmp::Ordering;
+use std::cmp::{Ordering, min};
 use std::mem;
 
 /// Multiplier on the power of 2 for MatchPower.
@@ -374,7 +374,8 @@ impl ScopeStack {
             ScopeStackOp::Clear(amount) => {
                 let cleared = match amount {
                     ClearAmount::TopN(n) => {
-                        let to_leave = self.scopes.len()-n;
+                        // don't try to clear more scopes than are on the stack 
+                        let to_leave = self.scopes.len() - min(n, self.scopes.len());
                         self.scopes.split_off(to_leave)
                     }
                     ClearAmount::All => {

@@ -312,7 +312,7 @@ impl ParseState {
                 ops.push((index, ScopeStackOp::Pop(v.len())));
             }
 
-            if initial && cur_context.clear_scopes != None {
+            if !initial && cur_context.clear_scopes != None {
                 ops.push((index, ScopeStackOp::Restore));
             }
         }
@@ -482,5 +482,172 @@ mod tests {
         assert_eq!(ops5.len(), 10);
 
         // assert!(false);
+    }
+
+    fn expect_scope_stack(line: &str, state: &mut ParseState, stack: &mut ScopeStack, expect: &[&str]) {
+        let ops = state.parse_line(line);
+        debug_print_ops(line, &ops);
+
+        let mut criteria_met = Vec::new();
+        for &(_, ref op) in ops.iter() {
+            stack.apply(op);
+            let stack_str = format!("{:?}", stack);
+            println!("{}", stack_str);
+            for expectation in expect.iter() {
+                if stack_str.contains(expectation) {
+                    criteria_met.push(expectation);
+                }
+            }
+        }
+        if let Some(missing) = expect.iter().filter(|e| !criteria_met.contains(&e)).next() {
+            panic!("expected scope stack '{}' missing", missing);
+        }
+    }
+
+    #[test]
+    fn can_parse_non_nested_clear_scopes() {
+        let syntax: SyntaxDefinition =
+            SyntaxDefinition::load_from_str(r#"
+                name: Simple Clear Scopes Test
+                scope: source.example
+                contexts:
+                  main:
+                    - match: \'
+                      scope: punctuation.definition.string.begin.example
+                      push: single_quoted_string
+                  single_quoted_string:
+                    - meta_scope: string.quoted.single.example
+                    - match: 'test'
+                      scope: example.pushes-clear-scopes.example
+                      push:
+                        - clear_scopes: 1
+                        - meta_scope: example.meta-scope.after-clear-scopes.example
+                        - match: 'test'
+                          scope: example.pops-clear-scopes.example
+                          pop: true
+                    - match: '\\.'
+                      scope: constant.character.escape.example
+                    - match: \'
+                      scope: punctuation.definition.string.end.example
+                      pop: true
+
+                "#, true)
+                .unwrap();
+
+        let line = "'hello test world test \\n '\n";
+        let mut state = ParseState::new(&syntax);
+
+        let mut ss = SyntaxSet::new();
+        ss.add_syntax(syntax);
+        ss.link_syntaxes();
+
+        let mut stack = ScopeStack::new();
+        let expect = [
+            "<source.example>, <example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
+            "<source.example>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
+            "<source.example>, <string.quoted.single.example>, <constant.character.escape.example>",
+        ];
+        expect_scope_stack(&line, &mut state, &mut stack, &expect);
+    }
+
+    #[test]
+    fn can_parse_non_nested_too_many_clear_scopes() {
+        let syntax: SyntaxDefinition =
+            SyntaxDefinition::load_from_str(r#"
+                name: Simple Clear Scopes Test
+                scope: source.example
+                contexts:
+                  main:
+                    - match: \'
+                      scope: punctuation.definition.string.begin.example
+                      push: single_quoted_string
+                  single_quoted_string:
+                    - meta_scope: string.quoted.single.example
+                    - match: 'test'
+                      scope: example.pushes-clear-scopes.example
+                      push:
+                        - clear_scopes: 10
+                        - meta_scope: example.meta-scope.after-clear-scopes.example
+                        - match: 'test'
+                          scope: example.pops-clear-scopes.example
+                          pop: true
+                    - match: '\\.'
+                      scope: constant.character.escape.example
+                    - match: \'
+                      scope: punctuation.definition.string.end.example
+                      pop: true
+
+                "#, true)
+                .unwrap();
+
+        let line = "'hello test world test \\n '\n";
+        let mut state = ParseState::new(&syntax);
+
+        let mut ss = SyntaxSet::new();
+        ss.add_syntax(syntax);
+        ss.link_syntaxes();
+
+        let mut stack = ScopeStack::new();
+        let expect = [
+            "<example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
+            "<example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
+            "<source.example>, <string.quoted.single.example>, <constant.character.escape.example>",
+        ];
+        expect_scope_stack(&line, &mut state, &mut stack, &expect);
+    }
+
+    #[test]
+    fn can_parse_nested_clear_scopes() {
+        let syntax: SyntaxDefinition =
+            SyntaxDefinition::load_from_str(r#"
+                name: Simple Clear Scopes Test
+                scope: source.example
+                contexts:
+                  main:
+                    - match: \'
+                      scope: punctuation.definition.string.begin.example
+                      push: single_quoted_string
+                  single_quoted_string:
+                    - meta_scope: string.quoted.single.example
+                    - match: 'test'
+                      scope: example.pushes-clear-scopes.example
+                      push:
+                        - clear_scopes: 1
+                        - meta_scope: example.meta-scope.after-clear-scopes.example
+                        - match: 'foo'
+                          scope: foo
+                          push:
+                            - clear_scopes: 1
+                            - meta_scope: example.meta-scope.cleared-previous-meta-scope.example
+                            - match: 'bar'
+                              scope: bar
+                              pop: true
+                        - match: 'test'
+                          scope: example.pops-clear-scopes.example
+                          pop: true
+                    - match: '\\.'
+                      scope: constant.character.escape.example
+                    - match: \'
+                      scope: punctuation.definition.string.end.example
+                      pop: true
+
+                "#, true)
+                .unwrap();
+
+        let line = "'hello test world foo bar test \\n '\n";
+        let mut state = ParseState::new(&syntax);
+
+        let mut ss = SyntaxSet::new();
+        ss.add_syntax(syntax);
+        ss.link_syntaxes();
+
+        let mut stack = ScopeStack::new();
+        let expect = [
+            "<source.example>, <example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
+            "<source.example>, <example.meta-scope.cleared-previous-meta-scope.example>, <foo>",
+            "<source.example>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
+            "<source.example>, <string.quoted.single.example>, <constant.character.escape.example>",
+        ];
+        expect_scope_stack(&line, &mut state, &mut stack, &expect);
     }
 }
