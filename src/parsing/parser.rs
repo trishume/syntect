@@ -650,4 +650,89 @@ mod tests {
         ];
         expect_scope_stack(&line, &mut state, &mut stack, &expect);
     }
+
+    #[test]
+    fn can_parse_infinite_loop() {
+        let syntax: SyntaxDefinition =
+            SyntaxDefinition::load_from_str(r#"
+                name: Infinite Push Pop Loop Test
+                scope: source.test
+                contexts:
+                  main:
+                    - match: '(?=abc)'
+                      push: pop_if_not_whitespace
+                    - match: '\d+'
+                      scope: constant.numeric.test
+
+                  pop_if_not_whitespace:
+                    - match: '(?=\S)'
+                      pop: true
+                "#, true)
+                .unwrap();
+
+        let mut state = ParseState::new(&syntax);
+
+        let mut ss = SyntaxSet::new();
+        ss.add_syntax(syntax);
+        ss.link_syntaxes();
+
+        let mut stack = ScopeStack::new();
+
+        let line = "abc 123\n";
+        let expect = [
+            "<source.test>, <constant.numeric.test>",
+        ];
+        expect_scope_stack(&line, &mut state, &mut stack, &expect);
+    }
+
+    #[test]
+    fn can_parse_infinite_seeming_loop() {
+        let syntax: SyntaxDefinition =
+            SyntaxDefinition::load_from_str(r#"
+                name: Non-Infinite Push Pop Loop Test
+                scope: source.test
+                contexts:
+                  main:
+                    - match: 'test'
+                      scope: constant.numeric.test
+                      push: c
+                  a:
+                    - meta_content_scope: test
+                    - match: 'h'
+                      scope: string.unquoted.test
+                    - match: 'ello'
+                      scope: keyword.control.test
+                  b:
+                    - match: ''
+                      pop: true
+                    - match: '(?=.)'
+                      pop: true
+                    - match: '(?=h)'
+                      pop: true
+                    - match: 'h'
+                      scope: entity.name.function.test
+                    - match: 'e'
+                      scope: storage.type.test
+                  c:
+                    - match: ''
+                      push: [a, b]
+                "#, true)
+                .unwrap();
+
+        let mut state = ParseState::new(&syntax);
+
+        let mut ss = SyntaxSet::new();
+        ss.add_syntax(syntax);
+        ss.link_syntaxes();
+
+        let mut stack = ScopeStack::new();
+
+        let line = "testhello\n";
+        let expect = [
+            "<source.test>, <constant.numeric.test>",
+            "<source.test>, <test>, <string.unquoted.test>",
+            "<source.test>, <test>, <keyword.control.test>",
+        ];
+        expect_scope_stack(&line, &mut state, &mut stack, &expect);
+    }
 }
