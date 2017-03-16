@@ -291,34 +291,27 @@ impl ParseState {
                      cur_context: &Context,
                      match_op: &MatchOperation,
                      ops: &mut Vec<(usize, ScopeStackOp)>) {
-        let involves_pop = match *match_op {
-            MatchOperation::Pop |
-            MatchOperation::Set(_) => true,
-            MatchOperation::Push(_) |
-            MatchOperation::None => false,
-        };
-        // println!("metas ops for {:?}, is pop: {}, initial: {}",
+        // println!("metas ops for {:?}, initial: {}",
         //          match_op,
-        //          involves_pop,
         //          initial);
         // println!("{:?}", cur_context.meta_scope);
-        if involves_pop {
-            let v = if initial {
-                &cur_context.meta_content_scope
-            } else {
-                &cur_context.meta_scope
-            };
-            if !v.is_empty() {
-                ops.push((index, ScopeStackOp::Pop(v.len())));
-            }
-
-            if !initial && cur_context.clear_scopes != None {
-                ops.push((index, ScopeStackOp::Restore));
-            }
-        }
         match *match_op {
-            MatchOperation::Push(ref context_refs) |
-            MatchOperation::Set(ref context_refs) => {
+            MatchOperation::Pop => {
+                let v = if initial {
+                    &cur_context.meta_content_scope
+                } else {
+                    &cur_context.meta_scope
+                };
+                if !v.is_empty() {
+                    ops.push((index, ScopeStackOp::Pop(v.len())));
+                }
+
+                // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
+                if !initial && cur_context.clear_scopes != None {
+                    ops.push((index, ScopeStackOp::Restore));
+                }
+            },
+            MatchOperation::Push(ref context_refs) => {
                 for r in context_refs {
                     let ctx_ptr = r.resolve();
                     let ctx = ctx_ptr.borrow();
@@ -338,9 +331,62 @@ impl ParseState {
                         ops.push((index, ScopeStackOp::Push(*scope)));
                     }
                 }
-            }
-            MatchOperation::None |
-            MatchOperation::Pop => (),
+            },
+            MatchOperation::Set(ref context_refs) => {
+                // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
+                if initial {
+                    // add each context's meta scope
+                    for r in context_refs.iter() {
+                        let ctx_ptr = r.resolve();
+                        let ctx = ctx_ptr.borrow();
+
+                        for scope in ctx.meta_scope.iter() {
+                            ops.push((index, ScopeStackOp::Push(*scope)));
+                        }
+                    }
+                } else {
+                    let repush = !cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty() || context_refs.iter().any(|r| {
+                        let ctx_ptr = r.resolve();
+                        let ctx = ctx_ptr.borrow();
+                        
+                        !ctx.meta_content_scope.is_empty() || ctx.clear_scopes.is_some()
+                    });
+                    if repush {
+                        for r in context_refs.iter().rev() {
+                            let ctx_ptr = r.resolve();
+                            let ctx = ctx_ptr.borrow();
+
+                            // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
+                            if !ctx.meta_scope.is_empty() {
+                                ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
+                            }
+                        }
+                        // now we pop off the original context's meta scopes
+                        if !cur_context.meta_content_scope.is_empty() {
+                            ops.push((index, ScopeStackOp::Pop(cur_context.meta_content_scope.len())));
+                        }
+                        if !cur_context.meta_scope.is_empty() {
+                            ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
+                        }
+                        // now we push meta scope and meta context scope for each context pushed
+                        for r in context_refs {
+                            let ctx_ptr = r.resolve();
+                            let ctx = ctx_ptr.borrow();
+
+                            if let Some(clear_amount) = ctx.clear_scopes {
+                                ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                            }
+                            for scope in ctx.meta_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
+                            for scope in ctx.meta_content_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
+                        }
+                    }
+                }
+            },
+            MatchOperation::None => (),
         }
     }
 
@@ -434,7 +480,6 @@ mod tests {
             (0, Push(Scope::new("keyword.control.def.ruby").unwrap())),
             (3, Pop(2)),
             (3, Push(Scope::new("meta.function.ruby").unwrap())),
-            (4, Pop(1)),
             (4, Push(Scope::new("entity.name.function.ruby").unwrap())),
             (7, Pop(1))
         ];
