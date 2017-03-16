@@ -176,8 +176,11 @@ impl SyntaxSet {
     /// some may specify a Packages/PackageName/SyntaxName.sublime-syntax path
     /// others may just have SyntaxName.sublime-syntax
     /// this caters for these by matching the end of the path of the loaded syntax definition files
+    // however, if a syntax name is provided without a folder, make sure we don't accidentally match the end of a different syntax definition's name - by checking a / comes before it or it is the full path
     pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxDefinition> {
-        return self.path_syntaxes.iter().find(|t| t.0.ends_with(path)).map(|&(_,i)| &self.syntaxes[i]);
+        let mut slash_path = "/".to_string();
+        slash_path.push_str(&path);
+        return self.path_syntaxes.iter().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i]);
     }
 
     /// Convenience method that tries to find the syntax for a file path,
