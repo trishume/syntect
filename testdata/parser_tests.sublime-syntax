@@ -1,0 +1,79 @@
+%YAML 1.2
+---
+name: Used by tests in src/parsing/parser.rs
+scope: source.test
+contexts:
+  main:
+    - match: '#infinite_seeming_loop_test'
+      scope: keyword.test
+      push: infinite_seeming_loop_c
+    - match: '(?=#infinite_loop_test)'
+      push: infinite_loop_test_pop_if_not_whitespace
+    - match: \'
+      scope: punctuation.definition.string.begin.example
+      push: cleared_scopes_string_test
+    - match: '\d+'
+      scope: constant.numeric.test
+
+  infinite_loop_test_pop_if_not_whitespace:
+    - match: '(?=\S)'
+      pop: true
+  infinite_seeming_loop_a:
+    - meta_content_scope: test
+    - match: 'h'
+      scope: string.unquoted.test
+    - match: 'ello'
+      scope: keyword.control.test
+  infinite_seeming_loop_b:
+    - match: ''
+      pop: true
+    - match: '(?=.)'
+      pop: true
+    - match: '(?=h)'
+      pop: true
+    - match: 'h'
+      scope: entity.name.function.test
+    - match: 'e'
+      scope: storage.type.test
+  infinite_seeming_loop_c:
+    - match: ''
+      push: [infinite_seeming_loop_a, infinite_seeming_loop_b]
+  cleared_scopes_string_test:
+    - meta_scope: string.quoted.single.example
+    - match: '#too_many_cleared_scopes_test'
+      scope: example.pushes-clear-scopes.example
+      push:
+        - clear_scopes: 10
+        - meta_scope: example.meta-scope.after-clear-scopes.example
+        - match: 'test'
+          scope: example.pops-clear-scopes.example
+          pop: true
+    - match: '#simple_cleared_scopes_test'
+      scope: example.pushes-clear-scopes.example
+      push:
+        - clear_scopes: 1
+        - meta_scope: example.meta-scope.after-clear-scopes.example
+        - match: 'test'
+          scope: example.pops-clear-scopes.example
+          pop: true
+    - match: '#nested_clear_scopes_test'
+      scope: example.pushes-clear-scopes.example
+      push:
+        - clear_scopes: 1
+        - meta_scope: example.meta-scope.after-clear-scopes.example
+        - match: 'foo'
+          scope: foo
+          push:
+            - clear_scopes: 1
+            - meta_scope: example.meta-scope.cleared-previous-meta-scope.example
+            - match: 'bar'
+              scope: bar
+              pop: true
+        - match: 'test'
+          scope: example.pops-clear-scopes.example
+          pop: true
+    - match: '\\.'
+      scope: constant.character.escape.example
+    - match: \'
+      scope: punctuation.definition.string.end.example
+      pop: true

@@ -312,7 +312,7 @@ impl ParseState {
                 ops.push((index, ScopeStackOp::Pop(v.len())));
             }
 
-            if initial && cur_context.clear_scopes != None {
+            if !initial && cur_context.clear_scopes != None {
                 ops.push((index, ScopeStackOp::Restore));
             }
         }
@@ -482,5 +482,97 @@ mod tests {
         assert_eq!(ops5.len(), 10);
 
         // assert!(false);
+    }
+
+    fn expect_scope_stacks(line: &str, expect: &[&str]) {
+        // check that each expected scope stack appears at least once while parsing the given test line
+        
+        //let syntax = SyntaxSet::load_syntax_file("testdata/parser_tests.sublime-syntax", true).unwrap();
+        use std::fs::File;
+        use std::io::Read;
+        let mut f = File::open("testdata/parser_tests.sublime-syntax").unwrap();
+        let mut s = String::new();
+        f.read_to_string(&mut s).unwrap();
+
+        let syntax = SyntaxDefinition::load_from_str(&s, true).unwrap();
+        
+        let mut state = ParseState::new(&syntax);
+
+        let mut ss = SyntaxSet::new();
+        ss.add_syntax(syntax);
+        ss.link_syntaxes();
+
+        let mut stack = ScopeStack::new();
+        let ops = state.parse_line(line);
+        debug_print_ops(line, &ops);
+
+        let mut criteria_met = Vec::new();
+        for &(_, ref op) in ops.iter() {
+            stack.apply(op);
+            let stack_str = format!("{:?}", stack);
+            println!("{}", stack_str);
+            for expectation in expect.iter() {
+                if stack_str.contains(expectation) {
+                    criteria_met.push(expectation);
+                }
+            }
+        }
+        if let Some(missing) = expect.iter().filter(|e| !criteria_met.contains(&e)).next() {
+            panic!("expected scope stack '{}' missing", missing);
+        }
+    }
+
+    #[test]
+    fn can_parse_non_nested_clear_scopes() {
+        let line = "'hello #simple_cleared_scopes_test world test \\n '\n";
+        let expect = [
+            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
+            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
+            "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
+        ];
+        expect_scope_stacks(&line, &expect);
+    }
+
+    #[test]
+    fn can_parse_non_nested_too_many_clear_scopes() {
+        let line = "'hello #too_many_cleared_scopes_test world test \\n '\n";
+        let expect = [
+            "<example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
+            "<example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
+            "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
+        ];
+        expect_scope_stacks(&line, &expect);
+    }
+
+    #[test]
+    fn can_parse_nested_clear_scopes() {
+        let line = "'hello #nested_clear_scopes_test world foo bar test \\n '\n";
+        let expect = [
+            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
+            "<source.test>, <example.meta-scope.cleared-previous-meta-scope.example>, <foo>",
+            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
+            "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
+        ];
+        expect_scope_stacks(&line, &expect);
+    }
+
+    #[test]
+    fn can_parse_infinite_loop() {
+        let line = "#infinite_loop_test 123\n";
+        let expect = [
+            "<source.test>, <constant.numeric.test>",
+        ];
+        expect_scope_stacks(&line, &expect);
+    }
+
+    #[test]
+    fn can_parse_infinite_seeming_loop() {
+        let line = "#infinite_seeming_loop_test hello\n";
+        let expect = [
+            "<source.test>, <keyword.test>",
+            "<source.test>, <test>, <string.unquoted.test>",
+            "<source.test>, <test>, <keyword.control.test>",
+        ];
+        expect_scope_stacks(&line, &expect);
     }
 }
