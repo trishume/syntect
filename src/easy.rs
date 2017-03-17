@@ -148,21 +148,27 @@ static NOOP_OP: ScopeStackOp = ScopeStackOp::Noop;
 impl<'a> Iterator for ScopeRegionIterator<'a> {
     type Item = (&'a str, &'a ScopeStackOp);
     fn next(&mut self) -> Option<Self::Item> {
-        let next_str_i = if self.index >= self.ops.len() {
-            if self.last_str_index >= self.line.len() {
-                return None;
-            }
+        if self.index > self.ops.len() {
+            return None;
+        }
+
+        // region extends up to next operation (ops[index]) or string end if there is none
+        // note the next operation may be at, last_str_index, in which case the region is empty
+        let next_str_i = if self.index == self.ops.len() {
             self.line.len()
         } else {
             self.ops[self.index].0
         };
         let substr = &self.line[self.last_str_index..next_str_i];
         self.last_str_index = next_str_i;
+
+        // the first region covers everything before the first op, which may be empty
         let op = if self.index == 0 {
             &NOOP_OP
         } else {
             &self.ops[self.index-1].1
         };
+
         self.index += 1;
         Some((substr, op))
     }
@@ -175,7 +181,7 @@ mod tests {
     use parsing::{SyntaxSet, ParseState, ScopeStack};
     use highlighting::ThemeSet;
     use std::str::FromStr;
-    
+
     #[test]
     fn can_highlight_lines() {
         let ps = SyntaxSet::load_defaults_nonewlines();
@@ -218,5 +224,28 @@ mod tests {
             println!("{:?} {}", s, stack);
         }
         assert_eq!(token_count, 5);
+    }
+
+    #[test]
+    fn can_find_regions_with_trailing_newline() {
+        let ss = SyntaxSet::load_defaults_newlines();
+        let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap());
+        let lines = ["# hello world\n", "lol=5+2\n"];
+        let mut stack = ScopeStack::new();
+
+        for line in lines.iter() {
+            let ops = state.parse_line(&line);
+            println!("{:?}", ops);
+
+            let mut iterated_ops: Vec<&ScopeStackOp> = Vec::new();
+            for (_, op) in ScopeRegionIterator::new(&ops, &line) {
+                stack.apply(op);
+                iterated_ops.push(&op);
+                println!("{:?}", op);
+            }
+
+            let all_ops: Vec<&ScopeStackOp> = ops.iter().map(|t|&t.1).collect();
+            assert_eq!(all_ops.len(), iterated_ops.len() - 1); // -1 because we want to ignore the NOOP
+        }
     }
 }

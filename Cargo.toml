@@ -25,6 +25,9 @@ bincode = "0.6"
 flate2 = "^0.2"
 fnv = "^1.0"
 
+[dev-dependencies]
+regex = "0.2.1"
+
 [features]
 static-onig = ["onig/static-libonig"]
 assets = []
