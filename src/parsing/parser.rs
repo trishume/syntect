@@ -332,6 +332,10 @@ impl ParseState {
                     }
                 }
             },
+            // for some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
+            // - the meta_content_scope of the current context is applied to the matched thing, unlike pop
+            // - the clear_scopes are applied after the matched token, unlike push
+            // - the interaction with meta scopes means that the token has the meta scopes of both the current scope and the new scope.
             MatchOperation::Set(ref context_refs) => {
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
@@ -348,26 +352,25 @@ impl ParseState {
                     let repush = !cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty() || context_refs.iter().any(|r| {
                         let ctx_ptr = r.resolve();
                         let ctx = ctx_ptr.borrow();
-                        
+
                         !ctx.meta_content_scope.is_empty() || ctx.clear_scopes.is_some()
                     });
                     if repush {
-                        for r in context_refs.iter().rev() {
+                        // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
+                        let mut num_to_pop = context_refs.iter().map(|r| {
                             let ctx_ptr = r.resolve();
                             let ctx = ctx_ptr.borrow();
+                            ctx.meta_scope.len()
+                        }).sum();
 
-                            // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
-                            if !ctx.meta_scope.is_empty() {
-                                ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
-                            }
+                        // also pop off the original context's meta scopes
+                        num_to_pop += cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
+
+                        // do all the popping as one operation
+                        if num_to_pop > 0 {
+                            ops.push((index, ScopeStackOp::Pop(num_to_pop)));
                         }
-                        // now we pop off the original context's meta scopes
-                        if !cur_context.meta_content_scope.is_empty() {
-                            ops.push((index, ScopeStackOp::Pop(cur_context.meta_content_scope.len())));
-                        }
-                        if !cur_context.meta_scope.is_empty() {
-                            ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
-                        }
+
                         // now we push meta scope and meta context scope for each context pushed
                         for r in context_refs {
                             let ctx_ptr = r.resolve();
@@ -531,7 +534,7 @@ mod tests {
 
     fn expect_scope_stacks(line: &str, expect: &[&str]) {
         // check that each expected scope stack appears at least once while parsing the given test line
-        
+
         //let syntax = SyntaxSet::load_syntax_file("testdata/parser_tests.sublime-syntax", true).unwrap();
         use std::fs::File;
         use std::io::Read;
@@ -540,7 +543,7 @@ mod tests {
         f.read_to_string(&mut s).unwrap();
 
         let syntax = SyntaxDefinition::load_from_str(&s, true).unwrap();
-        
+
         let mut state = ParseState::new(&syntax);
 
         let mut ss = SyntaxSet::new();
