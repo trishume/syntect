@@ -134,7 +134,7 @@ impl Iterator for MatchIter {
                             ContextReference::Direct(ref ctx_ptr) => {
                                 ctx_ptr.link.upgrade().unwrap()
                             }
-                            _ => panic!("Can only iterate patterns after linking: {:?}", ctx_ref),
+                            _ => return self.next(), // skip this and move onto the next one
                         };
                         self.ctx_stack.push(ctx_ptr);
                         self.index_stack.push(0);

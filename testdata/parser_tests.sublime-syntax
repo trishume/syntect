@@ -4,6 +4,7 @@ name: Used by tests in src/parsing/parser.rs
 scope: source.test
 contexts:
   main:
+    - include: test_does_not_crash_on_unlinkable_context
     - match: '#infinite_seeming_loop_test'
       scope: keyword.test
       push: infinite_seeming_loop_c
