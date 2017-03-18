@@ -276,11 +276,11 @@ impl SyntaxDefinition {
             .unwrap_or_else(|| Ok(vec![])));
 
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
-            let mut res_map = HashMap::new();
+            let mut res_map = Vec::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
-                    res_map.insert(key_int as usize,
-                                   try!(str_to_scopes(val_str, state.scope_repo)));
+                    res_map.push((key_int as usize,
+                                   try!(str_to_scopes(val_str, state.scope_repo))));
                 }
             }
             Some(res_map)
@@ -405,7 +405,7 @@ mod tests {
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
-                assert_eq!(&m[&1], &vec![Scope::new("meta.preprocessor.c++").unwrap()]);
+                assert_eq!(&m[0], &(1,vec![Scope::new("meta.preprocessor.c++").unwrap()]));
                 use parsing::syntax_definition::ContextReference::*;
 
                 // this is sadly necessary because Context is not Eq because of the Regex

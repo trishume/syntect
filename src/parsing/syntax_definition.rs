@@ -11,7 +11,7 @@ use super::scope::*;
 use regex_syntax::escape;
 use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
-pub type CaptureMapping = HashMap<usize, Vec<Scope>>;
+pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 pub type ContextPtr = Rc<RefCell<Context>>;
 
 /// The main data structure representing a syntax definition loaded from a
