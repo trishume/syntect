@@ -311,38 +311,28 @@ impl ParseState {
                     ops.push((index, ScopeStackOp::Restore));
                 }
             },
-            MatchOperation::Push(ref context_refs) => {
-                for r in context_refs {
-                    let ctx_ptr = r.resolve();
-                    let ctx = ctx_ptr.borrow();
-
-                    if initial {
-                        if let Some(clear_amount) = ctx.clear_scopes {
-                            ops.push((index, ScopeStackOp::Clear(clear_amount)));
-                        }
-                    }
-
-                    let v = if initial {
-                        &ctx.meta_scope
-                    } else {
-                        &ctx.meta_content_scope
-                    };
-                    for scope in v.iter() {
-                        ops.push((index, ScopeStackOp::Push(*scope)));
-                    }
-                }
-            },
             // for some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
             // - the meta_content_scope of the current context is applied to the matched thing, unlike pop
             // - the clear_scopes are applied after the matched token, unlike push
             // - the interaction with meta scopes means that the token has the meta scopes of both the current scope and the new scope.
+            MatchOperation::Push(ref context_refs) |
             MatchOperation::Set(ref context_refs) => {
+                let is_set = match *match_op {
+                    MatchOperation::Set(_) => true,
+                    _ => false
+                };
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
                     // add each context's meta scope
                     for r in context_refs.iter() {
                         let ctx_ptr = r.resolve();
                         let ctx = ctx_ptr.borrow();
+
+                        if !is_set {
+                            if let Some(clear_amount) = ctx.clear_scopes {
+                                ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                            }
+                        }
 
                         for scope in ctx.meta_scope.iter() {
                             ops.push((index, ScopeStackOp::Push(*scope)));
@@ -357,14 +347,16 @@ impl ParseState {
                     });
                     if repush {
                         // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
-                        let mut num_to_pop = context_refs.iter().map(|r| {
+                        let mut num_to_pop : usize = context_refs.iter().map(|r| {
                             let ctx_ptr = r.resolve();
                             let ctx = ctx_ptr.borrow();
                             ctx.meta_scope.len()
                         }).sum();
 
                         // also pop off the original context's meta scopes
-                        num_to_pop += cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
+                        if is_set {
+                            num_to_pop += cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
+                        }
 
                         // do all the popping as one operation
                         if num_to_pop > 0 {
@@ -376,9 +368,13 @@ impl ParseState {
                             let ctx_ptr = r.resolve();
                             let ctx = ctx_ptr.borrow();
 
-                            if let Some(clear_amount) = ctx.clear_scopes {
-                                ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                            // for some reason, contrary to my reading of the docs, set does this after the token
+                            if is_set {
+                                if let Some(clear_amount) = ctx.clear_scopes {
+                                    ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                }
                             }
+
                             for scope in ctx.meta_scope.iter() {
                                 ops.push((index, ScopeStackOp::Push(*scope)));
                             }
