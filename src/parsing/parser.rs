@@ -128,7 +128,7 @@ impl ParseState {
                 ctx_ref.prototype.clone()
             };
             let context_chain = self.stack
-                .iter()
+                .iter().rev() // iterate the stack in top-down order to apply the prototypes
                 .filter_map(|lvl| lvl.prototype.as_ref().cloned())
                 .chain(prototype.into_iter())
                 .chain(Some(cur_level.context.clone()).into_iter());
