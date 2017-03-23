@@ -339,11 +339,11 @@ impl ParseState {
                         }
                     }
                 } else {
-                    let repush = !cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty() || context_refs.iter().any(|r| {
+                    let repush = (is_set && (!cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty())) || context_refs.iter().any(|r| {
                         let ctx_ptr = r.resolve();
                         let ctx = ctx_ptr.borrow();
 
-                        !ctx.meta_content_scope.is_empty() || ctx.clear_scopes.is_some()
+                        !ctx.meta_content_scope.is_empty() || (ctx.clear_scopes.is_some() && is_set)
                     });
                     if repush {
                         // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
@@ -510,6 +510,8 @@ mod tests {
             (6, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
             (6, Push(Scope::new("punctuation.definition.string.begin.ruby").unwrap())),
             (12, Pop(1)),
+            (12, Pop(1)),
+            (12, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
             (12, Push(Scope::new("text.sql.embedded.ruby").unwrap())),
             (12, Clear(ClearAmount::TopN(2))),
             (12, Restore),
