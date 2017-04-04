@@ -11,9 +11,37 @@ use std::str::FromStr;
 use std::fs::File;
 use std::io::Read;
 
+/// Iterator yielding every line in a string. The line includes newline character(s).
+pub struct LinesWithEndings<'a> {
+    input: &'a str,
+}
+
+impl<'a> LinesWithEndings<'a> {
+    pub fn from(input: &'a str) -> LinesWithEndings<'a> {
+        LinesWithEndings {
+            input: input,
+        }
+    }
+}
+
+impl<'a> Iterator for LinesWithEndings<'a> {
+    type Item = &'a str;
+
+    #[inline]
+    fn next(&mut self) -> Option<&'a str> {
+        if self.input.is_empty() {
+            return None;
+        }
+        let split = self.input.find('\n').map(|i| i + 1).unwrap_or(self.input.len());
+        let (line, rest) = self.input.split_at(split);
+        self.input = rest;
+        Some(line)
+    }
+}
+
 fn do_highlight(s: &str, syntax: &SyntaxDefinition, theme: &Theme) {
     let mut h = HighlightLines::new(syntax, theme);
-    for line in s.lines() {
+    for line in LinesWithEndings::from(s) {
         let regions = h.highlight(line);
         test::black_box(&regions);
     }
@@ -21,7 +49,7 @@ fn do_highlight(s: &str, syntax: &SyntaxDefinition, theme: &Theme) {
 
 fn highlight_file(b: &mut Bencher, path_s: &str) {
     // don't load from dump so we don't count lazy regex compilation time
-    let ps = SyntaxSet::load_defaults_nonewlines();
+    let ps = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
 
     let syntax = ps.find_syntax_for_file(path_s).unwrap().unwrap();
