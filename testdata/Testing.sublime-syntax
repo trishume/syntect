@@ -12,6 +12,8 @@ contexts:
     - include: zoom
   main:
     - meta_include_prototype: false
+    - match: =testset
+      push: testset
     - match: hi
       scope: comment
     - match: troll
@@ -52,3 +54,14 @@ contexts:
     - meta_scope: bamf
     - match: bamf
       scope: keyword
+  testset:
+    - meta_scope: constant.testset.meta
+    - meta_content_scope: string.testset.content
+    - match: =doset
+      set: setto
+  setto:
+    - clear_scopes: 1
+    - meta_scope: constant.setto.meta
+    - meta_content_scope: comment.setto.content
+    - match: =endset
+      pop: true

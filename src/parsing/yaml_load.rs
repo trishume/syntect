@@ -51,9 +51,16 @@ struct ParserState<'a> {
     variable_regex: Regex,
     backref_regex: Regex,
     short_multibyte_regex: Regex,
-    top_level_scope: Scope,
     lines_include_newline: bool,
 }
+
+static START_CONTEXTS: &'static str = "
+__start:
+    - match: ''
+      push: __main
+__main:
+    - include: main
+";
 
 impl SyntaxDefinition {
     /// In case you want to create your own SyntaxDefinition's in memory from strings.
@@ -96,14 +103,15 @@ impl SyntaxDefinition {
             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
             backref_regex: Regex::new(r"\\\d").unwrap(),
             short_multibyte_regex: Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
-            top_level_scope: top_level_scope,
             lines_include_newline: lines_include_newline,
         };
 
-        let contexts = try!(SyntaxDefinition::parse_contexts(contexts_hash, &mut state));
+        let mut contexts = try!(SyntaxDefinition::parse_contexts(contexts_hash, &mut state));
         if !contexts.contains_key("main") {
             return Err(ParseSyntaxError::MainMissing);
         }
+
+        SyntaxDefinition::add_initial_contexts(&mut contexts, &mut state, top_level_scope);
 
         let defn = SyntaxDefinition {
             name: try!(get_key(h, "name", |x| x.as_str())).to_owned(),
@@ -135,12 +143,6 @@ impl SyntaxDefinition {
                 let is_prototype = name == "prototype";
                 let context_ptr =
                     try!(SyntaxDefinition::parse_context(val_vec, state, is_prototype));
-                if name == "main" {
-                    let mut context = context_ptr.borrow_mut();
-                    if context.meta_content_scope.is_empty() {
-                        context.meta_content_scope.push(state.top_level_scope)
-                    }
-                }
                 contexts.insert(name.to_owned(), context_ptr);
             }
         }
@@ -335,6 +337,46 @@ impl SyntaxDefinition {
             Ok(vec![try!(SyntaxDefinition::parse_reference(y, state))])
         }
     }
+
+    /// Sublime treats the top level context slightly differently from
+    /// including the main context from other syntaxes. When main is popped
+    /// it is immediately re-added and when it is `set` over the file level
+    /// scope remains. This behaviour is emulated through some added contexts
+    /// that are the actual top level contexts used in parsing.
+    /// See https://github.com/trishume/syntect/issues/58 for more.
+    fn add_initial_contexts(contexts: &mut HashMap<String, ContextPtr>,
+                            state: &mut ParserState,
+                            top_level_scope: Scope) {
+        let yaml_docs = YamlLoader::load_from_str(START_CONTEXTS).unwrap();
+        let yaml = &yaml_docs[0];
+
+        let start_yaml : &[Yaml] = yaml["__start"].as_vec().unwrap();
+        let start = SyntaxDefinition::parse_context(start_yaml, state, false).unwrap();
+        {
+            let mut start_b = start.borrow_mut();
+            start_b.meta_content_scope = vec![top_level_scope];
+        }
+        contexts.insert("__start".to_owned(), start);
+
+        let main_yaml : &[Yaml] = yaml["__main"].as_vec().unwrap();
+        let main = SyntaxDefinition::parse_context(main_yaml, state, false).unwrap();
+        {
+            let real_main = contexts["main"].borrow();
+            let mut main_b = main.borrow_mut();
+            main_b.meta_include_prototype = real_main.meta_include_prototype;
+            main_b.meta_scope = real_main.meta_scope.clone();
+            main_b.meta_content_scope = real_main.meta_content_scope.clone();
+        }
+        contexts.insert("__main".to_owned(), main);
+
+        // add the top_level_scope as a meta_content_scope to main so
+        // pushes from other syntaxes add the file scope
+        // TODO: this order is not quite correct if main also has a meta_scope
+        {
+            let mut real_main = contexts["main"].borrow_mut();
+            real_main.meta_content_scope.insert(0,top_level_scope);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -388,7 +430,8 @@ mod tests {
                                             false)
                 .unwrap();
         assert_eq!(defn2.name, "C");
-        assert_eq!(defn2.scope, Scope::new("source.c").unwrap());
+        let top_level_scope = Scope::new("source.c").unwrap();
+        assert_eq!(defn2.scope, top_level_scope);
         let exts: Vec<String> = vec![String::from("c"), String::from("h")];
         assert_eq!(defn2.file_extensions, exts);
         assert_eq!(defn2.hidden, true);
@@ -397,8 +440,13 @@ mod tests {
         let n: Vec<Scope> = Vec::new();
         println!("{:?}", defn2);
         // assert!(false);
+        assert_eq!(defn2.contexts["main"].borrow().meta_content_scope, vec![top_level_scope]);
         assert_eq!(defn2.contexts["main"].borrow().meta_scope, n);
         assert_eq!(defn2.contexts["main"].borrow().meta_include_prototype, true);
+
+        assert_eq!(defn2.contexts["__main"].borrow().meta_content_scope, n);
+        assert_eq!(defn2.contexts["__start"].borrow().meta_content_scope, vec![top_level_scope]);
+
         assert_eq!(defn2.contexts["string"].borrow().meta_scope,
                    vec![Scope::new("string.quoted.double.c").unwrap()]);
         let first_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];

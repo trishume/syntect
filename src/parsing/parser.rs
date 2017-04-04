@@ -52,7 +52,8 @@ impl ParseState {
     /// pointer to the main context of the syntax.
     pub fn new(syntax: &SyntaxDefinition) -> ParseState {
         let start_state = StateLevel {
-            context: syntax.contexts["main"].clone(),
+            // __start is a special context we add in yaml_load.rs
+            context: syntax.contexts["__start"].clone(),
             prototype: None,
             captures: None,
         };
