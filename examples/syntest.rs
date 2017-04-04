@@ -41,7 +41,7 @@ lazy_static! {
     pub static ref SYNTAX_TEST_ASSERTION_PATTERN: Regex = Regex::new(r#"(?xm)
         \s*(?:
             (?P<begin_of_token><-)|(?P<range>\^+)
-        )(.+)$"#).unwrap();
+        )(.*)$"#).unwrap();
 }
 
 #[derive(Debug)]
