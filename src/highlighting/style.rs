@@ -29,7 +29,7 @@ pub const BLACK: Color = Color {
     r: 0x00,
     g: 0x00,
     b: 0x00,
-    a: 0x00,
+    a: 0xFF,
 };
 
 /// Pre-defined convenience colour

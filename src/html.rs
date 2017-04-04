@@ -137,6 +137,14 @@ pub enum IncludeBackground {
     IfDifferent(Color),
 }
 
+fn write_css_color(s: &mut String, c: Color) {
+    if c.a != 0xFF {
+        write!(s,"#{:02x}{:02x}{:02x}{:02x}",c.r,c.g,c.b,c.a).unwrap();
+    } else {
+        write!(s,"#{:02x}{:02x}{:02x}",c.r,c.g,c.b).unwrap();
+    }
+}
+
 /// Output HTML for a line of code with `<span>` elements using inline
 /// `style` attributes to set the correct font attributes.
 /// The `bg` attribute determines if the spans will have the `background-color`
@@ -171,12 +179,9 @@ pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> St
             IncludeBackground::IfDifferent(c) => (style.background != c),
         };
         if include_bg {
-            write!(s,
-                   "background-color:#{:02x}{:02x}{:02x};",
-                   style.background.r,
-                   style.background.g,
-                   style.background.b)
-                .unwrap();
+            write!(s, "background-color:").unwrap();
+            write_css_color(&mut s, style.background);
+            write!(s, ";").unwrap();
         }
         if style.font_style.contains(highlighting::FONT_STYLE_UNDERLINE) {
             write!(s, "text-decoration:underline;").unwrap();
@@ -187,13 +192,9 @@ pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> St
         if style.font_style.contains(highlighting::FONT_STYLE_ITALIC) {
             write!(s, "font-style:italic;").unwrap();
         }
-        write!(s,
-               "color:#{:02x}{:02x}{:02x};\">{}</span>",
-               style.foreground.r,
-               style.foreground.g,
-               style.foreground.b,
-               Escape(text))
-            .unwrap();
+        write!(s, "color:").unwrap();
+        write_css_color(&mut s, style.foreground);
+        write!(s, ";\">{}</span>", Escape(text)).unwrap();
     }
     s
 }
