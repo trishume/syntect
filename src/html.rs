@@ -232,6 +232,7 @@ mod tests {
         // debug_print_ops(line, &ops);
 
         let html = tokens_to_classed_html(line, &ops[..], ClassStyle::Spaced);
+        println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test2.html").trim_right());
 
         let ts = ThemeSet::load_defaults();
@@ -241,6 +242,7 @@ mod tests {
         let regions: Vec<(Style, &str)> = iter.collect();
 
         let html2 = styles_to_coloured_html(&regions[..], IncludeBackground::Yes);
+        println!("{}", html2);
         assert_eq!(html2, include_str!("../testdata/test1.html").trim_right());
     }
 
