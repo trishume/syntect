@@ -5,7 +5,9 @@ email:
   on_success: change # default: change
   on_failure: change # default: always
 rust:
-  - nightly
+  # Travis nightly tests are currently flakey as hell and fail for no reason before `cargo test` is run
+  # Try enabling this again later.
+  # - nightly
   - stable
 script:
   - cargo build
