@@ -52,7 +52,8 @@ impl ParseState {
     /// pointer to the main context of the syntax.
     pub fn new(syntax: &SyntaxDefinition) -> ParseState {
         let start_state = StateLevel {
-            context: syntax.contexts["main"].clone(),
+            // __start is a special context we add in yaml_load.rs
+            context: syntax.contexts["__start"].clone(),
             prototype: None,
             captures: None,
         };
@@ -128,7 +129,7 @@ impl ParseState {
                 ctx_ref.prototype.clone()
             };
             let context_chain = self.stack
-                .iter()
+                .iter().rev() // iterate the stack in top-down order to apply the prototypes
                 .filter_map(|lvl| lvl.prototype.as_ref().cloned())
                 .chain(prototype.into_iter())
                 .chain(Some(cur_level.context.clone()).into_iter());
@@ -257,8 +258,8 @@ impl ParseState {
             // ex: ((bob)|(hi))* could match hibob in wrong order, and outer has to push first
             // we don't have to handle a capture matching multiple times, Sublime doesn't
             let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
-            for (cap_index, scopes) in capture_map.iter() {
-                if let Some((cap_start, cap_end)) = reg_match.regions.pos(*cap_index) {
+            for &(cap_index, ref scopes) in capture_map.iter() {
+                if let Some((cap_start, cap_end)) = reg_match.regions.pos(cap_index) {
                     // marking up empty captures causes pops to be sorted wrong
                     if cap_start == cap_end {
                         continue;
@@ -291,56 +292,101 @@ impl ParseState {
                      cur_context: &Context,
                      match_op: &MatchOperation,
                      ops: &mut Vec<(usize, ScopeStackOp)>) {
-        let involves_pop = match *match_op {
-            MatchOperation::Pop |
-            MatchOperation::Set(_) => true,
-            MatchOperation::Push(_) |
-            MatchOperation::None => false,
-        };
-        // println!("metas ops for {:?}, is pop: {}, initial: {}",
+        // println!("metas ops for {:?}, initial: {}",
         //          match_op,
-        //          involves_pop,
         //          initial);
         // println!("{:?}", cur_context.meta_scope);
-        if involves_pop {
-            let v = if initial {
-                &cur_context.meta_content_scope
-            } else {
-                &cur_context.meta_scope
-            };
-            if !v.is_empty() {
-                ops.push((index, ScopeStackOp::Pop(v.len())));
-            }
-
-            if !initial && cur_context.clear_scopes != None {
-                ops.push((index, ScopeStackOp::Restore));
-            }
-        }
         match *match_op {
+            MatchOperation::Pop => {
+                let v = if initial {
+                    &cur_context.meta_content_scope
+                } else {
+                    &cur_context.meta_scope
+                };
+                if !v.is_empty() {
+                    ops.push((index, ScopeStackOp::Pop(v.len())));
+                }
+
+                // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
+                if !initial && cur_context.clear_scopes != None {
+                    ops.push((index, ScopeStackOp::Restore));
+                }
+            },
+            // for some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
+            // - the meta_content_scope of the current context is applied to the matched thing, unlike pop
+            // - the clear_scopes are applied after the matched token, unlike push
+            // - the interaction with meta scopes means that the token has the meta scopes of both the current scope and the new scope.
             MatchOperation::Push(ref context_refs) |
             MatchOperation::Set(ref context_refs) => {
-                for r in context_refs {
-                    let ctx_ptr = r.resolve();
-                    let ctx = ctx_ptr.borrow();
+                let is_set = match *match_op {
+                    MatchOperation::Set(_) => true,
+                    _ => false
+                };
+                // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
+                if initial {
+                    // add each context's meta scope
+                    for r in context_refs.iter() {
+                        let ctx_ptr = r.resolve();
+                        let ctx = ctx_ptr.borrow();
 
-                    if initial {
-                        if let Some(clear_amount) = ctx.clear_scopes {
-                            ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                        if !is_set {
+                            if let Some(clear_amount) = ctx.clear_scopes {
+                                ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                            }
+                        }
+
+                        for scope in ctx.meta_scope.iter() {
+                            ops.push((index, ScopeStackOp::Push(*scope)));
                         }
                     }
+                } else {
+                    let repush = (is_set && (!cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty())) || context_refs.iter().any(|r| {
+                        let ctx_ptr = r.resolve();
+                        let ctx = ctx_ptr.borrow();
 
-                    let v = if initial {
-                        &ctx.meta_scope
-                    } else {
-                        &ctx.meta_content_scope
-                    };
-                    for scope in v.iter() {
-                        ops.push((index, ScopeStackOp::Push(*scope)));
+                        !ctx.meta_content_scope.is_empty() || (ctx.clear_scopes.is_some() && is_set)
+                    });
+                    if repush {
+                        // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
+                        let mut num_to_pop : usize = context_refs.iter().map(|r| {
+                            let ctx_ptr = r.resolve();
+                            let ctx = ctx_ptr.borrow();
+                            ctx.meta_scope.len()
+                        }).sum();
+
+                        // also pop off the original context's meta scopes
+                        if is_set {
+                            num_to_pop += cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
+                        }
+
+                        // do all the popping as one operation
+                        if num_to_pop > 0 {
+                            ops.push((index, ScopeStackOp::Pop(num_to_pop)));
+                        }
+
+                        // now we push meta scope and meta context scope for each context pushed
+                        for r in context_refs {
+                            let ctx_ptr = r.resolve();
+                            let ctx = ctx_ptr.borrow();
+
+                            // for some reason, contrary to my reading of the docs, set does this after the token
+                            if is_set {
+                                if let Some(clear_amount) = ctx.clear_scopes {
+                                    ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                }
+                            }
+
+                            for scope in ctx.meta_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
+                            for scope in ctx.meta_content_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
+                        }
                     }
                 }
-            }
-            MatchOperation::None |
-            MatchOperation::Pop => (),
+            },
+            MatchOperation::None => (),
         }
     }
 
@@ -434,7 +480,6 @@ mod tests {
             (0, Push(Scope::new("keyword.control.def.ruby").unwrap())),
             (3, Pop(2)),
             (3, Push(Scope::new("meta.function.ruby").unwrap())),
-            (4, Pop(1)),
             (4, Push(Scope::new("entity.name.function.ruby").unwrap())),
             (7, Pop(1))
         ];
@@ -466,6 +511,8 @@ mod tests {
             (6, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
             (6, Push(Scope::new("punctuation.definition.string.begin.ruby").unwrap())),
             (12, Pop(1)),
+            (12, Pop(1)),
+            (12, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
             (12, Push(Scope::new("text.sql.embedded.ruby").unwrap())),
             (12, Clear(ClearAmount::TopN(2))),
             (12, Restore),
@@ -486,7 +533,7 @@ mod tests {
 
     fn expect_scope_stacks(line: &str, expect: &[&str]) {
         // check that each expected scope stack appears at least once while parsing the given test line
-        
+
         //let syntax = SyntaxSet::load_syntax_file("testdata/parser_tests.sublime-syntax", true).unwrap();
         use std::fs::File;
         use std::io::Read;
@@ -495,7 +542,7 @@ mod tests {
         f.read_to_string(&mut s).unwrap();
 
         let syntax = SyntaxDefinition::load_from_str(&s, true).unwrap();
-        
+
         let mut state = ParseState::new(&syntax);
 
         let mut ss = SyntaxSet::new();
