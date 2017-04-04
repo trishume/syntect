@@ -114,7 +114,7 @@ impl SyntaxDefinition {
         SyntaxDefinition::add_initial_contexts(&mut contexts, &mut state, top_level_scope);
 
         let defn = SyntaxDefinition {
-            name: try!(get_key(h, "name", |x| x.as_str())).to_owned(),
+            name: get_key(h, "name", |x| x.as_str()).unwrap_or("Unnamed").to_owned(),
             scope: top_level_scope,
             file_extensions: {
                 get_key(h, "file_extensions", |x| x.as_vec())
