@@ -17,7 +17,7 @@ I've spent months working on, tweaking, optimizing, documenting and testing this
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "1.0"
+syntect = "1.3"
 ```
 
 After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/syntect/) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
@@ -44,6 +44,7 @@ to fetch all the required dependencies for running the tests.
 - [x] Include a compressed dump of all the default syntax definitions in the library binary so users don't have to manage a folder of syntaxes.
 - [x] Well documented, I've tried to add a useful documentation comment to everything that isn't utterly self explanatory.
 - [x] Built-in output to coloured HTML `<pre>` tags or 24-bit colour ANSI terminal escape sequences.
+- [x] Nearly complete compatibility with Sublime Text 3, including lots of edge cases. Passes nearly all of Sublime's syntax tests, see [issue 59](https://github.com/trishume/syntect/issues/59).
 
 ## Screenshots
 
@@ -87,10 +88,10 @@ Currently `syntect` is one of the faster syntax highlighting engines, but not th
 The current perf numbers are below. These numbers may get better if more of the things above are implemented, but they're better than many other text editors.
 All measurements were taken on a mid 2012 15" retina Macbook Pro.
 
-- Highlighting 9200 lines/247kb of jQuery 2.1 takes 680ms. For comparison:
+- Highlighting 9200 lines/247kb of jQuery 2.1 takes 600ms. For comparison:
     - Textmate 2, Spacemacs and Visual Studio Code all take around 2ish seconds (measured by hand with a stopwatch, hence approximate).
     - Atom takes 6 seconds
-    - Sublime Text 3 dev build takes ~220ms, despite having a super fancy javascript syntax definition
+    - Sublime Text 3 dev build takes 98ms (highlighting only, takes ~200ms click to pixels), despite having a super fancy javascript syntax definition.
     - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors (Compare [vim's grammar](https://github.com/vim/vim/blob/master/runtime/syntax/javascript.vim) to [Sublime's](https://github.com/sublimehq/Packages/blob/master/JavaScript/JavaScript.sublime-syntax)).
     - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex defintion for ES6 syntax.
 - Simple syntaxes are faster, JS is one of the most complex. It only takes 34ms to highlight a 1700 line 62kb XML file or 50,000 lines/sec.
