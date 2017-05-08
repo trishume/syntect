@@ -7,7 +7,7 @@ use std::io::{BufReader, BufRead, Seek};
 use walkdir::WalkDir;
 use std::fs::File;
 
-#[derive(Debug, RustcEncodable, RustcDecodable)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ThemeSet {
     pub themes: BTreeMap<String, Theme>,
 }

@@ -12,7 +12,7 @@ use self::ParseThemeError::*;
 
 /// A theme parsed from a `.tmTheme` file.
 /// Contains fields useful for a theme list as well as `settings` for styling your editor.
-#[derive(Clone, Debug, Default, RustcEncodable, RustcDecodable)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Theme {
     pub name: Option<String>,
     pub author: Option<String>,
@@ -23,7 +23,7 @@ pub struct Theme {
 /// Various properties meant to be used to style a text editor.
 /// Basically all the styles that aren't directly applied to text like selection colour.
 /// Use this to make your editor UI match the highlighted text.
-#[derive(Clone, Debug, Default, RustcEncodable, RustcDecodable)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSettings {
     /// Foreground color for the view.
     pub foreground: Option<Color>,
@@ -96,14 +96,14 @@ pub struct ThemeSettings {
 
 /// A component of a theme meant to highlight a specific thing (e.g string literals)
 /// in a certain way.
-#[derive(Clone, Debug, Default, RustcEncodable, RustcDecodable)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ThemeItem {
     /// Target scope name.
     pub scope: ScopeSelectors,
     pub style: StyleModifier,
 }
 
-#[derive(Clone, Debug, RustcEncodable, RustcDecodable)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum UnderlineOption {
     None,
     Underline,

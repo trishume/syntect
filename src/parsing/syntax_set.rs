@@ -16,7 +16,6 @@ use std::rc::Rc;
 use std::ascii::AsciiExt;
 use std::sync::Mutex;
 use onig::Regex;
-use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 
 /// A syntax set holds a bunch of syntaxes and manages
 /// loading them and the crucial operation of *linking*.
@@ -25,10 +24,11 @@ use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 /// pointers. See `link_syntaxes` for more.
 /// Linking, followed by adding more unlinked syntaxes with `load_syntaxes`
 /// and then linking again is allowed.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SyntaxSet {
     syntaxes: Vec<SyntaxDefinition>,
     pub is_linked: bool,
+    #[serde(skip_serializing, skip_deserializing)]
     first_line_cache: Mutex<FirstLineCache>,
     /// Stores the syntax index for every path that was loaded
     path_syntaxes: Vec<(String, usize)>,
@@ -372,12 +372,18 @@ struct FirstLineCache {
     cached_until: usize,
 }
 
-impl FirstLineCache {
-    fn new() -> FirstLineCache {
+impl Default for FirstLineCache {
+    fn default() -> Self {
         FirstLineCache {
             regexes: Vec::new(),
             cached_until: 0,
         }
+    }
+}
+
+impl FirstLineCache {
+    fn new() -> FirstLineCache {
+        FirstLineCache::default()
     }
 
     fn ensure_filled(&mut self, syntaxes: &[SyntaxDefinition]) {
@@ -397,31 +403,6 @@ impl FirstLineCache {
     }
 }
 
-impl Encodable for SyntaxSet {
-    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        s.emit_struct("SyntaxSet", 3, |s| {
-            try!(s.emit_struct_field("syntaxes", 0, |s| self.syntaxes.encode(s)));
-            try!(s.emit_struct_field("is_linked", 1, |s| self.is_linked.encode(s)));
-            try!(s.emit_struct_field("path_syntaxes", 2, |s| self.path_syntaxes.encode(s)));
-            Ok(())
-        })
-    }
-}
-
-impl Decodable for SyntaxSet {
-    fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-        d.read_struct("SyntaxSet", 3, |d| {
-            let ss = SyntaxSet {
-                syntaxes: try!(d.read_struct_field("syntaxes", 0, Decodable::decode)),
-                is_linked: try!(d.read_struct_field("is_linked", 1, Decodable::decode)),
-                first_line_cache: Mutex::new(FirstLineCache::new()),
-                path_syntaxes: try!(d.read_struct_field("path_syntaxes", 2, Decodable::decode)),
-            };
-
-            Ok(ss)
-        })
-    }
-}
 
 #[cfg(feature = "yaml-load")]
 #[cfg(test)]

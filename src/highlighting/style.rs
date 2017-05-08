@@ -2,7 +2,7 @@
 // released under the MIT license by @defuz
 
 /// The foreground, background and font style
-#[derive(Debug, Clone, Copy, PartialEq, Eq, RustcEncodable, RustcDecodable)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Style {
     /// Foreground color.
     pub foreground: Color,
@@ -13,7 +13,7 @@ pub struct Style {
 }
 
 /// A change to a `Style` applied incrementally by a theme rule.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, RustcEncodable, RustcDecodable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StyleModifier {
     /// Foreground color.
     pub foreground: Option<Color>,
@@ -44,7 +44,7 @@ pub const WHITE: Color = Color {
 /// for now you might have to do your own colour space conversion if you are outputting
 /// a different colour space from the theme. This can be a problem because some Sublime
 /// themes use sRGB and some don't. This is specified in an attribute syntect doesn't parse yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, RustcEncodable, RustcDecodable)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Color {
     /// Red component
     pub r: u8,
@@ -58,7 +58,7 @@ pub struct Color {
 
 bitflags! {
 /// This can be a combination of `FONT_STYLE_BOLD`, `FONT_STYLE_UNDERLINE` and `FONT_STYLE_ITALIC`
-    #[derive(RustcEncodable, RustcDecodable)]
+    #[derive(Serialize, Deserialize)]
     pub flags FontStyle: u8 {
 /// A bitfield constant FontStyle
         const FONT_STYLE_BOLD = 1,
