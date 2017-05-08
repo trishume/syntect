@@ -9,7 +9,7 @@ use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use super::scope::*;
 use regex_syntax::escape;
-use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 pub type ContextPtr = Rc<RefCell<Context>>;
@@ -21,7 +21,7 @@ pub type ContextPtr = Rc<RefCell<Context>>;
 /// Some useful public fields are the `name` field which is a human readable
 /// name to display in syntax lists, and the `hidden` field which means hide
 /// this syntax from any lists because it is for internal use.
-#[derive(Clone, Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SyntaxDefinition {
     pub name: String,
     pub file_extensions: Vec<String>,
@@ -29,13 +29,14 @@ pub struct SyntaxDefinition {
     pub first_line_match: Option<String>,
     pub hidden: bool,
     /// Filled in at link time to avoid serializing it multiple times
+    #[serde(skip_serializing, skip_deserializing)]
     pub prototype: Option<ContextPtr>,
 
     pub variables: HashMap<String, String>,
     pub contexts: HashMap<String, ContextPtr>,
 }
 
-#[derive(Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Context {
     pub meta_scope: Vec<Scope>,
     pub meta_content_scope: Vec<Scope>,
@@ -46,13 +47,14 @@ pub struct Context {
     /// This is filled in by the linker at link time
     /// for contexts that have `meta_include_prototype==true`
     /// and are not included from the prototype.
+    #[serde(skip_serializing, skip_deserializing)]
     pub prototype: Option<ContextPtr>,
     pub uses_backrefs: bool,
 
     pub patterns: Vec<Pattern>,
 }
 
-#[derive(Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Pattern {
     Match(MatchPattern),
     Include(ContextReference),
@@ -61,16 +63,17 @@ pub enum Pattern {
 /// Used to iterate over all the match patterns in a context.
 /// Basically walks the tree of patterns and include directives
 /// in the correct order.
-#[derive(Debug, RustcEncodable, RustcDecodable)]
+#[derive(Debug)]
 pub struct MatchIter {
     ctx_stack: Vec<ContextPtr>,
     index_stack: Vec<usize>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MatchPattern {
     pub has_captures: bool,
     pub regex_str: String,
+    #[serde(skip_serializing, skip_deserializing)]
     pub regex: Option<Regex>,
     pub scope: Vec<Scope>,
     pub captures: Option<CaptureMapping>,
@@ -85,7 +88,7 @@ pub struct LinkerLink {
     pub link: Weak<RefCell<Context>>,
 }
 
-#[derive(Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ContextReference {
     Named(String),
     ByScope {
@@ -100,7 +103,7 @@ pub enum ContextReference {
     Direct(LinkerLink),
 }
 
-#[derive(Debug, RustcEncodable, RustcDecodable, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MatchOperation {
     Push(Vec<ContextReference>),
     Set(Vec<ContextReference>),
@@ -243,40 +246,6 @@ impl MatchPattern {
     }
 }
 
-/// Only valid to use this on a syntax which hasn't been linked up to other syntaxes yet
-impl Encodable for MatchPattern {
-    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        s.emit_struct("MatchPattern", 6, |s| {
-            try!(s.emit_struct_field("has_captures", 0, |s| self.has_captures.encode(s)));
-            try!(s.emit_struct_field("regex_str", 1, |s| self.regex_str.encode(s)));
-            try!(s.emit_struct_field("scope", 2, |s| self.scope.encode(s)));
-            try!(s.emit_struct_field("captures", 3, |s| self.captures.encode(s)));
-            try!(s.emit_struct_field("operation", 4, |s| self.operation.encode(s)));
-            try!(s.emit_struct_field("with_prototype", 5, |s| self.with_prototype.encode(s)));
-            Ok(())
-        })
-    }
-}
-
-/// Syntaxes decoded by this won't have compiled regexes
-impl Decodable for MatchPattern {
-    fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-        d.read_struct("MatchPattern", 6, |d| {
-            let match_pat = MatchPattern {
-                has_captures: try!(d.read_struct_field("has_captures", 0, Decodable::decode)),
-                regex: None,
-                regex_str: try!(d.read_struct_field("regex_str", 1, Decodable::decode)),
-                scope: try!(d.read_struct_field("scope", 2, Decodable::decode)),
-                captures: try!(d.read_struct_field("captures", 3, Decodable::decode)),
-                operation: try!(d.read_struct_field("operation", 4, Decodable::decode)),
-                with_prototype: try!(d.read_struct_field("with_prototype", 5, Decodable::decode)),
-            };
-
-            Ok(match_pat)
-        })
-    }
-}
-
 impl Eq for LinkerLink {}
 
 impl PartialEq for LinkerLink {
@@ -287,16 +256,16 @@ impl PartialEq for LinkerLink {
 
 
 /// Just panics, we can't do anything with linked up syntaxes
-impl Encodable for LinkerLink {
-    fn encode<S: Encoder>(&self, _: &mut S) -> Result<(), S::Error> {
-        panic!("Can't encode syntax definitions which have been linked")
+impl Serialize for LinkerLink {
+    fn serialize<S>(&self, _: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        panic!("Can't serialize syntax definitions which have been linked");
     }
 }
 
 /// Just panics, we can't do anything with linked up syntaxes
-impl Decodable for LinkerLink {
-    fn decode<D: Decoder>(_: &mut D) -> Result<LinkerLink, D::Error> {
-        panic!("No linked syntax should ever have gotten encoded")
+impl<'de> Deserialize<'de> for LinkerLink {
+    fn deserialize<D>(_: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        panic!("No linked syntax should ever have gotten serialized");
     }
 }
 

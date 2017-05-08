@@ -5,9 +5,11 @@ use std::sync::Mutex;
 use std::fmt;
 use std::str::FromStr;
 use std::u64;
-use rustc_serialize::{Encodable, Encoder, Decodable, Decoder};
 use std::cmp::{Ordering, min};
 use std::mem;
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::{Error, Visitor};
 
 /// Multiplier on the power of 2 for MatchPower.
 /// Only useful if you compute your own MatchPower scores.
@@ -69,13 +71,13 @@ pub struct ScopeRepository {
 ///
 /// Example for a JS string inside a script tag in a Rails `ERB` file:
 /// `text.html.ruby text.html.basic source.js.embedded.html string.quoted.double.js`
-#[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScopeStack {
     clear_stack: Vec<Vec<Scope>>,
     scopes: Vec<Scope>,
 }
 
-#[derive(Debug, Clone, Copy, RustcEncodable, RustcDecodable, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ClearAmount {
     TopN(usize),
     All,
@@ -294,17 +296,31 @@ impl fmt::Debug for Scope {
     }
 }
 
-impl Encodable for Scope {
-    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        let st = self.build_string();
-        s.emit_str(&st)
+impl Serialize for Scope {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let s = self.build_string();
+        serializer.serialize_str(&s)
     }
 }
 
-impl Decodable for Scope {
-    fn decode<D: Decoder>(d: &mut D) -> Result<Scope, D::Error> {
-        let s: String = try!(d.read_str());
-        Ok(Scope::new(&s).unwrap())
+impl<'de> Deserialize<'de> for Scope {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+
+        struct ScopeVisitor;
+
+        impl<'de> Visitor<'de> for ScopeVisitor {
+            type Value = Scope;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Scope, E> where E: Error {
+                Scope::new(v).map_err(|e| Error::custom(format!("Invalid scope: {:?}", e)))
+            }
+        }
+
+        deserializer.deserialize_str(ScopeVisitor)
     }
 }
 

@@ -5,10 +5,9 @@
 //! into `.packdump` files and likewise `ThemeSet` structs to `.themedump` files.
 //!
 //! You can use these methods to manage your own caching of compiled syntaxes and
-//! themes. And even your own `rustc_serialize::Encodable` structures if you want to
+//! themes. And even your own `serde::Serialize` structures if you want to
 //! be consistent with your format.
-use bincode::SizeLimit;
-use bincode::rustc_serialize::*;
+use bincode::{ErrorKind, Infinite, Result, deserialize_from, serialize_into};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 #[cfg(feature = "assets")]
@@ -19,14 +18,15 @@ use std::path::Path;
 use flate2::write::ZlibEncoder;
 use flate2::read::ZlibDecoder;
 use flate2::Compression;
-use rustc_serialize::{Encodable, Decodable};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// Dumps an object to a binary array in the same format as `dump_to_file`
-pub fn dump_binary<T: Encodable>(o: &T) -> Vec<u8> {
+pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
     let mut v = Vec::new();
     {
         let mut encoder = ZlibEncoder::new(&mut v, Compression::Best);
-        encode_into(o, &mut encoder, SizeLimit::Infinite).unwrap();
+        serialize_into(&mut encoder, o, Infinite).unwrap();
     }
     v
 }
@@ -34,25 +34,25 @@ pub fn dump_binary<T: Encodable>(o: &T) -> Vec<u8> {
 /// Dumps an encodable object to a file at a given path. If a file already exists at that path
 /// it will be overwritten. The files created are encoded with the `bincode` crate and then
 /// compressed with the `flate2` crate.
-pub fn dump_to_file<T: Encodable, P: AsRef<Path>>(o: &T, path: P) -> EncodingResult<()> {
-    let f = BufWriter::new(try!(File::create(path).map_err(EncodingError::IoError)));
+pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
+    let f = BufWriter::new(try!(File::create(path).map_err(ErrorKind::IoError)));
     let mut encoder = ZlibEncoder::new(f, Compression::Best);
-    encode_into(o, &mut encoder, SizeLimit::Infinite)
+    serialize_into(&mut encoder, o, Infinite)
 }
 
-/// Returns a fully loaded and linked syntax set from
+/// Returns a fully loaded syntax set from
 /// a binary dump. Panics if the dump is invalid.
-pub fn from_binary<T: Decodable>(v: &[u8]) -> T {
+pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
     let mut decoder = ZlibDecoder::new(v);
-    decode_from(&mut decoder, SizeLimit::Infinite).unwrap()
+    deserialize_from(&mut decoder, Infinite).unwrap()
 }
 
-/// Returns a fully loaded and linked syntax set from
+/// Returns a fully loaded syntax set from
 /// a binary dump file.
-pub fn from_dump_file<T: Decodable, P: AsRef<Path>>(path: P) -> DecodingResult<T> {
-    let f = try!(File::open(path).map_err(DecodingError::IoError));
+pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
+    let f = try!(File::open(path).map_err(ErrorKind::IoError));
     let mut decoder = ZlibDecoder::new(BufReader::new(f));
-    decode_from(&mut decoder, SizeLimit::Infinite)
+    deserialize_from(&mut decoder, Infinite)
 }
 
 #[cfg(feature = "assets")]

@@ -23,11 +23,14 @@ extern crate regex_syntax;
 extern crate lazy_static;
 extern crate plist;
 extern crate bincode;
-extern crate rustc_serialize;
 #[macro_use]
 extern crate bitflags;
 extern crate flate2;
 extern crate fnv;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 pub mod highlighting;
 pub mod parsing;
 pub mod util;

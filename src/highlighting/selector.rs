@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 /// A single selector consisting of a stack to match and a possible stack to exclude from being matched.
 /// You probably want `ScopeSelectors` which is this but with union support.
-#[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScopeSelector {
     path: ScopeStack,
     excludes: Vec<ScopeStack>,
@@ -15,7 +15,7 @@ pub struct ScopeSelector {
 /// A selector set that matches anything matched by any of its component selectors.
 /// See [The TextMate Docs](https://manual.macromates.com/en/scope_selectors) for how these
 /// work.
-#[derive(Debug, Clone, PartialEq, Eq, Default, RustcEncodable, RustcDecodable)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScopeSelectors {
     /// the selectors, if any of them match, this matches
     pub selectors: Vec<ScopeSelector>,

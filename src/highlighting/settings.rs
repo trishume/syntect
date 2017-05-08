@@ -3,10 +3,11 @@
 
 use std::io::{Read, Seek};
 use plist::{Plist, Error as PlistError};
+use serde_json::Number;
 
-pub use rustc_serialize::json::Json as Settings;
-pub use rustc_serialize::json::Array as SettingsArray;
-pub use rustc_serialize::json::Object as SettingsObject;
+pub use serde_json::Value as Settings;
+pub use serde_json::Value::Array as SettingsArray;
+pub use serde_json::Value::Object as SettingsObject;
 
 pub trait FromSettings: Sized {
     fn from_settings(settings: Settings) -> Self;
@@ -32,5 +33,22 @@ impl From<PlistError> for SettingsError {
 }
 
 pub fn read_plist<R: Read + Seek>(reader: R) -> Result<Settings, SettingsError> {
-    Ok(try!(Plist::read(reader)).into_rustc_serialize_json())
+    let plist = Plist::read(reader)?;
+    Ok(to_json(plist))
+}
+
+fn to_json(plist: Plist) -> Settings {
+    match plist {
+        Plist::Array(elements) =>
+            SettingsArray(elements.into_iter().map(to_json).collect()),
+        Plist::Dictionary(entries) =>
+            SettingsObject(entries.into_iter().map(|(k, v)| (k, to_json(v))).collect()),
+        Plist::Boolean(value) => Settings::Bool(value),
+        Plist::Data(bytes) => Settings::Array(bytes.into_iter().map(|b| b.into()).collect()),
+        Plist::Date(value) => Settings::String(value.to_string()),
+        Plist::Real(value) =>
+            Settings::Number(Number::from_f64(value).expect("Error converting plist real value to JSON number")),
+        Plist::Integer(value) => Settings::Number(value.into()),
+        Plist::String(s) => Settings::String(s),
+    }
 }
