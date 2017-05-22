@@ -1,8 +1,9 @@
 //! Rendering highlighted code as HTML+CSS
 use std::fmt::Write;
-use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxDefinition, SyntaxSet, SCOPE_REPO};
+use parsing::{SyntaxDefinition, SyntaxSet};
 use easy::{HighlightLines, HighlightFile};
-use highlighting::{self, Style, Theme, Color};
+use highlighting::{self, ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack,
+                   Style, Theme, Color, SCOPE_REPO};
 use escape::Escape;
 use std::io::{self, BufRead};
 use std::path::Path;
@@ -154,20 +155,25 @@ fn write_css_color(s: &mut String, c: Color) {
 /// # Examples
 ///
 /// ```
+/// extern crate syntect_highlighting as highlighting;
+/// extern crate syntect;
+/// # fn main() {
 /// use syntect::easy::HighlightLines;
 /// use syntect::parsing::SyntaxSet;
-/// use syntect::highlighting::{ThemeSet, Style};
+/// use highlighting::{ThemeSet, Style};
+/// use syntect::dumps::load_default_themeset;
 /// use syntect::html::{styles_to_coloured_html, IncludeBackground};
 ///
 /// // Load these once at the start of your program
 /// let ps = SyntaxSet::load_defaults_nonewlines();
-/// let ts = ThemeSet::load_defaults();
+/// let ts = load_default_themeset();
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
 /// let regions = h.highlight("5");
 /// let html = styles_to_coloured_html(&regions[..], IncludeBackground::No);
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
+/// # }
 /// ```
 pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> String {
     let mut s: String = String::new();
@@ -219,8 +225,9 @@ pub fn start_coloured_html_snippet(t: &Theme) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, ParseState, ScopeStack};
-    use highlighting::{ThemeSet, Style, Highlighter, HighlightIterator, HighlightState};
+    use parsing::{SyntaxSet, ParseState};
+    use highlighting::{ScopeStack, ThemeSet, Style, Highlighter, HighlightIterator, HighlightState};
+    use dumps::load_default_themeset;
     #[test]
     fn tokens() {
         let ps = SyntaxSet::load_defaults_nonewlines();
@@ -236,7 +243,7 @@ mod tests {
         println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test2.html").trim_right());
 
-        let ts = ThemeSet::load_defaults();
+        let ts = load_default_themeset();
         let highlighter = Highlighter::new(&ts.themes["InspiredGitHub"]);
         let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
@@ -250,7 +257,7 @@ mod tests {
     #[test]
     fn strings() {
         let ss = SyntaxSet::load_defaults_nonewlines();
-        let ts = ThemeSet::load_defaults();
+        let ts = load_default_themeset();
         let s = include_str!("../testdata/highlight_test.erb");
         let syntax = ss.find_syntax_by_extension("erb").unwrap();
         let html = highlighted_snippet_for_string(s, syntax, &ts.themes["base16-ocean.dark"]);
@@ -275,7 +282,7 @@ mod tests {
         // This syntax I wrote tests edge cases of prototypes
         // I verified the output HTML against what ST3 does with the same syntax and file
         let ss = SyntaxSet::load_from_folder("testdata").unwrap();
-        let ts = ThemeSet::load_defaults();
+        let ts = load_default_themeset();
         let html = highlighted_snippet_for_file("testdata/testing-syntax.testsyntax",
                                                 &ss,
                                                 &ts.themes["base16-ocean.dark"])

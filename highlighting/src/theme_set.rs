@@ -1,6 +1,6 @@
 use super::theme::Theme;
 use super::settings::*;
-use super::super::LoadingError;
+use super::LoadingError;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::io::{BufReader, BufRead, Seek};

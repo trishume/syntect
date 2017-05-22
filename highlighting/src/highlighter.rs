@@ -5,7 +5,8 @@
 
 use std::iter::Iterator;
 
-use parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
+use super::scope::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp,
+                   MatchPower, ATOM_LEN_BITS};
 use super::selector::ScopeSelector;
 use super::theme::Theme;
 use super::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};

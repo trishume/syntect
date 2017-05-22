@@ -2,13 +2,14 @@
 //! Basically exactly the same as what Sublime Text can do,
 //! but without needing ST installed
 extern crate syntect;
+extern crate syntect_highlighting as highlighting;
 extern crate walkdir;
 #[macro_use]
 extern crate lazy_static;
 extern crate regex;
 //extern crate onig;
-use syntect::parsing::{SyntaxSet, ParseState, ScopeStack, Scope};
-use syntect::highlighting::ScopeSelectors;
+use syntect::parsing::{SyntaxSet, ParseState};
+use highlighting::{ScopeSelectors, ScopeStack, Scope};
 use syntect::easy::{ScopeRegionIterator};
 
 use std::path::Path;

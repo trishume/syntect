@@ -2,8 +2,9 @@
 //! files without caring about intermediate semantic representation
 //! and caching.
 
-use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet, ScopeStackOp};
-use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
+use parsing::{ParseState, SyntaxDefinition, SyntaxSet};
+use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style,
+                   ScopeStack, ScopeStackOp};
 use std::io::{self, BufReader};
 use std::fs::File;
 use std::path::Path;
@@ -19,14 +20,18 @@ use std::path::Path;
 /// Prints coloured lines of a string to the terminal
 ///
 /// ```
+/// extern crate syntect_highlighting as highlighting;
+/// extern crate syntect;
+/// # fn main() {
 /// use syntect::easy::HighlightLines;
 /// use syntect::parsing::SyntaxSet;
-/// use syntect::highlighting::{ThemeSet, Style};
+/// use highlighting::{ThemeSet, Style};
 /// use syntect::util::as_24_bit_terminal_escaped;
+/// use syntect::dumps::load_default_themeset;
 ///
 /// // Load these once at the start of your program
 /// let ps = SyntaxSet::load_defaults_nonewlines();
-/// let ts = ThemeSet::load_defaults();
+/// let ts = load_default_themeset();
 ///
 /// let syntax = ps.find_syntax_by_extension("rs").unwrap();
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
@@ -36,6 +41,7 @@ use std::path::Path;
 ///     let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
 ///     println!("{}", escaped);
 /// }
+/// # }
 /// ```
 pub struct HighlightLines<'a> {
     highlighter: Highlighter<'a>,
@@ -84,14 +90,18 @@ impl<'a> HighlightFile<'a> {
     /// and fast syntax highlighting, at the cost of a couple extra lines of code.
     ///
     /// ```
+    /// extern crate syntect_highlighting as highlighting;
+    /// extern crate syntect;
+    /// # fn main() {
     /// use syntect::parsing::SyntaxSet;
-    /// use syntect::highlighting::{ThemeSet, Style};
+    /// use highlighting::{ThemeSet, Style};
+    /// use syntect::dumps::load_default_themeset;
     /// use syntect::util::as_24_bit_terminal_escaped;
     /// use syntect::easy::HighlightFile;
     /// use std::io::BufRead;
     ///
     /// let ss = SyntaxSet::load_defaults_nonewlines();
-    /// let ts = ThemeSet::load_defaults();
+    /// let ts = load_default_themeset();
     ///
     /// let mut highlighter = HighlightFile::new("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
     /// for maybe_line in highlighter.reader.lines() {
@@ -99,6 +109,7 @@ impl<'a> HighlightFile<'a> {
     ///     let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
     ///     println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
     /// }
+    /// # }
     /// ```
     pub fn new<P: AsRef<Path>>(path_obj: P,
                                ss: &SyntaxSet,
@@ -178,14 +189,15 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, ParseState, ScopeStack};
-    use highlighting::ThemeSet;
+    use parsing::{SyntaxSet, ParseState};
+    use highlighting::{ThemeSet, ScopeStack};
+    use dumps::load_default_themeset;
     use std::str::FromStr;
 
     #[test]
     fn can_highlight_lines() {
         let ps = SyntaxSet::load_defaults_nonewlines();
-        let ts = ThemeSet::load_defaults();
+        let ts = load_default_themeset();
         let syntax = ps.find_syntax_by_extension("rs").unwrap();
         let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
         let ranges = h.highlight("pub struct Wow { hi: u64 }");
@@ -195,7 +207,7 @@ mod tests {
     #[test]
     fn can_highlight_file() {
         let ss = SyntaxSet::load_defaults_nonewlines();
-        let ts = ThemeSet::load_defaults();
+        let ts = load_default_themeset();
         HighlightFile::new("testdata/highlight_test.erb",
                            &ss,
                            &ts.themes["base16-ocean.dark"])

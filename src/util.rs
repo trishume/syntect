@@ -1,8 +1,8 @@
 //! Convenient utility methods, mostly for printing `syntect` data structures
 //! prettily to the terminal.
-use highlighting::Style;
+use highlighting::{Style, ScopeStackOp};
 use std::fmt::Write;
-use parsing::ScopeStackOp;
+
 
 /// Formats the styled fragments using 24-bit colour
 /// terminal escape codes. Meant for debugging and testing.

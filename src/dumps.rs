@@ -89,21 +89,20 @@ impl SyntaxSet {
     }
 }
 
+/// Loads the set of default themes
+/// Currently includes (these are the keys for the map):
+///
+/// - `base16-ocean.dark`,`base16-eighties.dark`,`base16-mocha.dark`,`base16-ocean.light`
+/// - `InspiredGitHub` from [here](https://github.com/sethlopezme/InspiredGitHub.tmtheme)
+/// - `Solarized (dark)` and `Solarized (light)`
 #[cfg(feature = "assets")]
-impl ThemeSet {
-    /// Loads the set of default themes
-    /// Currently includes (these are the keys for the map):
-    ///
-    /// - `base16-ocean.dark`,`base16-eighties.dark`,`base16-mocha.dark`,`base16-ocean.light`
-    /// - `InspiredGitHub` from [here](https://github.com/sethlopezme/InspiredGitHub.tmtheme)
-    /// - `Solarized (dark)` and `Solarized (light)`
-    pub fn load_defaults() -> ThemeSet {
-        from_binary(include_bytes!("../assets/default.themedump"))
-    }
+pub fn load_default_themeset() -> ThemeSet {
+    from_binary(include_bytes!("../assets/default.themedump"))
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[cfg(feature = "yaml-load")]
     #[test]
     fn can_dump_and_load() {
@@ -122,7 +121,7 @@ mod tests {
     #[test]
     fn has_default_themes() {
         use highlighting::ThemeSet;
-        let themes = ThemeSet::load_defaults();
+        let themes = load_default_themeset();
         assert!(themes.themes.len() > 4);
     }
 }
