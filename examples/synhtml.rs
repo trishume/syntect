@@ -1,13 +1,14 @@
 //! Prints highlighted HTML for a file to stdout.
 //! Basically just wraps a body around `highlighted_snippet_for_file`
 extern crate syntect;
+extern crate syntect_highlighting as highlighting;
+use syntect::dumps::load_default_themeset;
 use syntect::parsing::SyntaxSet;
-use syntect::highlighting::{ThemeSet, self};
 use syntect::html::highlighted_snippet_for_file;
 
 fn main() {
     let ss = SyntaxSet::load_defaults_nonewlines();
-    let ts = ThemeSet::load_defaults();
+    let ts = load_default_themeset();
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {

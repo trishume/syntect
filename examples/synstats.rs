@@ -7,9 +7,10 @@
 //! do is properly count comments in embedded syntaxes. For example
 //! JS, CSS and Ruby comments embedded in ERB files.
 extern crate syntect;
+extern crate syntect_highlighting as highlighting;
 extern crate walkdir;
-use syntect::parsing::{SyntaxSet, ParseState, ScopeStackOp, ScopeStack};
-use syntect::highlighting::{ScopeSelector, ScopeSelectors};
+use syntect::parsing::{SyntaxSet, ParseState};
+use highlighting::{ScopeSelector, ScopeSelectors, ScopeStackOp, ScopeStack};
 use syntect::easy::{ScopeRegionIterator};
 
 use std::path::Path;

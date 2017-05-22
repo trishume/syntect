@@ -1,4 +1,4 @@
-use super::scope::*;
+use highlighting::scope::*;
 use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use std::collections::{HashMap, BTreeMap};
@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::path::Path;
 use std::ops::DerefMut;
+use std::io::Error as IoError;
 
 #[derive(Debug)]
 pub enum ParseSyntaxError {
@@ -14,6 +15,8 @@ pub enum ParseSyntaxError {
     InvalidYaml(ScanError),
     /// The file must contain at least on YAML document
     EmptyFile,
+    /// IoError loading file
+    Io(IoError),
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
     /// Invalid regex
@@ -28,6 +31,12 @@ pub enum ParseSyntaxError {
     /// Sorry this doesn't give you any way to narrow down where this is.
     /// Maybe use Sublime Text to figure it out.
     TypeMismatch,
+}
+
+impl From<IoError> for ParseSyntaxError {
+    fn from(error: IoError) -> ParseSyntaxError {
+        ParseSyntaxError::Io(error)
+    }
 }
 
 fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a BTreeMap<Yaml, Yaml>,
@@ -382,7 +391,7 @@ impl SyntaxDefinition {
 #[cfg(test)]
 mod tests {
     use parsing::syntax_definition::*;
-    use parsing::Scope;
+    use highlighting::Scope;
     #[test]
     fn can_parse() {
         let defn: SyntaxDefinition =

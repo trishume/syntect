@@ -3,8 +3,9 @@
 //! Although it is a valid example for serializing syntaxes, you probably won't need
 //! to do this yourself unless you want to cache your own compiled grammars.
 extern crate syntect;
+extern crate syntect_highlighting as highlighting;
 use syntect::parsing::SyntaxSet;
-use syntect::highlighting::ThemeSet;
+use highlighting::ThemeSet;
 use syntect::dumps::*;
 use std::env;
 

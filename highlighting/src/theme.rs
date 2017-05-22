@@ -6,7 +6,7 @@ use std::str::FromStr;
 use super::settings::{ParseSettings, Settings};
 use super::style::*;
 use super::selector::*;
-use parsing::ParseScopeError;
+use scope::ParseScopeError;
 
 use self::ParseThemeError::*;
 

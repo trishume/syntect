@@ -1,7 +1,7 @@
 use super::syntax_definition::*;
-use super::scope::*;
+use highlighting::scope::*;
 #[cfg(feature = "yaml-load")]
-use super::super::LoadingError;
+use super::ParseSyntaxError;
 
 use std::path::Path;
 #[cfg(feature = "yaml-load")]
@@ -37,7 +37,7 @@ pub struct SyntaxSet {
 #[cfg(feature = "yaml-load")]
 fn load_syntax_file(p: &Path,
                     lines_include_newline: bool)
-                    -> Result<SyntaxDefinition, LoadingError> {
+                    -> Result<SyntaxDefinition, ParseSyntaxError> {
     let mut f = try!(File::open(p));
     let mut s = String::new();
     try!(f.read_to_string(&mut s));
@@ -66,7 +66,7 @@ impl SyntaxSet {
     /// `load_syntaxes` method docs for an explanation as to why this might not be the best.
     /// It also links all the syntaxes together, see `link_syntaxes` for what that means.
     #[cfg(feature = "yaml-load")]
-    pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<SyntaxSet, LoadingError> {
+    pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<SyntaxSet, ParseSyntaxError> {
         let mut ps = Self::new();
         try!(ps.load_syntaxes(folder, false));
         ps.link_syntaxes();
@@ -89,10 +89,10 @@ impl SyntaxSet {
     pub fn load_syntaxes<P: AsRef<Path>>(&mut self,
                                          folder: P,
                                          lines_include_newline: bool)
-                                         -> Result<(), LoadingError> {
+                                         -> Result<(), ParseSyntaxError> {
         self.is_linked = false;
         for entry in WalkDir::new(folder) {
-            let entry = try!(entry.map_err(LoadingError::WalkDir));
+            let entry = entry.map_err(|e| { let err: io::Error = e.into(); err })?;
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 // println!("{}", entry.path().display());
                 let syntax = try!(load_syntax_file(entry.path(), lines_include_newline));
@@ -408,7 +408,8 @@ impl FirstLineCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{Scope, syntax_definition};
+    use parsing::syntax_definition;
+    use highlighting::Scope;
     #[test]
     fn can_load() {
         let mut ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();

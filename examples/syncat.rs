@@ -1,14 +1,16 @@
 extern crate syntect;
+extern crate syntect_highlighting as highlighting;
 use syntect::parsing::SyntaxSet;
-use syntect::highlighting::{ThemeSet, Style};
+use highlighting::{ThemeSet, Style};
 use syntect::util::as_24_bit_terminal_escaped;
 use syntect::easy::HighlightFile;
+use syntect::dumps::load_default_themeset;
 
 use std::io::BufRead;
 
 fn main() {
     let ss = SyntaxSet::load_defaults_newlines(); // note we load the version with newlines
-    let ts = ThemeSet::load_defaults();
+    let ts = load_default_themeset();
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {

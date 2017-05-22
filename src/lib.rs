@@ -14,24 +14,19 @@
 //!
 //! Some docs have example code but a good place to look is the `syncat` example as well as the source code
 //! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
+extern crate syntect_highlighting as highlighting;
 #[cfg(feature = "yaml-load")]
 extern crate yaml_rust;
 extern crate onig;
 extern crate walkdir;
 extern crate regex_syntax;
-#[macro_use]
-extern crate lazy_static;
-extern crate plist;
 extern crate bincode;
-#[macro_use]
-extern crate bitflags;
 extern crate flate2;
 extern crate fnv;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
-pub mod highlighting;
 pub mod parsing;
 pub mod util;
 pub mod dumps;
@@ -40,52 +35,3 @@ pub mod easy;
 pub mod html;
 #[cfg(feature = "html")]
 mod escape;
-
-use std::io::Error as IoError;
-#[cfg(feature = "yaml-load")]
-use parsing::ParseSyntaxError;
-use highlighting::{ParseThemeError, SettingsError};
-
-/// Common error type used by syntax and theme loading
-#[derive(Debug)]
-pub enum LoadingError {
-    /// error finding all the files in a directory
-    WalkDir(walkdir::Error),
-    /// error reading a file
-    Io(IoError),
-    /// a syntax file was invalid in some way
-    #[cfg(feature = "yaml-load")]
-    ParseSyntax(ParseSyntaxError),
-    /// a theme file was invalid in some way
-    ParseTheme(ParseThemeError),
-    /// a theme's Plist syntax was invalid in some way
-    ReadSettings(SettingsError),
-    /// A path given to a method was invalid.
-    /// Possibly because it didn't reference a file or wasn't UTF-8.
-    BadPath,
-}
-
-impl From<SettingsError> for LoadingError {
-    fn from(error: SettingsError) -> LoadingError {
-        LoadingError::ReadSettings(error)
-    }
-}
-
-impl From<IoError> for LoadingError {
-    fn from(error: IoError) -> LoadingError {
-        LoadingError::Io(error)
-    }
-}
-
-impl From<ParseThemeError> for LoadingError {
-    fn from(error: ParseThemeError) -> LoadingError {
-        LoadingError::ParseTheme(error)
-    }
-}
-
-#[cfg(feature = "yaml-load")]
-impl From<ParseSyntaxError> for LoadingError {
-    fn from(error: ParseSyntaxError) -> LoadingError {
-        LoadingError::ParseSyntax(error)
-    }
-}

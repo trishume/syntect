@@ -1,5 +1,5 @@
 use super::syntax_definition::*;
-use super::scope::*;
+use highlighting::scope::*;
 use onig::{self, Region};
 use std::usize;
 use std::collections::{HashMap, HashSet};
@@ -433,12 +433,13 @@ impl ParseState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, Scope, ScopeStack};
+    use parsing::SyntaxSet;
+    use highlighting::{Scope, ScopeStack};
     use util::debug_print_ops;
 
     #[test]
     fn can_parse() {
-        use parsing::ScopeStackOp::{Push, Pop, Clear, Restore};
+        use highlighting::ScopeStackOp::{Push, Pop, Clear, Restore};
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();

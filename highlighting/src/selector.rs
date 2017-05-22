@@ -1,7 +1,7 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs
 /// released under the MIT license by @defuz
 
-use parsing::{Scope, ScopeStack, MatchPower, ParseScopeError};
+use scope::{Scope, ScopeStack, MatchPower, ParseScopeError};
 use std::str::FromStr;
 
 /// A single selector consisting of a stack to match and a possible stack to exclude from being matched.

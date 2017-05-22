@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use onig::{self, Regex, Region, Syntax};
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
-use super::scope::*;
+use highlighting::scope::*;
 use regex_syntax::escape;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
