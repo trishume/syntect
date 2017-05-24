@@ -2,6 +2,7 @@
 //! prettily to the terminal.
 use highlighting::Style;
 use std::fmt::Write;
+#[cfg(feature = "parsing")]
 use parsing::ScopeStackOp;
 
 /// Formats the styled fragments using 24-bit colour
@@ -39,6 +40,7 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
 
 /// Print out the various push and pop operations in a vector
 /// with visual alignment to the line. Obviously for debugging.
+#[cfg(feature = "parsing")]
 pub fn debug_print_ops(line: &str, ops: &[(usize, ScopeStackOp)]) {
     for &(i, ref op) in ops.iter() {
         println!("{}", line.trim_right());
