@@ -14,15 +14,15 @@ exclude = [
 
 [dependencies]
 yaml-rust = { version = "0.3.5", optional = true }
-onig = "^1.2"
+onig = { version = "^1.2", optional = true }
 walkdir = "^1.0"
-regex-syntax = "^0.4"
+regex-syntax = { version = "^0.4", optional = true }
 lazy_static = "^0.2"
 bitflags = "^0.8"
 plist = "0.2"
 bincode = "0.8"
 flate2 = "^0.2"
-fnv = "^1.0"
+fnv = { version = "^1.0", optional = true }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -32,10 +32,11 @@ regex = "0.2.1"
 
 [features]
 static-onig = ["onig/static-libonig"]
+parsing = ["onig", "regex-syntax", "fnv"]
 assets = []
-html = ["assets"]
+html = ["parsing", "assets"]
 yaml-load = ["yaml-rust"]
-default = ["assets", "html", "yaml-load"]
+default = ["parsing", "assets", "html", "yaml-load"]
 
 # [profile.release]
 # debug = true

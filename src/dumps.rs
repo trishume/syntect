@@ -10,7 +10,7 @@
 use bincode::{ErrorKind, Infinite, Result, deserialize_from, serialize_into};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
-#[cfg(feature = "assets")]
+#[cfg(all(feature = "parsing", feature = "assets"))]
 use parsing::SyntaxSet;
 #[cfg(feature = "assets")]
 use highlighting::ThemeSet;
@@ -55,7 +55,7 @@ pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T>
     deserialize_from(&mut decoder, Infinite)
 }
 
-#[cfg(feature = "assets")]
+#[cfg(all(feature = "parsing", feature = "assets"))]
 impl SyntaxSet {
     /// Instantiates a new syntax set from a binary dump of
     /// Sublime Text's default open source syntax definitions and then links it.

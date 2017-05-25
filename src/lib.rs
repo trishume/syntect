@@ -16,8 +16,10 @@
 //! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
 #[cfg(feature = "yaml-load")]
 extern crate yaml_rust;
+#[cfg(feature = "parsing")]
 extern crate onig;
 extern crate walkdir;
+#[cfg(feature = "parsing")]
 extern crate regex_syntax;
 #[macro_use]
 extern crate lazy_static;
@@ -26,6 +28,7 @@ extern crate bincode;
 #[macro_use]
 extern crate bitflags;
 extern crate flate2;
+#[cfg(feature = "parsing")]
 extern crate fnv;
 extern crate serde;
 #[macro_use]
@@ -35,6 +38,7 @@ pub mod highlighting;
 pub mod parsing;
 pub mod util;
 pub mod dumps;
+#[cfg(feature = "parsing")]
 pub mod easy;
 #[cfg(feature = "html")]
 pub mod html;
@@ -42,7 +46,7 @@ pub mod html;
 mod escape;
 
 use std::io::Error as IoError;
-#[cfg(feature = "yaml-load")]
+#[cfg(all(feature = "yaml-load", feature = "parsing"))]
 use parsing::ParseSyntaxError;
 use highlighting::{ParseThemeError, SettingsError};
 
@@ -83,7 +87,7 @@ impl From<ParseThemeError> for LoadingError {
     }
 }
 
-#[cfg(feature = "yaml-load")]
+#[cfg(all(feature = "yaml-load", feature = "parsing"))]
 impl From<ParseSyntaxError> for LoadingError {
     fn from(error: ParseSyntaxError) -> LoadingError {
         LoadingError::ParseSyntax(error)
