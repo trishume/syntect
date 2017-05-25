@@ -32,6 +32,12 @@ git submodule update --init
 
 to fetch all the required dependencies for running the tests.
 
+### feature flags
+
+Syntect makes heavy use of [cargo features](http://doc.crates.io/manifest.html#the-features-section), to support users who require only a subset of functionality. In particular, it is possible to use the highlighting component of syntect without the parser (for instance when hand-rolling a higher performance parser for a particular language), by adding `default-features = false` to the syntect entry in your `Cargo.toml`.
+
+For more information on available features, see the features section in `Cargo.toml`.
+
 ## Features/Goals
 
 - [x] Work with many languages (accomplished through using existing grammar formats)
