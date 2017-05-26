@@ -22,8 +22,9 @@ use onig::Regex;
 ///
 /// Linking replaces the references between syntaxes with direct
 /// pointers. See `link_syntaxes` for more.
-/// Linking, followed by adding more unlinked syntaxes with `load_syntaxes`
-/// and then linking again is allowed.
+///
+/// Re-linking— linking, adding more unlinked syntaxes with `load_syntaxes`,
+/// and then linking again—is allowed.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyntaxSet {
     syntaxes: Vec<SyntaxDefinition>,

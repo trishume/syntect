@@ -35,7 +35,7 @@ lazy_static! {
 /// 16 bit numbers to represent and compare atoms. Like "atoms" or "symbols" in other languages.
 /// This means that while comparing and prefix are fast, extracting a string is relatively slower
 /// but ideally should be very rare.
-#[derive(Clone, PartialEq, Eq, Copy, Default)]
+#[derive(Clone, PartialEq, Eq, Copy, Default, Hash)]
 pub struct Scope {
     a: u64,
     b: u64,
@@ -52,7 +52,7 @@ pub enum ParseScopeError {
     TooManyAtoms,
 }
 
-/// The structure used to keep of the mapping between scope atom numbers
+/// The structure used to keep track of the mapping between scope atom numbers
 /// and their string names. It is only exposed in case you want to lock
 /// `SCOPE_REPO` and then allocate a whole bunch of scopes at once
 /// without thrashing the lock. It is recommended you just use `Scope::new()`
