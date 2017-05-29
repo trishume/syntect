@@ -8,7 +8,7 @@
 //! JS, CSS and Ruby comments embedded in ERB files.
 extern crate syntect;
 extern crate walkdir;
-use syntect::parsing::{SyntaxSet, ParseState, ScopeStackOp, ScopeStack};
+use syntect::parsing::{SyntaxSet, ParseState, ScopeStackOp, ScopeStack, Scope, SCOPE_REPO};
 use syntect::highlighting::{ScopeSelector, ScopeSelectors};
 use syntect::easy::{ScopeRegionIterator};
 
@@ -17,6 +17,7 @@ use std::io::{BufRead, BufReader};
 use std::fs::File;
 use walkdir::{DirEntry, WalkDir, WalkDirIterator};
 use std::str::FromStr;
+use std::collections::HashSet;
 
 #[derive(Debug)]
 struct Selectors {
@@ -51,6 +52,7 @@ struct Stats {
     comment_words: usize,
     doc_comment_lines: usize,
     doc_comment_words: usize,
+    unique_stacks: HashSet<Vec<Scope>>,
 }
 
 fn print_stats(stats: &Stats) {
@@ -71,6 +73,24 @@ fn print_stats(stats: &Stats) {
     println!("Total words written in doc comments:  {:>6}", stats.doc_comment_words);
     println!("Total words written in all comments:  {:>6}", stats.comment_words);
     println!("Characters of comment:                {:>6}", stats.comment_chars);
+
+    let mut total_sent_len: usize = 0;
+    let mut total_store_len: usize = 0;
+    {
+        let repo = SCOPE_REPO.lock().unwrap();
+        for stack in stats.unique_stacks.iter() {
+            total_sent_len += stack.iter().cloned().map(|s| repo.to_string(s).len() + 4).sum();
+            total_store_len += stack.len() * 16;
+        }
+    }
+    println!("");
+    println!("Unique stacks:                        {:>6}", stats.unique_stacks.len());
+    println!("Total stack length on wire            {:>6}", total_sent_len);
+    println!("Total stack in memory                 {:>6}", total_store_len);
+    // println!("");
+    // for s in stats.unique_stacks.iter().take(10) {
+    //     println!("{:?}", s);
+    // }
 }
 
 fn is_ignored(entry: &DirEntry) -> bool {
@@ -91,6 +111,7 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stack: &mut ScopeStack,
         if s.is_empty() { // in this case we don't care about blank tokens
             continue;
         }
+        stats.unique_stacks.insert(stack.as_slice().iter().cloned().collect());
         if stats.selectors.comment.does_match(stack.as_slice()).is_some() {
             let words = s.split_whitespace().filter(|w| w.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '\'')).count();
             if stats.selectors.doc_comment.does_match(stack.as_slice()).is_some() {
