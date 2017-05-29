@@ -53,6 +53,10 @@ struct Stats {
     doc_comment_lines: usize,
     doc_comment_words: usize,
     unique_stacks: HashSet<Vec<Scope>>,
+    ops_sent: usize,
+    spans_sent: usize,
+    pushes_sent: usize,
+    total_push_scope_len: usize,
 }
 
 fn print_stats(stats: &Stats) {
@@ -75,18 +79,28 @@ fn print_stats(stats: &Stats) {
     println!("Characters of comment:                {:>6}", stats.comment_chars);
 
     let mut total_sent_len: usize = 0;
-    let mut total_store_len: usize = 0;
+    let mut total_stack_len: usize = 0;
     {
         let repo = SCOPE_REPO.lock().unwrap();
         for stack in stats.unique_stacks.iter() {
             total_sent_len += stack.iter().cloned().map(|s| repo.to_string(s).len() + 4).sum();
-            total_store_len += stack.len() * 16;
+            total_stack_len += stack.len();
         }
     }
     println!("");
     println!("Unique stacks:                        {:>6}", stats.unique_stacks.len());
+    println!("Total length of unique stacks         {:>6}", total_stack_len);
     println!("Total stack length on wire            {:>6}", total_sent_len);
-    println!("Total stack in memory                 {:>6}", total_store_len);
+    println!("Total stack in memory                 {:>6}", total_stack_len * 16);
+    println!("");
+    println!("Total ops sent                        {:>6}", stats.ops_sent);
+    println!("Total pushes sent                     {:>6}", stats.pushes_sent);
+    println!("Total spans sent                      {:>6}", stats.spans_sent);
+    let avg_push_len = (stats.total_push_scope_len as f64) / (stats.pushes_sent as f64);
+    println!("Average push len                      {:>6}", avg_push_len);
+    println!("Total op bytes sent naive             {:>6}", stats.pushes_sent*17 + (stats.ops_sent - stats.pushes_sent)*4);
+    println!("Total op bytes sent                   {:>6}", (stats.pushes_sent as f64)*(avg_push_len*2.0+2.0) + ((stats.ops_sent - stats.pushes_sent)*4) as f64);
+    println!("Total span bytes sent                 {:>6}", stats.spans_sent * 9);
     // println!("");
     // for s in stats.unique_stacks.iter().take(10) {
     //     println!("{:?}", s);
@@ -108,9 +122,15 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stack: &mut ScopeStack,
     let mut line_has_code = false;
     for (s, op) in ScopeRegionIterator::new(&ops, line) {
         stack.apply(op);
+        stats.ops_sent += 1;
+        if let ScopeStackOp::Push(scope) = *op {
+            stats.pushes_sent += 1;
+            stats.total_push_scope_len += scope.len() as usize;
+        }
         if s.is_empty() { // in this case we don't care about blank tokens
             continue;
         }
+        stats.spans_sent += 1;
         stats.unique_stacks.insert(stack.as_slice().iter().cloned().collect());
         if stats.selectors.comment.does_match(stack.as_slice()).is_some() {
             let words = s.split_whitespace().filter(|w| w.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '\'')).count();
