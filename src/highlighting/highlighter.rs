@@ -244,10 +244,10 @@ impl<'a> Highlighter<'a> {
     ///
     /// This operation is convenient but expensive. For reasonable performance,
     /// the caller should be caching results.
-    pub fn style_for_stack(&self, stack: &ScopeStack) -> Style {
+    pub fn style_for_stack(&self, stack: &[Scope]) -> Style {
         let mut style = self.get_default();
         for i in 0..stack.len() {
-            let style_mod = self.get_style(&stack.bottom_n(i+1));
+            let style_mod = self.get_style(&stack[0..i+1]);
             style = style.apply(style_mod);
         }
         style
