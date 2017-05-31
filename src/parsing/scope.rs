@@ -35,7 +35,7 @@ lazy_static! {
 /// 16 bit numbers to represent and compare atoms. Like "atoms" or "symbols" in other languages.
 /// This means that while comparing and prefix are fast, extracting a string is relatively slower
 /// but ideally should be very rare.
-#[derive(Clone, PartialEq, Eq, Copy, Default, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Copy, Default, Hash)]
 pub struct Scope {
     a: u64,
     b: u64,
