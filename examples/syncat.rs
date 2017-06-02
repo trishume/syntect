@@ -11,12 +11,24 @@ fn main() {
     let ts = ThemeSet::load_defaults();
 
     let args: Vec<String> = std::env::args().collect();
+    let src;
+    let theme;
+    let themeRef;
+
     if args.len() < 2 {
-        println!("Please pass in a file to highlight");
+        println!("USAGE: ./syncat [THEME_FILE] SRC_FILE");
         return;
+    } else if args.len() == 2 {
+        src = &args[1];
+        themeRef = &ts.themes["base16-ocean.dark"];
+    } else {
+        let theme_file = &args[1];
+        src = &args[2];
+        theme = ThemeSet::get_theme(theme_file).unwrap();
+        themeRef = &theme;
     }
 
-    let mut highlighter = HighlightFile::new(&args[1], &ss, &ts.themes["base16-ocean.dark"]).unwrap();
+    let mut highlighter = HighlightFile::new(src, &ss, themeRef).unwrap();
 
     // We use read_line instead of `for line in highlighter.reader.lines()` because that
     // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
