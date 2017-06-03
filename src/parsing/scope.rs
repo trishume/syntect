@@ -97,7 +97,7 @@ pub enum ScopeStackOp {
     Noop,
 }
 
-/// Used for `ScopeStack#apply_and_get_basic_ops`
+/// Used for `ScopeStack::apply_with_hook`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BasicScopeStackOp {
     Push(Scope),
