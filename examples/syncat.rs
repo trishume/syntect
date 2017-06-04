@@ -1,10 +1,15 @@
 extern crate syntect;
 use syntect::parsing::SyntaxSet;
-use syntect::highlighting::{ThemeSet, Style};
+use syntect::highlighting::{Theme, ThemeSet, Style};
 use syntect::util::as_24_bit_terminal_escaped;
 use syntect::easy::HighlightFile;
 
 use std::io::BufRead;
+
+fn load_theme(path: &String) -> Theme {
+    // TODO: cache this
+    ThemeSet::get_theme(path).unwrap()
+}
 
 fn main() {
     let ss = SyntaxSet::load_defaults_newlines(); // note we load the version with newlines
@@ -19,13 +24,12 @@ fn main() {
         println!("USAGE: ./syncat [THEME_FILE] SRC_FILE");
         return;
     } else if args.len() == 2 {
-        src = &args[1];
         themeRef = &ts.themes["base16-ocean.dark"];
+        src = &args[1];
     } else {
-        let theme_file = &args[1];
-        src = &args[2];
-        theme = ThemeSet::get_theme(theme_file).unwrap();
+        theme = load_theme(&args[1]);
         themeRef = &theme;
+        src = &args[2];
     }
 
     let mut highlighter = HighlightFile::new(src, &ss, themeRef).unwrap();
