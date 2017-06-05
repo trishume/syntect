@@ -1,14 +1,25 @@
 extern crate syntect;
+use std::path::Path;
 use syntect::parsing::SyntaxSet;
 use syntect::highlighting::{Theme, ThemeSet, Style};
 use syntect::util::as_24_bit_terminal_escaped;
 use syntect::easy::HighlightFile;
+use syntect::dumps::{from_dump_file, dump_to_file};
 
 use std::io::BufRead;
 
-fn load_theme(path: &String) -> Theme {
-    // TODO: cache this
-    ThemeSet::get_theme(path).unwrap()
+fn load_theme(tm_file: &String) -> Theme {
+    let tm_path = Path::new(tm_file);
+    let tm_cache = tm_path.with_extension("themedump");
+
+    if tm_cache.exists() {
+        from_dump_file(tm_cache).unwrap()
+    } else {
+        let theme = ThemeSet::get_theme(tm_path).unwrap();
+        dump_to_file(&theme, tm_cache).unwrap();
+        theme
+
+    }
 }
 
 fn main() {
@@ -18,21 +29,21 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let src;
     let theme;
-    let themeRef;
+    let theme_ref;
 
     if args.len() < 2 {
         println!("USAGE: ./syncat [THEME_FILE] SRC_FILE");
         return;
     } else if args.len() == 2 {
-        themeRef = &ts.themes["base16-ocean.dark"];
+        theme_ref = &ts.themes["base16-ocean.dark"];
         src = &args[1];
     } else {
         theme = load_theme(&args[1]);
-        themeRef = &theme;
+        theme_ref = &theme;
         src = &args[2];
     }
 
-    let mut highlighter = HighlightFile::new(src, &ss, themeRef).unwrap();
+    let mut highlighter = HighlightFile::new(src, &ss, theme_ref).unwrap();
 
     // We use read_line instead of `for line in highlighter.reader.lines()` because that
     // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
