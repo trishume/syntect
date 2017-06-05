@@ -33,10 +33,22 @@ fn main() {
 
     if args.len() < 2 {
         println!("USAGE: ./syncat [THEME_FILE] SRC_FILE");
+        println!("       ./syncat --list-file-types");
         return;
+
+    } else if args.len() > 1 && args[1] == "--list-file-types" {
+        println!("Supported file types:");
+
+        for sd in ss.syntaxes() {
+            println!("- {} (.{})", sd.name, sd.file_extensions.join(", ."));
+        }
+
+        return;
+
     } else if args.len() == 2 {
         theme_ref = &ts.themes["base16-ocean.dark"];
         src = &args[1];
+
     } else {
         theme = load_theme(&args[1]);
         theme_ref = &theme;
