@@ -25,7 +25,7 @@ bincode = { version = "1.0", optional = true }
 flate2 = { version = "1.0", optional = true, default-features = false }
 fnv = { version = "1.0", optional = true }
 regex = "*"
-fancy-regex = { git = "https://github.com/trishume/fancy-regex.git" }
+fancy-regex = { git = "https://github.com/google/fancy-regex.git" }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
