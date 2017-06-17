@@ -79,3 +79,15 @@ impl Style {
         }
     }
 }
+
+impl StyleModifier {
+    /// Applies the other modifier to this one, creating a new modifier.
+    /// Values in `other` are preferred.
+    pub fn apply(&self, other: StyleModifier) -> StyleModifier {
+        StyleModifier {
+            foreground: other.foreground.or(self.foreground),
+            background: other.background.or(self.background),
+            font_style: other.font_style.or(self.font_style),
+        }
+    }
+}
