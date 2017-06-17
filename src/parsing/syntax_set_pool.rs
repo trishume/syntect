@@ -79,10 +79,15 @@ fn repeating<F, T>(item_fn: F) -> Repeating<F, T> where F: Fn() -> T {
 }
 
 impl<F> SyntaxSetPool<F> where F: Fn() -> SyntaxSet + Sync {
+    /// Creates a pool which will initialize `SyntaxSet`s as needed by
+    /// worker threads, and will only initialize, at maximum, an amount
+    /// of sets equal to the number of CPUs on the current machine. All
+    /// `SyntaxSet`s in the pool are initially uninitialized.
     pub fn new(init_fn: F) -> Self {
         Self::with_pool_size(init_fn, num_cpus::get())
     }
   
+    /// Same as `new`, but with a defined maximum pool size.
     pub fn with_pool_size(init_fn: F, pool_size: usize) -> Self {
         SyntaxSetPool {
             syntaxes: Mutex::new(repeating(LazyInit::new).take(pool_size).collect()),
@@ -91,6 +96,14 @@ impl<F> SyntaxSetPool<F> where F: Fn() -> SyntaxSet + Sync {
         }
     }
 
+    /// Run some code with a `SyntaxSet` available. Passes a `SyntaxSet`
+    /// reference to the closure given. Said reference cannot escape the
+    /// closure.
+    ///
+    /// Attempts to reuse an already-initialized `SyntaxSet` if possible;
+    /// otherwise, if there are uninitialized `SyntaxSet`s in the pool,
+    /// initializes one. If there simply aren't any `SyntaxSet`s available,
+    /// blocks until one is available.
     pub fn with_syntax_set<G, R>(&self, go: G) -> R where G: FnOnce(&mut SyntaxSet) -> R {
         let syntax_init;
 
