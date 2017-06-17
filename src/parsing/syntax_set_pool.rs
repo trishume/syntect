@@ -3,7 +3,7 @@ use std::sync::{Mutex, Condvar};
 
 use num_cpus;
 
-use super::SyntaxSet;
+use super::syntax_set::SyntaxSet;
 
 /// This is intentionally not public. The `Send` implementation makes
 /// this unsafe to use outside this module.
