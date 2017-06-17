@@ -6,6 +6,7 @@ pub mod syntax_definition;
 mod yaml_load;
 #[cfg(feature = "parsing")]
 mod syntax_set;
+mod syntax_set_pool;
 #[cfg(feature = "parsing")]
 mod parser;
 
@@ -17,6 +18,7 @@ pub use self::syntax_definition::SyntaxDefinition;
 pub use self::yaml_load::*;
 #[cfg(feature = "parsing")]
 pub use self::syntax_set::*;
+pub use self::syntax_set_pool::*;
 #[cfg(feature = "parsing")]
 pub use self::parser::*;
 

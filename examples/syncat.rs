@@ -2,7 +2,7 @@ extern crate syntect;
 use syntect::parsing::SyntaxSet;
 use syntect::highlighting::{ThemeSet, Style};
 use syntect::util::as_24_bit_terminal_escaped;
-use syntect::easy::HighlightFile;
+use syntect::easy::HighlightLines;
 
 use std::io::BufRead;
 
@@ -22,12 +22,4 @@ fn main() {
     // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
     // See the documentation for `SyntaxSet::load_syntaxes`.
     // It also allows re-using the line buffer, which should be a tiny bit faster.
-    let mut line = String::new();
-    while highlighter.reader.read_line(&mut line).unwrap() > 0 {
-        {
-            let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
-            print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
-        }
-        line.clear();
-    }
 }
