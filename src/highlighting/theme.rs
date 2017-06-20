@@ -43,9 +43,9 @@ pub struct ThemeSettings {
     /// A color made available for use by the theme.
     pub accent: Option<Color>,
     /// CSS passed to popups.
-    pub popup_css: Option<Color>,
+    pub popup_css: Option<String>,
     /// CSS passed to phantoms.
-    pub phantom_css: Option<Color>,
+    pub phantom_css: Option<String>,
 
     /// Color of bracketed sections of text when the caret is in a bracketed section.
     /// Only applied when the `match_brackets` setting is set to `true`.
@@ -356,8 +356,10 @@ impl ParseSettings for ThemeSettings {
                 "misspelling" => settings.misspelling = Color::parse_settings(value).ok(),
                 "minimapBorder" => settings.minimap_border = Color::parse_settings(value).ok(),
                 "accent" => settings.accent = Color::parse_settings(value).ok(),
-                "popupCss" => settings.popup_css = Color::parse_settings(value).ok(),
-                "phantomCss" => settings.phantom_css = Color::parse_settings(value).ok(),
+
+                "popupCss" => settings.popup_css = value.as_str().map(|s| s.to_owned()),
+                "phantomCss" => settings.phantom_css = value.as_str().map(|s| s.to_owned()),
+
                 "bracketContentsForeground" => {
                     settings.bracket_contents_foreground = Color::parse_settings(value).ok()
                 }
