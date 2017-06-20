@@ -252,6 +252,23 @@ impl<'a> Highlighter<'a> {
         }
         style
     }
+
+    /// Returns a `StyleModifier` which, if applied to the default style,
+    /// would generate the fully resolved style for this stack.
+    ///
+    /// This is made available to applications that are using syntect styles
+    /// in combination with style information from other sources.
+    ///
+    /// This operation is convenient but expensive. For reasonable performance,
+    /// the caller should be caching results.
+    pub fn style_mod_for_stack(&self, stack: &[Scope]) -> StyleModifier {
+        let mut style_mod = StyleModifier::default();
+        for i in 0..stack.len() {
+            let next_mod = self.get_style(&stack[0..i+1]);
+            style_mod = style_mod.apply(next_mod);
+        }
+        style_mod
+    }
 }
 
 #[cfg(feature = "assets")]
