@@ -26,9 +26,11 @@ fnv = { version = "^1.0", optional = true }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
+num_cpus = "^1.5"
 
 [dev-dependencies]
 regex = "0.2.1"
+crossbeam = "0.2.0"
 
 [features]
 static-onig = ["onig/static-libonig"]
