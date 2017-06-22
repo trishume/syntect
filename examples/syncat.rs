@@ -27,7 +27,6 @@ fn main() {
     let ts = ThemeSet::load_defaults();
 
     let args: Vec<String> = std::env::args().collect();
-    let src;
     let theme;
     let theme_ref;
 
@@ -47,14 +46,13 @@ fn main() {
 
     } else if args.len() == 2 {
         theme_ref = &ts.themes["base16-ocean.dark"];
-        src = &args[1];
 
     } else {
         theme = load_theme(&args[1]);
         theme_ref = &theme;
-        src = &args[2];
     }
 
+    let src = args.last().unwrap();
     let mut highlighter = HighlightFile::new(src, &ss, theme_ref).unwrap();
 
     // We use read_line instead of `for line in highlighter.reader.lines()` because that
