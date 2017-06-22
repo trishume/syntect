@@ -1,4 +1,5 @@
 extern crate syntect;
+use std::borrow::Cow;
 use std::path::Path;
 use syntect::parsing::SyntaxSet;
 use syntect::highlighting::{Theme, ThemeSet, Style};
@@ -28,7 +29,6 @@ fn main() {
 
     let args: Vec<String> = std::env::args().collect();
     let theme;
-    let theme_ref;
 
     if args.len() < 2 {
         println!("USAGE: ./syncat [THEME_FILE] SRC_FILE");
@@ -45,15 +45,14 @@ fn main() {
         return;
 
     } else if args.len() == 2 {
-        theme_ref = &ts.themes["base16-ocean.dark"];
+        theme = Cow::Borrowed(&ts.themes["base16-ocean.dark"]);
 
     } else {
-        theme = load_theme(&args[1]);
-        theme_ref = &theme;
+        theme = Cow::Owned(load_theme(&args[1]));
     }
 
     let src = args.last().unwrap();
-    let mut highlighter = HighlightFile::new(src, &ss, theme_ref).unwrap();
+    let mut highlighter = HighlightFile::new(src, &ss, &theme).unwrap();
 
     // We use read_line instead of `for line in highlighter.reader.lines()` because that
     // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
