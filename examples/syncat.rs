@@ -10,7 +10,7 @@ use std::io::BufRead;
 
 fn load_theme(tm_file: &String) -> Theme {
     let tm_path = Path::new(tm_file);
-    let tm_cache = tm_path.with_extension("themedump");
+    let tm_cache = tm_path.with_extension("tmdump");
 
     if tm_cache.exists() {
         from_dump_file(tm_cache).unwrap()
