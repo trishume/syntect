@@ -37,7 +37,8 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
     opts.optflag("l", "list-file-types", "Lists supported file types");
-    opts.optopt("t", "theme-file", "Theme file to use. Default: base16-ocean (embedded)", "THEME_FILE");
+    opts.optflag("L", "list-embedded-themes", "Lists themes present in the executable");
+    opts.optopt("t", "theme-file", "THEME_FILE", "Theme file to use. May be a path, or an embedded theme. Embedded themes will take precendence. Default: base16-ocean.dark");
     opts.optflag("c", "cache-theme", "Cache the parsed theme file.");
 
     let matches = match opts.parse(&args[1..]) {
@@ -52,15 +53,24 @@ fn main() {
             println!("- {} (.{})", sd.name, sd.file_extensions.join(", ."));
         }
 
+    } else if matches.opt_present("list-embedded-themes") {
+        println!("Embedded themes:");
+
+        for t in ts.themes.keys() {
+            println!("- {}", t);
+        }
+
     } else if matches.free.len() == 0 {
         let brief = format!("USAGE: {} [options] FILES", args[0]);
         println!("{}", opts.usage(&brief));
 
     } else {
-        let theme = matches.opt_str("theme-file").map_or(
-            Cow::Borrowed(&ts.themes["base16-ocean.dark"]),
-            |tf| Cow::Owned(load_theme(&tf, matches.opt_present("cache-theme")))
-        );
+        let theme_file : String = matches.opt_str("theme-file")
+            .unwrap_or("base16-ocean.dark".to_string());
+
+        let theme = ts.themes.get(&theme_file)
+            .map(|t| Cow::Borrowed(t))
+            .unwrap_or_else(|| Cow::Owned(load_theme(&theme_file, matches.opt_present("cache-theme"))));
 
         for src in &matches.free[..] {
             if matches.free.len() > 1 {
