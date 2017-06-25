@@ -17,7 +17,7 @@ I've spent months working on, tweaking, optimizing, documenting and testing this
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "1.4"
+syntect = "1.6"
 ```
 
 After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/syntect/) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
