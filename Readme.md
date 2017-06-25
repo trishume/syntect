@@ -116,6 +116,10 @@ This way from the time the edit happens to the time the new colouring gets rende
 
 Any time the file is changed the latest cached state is found, the cache is cleared after that point, and a background job is started. Any already running jobs are stopped because they would be working on old state. This way you can just have one thread dedicated to highlighting that is always doing the most up-to-date work, or sleeping.
 
+### Parallelizing
+
+`syntect` doesn't provide any built-in facilities to enable highlighting in parallel. Some of the important data structures are not thread-safe, either, most notably `SyntaxSet`. However, if you find yourself in need of highlighting lots of files in parallel, the recommendation is to use the `thread_local!` macro in `libstd` along with `rayon`. See `examples/parsyncat.rs` for an example of how to do this.
+
 ## Examples Available
 
 There's a number of examples of programs that use `syntect` in the `examples` folder and some code outside the repo:
@@ -124,6 +128,7 @@ There's a number of examples of programs that use `syntect` in the `examples` fo
 - `synhtml` prints an HTML file that will display the highlighted code. Demonstrates how syntect could be used by web servers and static site generators.
 - `synstats` collects a bunch of statistics about the code in a folder. Includes basic things like line count but also fancier things like number of functions. Demonstrates how `syntect` can be used for code analysis as well as highlighting, as well as how to use the APIs to parse out the semantic tokenization.
 - [`faiyels`](https://github.com/trishume/faiyels) is a little code minimap visualizer I wrote that uses `syntect` for highlighting.
+- `parsyncat` is like `syncat`, but accepts multiple files and highlights them in parallel. It demonstrates how to use `syntect` from multiple threads.
 
 Here's that stats that `synstats` extracts from `syntect`'s codebase (not including examples and test data) as of [this commit](https://github.com/trishume/syntect/commit/10baa6888f84ea4ae35c746526302a8ff4956eb1):
 ```
