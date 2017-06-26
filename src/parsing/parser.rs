@@ -436,6 +436,8 @@ mod tests {
     use parsing::{SyntaxSet, Scope, ScopeStack};
     use util::debug_print_ops;
 
+    const TEST_SYNTAX: &str = include_str!("../../testdata/parser_tests.sublime-syntax");
+
     #[test]
     fn can_parse() {
         use parsing::ScopeStackOp::{Push, Pop, Clear, Restore};
@@ -531,23 +533,79 @@ mod tests {
         // assert!(false);
     }
 
-    fn expect_scope_stacks(line: &str, expect: &[&str]) {
+    #[test]
+    fn can_parse_non_nested_clear_scopes() {
+        let line = "'hello #simple_cleared_scopes_test world test \\n '";
+        let expect = [
+            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
+            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
+            "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
+        ];
+        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+    }
+
+    #[test]
+    fn can_parse_non_nested_too_many_clear_scopes() {
+        let line = "'hello #too_many_cleared_scopes_test world test \\n '";
+        let expect = [
+            "<example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
+            "<example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
+            "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
+        ];
+        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+    }
+
+    #[test]
+    fn can_parse_nested_clear_scopes() {
+        let line = "'hello #nested_clear_scopes_test world foo bar test \\n '";
+        let expect = [
+            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
+            "<source.test>, <example.meta-scope.cleared-previous-meta-scope.example>, <foo>",
+            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
+            "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
+        ];
+        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+    }
+
+    #[test]
+    fn can_parse_infinite_loop() {
+        let line = "#infinite_loop_test 123";
+        let expect = [
+            "<source.test>, <constant.numeric.test>",
+        ];
+        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+    }
+
+    #[test]
+    fn can_parse_infinite_seeming_loop() {
+        let line = "#infinite_seeming_loop_test hello";
+        let expect = [
+            "<source.test>, <keyword.test>",
+            "<source.test>, <test>, <string.unquoted.test>",
+            "<source.test>, <test>, <keyword.control.test>",
+        ];
+        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+    }
+
+    fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
+        println!("Parsing with newlines");
+        let line_with_newline = format!("{}\n", line_without_newline);
+        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true).unwrap();
+        expect_scope_stacks_with_syntax(&line_with_newline, expect, syntax_newlines);
+
+        println!("Parsing without newlines");
+        let syntax_nonewlines = SyntaxDefinition::load_from_str(&syntax, false).unwrap();
+        expect_scope_stacks_with_syntax(&line_without_newline, expect, syntax_nonewlines);
+    }
+
+    fn expect_scope_stacks_with_syntax(line: &str, expect: &[&str], syntax: SyntaxDefinition) {
         // check that each expected scope stack appears at least once while parsing the given test line
 
-        //let syntax = SyntaxSet::load_syntax_file("testdata/parser_tests.sublime-syntax", true).unwrap();
-        use std::fs::File;
-        use std::io::Read;
-        let mut f = File::open("testdata/parser_tests.sublime-syntax").unwrap();
-        let mut s = String::new();
-        f.read_to_string(&mut s).unwrap();
+        let mut syntax_set = SyntaxSet::new();
+        syntax_set.add_syntax(syntax);
+        syntax_set.link_syntaxes();
 
-        let syntax = SyntaxDefinition::load_from_str(&s, true).unwrap();
-
-        let mut state = ParseState::new(&syntax);
-
-        let mut ss = SyntaxSet::new();
-        ss.add_syntax(syntax);
-        ss.link_syntaxes();
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
 
         let mut stack = ScopeStack::new();
         let ops = state.parse_line(line);
@@ -567,59 +625,5 @@ mod tests {
         if let Some(missing) = expect.iter().filter(|e| !criteria_met.contains(&e)).next() {
             panic!("expected scope stack '{}' missing", missing);
         }
-    }
-
-    #[test]
-    fn can_parse_non_nested_clear_scopes() {
-        let line = "'hello #simple_cleared_scopes_test world test \\n '\n";
-        let expect = [
-            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
-            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
-            "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
-        ];
-        expect_scope_stacks(&line, &expect);
-    }
-
-    #[test]
-    fn can_parse_non_nested_too_many_clear_scopes() {
-        let line = "'hello #too_many_cleared_scopes_test world test \\n '\n";
-        let expect = [
-            "<example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
-            "<example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
-            "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
-        ];
-        expect_scope_stacks(&line, &expect);
-    }
-
-    #[test]
-    fn can_parse_nested_clear_scopes() {
-        let line = "'hello #nested_clear_scopes_test world foo bar test \\n '\n";
-        let expect = [
-            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pushes-clear-scopes.example>",
-            "<source.test>, <example.meta-scope.cleared-previous-meta-scope.example>, <foo>",
-            "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
-            "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
-        ];
-        expect_scope_stacks(&line, &expect);
-    }
-
-    #[test]
-    fn can_parse_infinite_loop() {
-        let line = "#infinite_loop_test 123\n";
-        let expect = [
-            "<source.test>, <constant.numeric.test>",
-        ];
-        expect_scope_stacks(&line, &expect);
-    }
-
-    #[test]
-    fn can_parse_infinite_seeming_loop() {
-        let line = "#infinite_seeming_loop_test hello\n";
-        let expect = [
-            "<source.test>, <keyword.test>",
-            "<source.test>, <test>, <string.unquoted.test>",
-            "<source.test>, <test>, <keyword.control.test>",
-        ];
-        expect_scope_stacks(&line, &expect);
     }
 }
