@@ -118,7 +118,9 @@ Any time the file is changed the latest cached state is found, the cache is clea
 
 ### Parallelizing
 
-`syntect` doesn't provide any built-in facilities to enable highlighting in parallel. Some of the important data structures are not thread-safe, either, most notably `SyntaxSet`. However, if you find yourself in need of highlighting lots of files in parallel, the recommendation is to use the `thread_local!` macro in `libstd` along with `rayon`. See `examples/parsyncat.rs` for an example of how to do this.
+`syntect` doesn't provide any built-in facilities to enable highlighting in parallel. Some of the important data structures are not thread-safe, either, most notably `SyntaxSet`. However, if you find yourself in need of highlighting lots of files in parallel, the recommendation is to use some sort of thread pooling, along with the `thread_local!` macro from `libstd`, so that each thread that needs, say, a `SyntaxSet`, will have one, while minimizing the amount of them that need to be initialized. For adding parallelism to a previously single-threaded program, the recommended thread pooling is [`rayon`](https://github.com/nikomatsakis/rayon). However, if you're working in an already-threaded context where there might be more threads than you want (such as writing a handler for an Iron request), the recommendation is to force all highlighting to be done within a fixed-size thread pool using [`scoped-thread-pool`](https://github.com/reem/scoped-thread-pool). An example of the former is in `examples/parsyncat.rs`.
+
+See [#20](https://github.com/trishume/syntect/issues/20) and [#78](https://github.com/trishume/syntect/pull/78) for more detail and discussion about why `syntect` doesn't provide parallelism by default.
 
 ## Examples Available
 
