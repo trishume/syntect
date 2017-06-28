@@ -7,55 +7,95 @@
 //! You can use these methods to manage your own caching of compiled syntaxes and
 //! themes. And even your own `serde::Serialize` structures if you want to
 //! be consistent with your format.
-use bincode::{ErrorKind, Infinite, Result, deserialize_from, serialize_into};
+use bincode::{ErrorKind, Infinite, Result};
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+use bincode::deserialize_from;
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+use bincode::serialize_into;
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
-#[cfg(all(feature = "parsing", feature = "assets"))]
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+use std::io::{BufReader, Read};
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+use std::io::{BufWriter, Write};
+#[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
 use parsing::SyntaxSet;
-#[cfg(feature = "assets")]
+#[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
 use highlighting::ThemeSet;
 use std::path::Path;
+#[cfg(feature = "dump-create")]
 use flate2::write::ZlibEncoder;
+#[cfg(feature = "dump-load")]
 use flate2::read::ZlibDecoder;
+#[cfg(feature = "dump-create")]
 use flate2::Compression;
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use serde::Serialize;
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use serde::de::DeserializeOwned;
+#[cfg(feature = "dump-load-rs")]
+use libflate::zlib::Decoder;
+#[cfg(feature = "dump-create-rs")]
+use libflate::zlib::Encoder;
+
+#[cfg(feature = "dump-create")]
+pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
+    let mut encoder = ZlibEncoder::new(output, Compression::Best);
+    serialize_into(&mut encoder, to_dump, Infinite)
+}
+
+#[cfg(feature = "dump-create-rs")]
+pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
+    let mut encoder = Encoder::new(output)?;
+    serialize_into(&mut encoder, to_dump, Infinite)?;
+    encoder.finish().into_result()?;
+    Ok(())
+}
 
 /// Dumps an object to a binary array in the same format as `dump_to_file`
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
     let mut v = Vec::new();
-    {
-        let mut encoder = ZlibEncoder::new(&mut v, Compression::Best);
-        serialize_into(&mut encoder, o, Infinite).unwrap();
-    }
+    dump_to_writer(o, &mut v).unwrap();
     v
 }
 
 /// Dumps an encodable object to a file at a given path. If a file already exists at that path
 /// it will be overwritten. The files created are encoded with the `bincode` crate and then
 /// compressed with the `flate2` crate.
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
-    let f = BufWriter::new(try!(File::create(path).map_err(ErrorKind::IoError)));
-    let mut encoder = ZlibEncoder::new(f, Compression::Best);
-    serialize_into(&mut encoder, o, Infinite)
+    let out = BufWriter::new(try!(File::create(path).map_err(ErrorKind::IoError)));
+    dump_to_writer(o, out)
+}
+
+#[cfg(feature = "dump-load")]
+pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
+    let mut decoder = ZlibDecoder::new(input);
+    deserialize_from(&mut decoder, Infinite)
+}
+
+#[cfg(feature = "dump-load-rs")]
+pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
+    let mut decoder: Decoder<R> = try!(Decoder::new(input));
+    deserialize_from(&mut decoder, Infinite)
 }
 
 /// Returns a fully loaded syntax set from
 /// a binary dump. Panics if the dump is invalid.
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
-    let mut decoder = ZlibDecoder::new(v);
-    deserialize_from(&mut decoder, Infinite).unwrap()
+    from_reader(v).unwrap()
 }
 
-/// Returns a fully loaded syntax set from
-/// a binary dump file.
+/// Returns a fully loaded syntax set from a binary dump file.
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
     let f = try!(File::open(path).map_err(ErrorKind::IoError));
-    let mut decoder = ZlibDecoder::new(BufReader::new(f));
-    deserialize_from(&mut decoder, Infinite)
+    let reader = BufReader::new(f);
+    from_reader(reader)
 }
 
-#[cfg(all(feature = "parsing", feature = "assets"))]
+#[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
 impl SyntaxSet {
     /// Instantiates a new syntax set from a binary dump of
     /// Sublime Text's default open source syntax definitions and then links it.
@@ -89,7 +129,7 @@ impl SyntaxSet {
     }
 }
 
-#[cfg(feature = "assets")]
+#[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
 impl ThemeSet {
     /// Loads the set of default themes
     /// Currently includes (these are the keys for the map):
@@ -104,7 +144,7 @@ impl ThemeSet {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "yaml-load")]
+    #[cfg(all(feature = "yaml-load", any(feature = "dump-create", feature = "dump-create-rs"), any(feature = "dump-load", feature = "dump-load-rs")))]
     #[test]
     fn can_dump_and_load() {
         use super::*;
@@ -113,12 +153,13 @@ mod tests {
         ps.load_syntaxes("testdata/Packages", false).unwrap();
 
         let bin = dump_binary(&ps);
+        println!("{:?}", bin.len());
         let ps2: SyntaxSet = from_binary(&bin[..]);
         assert_eq!(ps.syntaxes().len(), ps2.syntaxes().len());
 
     }
-    
-    #[cfg(feature = "assets")]
+
+    #[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
     #[test]
     fn has_default_themes() {
         use highlighting::ThemeSet;
