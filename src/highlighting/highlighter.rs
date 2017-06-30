@@ -271,13 +271,13 @@ impl<'a> Highlighter<'a> {
     }
 }
 
-#[cfg(feature = "assets")]
+#[cfg(all(feature = "assets", feature = "parsing", any(feature = "dump-load", feature = "dump-load-rs")))]
 #[cfg(test)]
 mod tests {
     use super::*;
     use highlighting::{ThemeSet, Style, Color, FontStyle};
     use parsing::{ SyntaxSet, ScopeStack, ParseState};
-    
+
     #[test]
     fn can_parse() {
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();

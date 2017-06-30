@@ -24,10 +24,14 @@ extern crate regex_syntax;
 #[macro_use]
 extern crate lazy_static;
 extern crate plist;
+#[cfg(any(feature = "dump-load-rs", feature = "dump-load", feature = "dump-create"))]
 extern crate bincode;
 #[macro_use]
 extern crate bitflags;
+#[cfg(any(feature = "dump-load", feature = "dump-create"))]
 extern crate flate2;
+#[cfg(any(feature = "dump-load-rs", feature = "dump-create-rs"))]
+extern crate libflate;
 #[cfg(feature = "parsing")]
 extern crate fnv;
 extern crate serde;
@@ -37,6 +41,7 @@ extern crate serde_json;
 pub mod highlighting;
 pub mod parsing;
 pub mod util;
+#[cfg(any(feature = "dump-load-rs", feature = "dump-load", feature = "dump-create", feature = "dump-create-rs"))]
 pub mod dumps;
 #[cfg(feature = "parsing")]
 pub mod easy;
