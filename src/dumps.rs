@@ -156,7 +156,22 @@ mod tests {
         println!("{:?}", bin.len());
         let ps2: SyntaxSet = from_binary(&bin[..]);
         assert_eq!(ps.syntaxes().len(), ps2.syntaxes().len());
+    }
 
+    #[cfg(all(feature = "yaml-load", any(feature = "dump-create", feature = "dump-create-rs"), any(feature = "dump-load", feature = "dump-load-rs")))]
+    #[test]
+    fn dump_is_deterministic() {
+        use super::*;
+        use parsing::SyntaxSet;
+
+        let mut ps1 = SyntaxSet::new();
+        ps1.load_syntaxes("testdata/Packages", false).unwrap();
+        let bin1 = dump_binary(&ps1);
+
+        let mut ps2 = SyntaxSet::new();
+        ps2.load_syntaxes("testdata/Packages", false).unwrap();
+        let bin2 = dump_binary(&ps2);
+        assert_eq!(bin1, bin2);
     }
 
     #[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]

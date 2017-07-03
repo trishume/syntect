@@ -3,7 +3,8 @@
 //! integrated cases like text editors and I have no idea what kind of monkeying
 //! you might want to do with the data. Perhaps parsing your own syntax format
 //! into this data structure?
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::Hash;
 use onig::{self, Regex, Region, Syntax};
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
@@ -32,7 +33,9 @@ pub struct SyntaxDefinition {
     #[serde(skip_serializing, skip_deserializing)]
     pub prototype: Option<ContextPtr>,
 
+    #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
+    #[serde(serialize_with = "ordered_map")]
     pub contexts: HashMap<String, ContextPtr>,
 }
 
@@ -268,6 +271,16 @@ impl<'de> Deserialize<'de> for LinkerLink {
         panic!("No linked syntax should ever have gotten serialized");
     }
 }
+
+
+/// Serialize the provided map in natural key order, so that it's deterministic when dumping.
+fn ordered_map<K, V, S>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer, K: Eq + Hash + Ord + Serialize, V: Serialize
+{
+    let ordered: BTreeMap<_, _> = map.iter().collect();
+    ordered.serialize(serializer)
+}
+
 
 #[cfg(test)]
 mod tests {
