@@ -92,7 +92,7 @@ impl SyntaxSet {
                                          lines_include_newline: bool)
                                          -> Result<(), LoadingError> {
         self.is_linked = false;
-        for entry in WalkDir::new(folder) {
+        for entry in WalkDir::new(folder).sort_by(|a, b| a.cmp(b)) {
             let entry = try!(entry.map_err(LoadingError::WalkDir));
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 // println!("{}", entry.path().display());
