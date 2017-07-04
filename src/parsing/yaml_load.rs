@@ -260,7 +260,6 @@ impl SyntaxDefinition {
                 .replace("(?:\\n)?","") // fails with invalid operand of repeat expression
                 .replace("(?<!\\n)","") // fails with invalid pattern in look-behind
                 .replace("(?<=\\n)","") // fails with invalid pattern in look-behind
-                .replace("  :\\s","  :(\\s|\\z)") // hack specific to YAML.sublime-syntax
                 .replace("\\n","\\z")
         };
         // println!("{:?}", regex_str);
