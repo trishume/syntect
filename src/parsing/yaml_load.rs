@@ -1,7 +1,8 @@
 use super::scope::*;
 use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
-use std::collections::{HashMap, BTreeMap};
+use yaml_rust::yaml::Hash;
+use std::collections::HashMap;
 use onig::{self, Regex, Captures};
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -30,7 +31,7 @@ pub enum ParseSyntaxError {
     TypeMismatch,
 }
 
-fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a BTreeMap<Yaml, Yaml>,
+fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a Hash,
                                                     key: &'static str,
                                                     f: F)
                                                     -> Result<R, ParseSyntaxError> {
@@ -132,7 +133,7 @@ impl SyntaxDefinition {
         Ok(defn)
     }
 
-    fn parse_contexts(map: &BTreeMap<Yaml, Yaml>,
+    fn parse_contexts(map: &Hash,
                       state: &mut ParserState)
                       -> Result<HashMap<String, ContextPtr>, ParseSyntaxError> {
         let mut contexts = HashMap::new();
@@ -246,7 +247,7 @@ impl SyntaxDefinition {
         })
     }
 
-    fn parse_match_pattern(map: &BTreeMap<Yaml, Yaml>,
+    fn parse_match_pattern(map: &Hash,
                            state: &mut ParserState)
                            -> Result<MatchPattern, ParseSyntaxError> {
         let raw_regex = try!(get_key(map, "match", |x| x.as_str()));
