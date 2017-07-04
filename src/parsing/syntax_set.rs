@@ -438,6 +438,6 @@ mod tests {
         // assert!(false);
         let main_context = syntax.contexts.get("main").unwrap();
         let count = syntax_definition::context_iter(main_context.clone()).count();
-        assert_eq!(count, 108);
+        assert_eq!(count, 109);
     }
 }

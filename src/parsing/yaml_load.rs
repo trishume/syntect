@@ -50,7 +50,6 @@ struct ParserState<'a> {
     variables: HashMap<String, String>,
     variable_regex: Regex,
     backref_regex: Regex,
-    short_multibyte_regex: Regex,
     lines_include_newline: bool,
 }
 
@@ -102,7 +101,6 @@ impl SyntaxDefinition {
             variables: variables,
             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
             backref_regex: Regex::new(r"\\\d").unwrap(),
-            short_multibyte_regex: Regex::new(r"\\x([a-fA-F][a-fA-F0-9])").unwrap(),
             lines_include_newline: lines_include_newline,
         };
 
@@ -253,21 +251,15 @@ impl SyntaxDefinition {
                            -> Result<MatchPattern, ParseSyntaxError> {
         let raw_regex = try!(get_key(map, "match", |x| x.as_str()));
         let regex_str_1 = Self::resolve_variables(raw_regex, state);
-        // bug triggered by CSS.sublime-syntax, dunno why this is necessary
-        let regex_str_2 =
-            state.short_multibyte_regex.replace_all(&regex_str_1, |caps: &Captures| {
-                format!("\\x{{000000{}}}", caps.at(1).unwrap_or(""))
-            });
         // if the passed in strings don't include newlines (unlike Sublime) we can't match on them
         let regex_str = if state.lines_include_newline {
-            regex_str_2
+            regex_str_1
         } else {
-            regex_str_2
+            regex_str_1
                 .replace("\\n?","") // fails with invalid operand of repeat expression
                 .replace("(?:\\n)?","") // fails with invalid operand of repeat expression
                 .replace("(?<!\\n)","") // fails with invalid pattern in look-behind
                 .replace("(?<=\\n)","") // fails with invalid pattern in look-behind
-                .replace("  :\\s","  :(\\s|\\z)") // hack specific to YAML.sublime-syntax
                 .replace("\\n","\\z")
         };
         // println!("{:?}", regex_str);
