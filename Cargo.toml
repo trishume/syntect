@@ -4,6 +4,7 @@ description = "library for high quality syntax highlighting and code intelligenc
 documentation = "http://thume.ca/rustdoc/syntect/syntect/"
 repository = "https://github.com/trishume/syntect"
 keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
+categories = ["parser-implementations", "parsing", "text-processing"]
 readme = "Readme.md"
 license = "MIT"
 version = "1.7.0"
