@@ -256,12 +256,7 @@ impl SyntaxDefinition {
         let regex_str = if state.lines_include_newline {
             regex_str_1
         } else {
-            regex_str_1
-                .replace("\\n?","") // fails with invalid operand of repeat expression
-                .replace("(?:\\n)?","") // fails with invalid operand of repeat expression
-                .replace("(?<!\\n)","") // fails with invalid pattern in look-behind
-                .replace("(?<=\\n)","") // fails with invalid pattern in look-behind
-                .replace("\\n","\\z")
+            rewrite_regex(regex_str_1)
         };
         // println!("{:?}", regex_str);
 
@@ -372,10 +367,165 @@ impl SyntaxDefinition {
     }
 }
 
+/// Rewrite a regex that matches `\n` to one that matches `\z` (end of string) instead.
+/// That allows the regex to be used to match lines that don't include a trailing newline character.
+///
+/// The reason we're doing this is because the regexes in the syntax definitions assume that the
+/// lines that are being matched on include a trailing newline.
+///
+/// Note that the rewrite is just an approximation and there's a couple of cases it can not handle,
+/// due to `\z` being an anchor whereas `\n` matches a character.
+fn rewrite_regex(regex: String) -> String {
+    if !regex.contains(r"\n") {
+        return regex;
+    }
+
+    let rewriter = RegexRewriter {
+        bytes: regex.as_bytes(),
+        index: 0,
+    };
+    rewriter.rewrite()
+}
+
+struct RegexRewriter<'a> {
+    bytes: &'a [u8],
+    index: usize,
+}
+
+impl<'a> RegexRewriter<'a> {
+    fn rewrite(mut self) -> String {
+        let mut result = Vec::new();
+        while let Some(c) = self.peek() {
+            match c {
+                b'\\' => {
+                    self.next();
+                    if let Some(c2) = self.peek() {
+                        self.next();
+                        // Replacing `\n?` with `\z?` would make parsing later fail with
+                        // "invalid operand of repeat expression"
+                        if c2 == b'n' && self.peek() != Some(b'?') {
+                            result.extend_from_slice(br"\z");
+                        } else {
+                            result.push(c);
+                            result.push(c2);
+                        }
+                    } else {
+                        result.push(c);
+                    }
+                }
+                b'[' => {
+                    let (mut content, matches_newline) = self.parse_character_class();
+                    if matches_newline && self.peek() != Some(b'?') {
+                        result.extend_from_slice(b"(?:");
+                        result.append(&mut content);
+                        result.extend_from_slice(br"|\z)");
+                    } else {
+                        result.append(&mut content);
+                    }
+                }
+                b'(' => {
+                    // `\z` can't be used in repeat or look-behind, so strip that
+                    if self.skip_if(br"(?:\n)?") ||
+                        self.skip_if(br"(?<!\n)") ||
+                        self.skip_if(br"(?<=\n)") {
+                        // continue after skipped text
+                    } else {
+                        self.next();
+                        result.push(c);
+                    }
+                }
+                _ => {
+                    self.next();
+                    result.push(c);
+                }
+            }
+        }
+        String::from_utf8(result).unwrap()
+    }
+
+    fn parse_character_class(&mut self) -> (Vec<u8>, bool) {
+        let mut content = Vec::new();
+        let mut negated = false;
+        let mut nesting = 0;
+        let mut matches_newline = false;
+
+        self.next();
+        content.push(b'[');
+        if let Some(b'^') = self.peek() {
+            self.next();
+            content.push(b'^');
+            negated = true;
+        }
+
+        // An unescaped `]` is allowed after `[` or `[^` and doesn't mean the end of the class.
+        if let Some(b']') = self.peek() {
+            self.next();
+            content.push(b']');
+        }
+
+        while let Some(c) = self.peek() {
+            match c {
+                b'\\' => {
+                    self.next();
+                    if let Some(c2) = self.peek() {
+                        self.next();
+                        if c2 == b'n' && !negated && nesting == 0 {
+                            matches_newline = true;
+                        }
+                        content.push(c);
+                        content.push(c2);
+                    } else {
+                        content.push(c);
+                    }
+                }
+                b'[' => {
+                    self.next();
+                    content.push(b'[');
+                    nesting += 1;
+                }
+                b']' => {
+                    self.next();
+                    content.push(b']');
+                    if nesting == 0 {
+                        break;
+                    }
+                    nesting -= 1;
+                }
+                _ => {
+                    self.next();
+                    content.push(c);
+                }
+            }
+        }
+
+        (content, matches_newline)
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.index).map(|&b| b)
+    }
+
+    fn next(&mut self) {
+        self.index += 1;
+    }
+
+    fn skip_if(&mut self, s: &[u8]) -> bool {
+        if self.bytes[self.index..].starts_with(s) {
+            self.index += s.len();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use parsing::syntax_definition::*;
     use parsing::Scope;
+    use super::*;
+
     #[test]
     fn can_parse() {
         let defn: SyntaxDefinition =
@@ -469,5 +619,37 @@ mod tests {
             }
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn can_rewrite_regex() {
+        fn rewrite(s: &str) -> String {
+            rewrite_regex(s.to_string())
+        }
+
+        assert_eq!(&rewrite(r"a"), r"a");
+        assert_eq!(&rewrite(r"\b"), r"\b");
+        assert_eq!(&rewrite(r"(a)"), r"(a)");
+        assert_eq!(&rewrite(r"[a]"), r"[a]");
+        assert_eq!(&rewrite(r"[^a]"), r"[^a]");
+        assert_eq!(&rewrite(r"[]a]"), r"[]a]");
+        assert_eq!(&rewrite(r"[[a]]"), r"[[a]]");
+
+        assert_eq!(&rewrite(r"\n"), r"\z");
+        assert_eq!(&rewrite(r"\[\n"), r"\[\z");
+        assert_eq!(&rewrite(r"a\n?"), r"a\n?");
+        assert_eq!(&rewrite(r"[abc\n]"), r"(?:[abc\n]|\z)");
+        assert_eq!(&rewrite(r"[^\n]"), r"[^\n]");
+        assert_eq!(&rewrite(r"[^]\n]"), r"[^]\n]");
+        assert_eq!(&rewrite(r"[\n]?"), r"[\n]?");
+        // Removing the `\n` might result in an empty character class, so we should leave it.
+        assert_eq!(&rewrite(r"[\n]"), r"(?:[\n]|\z)");
+        assert_eq!(&rewrite(r"[]\n]"), r"(?:[]\n]|\z)");
+        // In order to properly understand nesting, we'd have to have a full parser, so ignore it.
+        assert_eq!(&rewrite(r"[[a]&&[\n]]"), r"[[a]&&[\n]]");
+
+        assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab");
+        assert_eq!(&rewrite(r"ab(?<!\n)"), r"ab");
+        assert_eq!(&rewrite(r"ab(?<=\n)"), r"ab");
     }
 }

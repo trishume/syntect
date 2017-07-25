@@ -587,6 +587,32 @@ mod tests {
         expect_scope_stacks(&line, &expect, TEST_SYNTAX);
     }
 
+    #[test]
+    fn can_parse_syntax_with_newline_in_character_class() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: foo[\n]
+      scope: foo.end
+    - match: foo
+      scope: foo.any
+"#;
+
+        let line = "foo";
+        let expect = ["<source.test>, <foo.end>"];
+        expect_scope_stacks(&line, &expect, syntax);
+
+        let line = "foofoofoo";
+        let expect = [
+            "<source.test>, <foo.any>",
+            "<source.test>, <foo.any>",
+            "<source.test>, <foo.end>",
+        ];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");
         let line_with_newline = format!("{}\n", line_without_newline);
