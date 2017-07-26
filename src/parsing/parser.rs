@@ -434,32 +434,21 @@ impl ParseState {
 mod tests {
     use super::*;
     use parsing::{SyntaxSet, Scope, ScopeStack};
+    use parsing::ScopeStackOp::{Push, Pop, Clear, Restore};
     use util::debug_print_ops;
 
     const TEST_SYNTAX: &str = include_str!("../../testdata/parser_tests.sublime-syntax");
 
     #[test]
-    fn can_parse() {
-        use parsing::ScopeStackOp::{Push, Pop, Clear, Restore};
+    fn can_parse_simple() {
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)
         };
-        let mut state2 = {
-            let syntax = ps.find_syntax_by_name("HTML (Rails)").unwrap();
-            ParseState::new(syntax)
-        };
-        let mut state3 = {
-            let syntax = ps.find_syntax_by_name("C").unwrap();
-            ParseState::new(syntax)
-        };
 
-        let line = "module Bob::Wow::Troll::Five; 5; end";
-        let ops = state.parse_line(line);
-        debug_print_ops(line, &ops);
-
-        let test_ops = vec![
+        let ops1 = ops("module Bob::Wow::Troll::Five; 5; end", &mut state);
+        let test_ops1 = vec![
             (0, Push(Scope::new("source.ruby.rails").unwrap())),
             (0, Push(Scope::new("meta.module.ruby").unwrap())),
             (0, Push(Scope::new("keyword.control.module.ruby").unwrap())),
@@ -472,11 +461,9 @@ mod tests {
             (10, Pop(1)),
             (10, Push(Scope::new("punctuation.accessor.ruby").unwrap())),
         ];
-        assert_eq!(&ops[0..test_ops.len()], &test_ops[..]);
+        assert_eq!(&ops1[0..test_ops1.len()], &test_ops1[..]);
 
-        let line2 = "def lol(wow = 5)";
-        let ops2 = state.parse_line(line2);
-        debug_print_ops(line2, &ops2);
+        let ops2 = ops("def lol(wow = 5)", &mut state);
         let test_ops2 = vec![
             (0, Push(Scope::new("meta.function.ruby").unwrap())),
             (0, Push(Scope::new("keyword.control.def.ruby").unwrap())),
@@ -486,10 +473,18 @@ mod tests {
             (7, Pop(1))
         ];
         assert_eq!(&ops2[0..test_ops2.len()], &test_ops2[..]);
+    }
 
-        let line3 = "<script>var lol = '<% def wow(";
-        let ops3 = state2.parse_line(line3);
-        debug_print_ops(line3, &ops3);
+    #[test]
+    fn can_parse_includes() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_name("HTML (Rails)").unwrap();
+            ParseState::new(syntax)
+        };
+
+        let ops = ops("<script>var lol = '<% def wow(", &mut state);
+
         let mut test_stack = ScopeStack::new();
         test_stack.push(Scope::new("text.html.ruby").unwrap());
         test_stack.push(Scope::new("text.html.basic").unwrap());
@@ -497,17 +492,27 @@ mod tests {
         test_stack.push(Scope::new("string.quoted.single.js").unwrap());
         test_stack.push(Scope::new("source.ruby.rails.embedded.html").unwrap());
         test_stack.push(Scope::new("meta.function.parameters.ruby").unwrap());
-        let mut test_stack2 = ScopeStack::new();
-        for &(_, ref op) in ops3.iter() {
-            test_stack2.apply(op);
-        }
-        assert_eq!(test_stack2, test_stack);
 
-        // for testing backrefs
-        let line4 = "lol = <<-SQL\nwow\nSQL";
-        let ops4 = state.parse_line(line4);
-        debug_print_ops(line4, &ops4);
-        let test_ops4 = vec![
+        let mut stack = ScopeStack::new();
+        for &(_, ref op) in ops.iter() {
+            stack.apply(op);
+        }
+        assert_eq!(stack, test_stack);
+    }
+
+    #[test]
+    fn can_parse_backrefs() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+            ParseState::new(syntax)
+        };
+
+        // For parsing HEREDOC, the "SQL" is captured at the beginning and then used in another
+        // regex with a backref, to match the end of the HEREDOC. Note that there can be code
+        // after the marker (`.strip`) here.
+        assert_eq!(ops("lol = <<-SQL.strip", &mut state), vec![
+            (0, Push(Scope::new("source.ruby.rails").unwrap())),
             (4, Push(Scope::new("keyword.operator.assignment.ruby").unwrap())),
             (5, Pop(1)),
             (6, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
@@ -517,20 +522,31 @@ mod tests {
             (12, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
             (12, Push(Scope::new("text.sql.embedded.ruby").unwrap())),
             (12, Clear(ClearAmount::TopN(2))),
-            (12, Restore),
-            (17, Pop(1)),
-            (17, Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())),
-            (20, Pop(1)),
-            (20, Pop(1)),
-        ];
-        assert_eq!(ops4, test_ops4);
+            (12, Push(Scope::new("punctuation.accessor.ruby").unwrap())),
+            (13, Pop(1)),
+            (18, Restore),
+        ]);
+
+        assert_eq!(ops("wow", &mut state), vec![]);
+
+        assert_eq!(ops("SQL", &mut state), vec![
+            (0, Pop(1)),
+            (0, Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())),
+            (3, Pop(1)),
+            (3, Pop(1)),
+        ]);
+    }
+
+    #[test]
+    fn can_parse_issue25() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_name("C").unwrap();
+            ParseState::new(syntax)
+        };
 
         // test fix for issue #25
-        let line5 = "struct{estruct";
-        let ops5 = state3.parse_line(line5);
-        assert_eq!(ops5.len(), 10);
-
-        // assert!(false);
+        assert_eq!(ops("struct{estruct", &mut state).len(), 10);
     }
 
     #[test]
@@ -634,8 +650,7 @@ contexts:
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
 
         let mut stack = ScopeStack::new();
-        let ops = state.parse_line(line);
-        debug_print_ops(line, &ops);
+        let ops = ops(line, &mut state);
 
         let mut criteria_met = Vec::new();
         for &(_, ref op) in ops.iter() {
@@ -651,5 +666,11 @@ contexts:
         if let Some(missing) = expect.iter().filter(|e| !criteria_met.contains(&e)).next() {
             panic!("expected scope stack '{}' missing", missing);
         }
+    }
+
+    fn ops(line: &str, state: &mut ParseState) -> Vec<(usize, ScopeStackOp)> {
+        let ops = state.parse_line(line);
+        debug_print_ops(line, &ops);
+        ops
     }
 }
