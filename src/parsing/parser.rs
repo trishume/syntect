@@ -678,6 +678,26 @@ mod tests {
     }
 
     #[test]
+    fn can_parse_yaml() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_name("YAML").unwrap();
+            ParseState::new(syntax)
+        };
+
+        assert_eq!(ops("key: value\n", &mut state), vec![
+            (0, Push(Scope::new("source.yaml").unwrap())),
+            (0, Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())),
+            (0, Push(Scope::new("entity.name.tag.yaml").unwrap())),
+            (3, Pop(2)),
+            (3, Push(Scope::new("punctuation.separator.key-value.mapping.yaml").unwrap())),
+            (4, Pop(1)),
+            (5, Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())),
+            (10, Pop(1)),
+        ]);
+    }
+
+    #[test]
     fn can_parse_includes() {
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
