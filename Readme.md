@@ -152,6 +152,12 @@ Total words written in all comments:    5145
 Characters of comment:                 41099
 ```
 
+## Projects using Syntect
+
+Below is a list of projects using Syntect (feel free to send PRs to add to this list):
+
+- [syntect_server](https://github.com/sourcegraph/syntect_server), an HTTP server for syntax highlighting.
+
 ## License and Acknowledgements
 
 Thanks to [Textmate 2](https://github.com/textmate/textmate) and @defuz's [sublimate](https://github.com/defuz/sublimate) for the existing open source code I used as inspiration and in the case of sublimate's `tmTheme` loader, copy-pasted. All code (including defuz's sublimate code) is released under the MIT license.
