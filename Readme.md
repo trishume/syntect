@@ -32,7 +32,7 @@ git submodule update --init
 
 to fetch all the required dependencies for running the tests.
 
-### feature flags
+### Feature Flags
 
 Syntect makes heavy use of [cargo features](http://doc.crates.io/manifest.html#the-features-section), to support users who require only a subset of functionality. In particular, it is possible to use the highlighting component of syntect without the parser (for instance when hand-rolling a higher performance parser for a particular language), by adding `default-features = false` to the syntect entry in your `Cargo.toml`.
 
@@ -154,8 +154,15 @@ Characters of comment:                 41099
 
 ## Projects using Syntect
 
-Below is a list of projects using Syntect (feel free to send PRs to add to this list):
+Below is a list of projects using Syntect, in approximate order by how long they've been using `syntect` (feel free to send PRs to add to this list):
 
+- [Gutenberg](https://github.com/Keats/gutenberg), a static site generator that uses `syntect` for highlighting code snippets.
+- [xi-editor](https://github.com/google/xi-editor), a text editor in Rust which uses `syntect` for highlighting.
+- [Scribe](https://github.com/jmacdonald/scribe), a Rust text editor framework which uses `syntect` for highlighting.
+- [tokio-cassandra](https://github.com/nhellwig/tokio-cassandra), CQL shell in Rust, uses `syntect` for shell colouring.
+- [Cobalt](https://github.com/cobalt-org/cobalt.rs), a static site generator that uses `syntect` for highlighting code snippets.
+- [catmark](https://github.com/bestouff/catmark), a console markdown printer, uses `syntect` for code blocks.
+- [crowbook](https://github.com/lise-henry/crowbook), a Markdown book generator, uses `syntect` for code blocks.
 - [syntect_server](https://github.com/sourcegraph/syntect_server), an HTTP server for syntax highlighting.
 
 ## License and Acknowledgements
