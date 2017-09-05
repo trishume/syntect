@@ -31,7 +31,7 @@ fn load_theme(tm_file: &String, enable_caching: bool) -> Theme {
 }
 
 fn main() {
-    let ss = SyntaxSet::load_defaults_newlines(); // note we load the version with newlines
+    let mut ss = SyntaxSet::load_defaults_newlines(); // note we load the version with newlines
     let ts = ThemeSet::load_defaults();
 
     let args: Vec<String> = std::env::args().collect();
@@ -39,6 +39,7 @@ fn main() {
     opts.optflag("l", "list-file-types", "Lists supported file types");
     opts.optflag("L", "list-embedded-themes", "Lists themes present in the executable");
     opts.optopt("t", "theme-file", "THEME_FILE", "Theme file to use. May be a path, or an embedded theme. Embedded themes will take precendence. Default: base16-ocean.dark");
+    opts.optopt("s", "extra-syntaxes", "SYNTAX_FOLDER", "Additional folder to search for .sublime-syntax files in.");
     opts.optflag("c", "cache-theme", "Cache the parsed theme file.");
 
     let matches = match opts.parse(&args[1..]) {
@@ -71,6 +72,11 @@ fn main() {
         let theme = ts.themes.get(&theme_file)
             .map(|t| Cow::Borrowed(t))
             .unwrap_or_else(|| Cow::Owned(load_theme(&theme_file, matches.opt_present("cache-theme"))));
+
+        if let Some(folder) = matches.opt_str("extra-syntaxes") {
+            ss.load_syntaxes(folder, true).unwrap();
+            ss.link_syntaxes();
+        }
 
         for src in &matches.free[..] {
             if matches.free.len() > 1 {
