@@ -129,7 +129,7 @@ impl ParseState {
                 ctx_ref.prototype.clone()
             };
             let context_chain = self.stack
-                .iter().rev() // iterate the stack in top-down order to apply the prototypes
+                .iter() // Sublime applies with_prototypes from bottom to top
                 .filter_map(|lvl| lvl.prototype.as_ref().cloned())
                 .chain(prototype.into_iter())
                 .chain(Some(cur_level.context.clone()).into_iter());
