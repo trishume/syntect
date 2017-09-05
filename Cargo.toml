@@ -7,7 +7,7 @@ keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
 categories = ["parser-implementations", "parsing", "text-processing"]
 readme = "Readme.md"
 license = "MIT"
-version = "1.7.1"
+version = "1.7.2"
 authors = ["Tristan Hume <tristan@thume.ca>"]
 exclude = [
     "testdata/*",
