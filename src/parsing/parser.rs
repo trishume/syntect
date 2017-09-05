@@ -138,7 +138,7 @@ impl ParseState {
             for ctx in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     let mut pat_context = pat_context_ptr.borrow_mut();
-                    let mut match_pat = pat_context.match_at_mut(pat_index);
+                    let match_pat = pat_context.match_at_mut(pat_index);
                     // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
                     let match_ptr = match_pat as *const MatchPattern;
 
