@@ -27,6 +27,9 @@ use fnv::FnvHasher;
 pub struct ParseState {
     stack: Vec<StateLevel>,
     first_line: bool,
+    // See issue #101. Contains indices of frames pushed by `with_prototype`s.
+    // Doesn't look at `with_prototype`s below top of stack.
+    proto_starts: Vec<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +63,7 @@ impl ParseState {
         ParseState {
             stack: vec![start_state],
             first_line: true,
+            proto_starts: Vec::new(),
         }
     }
 
@@ -120,22 +124,36 @@ impl ParseState {
                         regions: &mut Region,
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
-        let cur_match = {
+        let (cur_match, match_from_with_proto) = {
             let cur_level = &self.stack[self.stack.len() - 1];
-            let mut min_start = usize::MAX;
-            let mut cur_match: Option<RegexMatch> = None;
             let prototype: Option<ContextPtr> = {
                 let ctx_ref = cur_level.context.borrow();
                 ctx_ref.prototype.clone()
             };
-            let context_chain = self.stack
-                .iter().rev() // iterate the stack in top-down order to apply the prototypes
-                .filter_map(|lvl| lvl.prototype.as_ref().cloned())
-                .chain(prototype.into_iter())
-                .chain(Some(cur_level.context.clone()).into_iter());
+
+            // Trim proto_starts that are no longer valid
+            while self.proto_starts.last().map(|start| *start >= self.stack.len()).unwrap_or(false) {
+                self.proto_starts.pop();
+            }
+
+            // Build an iterator for the contexts we want to visit in order
+            let context_chain = {
+                let proto_start = self.proto_starts.last().cloned().unwrap_or(0);
+                // Sublime applies with_prototypes from bottom to top
+                let with_prototypes = self.stack[proto_start..].iter().filter_map(|lvl| lvl.prototype.as_ref().cloned()).map(|ctx| (true, ctx));
+                let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx));
+                let cur_context = Some((false, cur_level.context.clone())).into_iter();
+                with_prototypes.chain(cur_prototype).chain(cur_context)
+            };
+
             // println!("{:#?}", cur_level);
             // println!("token at {} on {}", start, line.trim_right());
-            for ctx in context_chain {
+
+            let mut min_start = usize::MAX;
+            let mut match_from_with_proto = false;
+            let mut cur_match: Option<RegexMatch> = None;
+
+            for (from_with_proto, ctx) in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     let mut pat_context = pat_context_ptr.borrow_mut();
                     let mut match_pat = pat_context.match_at_mut(pat_index);
@@ -157,6 +175,7 @@ impl ParseState {
                             } else if match_start < min_start {
                                 // print!("match {} at {} on {}", match_pat.regex_str, match_start, line);
                                 min_start = match_start;
+                                match_from_with_proto = from_with_proto;
                                 cur_match = Some(RegexMatch {
                                     regions: region.clone(),
                                     context: pat_context_ptr.clone(),
@@ -199,6 +218,7 @@ impl ParseState {
                         if match_start < min_start && does_something {
                             // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
                             min_start = match_start;
+                            match_from_with_proto = from_with_proto;
                             cur_match = Some(RegexMatch {
                                 regions: regions.clone(),
                                 context: pat_context_ptr.clone(),
@@ -210,12 +230,19 @@ impl ParseState {
                     }
                 }
             }
-            cur_match
+            (cur_match, match_from_with_proto)
         };
 
         if let Some(reg_match) = cur_match {
             let (_, match_end) = reg_match.regions.pos(0).unwrap();
             *start = match_end;
+
+            // ignore `with_prototype`s below this if a context is pushed
+            if match_from_with_proto {
+                // use current height, since we're before the actual push
+                self.proto_starts.push(self.stack.len());
+            }
+
             let level_context = self.stack[self.stack.len() - 1].context.clone();
             self.exec_pattern(line, reg_match, level_context, matched, ops);
             true
