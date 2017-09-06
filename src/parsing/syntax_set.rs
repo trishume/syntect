@@ -268,8 +268,8 @@ impl SyntaxSet {
             context.meta_include_prototype = false;
             for pattern in &mut context.patterns {
                 match *pattern {
-                    /// Apparently inline blocks also don't include the prototype when within the prototype.
-                    /// This is really weird, but necessary to run the YAML syntax.
+                    // Apparently inline blocks also don't include the prototype when within the prototype.
+                    // This is really weird, but necessary to run the YAML syntax.
                     Pattern::Match(ref mut match_pat) => {
                         let maybe_context_refs = match match_pat.operation {
                             MatchOperation::Push(ref context_refs) |
