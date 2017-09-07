@@ -5,6 +5,7 @@ use std::usize;
 use std::collections::{HashMap, HashSet};
 use std::i32;
 use std::hash::BuildHasherDefault;
+use std::ptr;
 use fnv::FnvHasher;
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
@@ -32,12 +33,30 @@ pub struct ParseState {
     proto_starts: Vec<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct StateLevel {
     context: ContextPtr,
     prototype: Option<ContextPtr>,
     captures: Option<(Region, String)>,
 }
+
+fn context_ptr_eq(a: &ContextPtr, b: &ContextPtr) -> bool {
+    ptr::eq(a.as_ptr(), b.as_ptr())
+}
+
+impl PartialEq for StateLevel {
+    fn eq(&self, other: &StateLevel) -> bool {
+        context_ptr_eq(&self.context, &other.context) &&
+        match (&self.prototype, &other.prototype) {
+            (&Some(ref a), &Some(ref b)) => context_ptr_eq(a, b),
+            (&None, &None) => true,
+            _ => false,
+        } &&
+        self.captures == other.captures
+    }
+}
+
+impl Eq for StateLevel {}
 
 #[derive(Debug)]
 struct RegexMatch {
@@ -156,7 +175,7 @@ impl ParseState {
             for (from_with_proto, ctx) in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     let mut pat_context = pat_context_ptr.borrow_mut();
-                    let mut match_pat = pat_context.match_at_mut(pat_index);
+                    let match_pat = pat_context.match_at_mut(pat_index);
                     // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
                     let match_ptr = match_pat as *const MatchPattern;
 
