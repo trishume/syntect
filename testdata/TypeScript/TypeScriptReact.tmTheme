@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>name</key>
+    <string>TypeScriptReact</string>
+    <key>uuid</key>
+    <string>8B704EF9-AF8E-402F-933C-1D46D8C49E58</string>
+    <key>settings</key>
+    <array>
+      <dict>
+        <key>scope</key>
+        <string>storage.modifier, storage.type, keyword.control, keyword.other, keyword.operator.expression, keyword.operator.new, keyword.generator.asterisk, punctuation.definition.template-expression</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>keyword</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>support.type, constant.language, variable.language</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>keyword</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>string, punctuation.definition.string, constant.character</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>string</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>keyword.control.anchor.regexp, keyword.other.back-reference.regexp, keyword.operator.quantifier.regexp, keyword.operator.or.regexp, keyword.operator.negation.regexp, punctuation.definition.group.regexp, punctuation.definition.group.assertion.regexp, meta.assertion.look-ahead.regexp, meta.assertion.negative-look-ahead.regexp, punctuation.definition.group.capture.regexp, punctuation.definition.character-class.regexp, constant.other.character-class.range.regexp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>string</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>constant.numeric, meta.delimiter.decimal.period.tsx, constant.language.nan.tsx, constant.language.infinity.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>number</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>keyword.operator, storage.type.function.arrow.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>operator</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>meta.brace.angle.tsx, meta.brace.round.tsx, meta.brace.square.tsx, punctuation, constant.language.import-export-all.tsx, meta.delimiter.object.comma.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>punctuation</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>comment, comment.block.tsx, comment.line.double-slash.tsx, punctuation.definition.comment.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>comment</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>comment.block.documentation.tsx, other.meta.jsdoc, other.description.jsdoc</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>comment</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>entity.name.type.instance.jsdoc, variable.other.jsdoc</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>identifier</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>storage.type.class.jsdoc</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>xml doc comment - name</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>entity.name.type.class.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>class name</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>entity.name.type.module.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>module name</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>entity.name.type.enum.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>enum name</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>entity.name.function, entity.name.type, meta.template.expression.tsx, variable, entity.other.inherited-class.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>identifier</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>constant.language.undefined.tsx, variable.language.arguments.tsx, support.type.object</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>identifier</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>entity.name.tag</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>xml literal - name</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>entity.other.attribute-name</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>XML Attribute</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>meta.tag string.quoted, meta.tag string.quoted punctuation.definition.string, meta.tag string.quoted constant.character.escape</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>xml literal - attribute value</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>meta.tag string.quoted constant.character.entity.tsx, meta.tag string.quoted constant.character.entity.tsx punctuation.definition.entity.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>xml literal - attribute value</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>meta.jsx.children.tsx, constant.character.entity.tsx, punctuation.definition.entity.tsx, invalid.illegal.bad-ampersand.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>xml literal - text</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>invalid.illegal.attribute.tsx, meta.embedded.expression.tsx</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>identifier</string>
+        </dict>
+      </dict>
+    </array>
+  </dict>
+</plist>
