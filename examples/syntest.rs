@@ -167,14 +167,15 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
             let result = process_assertions(&assertion, &scopes_on_line_being_tested);
             total_assertions += &assertion.end_char - &assertion.begin_char;
             for failure in result.iter().filter(|r|!r.success) {
-                let chars = &previous_non_assertion_line[failure.column_begin..failure.column_end];
+                let length = failure.column_end - failure.column_begin;
+                let text: String = previous_non_assertion_line.chars().skip(failure.column_begin).take(length).collect();
                 println!("  Assertion selector {:?} \
                     from line {:?} failed against line {:?}, column range {:?}-{:?} \
                     (with text {:?}) \
                     has scope {:?}",
                     assertion.scope_selector_text.trim(),
                     current_line_number, test_against_line_number, failure.column_begin, failure.column_end,
-                    chars,
+                    text,
                     scopes_on_line_being_tested.iter().skip_while(|s|s.char_start + s.text_len <= failure.column_begin).next().unwrap_or(scopes_on_line_being_tested.last().unwrap()).scope
                 );
                 assertion_failures += failure.column_end - failure.column_begin;
