@@ -253,14 +253,15 @@ impl SyntaxDefinition {
     fn parse_match_pattern(map: &Hash,
                            state: &mut ParserState)
                            -> Result<MatchPattern, ParseSyntaxError> {
-        let raw_regex = get_key(map, "match", |x| x.as_str())?;
-        let resolved_regex = Self::resolve_variables(raw_regex, state);
+        let regex_with_variables = get_key(map, "match", |x| x.as_str())?;
+        let regex = Self::resolve_variables(regex_with_variables, state);
+        let regex = replace_posix_char_classes(regex);
         let regex_str = if state.lines_include_newline {
-            regex_for_newlines(resolved_regex)
+            regex_for_newlines(regex)
         } else {
             // If the passed in strings don't include newlines (unlike Sublime) we can't match on
             // them, so try to rewrite the regex to not rely on newlines.
-            regex_for_no_newlines(resolved_regex)
+            regex_for_no_newlines(regex)
         };
         // println!("{:?}", regex_str);
 
@@ -409,6 +410,18 @@ impl SyntaxDefinition {
             real_main.meta_content_scope.insert(0,top_level_scope);
         }
     }
+}
+
+
+/// In fancy-regex, POSIX character classes only match ASCII characters.
+/// Sublime's syntaxes expect them to match Unicode characters as well, so transform them to
+/// corresponding Unicode character classes.
+fn replace_posix_char_classes(regex: String) -> String {
+    regex.replace("[:alpha:]", r"\pL")
+        .replace("[:alnum:]", r"\pL\pN")
+        .replace("[:lower:]", r"\p{Ll}")
+        .replace("[:upper:]", r"\p{Lu}")
+        .replace("[:digit:]", r"\p{Nd}")
 }
 
 
