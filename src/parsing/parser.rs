@@ -1240,6 +1240,22 @@ contexts:
         expect_scope_stacks(&line, &expect, syntax);
     }
 
+    #[test]
+    fn can_parse_syntax_with_eol_and_newline() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: foo$\n
+      scope: foo.newline
+"#;
+
+        let line = "foo";
+        let expect = ["<source.test>, <foo.newline>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");
         let line_with_newline = format!("{}\n", line_without_newline);
