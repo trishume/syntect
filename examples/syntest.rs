@@ -138,7 +138,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
     // parse the syntax test header in the first line of the file
     let header_line = line.clone();
     let search_result = SYNTAX_TEST_HEADER_PATTERN.captures(&header_line);
-    let captures = try!(search_result.ok_or(SyntaxTestHeaderError::MalformedHeader));
+    let captures = search_result.ok_or(SyntaxTestHeaderError::MalformedHeader)?;
 
     let testtoken_start = captures.name("testtoken_start").unwrap().as_str();
     let testtoken_end = captures.name("testtoken_end").map_or(None, |c|Some(c.as_str()));
@@ -146,7 +146,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
 
     // find the relevant syntax definition to parse the file with - case is important!
     println!("The test file references syntax definition file: {}", syntax_file);
-    let syntax = try!(ss.find_syntax_by_path(syntax_file).ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound));
+    let syntax = ss.find_syntax_by_path(syntax_file).ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound)?;
 
     // iterate over the lines of the file, testing them
     let mut state = ParseState::new(syntax);

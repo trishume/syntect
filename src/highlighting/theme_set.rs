@@ -18,7 +18,7 @@ impl ThemeSet {
     pub fn discover_theme_paths<P: AsRef<Path>>(folder: P) -> Result<Vec<PathBuf>, LoadingError> {
         let mut themes = Vec::new();
         for entry in WalkDir::new(folder) {
-            let entry = try!(entry.map_err(LoadingError::WalkDir));
+            let entry = entry.map_err(LoadingError::WalkDir)?;
             if entry.path().extension().map_or(false, |e| e == "tmTheme") {
                 themes.push(entry.path().to_owned());
             }
@@ -28,24 +28,24 @@ impl ThemeSet {
 
     /// Loads a theme given a path to a .tmTheme file
     pub fn get_theme<P: AsRef<Path>>(path: P) -> Result<Theme, LoadingError> {
-        let file = try!(File::open(path));
+        let file = File::open(path)?;
         let mut file = BufReader::new(file);
         Self::load_from_reader(&mut file)
     }
 
     /// Loads a theme given a readable stream
     pub fn load_from_reader<R: BufRead + Seek>(r: &mut R) -> Result<Theme, LoadingError> {
-        Ok(try!(Theme::parse_settings(try!(read_plist(r)))))
+        Ok(Theme::parse_settings(read_plist(r)?)?)
     }
 
     /// Loads all the themes in a folder
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<ThemeSet, LoadingError> {
-        let paths = try!(Self::discover_theme_paths(folder));
+        let paths = Self::discover_theme_paths(folder)?;
         let mut map = BTreeMap::new();
         for p in &paths {
-            let theme = try!(Self::get_theme(p));
+            let theme = Self::get_theme(p)?;
             let basename =
-                try!(p.file_stem().and_then(|x| x.to_str()).ok_or(LoadingError::BadPath));
+                p.file_stem().and_then(|x| x.to_str()).ok_or(LoadingError::BadPath)?;
             map.insert(basename.to_owned(), theme);
         }
         Ok(ThemeSet { themes: map })

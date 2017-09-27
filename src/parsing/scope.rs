@@ -500,7 +500,7 @@ impl FromStr for ScopeStack {
     fn from_str(s: &str) -> Result<ScopeStack, ParseScopeError> {
         let mut scopes = Vec::new();
         for name in s.split_whitespace() {
-            scopes.push(try!(Scope::from_str(name)))
+            scopes.push(Scope::from_str(name)?)
         }
         Ok(ScopeStack::from_vec(scopes))
     }
@@ -509,7 +509,7 @@ impl FromStr for ScopeStack {
 impl fmt::Display for ScopeStack {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for s in &self.scopes {
-            try!(write!(f, "{} ", s));
+            write!(f, "{} ", s)?;
         }
         Ok(())
     }

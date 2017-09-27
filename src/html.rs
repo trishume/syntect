@@ -71,7 +71,7 @@ pub fn highlighted_snippet_for_file<P: AsRef<Path>>(path: P,
                                                     -> io::Result<String> {
     // TODO reduce code duplication with highlighted_snippet_for_string
     let mut output = String::new();
-    let mut highlighter = try!(HighlightFile::new(path, ss, theme));
+    let mut highlighter = HighlightFile::new(path, ss, theme)?;
     let c = theme.settings.background.unwrap_or(highlighting::WHITE);
     write!(output,
            "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
@@ -80,7 +80,7 @@ pub fn highlighted_snippet_for_file<P: AsRef<Path>>(path: P,
            c.b)
         .unwrap();
     for maybe_line in highlighter.reader.lines() {
-        let line = try!(maybe_line);
+        let line = maybe_line?;
         let regions = highlighter.highlight_lines.highlight(&line);
         let html = styles_to_coloured_html(&regions[..], IncludeBackground::IfDifferent(c));
         output.push_str(&html);
