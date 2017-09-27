@@ -84,7 +84,7 @@ impl SyntaxDefinition {
                        scope_repo: &mut ScopeRepository,
                        lines_include_newline: bool)
                        -> Result<SyntaxDefinition, ParseSyntaxError> {
-        let h = try!(doc.as_hash().ok_or(ParseSyntaxError::TypeMismatch));
+        let h = doc.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
         let mut variables = HashMap::new();
         if let Ok(map) = get_key(h, "variables", |x| x.as_hash()) {
@@ -94,9 +94,9 @@ impl SyntaxDefinition {
                 }
             }
         }
-        let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
-        let top_level_scope = try!(scope_repo.build(try!(get_key(h, "scope", |x| x.as_str())))
-            .map_err(ParseSyntaxError::InvalidScope));
+        let contexts_hash = get_key(h, "contexts", |x| x.as_hash())?;
+        let top_level_scope = scope_repo.build(get_key(h, "scope", |x| x.as_str())?)
+            .map_err(ParseSyntaxError::InvalidScope)?;
         let mut state = ParserState {
             scope_repo: scope_repo,
             variables: variables,
@@ -105,7 +105,7 @@ impl SyntaxDefinition {
             lines_include_newline: lines_include_newline,
         };
 
-        let mut contexts = try!(SyntaxDefinition::parse_contexts(contexts_hash, &mut state));
+        let mut contexts = SyntaxDefinition::parse_contexts(contexts_hash, &mut state)?;
         if !contexts.contains_key("main") {
             return Err(ParseSyntaxError::MainMissing);
         }
@@ -141,7 +141,7 @@ impl SyntaxDefinition {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
                 let is_prototype = name == "prototype";
                 let context_ptr =
-                    try!(SyntaxDefinition::parse_context(val_vec, state, is_prototype));
+                    SyntaxDefinition::parse_context(val_vec, state, is_prototype)?;
                 contexts.insert(name.to_owned(), context_ptr);
             }
         }
@@ -162,15 +162,15 @@ impl SyntaxDefinition {
             prototype: None,
         };
         for y in vec.iter() {
-            let map = try!(y.as_hash().ok_or(ParseSyntaxError::TypeMismatch));
+            let map = y.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
             let mut is_special = false;
             if let Some(x) = get_key(map, "meta_scope", |x| x.as_str()).ok() {
-                context.meta_scope = try!(str_to_scopes(x, state.scope_repo));
+                context.meta_scope = str_to_scopes(x, state.scope_repo)?;
                 is_special = true;
             }
             if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
-                context.meta_content_scope = try!(str_to_scopes(x, state.scope_repo));
+                context.meta_content_scope = str_to_scopes(x, state.scope_repo)?;
                 is_special = true;
             }
             if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
@@ -187,10 +187,10 @@ impl SyntaxDefinition {
             }
             if !is_special {
                 if let Some(x) = get_key(map, "include", Some).ok() {
-                    let reference = try!(SyntaxDefinition::parse_reference(x, state));
+                    let reference = SyntaxDefinition::parse_reference(x, state)?;
                     context.patterns.push(Pattern::Include(reference));
                 } else {
-                    let pattern = try!(SyntaxDefinition::parse_match_pattern(map, state));
+                    let pattern = SyntaxDefinition::parse_match_pattern(map, state)?;
                     if pattern.has_captures {
                         context.uses_backrefs = true;
                     }
@@ -214,16 +214,16 @@ impl SyntaxDefinition {
             };
             if parts[0].starts_with("scope:") {
                 Ok(ContextReference::ByScope {
-                    scope: try!(state.scope_repo
+                    scope: state.scope_repo
                         .build(&parts[0][6..])
-                        .map_err(ParseSyntaxError::InvalidScope)),
+                        .map_err(ParseSyntaxError::InvalidScope)?,
                     sub_context: sub_context,
                 })
             } else if parts[0].ends_with(".sublime-syntax") {
-                let stem = try!(Path::new(parts[0])
+                let stem = Path::new(parts[0])
                     .file_stem()
                     .and_then(|x| x.to_str())
-                    .ok_or(ParseSyntaxError::BadFileRef));
+                    .ok_or(ParseSyntaxError::BadFileRef)?;
                 Ok(ContextReference::File {
                     name: stem.to_owned(),
                     sub_context: sub_context,
@@ -232,7 +232,7 @@ impl SyntaxDefinition {
                 Ok(ContextReference::Named(parts[0].to_owned()))
             }
         } else if let Some(v) = y.as_vec() {
-            let context = try!(SyntaxDefinition::parse_context(v, state, false));
+            let context = SyntaxDefinition::parse_context(v, state, false)?;
             Ok(ContextReference::Inline(context))
         } else {
             Err(ParseSyntaxError::TypeMismatch)
@@ -250,7 +250,7 @@ impl SyntaxDefinition {
     fn parse_match_pattern(map: &Hash,
                            state: &mut ParserState)
                            -> Result<MatchPattern, ParseSyntaxError> {
-        let raw_regex = try!(get_key(map, "match", |x| x.as_str()));
+        let raw_regex = get_key(map, "match", |x| x.as_str())?;
         let regex_str_1 = Self::resolve_variables(raw_regex, state);
         // if the passed in strings don't include newlines (unlike Sublime) we can't match on them
         let regex_str = if state.lines_include_newline {
@@ -260,17 +260,17 @@ impl SyntaxDefinition {
         };
         // println!("{:?}", regex_str);
 
-        let scope = try!(get_key(map, "scope", |x| x.as_str())
+        let scope = get_key(map, "scope", |x| x.as_str())
             .ok()
             .map(|s| str_to_scopes(s, state.scope_repo))
-            .unwrap_or_else(|| Ok(vec![])));
+            .unwrap_or_else(|| Ok(vec![]))?;
 
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
             let mut res_map = Vec::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
                     res_map.push((key_int as usize,
-                                   try!(str_to_scopes(val_str, state.scope_repo))));
+                                   str_to_scopes(val_str, state.scope_repo)?));
                 }
             }
             Some(res_map)
@@ -284,16 +284,16 @@ impl SyntaxDefinition {
             has_captures = state.backref_regex.find(&regex_str).is_some();
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", Some) {
-            MatchOperation::Push(try!(SyntaxDefinition::parse_pushargs(y, state)))
+            MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state)?)
         } else if let Ok(y) = get_key(map, "set", Some) {
-            MatchOperation::Set(try!(SyntaxDefinition::parse_pushargs(y, state)))
+            MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state)?)
         } else {
             MatchOperation::None
         };
 
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
             // should a with_prototype include the prototype? I don't think so.
-            Some(try!(SyntaxDefinition::parse_context(v, state, true)))
+            Some(SyntaxDefinition::parse_context(v, state, true)?)
         } else {
             None
         };

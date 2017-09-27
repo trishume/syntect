@@ -192,7 +192,7 @@ impl ParseSettings for UnderlineOption {
 
     fn parse_settings(settings: Settings) -> Result<UnderlineOption, Self::Error> {
         match settings {
-            Settings::String(value) => Ok(try!(UnderlineOption::from_str(&value))),
+            Settings::String(value) => UnderlineOption::from_str(&value),
             _ => Err(IncorrectUnderlineOption),
         }
     }
@@ -222,7 +222,7 @@ impl ParseSettings for FontStyle {
 
     fn parse_settings(settings: Settings) -> Result<FontStyle, Self::Error> {
         match settings {
-            Settings::String(value) => Ok(try!(FontStyle::from_str(&value))),
+            Settings::String(value) => FontStyle::from_str(&value),
             c => Err(IncorrectFontStyle(c.to_string())),
         }
     }
@@ -238,7 +238,7 @@ impl FromStr for Color {
         }
         let mut d = Vec::new();
         for char in chars {
-            d.push(try!(char.to_digit(16).ok_or(IncorrectColor)) as u8);
+            d.push(char.to_digit(16).ok_or(IncorrectColor)? as u8);
         }
         Ok(match d.len() {
             3 => {
@@ -275,7 +275,7 @@ impl ParseSettings for Color {
 
     fn parse_settings(settings: Settings) -> Result<Color, Self::Error> {
         match settings {
-            Settings::String(value) => Ok(try!(Color::from_str(&value))),
+            Settings::String(value) => Color::from_str(&value),
             _ => Err(IncorrectColor),
         }
     }
@@ -290,17 +290,17 @@ impl ParseSettings for StyleModifier {
             _ => return Err(ColorShemeScopeIsNotObject),
         };
         let font_style = match obj.remove("fontStyle") {
-            Some(Settings::String(value)) => Some(try!(FontStyle::from_str(&value))),
+            Some(Settings::String(value)) => Some(FontStyle::from_str(&value)?),
             None => None,
             Some(c) => return Err(IncorrectFontStyle(c.to_string())),
         };
         let foreground = match obj.remove("foreground") {
-            Some(Settings::String(value)) => Some(try!(Color::from_str(&value))),
+            Some(Settings::String(value)) => Some(Color::from_str(&value)?),
             None => None,
             _ => return Err(IncorrectColor),
         };
         let background = match obj.remove("background") {
-            Some(Settings::String(value)) => Some(try!(Color::from_str(&value))),
+            Some(Settings::String(value)) => Some(Color::from_str(&value)?),
             None => None,
             _ => return Err(IncorrectColor),
         };
@@ -322,11 +322,11 @@ impl ParseSettings for ThemeItem {
             _ => return Err(ColorShemeScopeIsNotObject),
         };
         let scope = match obj.remove("scope") {
-            Some(Settings::String(value)) => try!(ScopeSelectors::from_str(&value)),
+            Some(Settings::String(value)) => ScopeSelectors::from_str(&value)?,
             _ => return Err(ScopeSelectorIsNotString(format!("{:?}", obj))),
         };
         let style = match obj.remove("settings") {
-            Some(settings) => try!(StyleModifier::parse_settings(settings)),
+            Some(settings) => StyleModifier::parse_settings(settings)?,
             None => return Err(IncorrectSettings),
         };
         Ok(ThemeItem {
@@ -438,7 +438,7 @@ impl ParseSettings for Theme {
         let settings = match iter.next() {
             Some(Settings::Object(mut obj)) => {
                 match obj.remove("settings") {
-                    Some(settings) => try!(ThemeSettings::parse_settings(settings)),
+                    Some(settings) => ThemeSettings::parse_settings(settings)?,
                     None => return Err(UndefinedSettings),
                 }
             }

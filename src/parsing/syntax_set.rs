@@ -39,11 +39,11 @@ pub struct SyntaxSet {
 fn load_syntax_file(p: &Path,
                     lines_include_newline: bool)
                     -> Result<SyntaxDefinition, LoadingError> {
-    let mut f = try!(File::open(p));
+    let mut f = File::open(p)?;
     let mut s = String::new();
-    try!(f.read_to_string(&mut s));
+    f.read_to_string(&mut s)?;
 
-    Ok(try!(SyntaxDefinition::load_from_str(&s, lines_include_newline)))
+    Ok(SyntaxDefinition::load_from_str(&s, lines_include_newline)?)
 }
 
 impl Default for SyntaxSet {
@@ -69,7 +69,7 @@ impl SyntaxSet {
     #[cfg(feature = "yaml-load")]
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<SyntaxSet, LoadingError> {
         let mut ps = Self::new();
-        try!(ps.load_syntaxes(folder, false));
+        ps.load_syntaxes(folder, false)?;
         ps.link_syntaxes();
         Ok(ps)
     }
@@ -93,10 +93,10 @@ impl SyntaxSet {
                                          -> Result<(), LoadingError> {
         self.is_linked = false;
         for entry in WalkDir::new(folder).sort_by(|a, b| a.cmp(b)) {
-            let entry = try!(entry.map_err(LoadingError::WalkDir));
+            let entry = entry.map_err(LoadingError::WalkDir)?;
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 // println!("{}", entry.path().display());
-                let syntax = try!(load_syntax_file(entry.path(), lines_include_newline));
+                let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
                 if let Some(path_str) = entry.path().to_str() {
                     self.path_syntaxes.push((path_str.to_string(), self.syntaxes.len()));
                 }
@@ -207,9 +207,9 @@ impl SyntaxSet {
         let ext_syntax = self.find_syntax_by_extension(extension);
         let line_syntax = if ext_syntax.is_none() {
             let mut line = String::new();
-            let f = try!(File::open(path));
+            let f = File::open(path)?;
             let mut line_reader = BufReader::new(&f);
-            try!(line_reader.read_line(&mut line));
+            line_reader.read_line(&mut line)?;
             self.find_syntax_by_first_line(&line)
         } else {
             None

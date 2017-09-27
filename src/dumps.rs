@@ -64,7 +64,7 @@ pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
 /// compressed with the `flate2` crate.
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
-    let out = BufWriter::new(try!(File::create(path).map_err(ErrorKind::IoError)));
+    let out = BufWriter::new(File::create(path).map_err(ErrorKind::IoError)?);
     dump_to_writer(o, out)
 }
 
@@ -76,7 +76,7 @@ pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
 
 #[cfg(feature = "dump-load-rs")]
 pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
-    let mut decoder: Decoder<R> = try!(Decoder::new(input));
+    let mut decoder: Decoder<R> = Decoder::new(input)?;
     deserialize_from(&mut decoder, Infinite)
 }
 
@@ -90,7 +90,7 @@ pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
 /// Returns a fully loaded syntax set from a binary dump file.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
-    let f = try!(File::open(path).map_err(ErrorKind::IoError));
+    let f = File::open(path).map_err(ErrorKind::IoError)?;
     let reader = BufReader::new(f);
     from_reader(reader)
 }
