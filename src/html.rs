@@ -2,7 +2,7 @@
 use std::fmt::Write;
 use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxDefinition, SyntaxSet, SCOPE_REPO};
 use easy::{HighlightLines, HighlightFile};
-use highlighting::{self, Style, Theme, Color};
+use highlighting::{Color, FontStyle, Style, Theme};
 use escape::Escape;
 use std::io::{self, BufRead};
 use std::path::Path;
@@ -41,7 +41,7 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
 pub fn highlighted_snippet_for_string(s: &str, syntax: &SyntaxDefinition, theme: &Theme) -> String {
     let mut output = String::new();
     let mut highlighter = HighlightLines::new(syntax, theme);
-    let c = theme.settings.background.unwrap_or(highlighting::WHITE);
+    let c = theme.settings.background.unwrap_or(Color::WHITE);
     write!(output,
            "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
            c.r,
@@ -72,7 +72,7 @@ pub fn highlighted_snippet_for_file<P: AsRef<Path>>(path: P,
     // TODO reduce code duplication with highlighted_snippet_for_string
     let mut output = String::new();
     let mut highlighter = HighlightFile::new(path, ss, theme)?;
-    let c = theme.settings.background.unwrap_or(highlighting::WHITE);
+    let c = theme.settings.background.unwrap_or(Color::WHITE);
     write!(output,
            "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
            c.r,
@@ -183,13 +183,13 @@ pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> St
             write_css_color(&mut s, style.background);
             write!(s, ";").unwrap();
         }
-        if style.font_style.contains(highlighting::FONT_STYLE_UNDERLINE) {
+        if style.font_style.contains(FontStyle::UNDERLINE) {
             write!(s, "text-decoration:underline;").unwrap();
         }
-        if style.font_style.contains(highlighting::FONT_STYLE_BOLD) {
+        if style.font_style.contains(FontStyle::BOLD) {
             write!(s, "font-weight:bold;").unwrap();
         }
-        if style.font_style.contains(highlighting::FONT_STYLE_ITALIC) {
+        if style.font_style.contains(FontStyle::ITALIC) {
             write!(s, "font-style:italic;").unwrap();
         }
         write!(s, "color:").unwrap();
@@ -209,7 +209,7 @@ pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> St
 /// You're responsible for creating the string `</pre>` to close this, I'm not gonna provide a
 /// helper for that :-)
 pub fn start_coloured_html_snippet(t: &Theme) -> String {
-    let c = t.settings.background.unwrap_or(highlighting::WHITE);
+    let c = t.settings.background.unwrap_or(Color::WHITE);
     format!("<pre style=\"background-color:#{:02x}{:02x}{:02x}\">\n",
             c.r,
             c.g,

@@ -2,7 +2,7 @@
 //! Basically just wraps a body around `highlighted_snippet_for_file`
 extern crate syntect;
 use syntect::parsing::SyntaxSet;
-use syntect::highlighting::{ThemeSet, self};
+use syntect::highlighting::{Color, ThemeSet};
 use syntect::html::highlighted_snippet_for_file;
 
 fn main() {
@@ -22,7 +22,7 @@ fn main() {
         }";
     println!("<head><title>{}</title><style>{}</style></head>", &args[1], style);
     let theme = &ts.themes["base16-ocean.dark"];
-    let c = theme.settings.background.unwrap_or(highlighting::WHITE);
+    let c = theme.settings.background.unwrap_or(Color::WHITE);
     println!("<body style=\"background-color:#{:02x}{:02x}{:02x};\">\n", c.r, c.g, c.b);
     let html = highlighted_snippet_for_file(&args[1], &ss, theme).unwrap();
     println!("{}", html);
