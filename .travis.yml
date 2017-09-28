@@ -27,4 +27,3 @@ script:
   - rm -Rf examples && cargo test --lib --no-default-features
   # Test the build configuration that Xi uses
   - cargo test --lib --no-default-features --features "assets dump-load-rs"
-after_success: curl https://raw.githubusercontent.com/trishume/syntect/master/scripts/travis-doc-upload.sh | sh

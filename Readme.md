@@ -1,5 +1,8 @@
 # syntect
-[![Build Status](https://travis-ci.org/trishume/syntect.svg?branch=master)](https://travis-ci.org/trishume/syntect) [![Crates.io](https://img.shields.io/crates/v/syntect.svg?maxAge=2591000)]() [![Crates.io](https://img.shields.io/crates/l/syntect.svg?maxAge=2591000)]()
+[![Crates.io](https://img.shields.io/crates/v/syntect.svg?maxAge=2591000)]()
+[![Documentation](https://docs.rs/syntect/badge.svg)](https://docs.rs/syntect)
+[![Crates.io](https://img.shields.io/crates/l/syntect.svg?maxAge=2591000)]()
+[![Build Status](https://travis-ci.org/trishume/syntect.svg?branch=master)](https://travis-ci.org/trishume/syntect)
 
 `syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax). It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust. It's used in production by at least two companies, and by [many open source projects](#projects-using-syntect).
 
@@ -10,8 +13,6 @@ I won't be committing much anymore because the marginal return on additional wor
 I'll also quite possibly still fix issues and definitely offer advice and knowledge on how the library works. Basically I'll be maintaining the library but not developing it further.
 I've spent months working on, tweaking, optimizing, documenting and testing this library. If you still have any reasons you don't think it fits your needs, file an issue or email me.
 
-### Rendered docs: <http://thume.ca/rustdoc/syntect/syntect/>
-
 ## Getting Started
 
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
@@ -20,7 +21,7 @@ I've spent months working on, tweaking, optimizing, documenting and testing this
 syntect = "1.7"
 ```
 
-After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/syntect/) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
+After that take a look at the [documentation](https://docs.rs/syntect) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
 
 **Note:** with stable Rust on Linux there is a possibility you might have to add `./target/debug/build/onig_sys-*/out/lib/` to your `LD_LIBRARY_PATH` environment variable. I dunno why or even if this happens on other places than Travis, but see `travis.yml` for what it does to make it work. Do this if you see `libonig.so: cannot open shared object file`.
 
