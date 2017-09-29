@@ -13,6 +13,8 @@ I won't be committing much anymore because the marginal return on additional wor
 I'll also quite possibly still fix issues and definitely offer advice and knowledge on how the library works. Basically I'll be maintaining the library but not developing it further.
 I've spent months working on, tweaking, optimizing, documenting and testing this library. If you still have any reasons you don't think it fits your needs, file an issue or email me.
 
+### Rendered docs: <https://docs.rs/syntect>
+
 ## Getting Started
 
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
