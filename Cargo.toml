@@ -1,13 +1,13 @@
 [package]
 name = "syntect"
 description = "library for high quality syntax highlighting and code intelligence using Sublime Text's grammars"
-documentation = "http://thume.ca/rustdoc/syntect/syntect/"
+documentation = "https://docs.rs/syntect"
 repository = "https://github.com/trishume/syntect"
 keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
 categories = ["parser-implementations", "parsing", "text-processing"]
 readme = "Readme.md"
 license = "MIT"
-version = "1.7.3"
+version = "1.7.3" # remember to update html_root_url
 authors = ["Tristan Hume <tristan@thume.ca>"]
 exclude = [
     "testdata/*",
