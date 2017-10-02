@@ -205,9 +205,9 @@ impl FromStr for FontStyle {
         let mut font_style = FontStyle::empty();
         for i in s.split_whitespace() {
             font_style.insert(match i {
-                "bold" => FONT_STYLE_BOLD,
-                "underline" => FONT_STYLE_UNDERLINE,
-                "italic" => FONT_STYLE_ITALIC,
+                "bold" => FontStyle::BOLD,
+                "underline" => FontStyle::UNDERLINE,
+                "italic" => FontStyle::ITALIC,
                 "normal" |
                 "regular" => FontStyle::empty(),
                 s => return Err(IncorrectFontStyle(s.to_owned())),

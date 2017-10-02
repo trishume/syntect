@@ -19,7 +19,7 @@ onig = { version = "^1.2", optional = true }
 walkdir = "^1.0"
 regex-syntax = { version = "^0.4", optional = true }
 lazy_static = "^0.2"
-bitflags = "^0.8"
+bitflags = "1.0"
 plist = "0.2"
 bincode = { version = "0.8", optional = true }
 flate2 = { version = "^0.2", optional = true }

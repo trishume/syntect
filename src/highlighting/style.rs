@@ -23,22 +23,11 @@ pub struct StyleModifier {
     pub font_style: Option<FontStyle>,
 }
 
+#[deprecated(since = "1.8.0", note = "use Color::BLACK instead")]
+pub const BLACK: Color = Color::BLACK;
 
-/// Pre-defined convenience colour
-pub const BLACK: Color = Color {
-    r: 0x00,
-    g: 0x00,
-    b: 0x00,
-    a: 0xFF,
-};
-
-/// Pre-defined convenience colour
-pub const WHITE: Color = Color {
-    r: 0xFF,
-    g: 0xFF,
-    b: 0xFF,
-    a: 0xFF,
-};
+#[deprecated(since = "1.8.0", note = "use Color::WHITE instead")]
+pub const WHITE: Color = Color::WHITE;
 
 /// RGBA colour, these numbers come directly from the theme so
 /// for now you might have to do your own colour space conversion if you are outputting
@@ -56,17 +45,43 @@ pub struct Color {
     pub a: u8,
 }
 
+#[deprecated(since = "1.8.0", note = "use FontStyle::BOLD instead")]
+pub const FONT_STYLE_BOLD: FontStyle = FontStyle::BOLD;
+#[deprecated(since = "1.8.0", note = "use FontStyle::UNDERLINE instead")]
+pub const FONT_STYLE_UNDERLINE: FontStyle = FontStyle::UNDERLINE;
+#[deprecated(since = "1.8.0", note = "use FontStyle::ITALIC instead")]
+pub const FONT_STYLE_ITALIC: FontStyle = FontStyle::ITALIC;
+
 bitflags! {
-/// This can be a combination of `FONT_STYLE_BOLD`, `FONT_STYLE_UNDERLINE` and `FONT_STYLE_ITALIC`
+    /// This can be a combination of `BOLD`, `UNDERLINE` and `ITALIC`
     #[derive(Serialize, Deserialize)]
-    pub flags FontStyle: u8 {
-/// A bitfield constant FontStyle
-        const FONT_STYLE_BOLD = 1,
-/// A bitfield constant FontStyle
-        const FONT_STYLE_UNDERLINE = 2,
-/// A bitfield constant FontStyle
-        const FONT_STYLE_ITALIC = 4,
+    pub struct FontStyle: u8 {
+        /// Bold font style
+        const BOLD = 1;
+        /// Underline font style
+        const UNDERLINE = 2;
+        /// Italic font style
+        const ITALIC = 4;
     }
+}
+
+
+impl Color {
+    /// Black color (`#000000`)
+    pub const BLACK: Color = Color {
+        r: 0x00,
+        g: 0x00,
+        b: 0x00,
+        a: 0xFF,
+    };
+
+    /// White color (`#FFFFFF`)
+    pub const WHITE: Color = Color {
+        r: 0xFF,
+        g: 0xFF,
+        b: 0xFF,
+        a: 0xFF,
+    };
 }
 
 impl Style {
