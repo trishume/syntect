@@ -7,7 +7,7 @@
 //! You can use these methods to manage your own caching of compiled syntaxes and
 //! themes. And even your own `serde::Serialize` structures if you want to
 //! be consistent with your format.
-use bincode::{ErrorKind, Infinite, Result};
+use bincode::{Infinite, Result};
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use bincode::deserialize_from;
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
@@ -64,7 +64,7 @@ pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
 /// compressed with the `flate2` crate.
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
-    let out = BufWriter::new(File::create(path).map_err(ErrorKind::IoError)?);
+    let out = BufWriter::new(File::create(path)?);
     dump_to_writer(o, out)
 }
 
@@ -90,7 +90,7 @@ pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
 /// Returns a fully loaded syntax set from a binary dump file.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
-    let f = File::open(path).map_err(ErrorKind::IoError)?;
+    let f = File::open(path)?;
     let reader = BufReader::new(f);
     from_reader(reader)
 }
