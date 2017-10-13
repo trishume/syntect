@@ -1256,6 +1256,69 @@ contexts:
         expect_scope_stacks(&line, &expect, syntax);
     }
 
+    #[test]
+    fn can_parse_syntax_with_eol_only() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: foo$
+      scope: foo.newline
+"#;
+
+        let line = "foo";
+        let expect = ["<source.test>, <foo.newline>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_syntax_with_beginning_of_line() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: \w+
+      scope: word
+      push:
+        # this should not match at the end of the line
+        - match: ^\s*$
+          pop: true
+        - match: =+
+          scope: heading
+          pop: true
+    - match: .*
+      scope: other
+"#;
+
+        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax_set = link(syntax_newlines);
+
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        assert_eq!(ops("foo\n", &mut state), vec![
+            (0, Push(Scope::new("source.test").unwrap())),
+            (0, Push(Scope::new("word").unwrap())),
+            (3, Pop(1))
+        ]);
+        assert_eq!(ops("===\n", &mut state), vec![
+            (0, Push(Scope::new("heading").unwrap())),
+            (3, Pop(1))
+        ]);
+
+        assert_eq!(ops("bar\n", &mut state), vec![
+            (0, Push(Scope::new("word").unwrap())),
+            (3, Pop(1))
+        ]);
+        // This should result in popping out of the context
+        assert_eq!(ops("\n", &mut state), vec![]);
+        // So now this matches other
+        assert_eq!(ops("====\n", &mut state), vec![
+            (0, Push(Scope::new("other").unwrap())),
+            (4, Pop(1))
+        ]);
+    }
+
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");
         let line_with_newline = format!("{}\n", line_without_newline);
@@ -1270,10 +1333,7 @@ contexts:
     fn expect_scope_stacks_with_syntax(line: &str, expect: &[&str], syntax: SyntaxDefinition) {
         // check that each expected scope stack appears at least once while parsing the given test line
 
-        let mut syntax_set = SyntaxSet::new();
-        syntax_set.add_syntax(syntax);
-        syntax_set.link_syntaxes();
-
+        let syntax_set = link(syntax);
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
 
         let mut stack = ScopeStack::new();
@@ -1293,6 +1353,13 @@ contexts:
         if let Some(missing) = expect.iter().filter(|e| !criteria_met.contains(&e)).next() {
             panic!("expected scope stack '{}' missing", missing);
         }
+    }
+
+    fn link(syntax: SyntaxDefinition) -> SyntaxSet {
+        let mut set = SyntaxSet::new();
+        set.add_syntax(syntax);
+        set.link_syntaxes();
+        set
     }
 
     fn ops(line: &str, state: &mut ParseState) -> Vec<(usize, ScopeStackOp)> {
