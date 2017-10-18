@@ -1,5 +1,5 @@
 # syntect
-[![Crates.io](https://img.shields.io/crates/v/syntect.svg?maxAge=2591000)]()
+[![Crates.io](https://img.shields.io/crates/v/syntect.svg?maxAge=2591000)](https://crates.io/crates/syntect)
 [![Documentation](https://docs.rs/syntect/badge.svg)](https://docs.rs/syntect)
 [![Crates.io](https://img.shields.io/crates/l/syntect.svg?maxAge=2591000)]()
 [![Build Status](https://travis-ci.org/trishume/syntect.svg?branch=master)](https://travis-ci.org/trishume/syntect)
