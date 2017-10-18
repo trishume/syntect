@@ -3,6 +3,7 @@
 [![Documentation](https://docs.rs/syntect/badge.svg)](https://docs.rs/syntect)
 [![Crates.io](https://img.shields.io/crates/l/syntect.svg?maxAge=2591000)]()
 [![Build Status](https://travis-ci.org/trishume/syntect.svg?branch=master)](https://travis-ci.org/trishume/syntect)
+[![codecov](https://codecov.io/gh/trishume/syntect/branch/master/graph/badge.svg)](https://codecov.io/gh/trishume/syntect)
 
 `syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax). It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust. It's used in production by at least two companies, and by [many open source projects](#projects-using-syntect).
 
