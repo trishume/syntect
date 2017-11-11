@@ -15,16 +15,16 @@ exclude = [
 
 [dependencies]
 yaml-rust = { version = "0.3.5", optional = true }
-onig = { version = "^1.2", optional = true }
-walkdir = "^1.0"
-regex-syntax = { version = "^0.4", optional = true }
-lazy_static = "^0.2"
+onig = { version = "2.0", optional = true }
+walkdir = "1.0"
+regex-syntax = { version = "0.4", optional = true }
+lazy_static = "0.2"
 bitflags = "1.0"
 plist = "0.2"
 bincode = { version = "0.8", optional = true }
-flate2 = { version = "^0.2", optional = true }
+flate2 = { version = "0.2", optional = true }
 libflate = { version = "0.1.8", optional = true }
-fnv = { version = "^1.0", optional = true }
+fnv = { version = "1.0", optional = true }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -49,7 +49,6 @@ dump-create = ["flate2", "bincode"]
 # Pure Rust dump creation, worse compressor so produces larger dumps than dump-create
 dump-create-rs = ["libflate", "bincode"]
 
-static-onig = ["onig/static-libonig"]
 parsing = ["onig", "regex-syntax", "fnv"]
 # The `assets` feature enables inclusion of the default theme and syntax packages.
 # For `assets` to do anything, it requires one of `dump-load-rs` or `dump-load` to be set.

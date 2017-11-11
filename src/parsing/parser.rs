@@ -1,6 +1,6 @@
 use super::syntax_definition::*;
 use super::scope::*;
-use onig::{self, Region};
+use onig::{SearchOptions, Region};
 use std::usize;
 use std::collections::{HashMap, HashSet};
 use std::i32;
@@ -222,7 +222,7 @@ impl ParseState {
                     let matched = regex.search_with_options(line,
                                                             *start,
                                                             line.len(),
-                                                            onig::SEARCH_OPTION_NONE,
+                                                            SearchOptions::SEARCH_OPTION_NONE,
                                                             Some(regions));
                     if let Some(match_start) = matched {
                         let match_end = regions.pos(0).unwrap().1;
