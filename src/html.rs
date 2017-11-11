@@ -171,30 +171,48 @@ fn write_css_color(s: &mut String, c: Color) {
 /// ```
 pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> String {
     let mut s: String = String::new();
+    let mut prev_style: Option<&Style> = None;
     for &(ref style, text) in v.iter() {
-        write!(s, "<span style=\"").unwrap();
-        let include_bg = match bg {
-            IncludeBackground::Yes => true,
-            IncludeBackground::No => false,
-            IncludeBackground::IfDifferent(c) => (style.background != c),
+        let unify_style = if let Some(ps) = prev_style {
+            style == ps ||
+                (style.background == ps.background && text.trim().is_empty())
+        } else {
+            false
         };
-        if include_bg {
-            write!(s, "background-color:").unwrap();
-            write_css_color(&mut s, style.background);
-            write!(s, ";").unwrap();
+        if unify_style {
+            write!(s, "{}", Escape(text)).unwrap();
+        } else {
+            if prev_style.is_some() {
+                write!(s, "</span>").unwrap();
+            }
+            prev_style = Some(style);
+            write!(s, "<span style=\"").unwrap();
+            let include_bg = match bg {
+                IncludeBackground::Yes => true,
+                IncludeBackground::No => false,
+                IncludeBackground::IfDifferent(c) => (style.background != c),
+            };
+            if include_bg {
+                write!(s, "background-color:").unwrap();
+                write_css_color(&mut s, style.background);
+                write!(s, ";").unwrap();
+            }
+            if style.font_style.contains(FontStyle::UNDERLINE) {
+                write!(s, "text-decoration:underline;").unwrap();
+            }
+            if style.font_style.contains(FontStyle::BOLD) {
+                write!(s, "font-weight:bold;").unwrap();
+            }
+            if style.font_style.contains(FontStyle::ITALIC) {
+                write!(s, "font-style:italic;").unwrap();
+            }
+            write!(s, "color:").unwrap();
+            write_css_color(&mut s, style.foreground);
+            write!(s, ";\">{}", Escape(text)).unwrap();
         }
-        if style.font_style.contains(FontStyle::UNDERLINE) {
-            write!(s, "text-decoration:underline;").unwrap();
-        }
-        if style.font_style.contains(FontStyle::BOLD) {
-            write!(s, "font-weight:bold;").unwrap();
-        }
-        if style.font_style.contains(FontStyle::ITALIC) {
-            write!(s, "font-style:italic;").unwrap();
-        }
-        write!(s, "color:").unwrap();
-        write_css_color(&mut s, style.foreground);
-        write!(s, ";\">{}</span>", Escape(text)).unwrap();
+    }
+    if prev_style.is_some() {
+        write!(s, "</span>").unwrap();
     }
     s
 }
