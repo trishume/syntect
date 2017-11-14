@@ -152,15 +152,8 @@ impl SyntaxDefinition {
                      state: &mut ParserState,
                      is_prototype: bool)
                      -> Result<ContextPtr, ParseSyntaxError> {
-        let mut context = Context {
-            meta_scope: Vec::new(),
-            meta_content_scope: Vec::new(),
-            meta_include_prototype: !is_prototype,
-            clear_scopes: None,
-            uses_backrefs: false,
-            patterns: Vec::new(),
-            prototype: None,
-        };
+        let mut context = Context::new(!is_prototype);
+
         for y in vec.iter() {
             let map = y.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
@@ -265,12 +258,13 @@ impl SyntaxDefinition {
             .map(|s| str_to_scopes(s, state.scope_repo))
             .unwrap_or_else(|| Ok(vec![]))?;
 
+
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
             let mut res_map = Vec::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
                     res_map.push((key_int as usize,
-                                   str_to_scopes(val_str, state.scope_repo)?));
+                                  str_to_scopes(val_str, state.scope_repo)?));
                 }
             }
             Some(res_map)
@@ -287,13 +281,45 @@ impl SyntaxDefinition {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state)?)
         } else if let Ok(y) = get_key(map, "set", Some) {
             MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state)?)
+        } else if let Ok(y) = get_key(map, "embed", Some) {
+            // Same as push so we translate it to what it would be
+            if let Ok(s) = get_key(map, "embed_scope", Some) {
+                let mut meta_scope = Hash::new();
+                meta_scope.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
+                let mut include = Hash::new();
+                include.insert(Yaml::String("include".to_string()), y.clone());
+
+                let context = SyntaxDefinition::parse_context(
+                    &[Yaml::Hash(meta_scope), Yaml::Hash(include)],
+                    state,
+                    false
+                )?;
+                MatchOperation::Push(vec![ContextReference::Inline(context)])
+            } else {
+                MatchOperation::None
+            }
         } else {
             MatchOperation::None
         };
 
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
             // should a with_prototype include the prototype? I don't think so.
-            Some(SyntaxDefinition::parse_context(v, state, true)?)
+            Some(Self::parse_context(v, state, true)?)
+        } else if let Ok(v) = get_key(map, "escape", Some) {
+            let mut context = Context::new(false);
+            let mut match_map = Hash::new();
+            match_map.insert(Yaml::String("match".to_string()), v.clone());
+            match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
+            if let Ok(y) = get_key(map, "escape_captures", Some) {
+                match_map.insert(Yaml::String("captures".to_string()), y.clone());
+            }
+            let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state)?;
+            if pattern.has_captures {
+                context.uses_backrefs = true;
+            }
+            context.patterns.push(Pattern::Match(pattern));
+
+            Some(Rc::new(RefCell::new(context)))
         } else {
             None
         };
@@ -307,6 +333,7 @@ impl SyntaxDefinition {
             operation: operation,
             with_prototype: with_prototype,
         };
+
         Ok(pattern)
     }
 
@@ -619,6 +646,46 @@ mod tests {
             }
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn can_parse_embed_as_with_prototypes() {
+        let old_def = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        variables:
+          ident: '[QY]+'
+        contexts:
+          main:
+            - match: '(>)\s*'
+              captures:
+                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+              push:
+                - meta_content_scope: source.css.embedded.html
+                - include: 'scope:source.css'
+              with_prototype:
+                - match: (?i)(?=</style)
+                  pop: true
+        "#,false).unwrap();
+
+        let def_with_embed = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        variables:
+          ident: '[QY]+'
+        contexts:
+          main:
+            - match: '(>)\s*'
+              captures:
+                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+              embed: scope:source.css
+              embed_scope: source.css.embedded.html
+              escape: (?i)(?=</style)
+        "#,false).unwrap();
+
+        assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
     }
 
     #[test]

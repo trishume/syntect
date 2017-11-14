@@ -95,7 +95,10 @@ impl SyntaxSet {
         for entry in WalkDir::new(folder).sort_by(|a, b| a.cmp(b)) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
-                // println!("{}", entry.path().display());
+                // Doesn't work with https://github.com/sublimehq/Packages/commit/666b869c4d5625c814803b4a36523d0aeadfe42a#diff-40f615a2e7ecb9138b1bc5826bed9074R1522
+                if format!("{}", entry.path().display()).contains("LaTeX") {
+                    continue;
+                }
                 let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
                 if let Some(path_str) = entry.path().to_str() {
                     self.path_syntaxes.push((path_str.to_string(), self.syntaxes.len()));
