@@ -13,7 +13,7 @@ use std::ops::DerefMut;
 pub enum ParseSyntaxError {
     /// Invalid YAML file syntax, or at least something yaml_rust can't handle
     InvalidYaml(ScanError),
-    /// The file must contain at least on YAML document
+    /// The file must contain at least one YAML document
     EmptyFile,
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
@@ -273,7 +273,6 @@ impl SyntaxDefinition {
         };
 
         let mut has_captures = false;
-        let mut is_embed = false;
         let operation = if let Ok(_) = get_key(map, "pop", Some) {
             // Thanks @wbond for letting me know this is the correct way to check for captures
             has_captures = state.backref_regex.find(&regex_str).is_some();
@@ -283,23 +282,40 @@ impl SyntaxDefinition {
         } else if let Ok(y) = get_key(map, "set", Some) {
             MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state)?)
         } else if let Ok(y) = get_key(map, "embed", Some) {
-            is_embed = true;
+            let mut embed_context = vec!();
             // Same as push so we translate it to what it would be
             if let Ok(s) = get_key(map, "embed_scope", Some) {
                 let mut meta_scope = Hash::new();
                 meta_scope.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
-                let mut include = Hash::new();
-                include.insert(Yaml::String("include".to_string()), y.clone());
+                embed_context.push(Yaml::Hash(meta_scope));
+            }
+            let mut include = Hash::new();
+            include.insert(Yaml::String("include".to_string()), y.clone());
+            embed_context.push(Yaml::Hash(include));
 
-                let context = SyntaxDefinition::parse_context(
-                    &[Yaml::Hash(meta_scope), Yaml::Hash(include)],
+            let embedded_context = SyntaxDefinition::parse_context(
+                &embed_context,
+                state,
+                false
+            )?;
+            
+            if let Ok(v) = get_key(map, "escape", Some) {
+                let mut match_map = Hash::new();
+                match_map.insert(Yaml::String("match".to_string()), v.clone());
+                match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
+                if let Ok(y) = get_key(map, "escape_captures", Some) {
+                    match_map.insert(Yaml::String("captures".to_string()), y.clone());
+                }
+                let escape_context = SyntaxDefinition::parse_context(
+                    &[Yaml::Hash(match_map)],
                     state,
                     false
                 )?;
-                MatchOperation::Push(vec![ContextReference::Inline(context)])
+                MatchOperation::Push(vec![ContextReference::Inline(escape_context), ContextReference::Inline(embedded_context)])
             } else {
-                MatchOperation::None
+                return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
             }
+            
         } else {
             MatchOperation::None
         };
@@ -310,11 +326,8 @@ impl SyntaxDefinition {
         } else if let Ok(v) = get_key(map, "escape", Some) {
             let mut context = Context::new(false);
             let mut match_map = Hash::new();
-            match_map.insert(Yaml::String("match".to_string()), v.clone());
+            match_map.insert(Yaml::String("match".to_string()), Yaml::String(format!("(?={})", v.as_str().unwrap())));
             match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
-            if let Ok(y) = get_key(map, "escape_captures", Some) {
-                match_map.insert(Yaml::String("captures".to_string()), y.clone());
-            }
             let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state)?;
             if pattern.has_captures {
                 context.uses_backrefs = true;
@@ -325,11 +338,6 @@ impl SyntaxDefinition {
         } else {
             None
         };
-
-        // embed without escape is not valid in ST
-        if is_embed && with_prototype.is_none() {
-            return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
-        }
 
         let pattern = MatchPattern {
             has_captures: has_captures,

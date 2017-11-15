@@ -1,0 +1,31 @@
+%YAML 1.2
+---
+name: Embed_Escape Used by tests in src/parsing/parser.rs
+scope: source.embed-test
+contexts:
+  main:
+    - match: (")
+      scope: meta.attribute-with-value.style.html string.quoted.double punctuation.definition.string.begin.html
+      embed: embedded_context
+      embed_scope: meta.attribute-with-value.style.html source.css
+      escape: '\1'
+      escape_captures:
+        0: meta.attribute-with-value.style.html string.quoted.double punctuation.definition.string.end.html
+    - match: '(>)\s*'
+      captures:
+        1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+      embed: embedded_context
+      embed_scope: source.css.embedded.html
+      escape: (?i)(?=</style)
+    - match: foobar
+      scope: top-level.test
+
+  embedded_context:
+    - match: a
+      push: # prove that multiple context levels can be "escape"d
+        - match: b
+          push:
+            - match: c
+              push:
+                - match: 'test'
+                  scope: test.embedded

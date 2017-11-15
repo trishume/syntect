@@ -719,4 +719,28 @@ contexts:
         debug_print_ops(line, &ops);
         ops
     }
+    
+    #[test]
+    fn can_parse_issue120() {
+        let ps = SyntaxSet::load_from_folder("testdata").unwrap();
+        let syntax = ps.find_syntax_by_name("Embed_Escape Used by tests in src/parsing/parser.rs").unwrap();
+
+        let line1 = "\"abctest\" foobar";
+        let expect1 = [
+            "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.begin.html>",
+            "<meta.attribute-with-value.style.html>, <source.css>",
+            "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.end.html>",
+            "<source.css.embedded.html>, <test.embedded>",
+            "<top-level.test>",
+        ];
+        expect_scope_stacks_with_syntax(&line1, &expect1, syntax.to_owned());
+
+        let line2 = ">abctest</style>foobar";
+        let expect2 = [
+            "<meta.tag.style.begin.html>, <punctuation.definition.tag.end.html>",
+            "<source.css.embedded.html>, <test.embedded>",
+            "<top-level.test>",
+        ];
+        expect_scope_stacks_with_syntax(&line2, &expect2, syntax.to_owned());
+    }
 }
