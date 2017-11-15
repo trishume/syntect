@@ -273,6 +273,7 @@ impl SyntaxDefinition {
         };
 
         let mut has_captures = false;
+        let mut is_embed = false;
         let operation = if let Ok(_) = get_key(map, "pop", Some) {
             // Thanks @wbond for letting me know this is the correct way to check for captures
             has_captures = state.backref_regex.find(&regex_str).is_some();
@@ -282,6 +283,7 @@ impl SyntaxDefinition {
         } else if let Ok(y) = get_key(map, "set", Some) {
             MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state)?)
         } else if let Ok(y) = get_key(map, "embed", Some) {
+            is_embed = true;
             // Same as push so we translate it to what it would be
             if let Ok(s) = get_key(map, "embed_scope", Some) {
                 let mut meta_scope = Hash::new();
@@ -323,6 +325,11 @@ impl SyntaxDefinition {
         } else {
             None
         };
+
+        // embed without escape is not valid in ST
+        if is_embed && with_prototype.is_none() {
+            return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
+        }
 
         let pattern = MatchPattern {
             has_captures: has_captures,
@@ -686,6 +693,29 @@ mod tests {
         "#,false).unwrap();
 
         assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
+    }
+
+    #[test]
+    fn errors_on_embed_without_escape() {
+        let def = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        variables:
+          ident: '[QY]+'
+        contexts:
+          main:
+            - match: '(>)\s*'
+              captures:
+                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+              embed: scope:source.css
+              embed_scope: source.css.embedded.html
+        "#,false);
+        assert!(def.is_err());
+        match def.unwrap_err() {
+            ParseSyntaxError::MissingMandatoryKey(key) => assert_eq!(key, "escape"),
+            _ => assert!(false, "Got unexpected ParseSyntaxError"),
+        }
     }
 
     #[test]
