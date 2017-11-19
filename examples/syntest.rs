@@ -15,7 +15,7 @@ use std::path::Path;
 use std::io::{BufRead, BufReader};
 use std::fs::File;
 use std::cmp::{min, max};
-use walkdir::{DirEntry, WalkDir, WalkDirIterator};
+use walkdir::{DirEntry, WalkDir};
 use std::str::FromStr;
 use regex::Regex;
 
