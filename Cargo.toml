@@ -15,13 +15,13 @@ exclude = [
 
 [dependencies]
 yaml-rust = { version = "0.3.5", optional = true }
-onig = { version = "2.0", optional = true }
-walkdir = "1.0"
+onig = { version = "3.0", optional = true }
+walkdir = "2.0"
 regex-syntax = { version = "0.4", optional = true }
 lazy_static = "0.2"
 bitflags = "1.0"
 plist = "0.2"
-bincode = { version = "0.8", optional = true }
+bincode = { version = "0.9", optional = true }
 flate2 = { version = "0.2", optional = true }
 libflate = { version = "0.1.8", optional = true }
 fnv = { version = "1.0", optional = true }
@@ -30,7 +30,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 
 [dev-dependencies]
-rayon = "0.8.0"
+rayon = "0.9.0"
 regex = "0.2.1"
 getopts = "0.2"
 

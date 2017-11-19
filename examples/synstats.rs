@@ -15,7 +15,7 @@ use syntect::easy::{ScopeRegionIterator};
 use std::path::Path;
 use std::io::{BufRead, BufReader};
 use std::fs::File;
-use walkdir::{DirEntry, WalkDir, WalkDirIterator};
+use walkdir::{DirEntry, WalkDir};
 use std::str::FromStr;
 
 #[derive(Debug)]
