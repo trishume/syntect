@@ -284,15 +284,12 @@ impl SyntaxDefinition {
         } else if let Ok(y) = get_key(map, "embed", Some) {
             let mut embed_context = vec!();
             // Same as push so we translate it to what it would be
+            let mut commands = Hash::new();
             if let Ok(s) = get_key(map, "embed_scope", Some) {
-                let mut meta_scope = Hash::new();
-                meta_scope.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
-                embed_context.push(Yaml::Hash(meta_scope));
+                commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
             }
-            let mut include = Hash::new();
-            include.insert(Yaml::String("include".to_string()), y.clone());
-            embed_context.push(Yaml::Hash(include));
-
+            commands.insert(Yaml::String("include".to_string()), y.clone());
+            embed_context.push(Yaml::Hash(commands));
             let embedded_context = SyntaxDefinition::parse_context(
                 &embed_context,
                 state,
@@ -330,6 +327,7 @@ impl SyntaxDefinition {
             match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
             let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state)?;
             if pattern.has_captures {
+            //if captures.is_some() {
                 context.uses_backrefs = true;
             }
             context.patterns.push(Pattern::Match(pattern));
@@ -677,10 +675,10 @@ mod tests {
               captures:
                 1: meta.tag.style.begin.html punctuation.definition.tag.end.html
               push:
-                - meta_content_scope: source.css.embedded.html
-                - include: 'scope:source.css'
+                - [{ match: '(?i)(?=</style)', pop: true }]
+                - [{ meta_content_scope: 'source.css.embedded.html', include: 'scope:source.css' }]
               with_prototype:
-                - match: (?i)(?=</style)
+                - match: (?=(?i)(?=</style))
                   pop: true
         "#,false).unwrap();
 
@@ -747,7 +745,6 @@ mod tests {
               scope: punctuation.definition.group.brace.begin.latex
             - match: '(?=\\S)'
               pop: true
-
           optional-arguments:
             - match: '(?=\\S)'
               pop: true
