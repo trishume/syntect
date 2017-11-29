@@ -451,7 +451,7 @@ impl ParseState {
             MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
-            let proto = if i == 0 {
+            let proto = if i == ctx_refs.len() - 1 {
                 pat.with_prototype.clone()
             } else {
                 None
@@ -719,7 +719,7 @@ contexts:
         debug_print_ops(line, &ops);
         ops
     }
-    
+
     #[test]
     fn can_parse_issue120() {
         let ps = SyntaxSet::load_from_folder("testdata").unwrap();
@@ -730,7 +730,7 @@ contexts:
             "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.begin.html>",
             "<meta.attribute-with-value.style.html>, <source.css>",
             "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.end.html>",
-            "<source.css.embedded.html>, <test.embedded>",
+            "<meta.attribute-with-value.style.html>, <source.css>, <test.embedded>",
             "<top-level.test>",
         ];
         expect_scope_stacks_with_syntax(&line1, &expect1, syntax.to_owned());

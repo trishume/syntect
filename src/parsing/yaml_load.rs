@@ -287,6 +287,8 @@ impl SyntaxDefinition {
             let mut commands = Hash::new();
             if let Ok(s) = get_key(map, "embed_scope", Some) {
                 commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
+                embed_context.push(Yaml::Hash(commands));
+                commands = Hash::new();
             }
             commands.insert(Yaml::String("include".to_string()), y.clone());
             embed_context.push(Yaml::Hash(commands));
@@ -675,7 +677,7 @@ mod tests {
                 1: meta.tag.style.begin.html punctuation.definition.tag.end.html
               push:
                 - [{ match: '(?i)(?=</style)', pop: true }]
-                - [{ meta_content_scope: 'source.css.embedded.html', include: 'scope:source.css' }]
+                - [{ meta_content_scope: 'source.css.embedded.html'}, { include: 'scope:source.css' }]
               with_prototype:
                 - match: (?=(?i)(?=</style))
                   pop: true
