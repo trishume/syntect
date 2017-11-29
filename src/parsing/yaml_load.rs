@@ -298,7 +298,7 @@ impl SyntaxDefinition {
                 state,
                 false
             )?;
-            
+
             if let Ok(v) = get_key(map, "escape", Some) {
                 let mut match_map = Hash::new();
                 match_map.insert(Yaml::String("match".to_string()), v.clone());
@@ -315,7 +315,7 @@ impl SyntaxDefinition {
             } else {
                 return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
             }
-            
+
         } else {
             MatchOperation::None
         };
@@ -356,7 +356,7 @@ impl SyntaxDefinition {
                       state: &mut ParserState)
                       -> Result<Vec<ContextReference>, ParseSyntaxError> {
         // check for a push of multiple items
-        if y.as_vec().map_or(false, |v| !v.is_empty() && v[0].as_str().is_some()) {
+        if y.as_vec().map_or(false, |v| !v.is_empty() && (v[0].as_str().is_some() || (v[0].as_vec().is_some() && v[0].as_vec().unwrap()[0].as_hash().is_some()))) {
             // this works because Result implements FromIterator to handle the errors
             y.as_vec()
                 .unwrap()
@@ -723,6 +723,55 @@ mod tests {
         match def.unwrap_err() {
             ParseSyntaxError::MissingMandatoryKey(key) => assert_eq!(key, "escape"),
             _ => assert!(false, "Got unexpected ParseSyntaxError"),
+        }
+    }
+
+    #[test]
+    fn can_parse_ugly_yaml() {
+        let defn: SyntaxDefinition =
+            SyntaxDefinition::load_from_str("
+        name: LaTeX
+        scope: text.tex.latex
+        contexts:
+          main:
+            - match: '((\\\\)(?:framebox|makebox))\\b'
+              captures:
+                1: support.function.box.latex
+                2: punctuation.definition.backslash.latex
+              push:
+                - [{meta_scope: meta.function.box.latex}, {match: '', pop: true}]
+                - argument
+                - optional-arguments
+          argument:
+            - match: '\\{'
+              scope: punctuation.definition.group.brace.begin.latex
+            - match: '(?=\\S)'
+              pop: true
+
+          optional-arguments:
+            - match: '(?=\\S)'
+              pop: true
+        ",
+                                            false)
+                .unwrap();
+        assert_eq!(defn.name, "LaTeX");
+        let top_level_scope = Scope::new("text.tex.latex").unwrap();
+        assert_eq!(defn.scope, top_level_scope);
+
+        let first_pattern: &Pattern = &defn.contexts["main"].borrow().patterns[0];
+        match first_pattern {
+            &Pattern::Match(ref match_pat) => {
+                let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
+                assert_eq!(&m[0], &(1,vec![Scope::new("support.function.box.latex").unwrap()]));
+
+                //use parsing::syntax_definition::ContextReference::*;
+                // TODO: check the first pushed reference is Inline(...) and has a meta_scope of meta.function.box.latex
+                // TODO: check the second pushed reference is Named("argument".to_owned())
+                // TODO: check the third pushed reference is Named("optional-arguments".to_owned())
+
+                assert!(match_pat.with_prototype.is_none());
+            }
+            _ => assert!(false),
         }
     }
 
