@@ -327,7 +327,6 @@ impl SyntaxDefinition {
             match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
             let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state)?;
             if pattern.has_captures {
-            //if captures.is_some() {
                 context.uses_backrefs = true;
             }
             context.patterns.push(Pattern::Match(pattern));
