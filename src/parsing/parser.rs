@@ -451,8 +451,26 @@ impl ParseState {
             MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
-            let proto = if i == ctx_refs.len() - 1 {
-                pat.with_prototype.clone()
+            let proto = if i == ctx_refs.len() - 1 { // https://forum.sublimetext.com/t/dev-build-3111/19240/17
+                if pat.with_prototype.is_some() {
+                    let p = pat.with_prototype.clone().unwrap();
+                    {
+                        let mut b = p.borrow_mut();
+                        for pattern in b.patterns.iter_mut() {
+                            match pattern {
+                                &mut Pattern::Match(ref mut match_pat) => {
+                                    if match_pat.has_captures {
+                                        match_pat.regex = Some(match_pat.compile_with_refs(regions, line));
+                                    }
+                                },
+                                &mut Pattern::Include(_) => {}, // TODO: included contexts can also contain backrefs in their match patterns - see https://github.com/trishume/syntect/issues/104
+                            }
+                        }
+                    }
+                    Some(p)
+                } else {
+                    None
+                }
             } else {
                 None
             };

@@ -8,7 +8,7 @@ contexts:
       scope: meta.attribute-with-value.style.html string.quoted.double punctuation.definition.string.begin.html
       embed: embedded_context
       embed_scope: meta.attribute-with-value.style.html source.css
-      escape: '"'
+      escape: '\1'
       escape_captures:
         0: meta.attribute-with-value.style.html string.quoted.double punctuation.definition.string.end.html
     - match: '(>)\s*'
