@@ -39,7 +39,7 @@ use libflate::zlib::Encoder;
 
 #[cfg(feature = "dump-create")]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
-    let mut encoder = ZlibEncoder::new(output, Compression::Best);
+    let mut encoder = ZlibEncoder::new(output, Compression::best());
     serialize_into(&mut encoder, to_dump, Infinite)
 }
 
