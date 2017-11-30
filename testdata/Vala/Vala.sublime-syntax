@@ -1,0 +1,423 @@
+%YAML 1.2
+---
+# http://www.sublimetext.com/docs/3/syntax.html
+name: Vala
+comment: |
+  Based heavily on the Java bundle's language syntax. TODO:
+  * Closures
+  * Delegates
+  * Properties: Better support for properties.
+  * Annotations
+  * Error domains
+  * Named arguments
+  * Array slicing, negative indexes, multidimensional
+  * construct blocks
+  * lock blocks?
+  * regex literals
+  * DocBlock syntax highlighting. (Currently importing javadoc)
+  * Folding rule for comments.
+file_extensions:
+  - vala
+  - vapi
+scope: source.vala
+contexts:
+  main:
+    - match: '^\s*(using)\b(?:\s*([^ ;$]+)\s*(;)?)?'
+      scope: meta.using.vala
+      captures:
+        1: keyword.other.using.vala
+        2: storage.modifier.using.vala
+        3: punctuation.terminator.vala
+    - include: code
+  all-types:
+    - include: primitive-arrays
+    - include: primitive-types
+    - include: object-types
+  annotations:
+    - match: '(@[^ (]+)(\()'
+      captures:
+        1: storage.type.annotation.vala
+        2: punctuation.definition.annotation-arguments.begin.vala
+      push:
+        - meta_scope: meta.declaration.annotation.vala
+        - match: (\))
+          captures:
+            1: punctuation.definition.annotation-arguments.end.vala
+          pop: true
+        - match: (\w*)\s*(=)
+          captures:
+            1: constant.other.key.vala
+            2: keyword.operator.assignment.vala
+        - include: code
+        - match: ","
+          scope: punctuation.seperator.property.vala
+    - match: '@\w*'
+      scope: storage.type.annotation.vala
+  anonymous-classes-and-new:
+    - match: \bnew\b
+      captures:
+        0: keyword.control.new.vala
+      push:
+        - match: '(?<=\)|\])(?!\s*{)|(?<=})|(?=;)'
+          pop: true
+        - match: '(\w+)\s*(?=\[)'
+          captures:
+            1: storage.type.vala
+          push:
+            - match: '}|(?=;|\))'
+              pop: true
+            - match: '\['
+              push:
+                - match: '\]'
+                  pop: true
+                - include: code
+            - match: "{"
+              push:
+                - match: "(?=})"
+                  pop: true
+                - include: code
+        - match: (?=\w.*\()
+          push:
+            - match: (?<=\))
+              pop: true
+            - include: object-types
+            - match: \(
+              captures:
+                1: storage.type.vala
+              push:
+                - match: \)
+                  pop: true
+                - include: code
+        - match: "{"
+          push:
+            - meta_scope: meta.inner-class.vala
+            - match: "}"
+              pop: true
+            - include: class-body
+  assertions:
+    - match: \b(assert|requires|ensures)\s
+      captures:
+        1: keyword.control.assert.vala
+      push:
+        - meta_scope: meta.declaration.assertion.vala
+        - match: $
+          pop: true
+        - match: ":"
+          scope: keyword.operator.assert.expression-seperator.vala
+        - include: code
+  class:
+    - match: '(?=\w?[\w\s]*(?:class|(?:@)?interface|enum|struct|namespace)\s+\w+)'
+      comment: attempting to put namespace in here.
+      push:
+        - meta_scope: meta.class.vala
+        - match: "}"
+          captures:
+            0: punctuation.section.class.end.vala
+          pop: true
+        - include: storage-modifiers
+        - include: comments
+        - match: '(class|(?:@)?interface|enum|struct|namespace)\s+([\w\.]+)'
+          scope: meta.class.identifier.vala
+          captures:
+            1: storage.modifier.vala
+            2: entity.name.type.class.vala
+        - match: ":"
+          captures:
+            0: storage.modifier.extends.vala
+          push:
+            - meta_scope: meta.definition.class.inherited.classes.vala
+            - match: "(?={|,)"
+              pop: true
+            - include: object-types-inherited
+            - include: comments
+        - match: (,)\s
+          captures:
+            1: storage.modifier.implements.vala
+          push:
+            - meta_scope: meta.definition.class.implemented.interfaces.vala
+            - match: '(?=\{)'
+              pop: true
+            - include: object-types-inherited
+            - include: comments
+        - match: "{"
+          push:
+            - meta_scope: meta.class.body.vala
+            - match: "(?=})"
+              pop: true
+            - include: class-body
+  class-body:
+    - include: comments
+    - include: class
+    - include: enums
+    - include: methods
+    - include: annotations
+    - include: storage-modifiers
+    - include: code
+  code:
+    - include: comments
+    - include: class
+    - match: "{"
+      push:
+        - match: "}"
+          pop: true
+        - include: code
+    - include: assertions
+    - include: parens
+    - include: constants-and-special-vars
+    - include: anonymous-classes-and-new
+    - include: keywords
+    - include: storage-modifiers
+    - include: strings
+    - include: all-types
+  comments:
+    - match: /\*\*/
+      scope: comment.block.empty.vala
+      captures:
+        0: punctuation.definition.comment.vala
+    - include: scope:text.html.javadoc
+    - include: comments-inline
+  comments-inline:
+    - match: /\*
+      captures:
+        0: punctuation.definition.comment.vala
+      push:
+        - meta_scope: comment.block.vala
+        - match: \*/
+          captures:
+            0: punctuation.definition.comment.vala
+          pop: true
+    - match: \s*((//).*$\n?)
+      captures:
+        1: comment.line.double-slash.vala
+        2: punctuation.definition.comment.vala
+  constants-and-special-vars:
+    - match: \b(true|false|null)\b
+      scope: constant.language.vala
+    - match: \b(this|base)\b
+      scope: variable.language.vala
+    - match: '\b((0(x|X)[0-9a-fA-F]*)|(([0-9]+\.?[0-9]*)|(\.[0-9]+))((e|E)(\+|-)?[0-9]+)?)([LlFfUuDd]|UL|ul)?\b'
+      scope: constant.numeric.vala
+    - match: '(\.)?\b([A-Z][A-Z0-9_]+)(?!<|\.class|\s*\w+\s*=)\b'
+      scope: constant.other.vala
+      captures:
+        1: keyword.operator.dereference.vala
+  enums:
+    - match: '^(?=\s*[A-Z0-9_]+\s*({|\(|,))'
+      push:
+        - match: "(?=;|})"
+          pop: true
+        - match: \w+
+          captures:
+            0: constant.other.enum.vala
+          push:
+            - meta_scope: meta.enum.vala
+            - match: "(?=,|;|})"
+              pop: true
+            - include: parens
+            - match: "{"
+              push:
+                - match: "}"
+                  pop: true
+                - include: class-body
+  keywords:
+    - match: \b(try|catch|finally|throw)\b
+      scope: keyword.control.catch-exception.vala
+    - match: \?|:|\?\?
+      scope: keyword.control.vala
+    - match: \b(return|break|case|continue|default|do|while|for|foreach|switch|if|else|in|yield|get|set|value)\b
+      scope: keyword.control.vala
+    - match: \b(typeof|is|as)\b
+      scope: keyword.operator.vala
+    - match: (==|!=|<=|>=|<>|<|>)
+      scope: keyword.operator.comparison.vala
+    - match: (=)
+      scope: keyword.operator.assignment.vala
+    - match: (\-\-|\+\+)
+      scope: keyword.operator.increment-decrement.vala
+    - match: (\-|\+|\*|\/|%)
+      scope: keyword.operator.arithmetic.vala
+    - match: (!|&&|\|\|)
+      scope: keyword.operator.logical.vala
+    - match: (?<=\S)\.(?=\S)
+      scope: keyword.operator.dereference.vala
+    - match: ;
+      scope: punctuation.terminator.vala
+    - match: (owned|unowned)
+      scope: keyword.operator.ownership
+  methods:
+    - match: '(?!new)(?=\w.*\s+)(?=[^=]+\()'
+      push:
+        - meta_scope: meta.method.vala
+        - match: "}|(?=;)"
+          pop: true
+        - include: storage-modifiers
+        - match: '([\~\w\.]+)\s*\('
+          captures:
+            1: entity.name.function.vala
+          push:
+            - meta_scope: meta.method.identifier.vala
+            - match: \)
+              pop: true
+            - include: parameters
+        - match: (?=\w.*\s+\w+\s*\()
+          push:
+            - meta_scope: meta.method.return-type.vala
+            - match: (?=\w+\s*\()
+              pop: true
+            - include: all-types
+        - include: throws
+        - match: "{"
+          push:
+            - meta_scope: meta.method.body.vala
+            - match: "(?=})"
+              pop: true
+            - include: code
+  namespace:
+    - match: '^(?=\s*[A-Z0-9_]+\s*({|\(|,))'
+      comment: This is not quite right. See the class grammar right now
+      push:
+        - match: "(?=;|})"
+          pop: true
+        - match: \w+
+          captures:
+            0: constant.other.namespace.vala
+          push:
+            - meta_scope: meta.namespace.vala
+            - match: "(?=,|;|})"
+              pop: true
+            - include: parens
+            - match: "{"
+              push:
+                - match: "}"
+                  pop: true
+                - include: code
+  object-types:
+    - match: '\b((?:[a-z]\w*\.)*[A-Z]+\w*)<'
+      push:
+        - meta_scope: storage.type.generic.vala
+        - match: '>|[^\w\s,\?<\[\]]'
+          pop: true
+        - include: object-types
+        - match: <
+          comment: This is just to support <>'s with no actual type prefix
+          push:
+            - meta_scope: storage.type.generic.vala
+            - match: '>|[^\w\s,\[\]<]'
+              pop: true
+    - match: '\b((?:[a-z]\w*\.)*[A-Z]+\w*)(?=\[)'
+      push:
+        - meta_scope: storage.type.object.array.vala
+        - match: '(?=[^\]\s])'
+          pop: true
+        - match: '\['
+          push:
+            - match: '\]'
+              pop: true
+            - include: code
+    - match: '\b(?:[a-z]\w*(\.))*[A-Z]+\w*\b'
+      scope: storage.type.vala
+      captures:
+        1: keyword.operator.dereference.vala
+  object-types-inherited:
+    - match: '\b((?:[a-z]\w*\.)*[A-Z]+\w*)<'
+      push:
+        - meta_scope: entity.other.inherited-class.vala
+        - match: '>|[^\w\s,<]'
+          pop: true
+        - include: object-types
+        - match: <
+          comment: This is just to support <>'s with no actual type prefix
+          push:
+            - meta_scope: storage.type.generic.vala
+            - match: '>|[^\w\s,<]'
+              pop: true
+    - match: '\b(?:[a-z]\w*(\.))*[A-Z]+\w*'
+      scope: entity.other.inherited-class.vala
+      captures:
+        1: keyword.operator.dereference.vala
+  parameters:
+    - match: final
+      scope: storage.modifier.vala
+    - include: primitive-arrays
+    - include: primitive-types
+    - include: object-types
+    - match: \w+
+      scope: variable.parameter.vala
+  parens:
+    - match: \(
+      push:
+        - match: \)
+          pop: true
+        - include: code
+  primitive-arrays:
+    - match: '\b(?:bool|byte|sbyte|char|decimal|double|float|int|uint|long|ulong|object|short|ushort|string|void|int8|int16|int32|int64|uint8|uint16|uint32|uint64)(\[\])*\b'
+      scope: storage.type.primitive.array.vala
+  primitive-types:
+    - match: \b(?:var|bool|byte|sbyte|char|decimal|double|float|int|uint|long|ulong|object|short|ushort|string|void|signal|int8|int16|int32|int64|uint8|uint16|uint32|uint64)\b
+      comment: var is not really a primitive, but acts like one in most cases
+      scope: storage.type.primitive.vala
+  storage-modifiers:
+    - match: \b(public|private|protected|internal|static|final|sealed|virtual|override|abstract|readonly|volatile|dynamic|async|unsafe|out|ref|weak|owned|unowned|const)\b
+      comment: Not sure about unsafe and readonly
+      captures:
+        1: storage.modifier.vala
+  strings:
+    - match: '@"'
+      captures:
+        0: punctuation.definition.string.begin.vala
+      push:
+        - meta_scope: string.quoted.interpolated.vala
+        - match: '"'
+          captures:
+            0: punctuation.definition.string.end.vala
+          pop: true
+        - match: '\\.|%[\w\.\-]+|\$(\w+|\([\w\s\+\-\*\/]+\))'
+          scope: constant.character.escape.vala
+    - match: '"'
+      captures:
+        0: punctuation.definition.string.begin.vala
+      push:
+        - meta_scope: string.quoted.double.vala
+        - match: '"'
+          captures:
+            0: punctuation.definition.string.end.vala
+          pop: true
+        - match: \\.
+          scope: constant.character.escape.vala
+        - match: '%[\w\.\-]+'
+          scope: constant.character.escape.vala
+    - match: "'"
+      captures:
+        0: punctuation.definition.string.begin.vala
+      push:
+        - meta_scope: string.quoted.single.vala
+        - match: "'"
+          captures:
+            0: punctuation.definition.string.end.vala
+          pop: true
+        - match: \\.
+          scope: constant.character.escape.vala
+    - match: '"""'
+      captures:
+        0: punctuation.definition.string.begin.vala
+      push:
+        - meta_scope: string.quoted.triple.vala
+        - match: '"""'
+          captures:
+            0: punctuation.definition.string.end.vala
+          pop: true
+        - match: '%[\w\.\-]+'
+          scope: constant.character.escape.vala
+  throws:
+    - match: throws
+      captures:
+        0: storage.modifier.vala
+      push:
+        - meta_scope: meta.throwables.vala
+        - match: "(?={|;)"
+          pop: true
+        - include: object-types
+  values:
+    - include: strings
+    - include: object-types
+    - include: constants-and-special-vars
