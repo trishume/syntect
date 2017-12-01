@@ -451,14 +451,31 @@ impl ParseState {
             MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
-            let proto = if i == ctx_refs.len() - 1 { // https://forum.sublimetext.com/t/dev-build-3111/19240/17
+            // if a with_prototype was specified, and multiple contexts were pushed,
+            // then the with_prototype applies only to the last context pushed, i.e.
+            // top most on the stack after all the contexts are pushed - this is also
+            // referred to as the "target" of the push by sublimehq - see
+            // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
+            let proto = if i == ctx_refs.len() - 1 {
                 if pat.with_prototype.is_some() {
                     let p = pat.with_prototype.clone().unwrap();
                     {
+                        // loop through all the patterns that are direct children of the
+                        // with_prototype context
                         let mut b = p.borrow_mut();
                         for pattern in b.patterns.iter_mut() {
                             match pattern {
                                 &mut Pattern::Match(ref mut match_pat) => {
+                                    // and compile each match pattern that contains a backreference,
+                                    // making use of the capture group values obtained from the match
+                                    // that pushed the with_prototype context onto the stack.
+                                    // this is necessary, because the with_prototype can be applied
+                                    // many levels deep - after other contexts are pushed onto the stack,
+                                    // but the backreferences should always refer to the captures that
+                                    // pushed the with_prototype, not the captures from the match that
+                                    // pushed the top context onto the stack (indeed, that match may not
+                                    // even have had any capture groups which would previously have caused
+                                    // a panic)
                                     if match_pat.has_captures {
                                         match_pat.regex = Some(match_pat.compile_with_refs(regions, line));
                                     }
