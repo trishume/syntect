@@ -2,11 +2,11 @@
 //! Basically exactly the same as what Sublime Text can do,
 //! but without needing ST installed
 // To run tests only for a particular package, while showing the operations, you could use:
-// `cargo run --example syntest -- --debug testdata/Packages/Makefile/`
+// cargo run --example syntest -- --debug testdata/Packages/Makefile/
 // to specify that the syntax definitions should be parsed instead of loaded from the dump file,
 // you can tell it where to parse them from - the following will execute only 1 syntax test after
 // parsing the sublime-syntax files in the JavaScript folder:
-// `cargo run --example syntest testdata/Packages/JavaScript/syntax_test_json.json testdata/Packages/JavaScript/`
+// cargo run --example syntest testdata/Packages/JavaScript/syntax_test_json.json testdata/Packages/JavaScript/
 extern crate syntect;
 extern crate walkdir;
 #[macro_use]
@@ -197,11 +197,15 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, debug: bool) -
                 previous_non_assertion_line = line.to_string();
             }
             if debug && !line_only_has_assertion {
-                println!("-- debugging line {} -- scope stack: {:?} -- contexts on the stack: {:?}", current_line_number, stack, state);
+                println!("-- debugging line {} -- scope stack: {:?}", current_line_number, stack);
             }
             let ops = state.parse_line(&line);
             if debug && !line_only_has_assertion {
-                debug_print_ops(&line, &ops);
+                if ops.is_empty() && !line.is_empty() {
+                    println!("no operations for this line...");
+                } else {
+                    debug_print_ops(&line, &ops);
+                }
             }
             let mut col: usize = 0;
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
