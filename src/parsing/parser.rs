@@ -570,6 +570,7 @@ mod tests {
         test_stack.push(Scope::new("text.html.ruby").unwrap());
         test_stack.push(Scope::new("text.html.basic").unwrap());
         test_stack.push(Scope::new("source.js.embedded.html").unwrap());
+        test_stack.push(Scope::new("source.js").unwrap());
         test_stack.push(Scope::new("string.quoted.single.js").unwrap());
         test_stack.push(Scope::new("source.ruby.rails.embedded.html").unwrap());
         test_stack.push(Scope::new("meta.function.parameters.ruby").unwrap());
