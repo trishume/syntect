@@ -13,7 +13,7 @@ use std::ops::DerefMut;
 pub enum ParseSyntaxError {
     /// Invalid YAML file syntax, or at least something yaml_rust can't handle
     InvalidYaml(ScanError),
-    /// The file must contain at least on YAML document
+    /// The file must contain at least one YAML document
     EmptyFile,
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
@@ -152,15 +152,8 @@ impl SyntaxDefinition {
                      state: &mut ParserState,
                      is_prototype: bool)
                      -> Result<ContextPtr, ParseSyntaxError> {
-        let mut context = Context {
-            meta_scope: Vec::new(),
-            meta_content_scope: Vec::new(),
-            meta_include_prototype: !is_prototype,
-            clear_scopes: None,
-            uses_backrefs: false,
-            patterns: Vec::new(),
-            prototype: None,
-        };
+        let mut context = Context::new(!is_prototype);
+
         for y in vec.iter() {
             let map = y.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
@@ -265,12 +258,13 @@ impl SyntaxDefinition {
             .map(|s| str_to_scopes(s, state.scope_repo))
             .unwrap_or_else(|| Ok(vec![]))?;
 
+
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
             let mut res_map = Vec::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
                     res_map.push((key_int as usize,
-                                   str_to_scopes(val_str, state.scope_repo)?));
+                                  str_to_scopes(val_str, state.scope_repo)?));
                 }
             }
             Some(res_map)
@@ -287,13 +281,51 @@ impl SyntaxDefinition {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state)?)
         } else if let Ok(y) = get_key(map, "set", Some) {
             MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state)?)
+        } else if let Ok(y) = get_key(map, "embed", Some) {
+            // Same as push so we translate it to what it would be
+            let mut embed_escape_context_yaml = vec!();
+            if let Ok(s) = get_key(map, "embed_scope", Some) {
+                let mut commands = Hash::new();
+                commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
+                embed_escape_context_yaml.push(Yaml::Hash(commands));
+            }
+            if let Ok(v) = get_key(map, "escape", Some) {
+                let mut match_map = Hash::new();
+                match_map.insert(Yaml::String("match".to_string()), v.clone());
+                match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
+                if let Ok(y) = get_key(map, "escape_captures", Some) {
+                    match_map.insert(Yaml::String("captures".to_string()), y.clone());
+                }
+                embed_escape_context_yaml.push(Yaml::Hash(match_map));
+                let escape_context = SyntaxDefinition::parse_context(
+                    &embed_escape_context_yaml,
+                    state,
+                    false
+                )?;
+                MatchOperation::Push(vec![ContextReference::Inline(escape_context), SyntaxDefinition::parse_reference(y, state)?])
+            } else {
+                return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
+            }
+
         } else {
             MatchOperation::None
         };
 
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
             // should a with_prototype include the prototype? I don't think so.
-            Some(SyntaxDefinition::parse_context(v, state, true)?)
+            Some(Self::parse_context(v, state, true)?)
+        } else if let Ok(v) = get_key(map, "escape", Some) {
+            let mut context = Context::new(false);
+            let mut match_map = Hash::new();
+            match_map.insert(Yaml::String("match".to_string()), Yaml::String(format!("(?={})", v.as_str().unwrap())));
+            match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
+            let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state)?;
+            if pattern.has_captures {
+                context.uses_backrefs = true;
+            }
+            context.patterns.push(Pattern::Match(pattern));
+
+            Some(Rc::new(RefCell::new(context)))
         } else {
             None
         };
@@ -307,6 +339,7 @@ impl SyntaxDefinition {
             operation: operation,
             with_prototype: with_prototype,
         };
+
         Ok(pattern)
     }
 
@@ -314,7 +347,7 @@ impl SyntaxDefinition {
                       state: &mut ParserState)
                       -> Result<Vec<ContextReference>, ParseSyntaxError> {
         // check for a push of multiple items
-        if y.as_vec().map_or(false, |v| !v.is_empty() && v[0].as_str().is_some()) {
+        if y.as_vec().map_or(false, |v| !v.is_empty() && (v[0].as_str().is_some() || (v[0].as_vec().is_some() && v[0].as_vec().unwrap()[0].as_hash().is_some()))) {
             // this works because Result implements FromIterator to handle the errors
             y.as_vec()
                 .unwrap()
@@ -616,6 +649,117 @@ mod tests {
                                 Scope::new("keyword.looping.c").unwrap()]);
 
                 assert!(match_pat.with_prototype.is_some());
+            }
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn can_parse_embed_as_with_prototypes() {
+        let old_def = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        variables:
+          ident: '[QY]+'
+        contexts:
+          main:
+            - match: '(>)\s*'
+              captures:
+                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+              push:
+                - [{ meta_content_scope: 'source.css.embedded.html'}, { match: '(?i)(?=</style)', pop: true }]
+                - scope:source.css
+              with_prototype:
+                - match: (?=(?i)(?=</style))
+                  pop: true
+        "#,false).unwrap();
+
+        let def_with_embed = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        variables:
+          ident: '[QY]+'
+        contexts:
+          main:
+            - match: '(>)\s*'
+              captures:
+                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+              embed: scope:source.css
+              embed_scope: source.css.embedded.html
+              escape: (?i)(?=</style)
+        "#,false).unwrap();
+
+        assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
+    }
+
+    #[test]
+    fn errors_on_embed_without_escape() {
+        let def = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        variables:
+          ident: '[QY]+'
+        contexts:
+          main:
+            - match: '(>)\s*'
+              captures:
+                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+              embed: scope:source.css
+              embed_scope: source.css.embedded.html
+        "#,false);
+        assert!(def.is_err());
+        match def.unwrap_err() {
+            ParseSyntaxError::MissingMandatoryKey(key) => assert_eq!(key, "escape"),
+            _ => assert!(false, "Got unexpected ParseSyntaxError"),
+        }
+    }
+
+    #[test]
+    fn can_parse_ugly_yaml() {
+        let defn: SyntaxDefinition =
+            SyntaxDefinition::load_from_str("
+        name: LaTeX
+        scope: text.tex.latex
+        contexts:
+          main:
+            - match: '((\\\\)(?:framebox|makebox))\\b'
+              captures:
+                1: support.function.box.latex
+                2: punctuation.definition.backslash.latex
+              push:
+                - [{meta_scope: meta.function.box.latex}, {match: '', pop: true}]
+                - argument
+                - optional-arguments
+          argument:
+            - match: '\\{'
+              scope: punctuation.definition.group.brace.begin.latex
+            - match: '(?=\\S)'
+              pop: true
+          optional-arguments:
+            - match: '(?=\\S)'
+              pop: true
+        ",
+                                            false)
+                .unwrap();
+        assert_eq!(defn.name, "LaTeX");
+        let top_level_scope = Scope::new("text.tex.latex").unwrap();
+        assert_eq!(defn.scope, top_level_scope);
+
+        let first_pattern: &Pattern = &defn.contexts["main"].borrow().patterns[0];
+        match first_pattern {
+            &Pattern::Match(ref match_pat) => {
+                let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
+                assert_eq!(&m[0], &(1,vec![Scope::new("support.function.box.latex").unwrap()]));
+
+                //use parsing::syntax_definition::ContextReference::*;
+                // TODO: check the first pushed reference is Inline(...) and has a meta_scope of meta.function.box.latex
+                // TODO: check the second pushed reference is Named("argument".to_owned())
+                // TODO: check the third pushed reference is Named("optional-arguments".to_owned())
+
+                assert!(match_pat.with_prototype.is_none());
             }
             _ => assert!(false),
         }

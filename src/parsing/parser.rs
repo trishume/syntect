@@ -159,9 +159,9 @@ impl ParseState {
             let context_chain = {
                 let proto_start = self.proto_starts.last().cloned().unwrap_or(0);
                 // Sublime applies with_prototypes from bottom to top
-                let with_prototypes = self.stack[proto_start..].iter().filter_map(|lvl| lvl.prototype.as_ref().cloned()).map(|ctx| (true, ctx));
-                let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx));
-                let cur_context = Some((false, cur_level.context.clone())).into_iter();
+                let with_prototypes = self.stack[proto_start..].iter().filter_map(|lvl| lvl.prototype.as_ref().map(|ctx| (true, ctx.clone(), lvl.captures.as_ref())));
+                let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx, None));
+                let cur_context = Some((false, cur_level.context.clone(), cur_level.captures.as_ref())).into_iter();
                 with_prototypes.chain(cur_prototype).chain(cur_context)
             };
 
@@ -172,7 +172,7 @@ impl ParseState {
             let mut match_from_with_proto = false;
             let mut cur_match: Option<RegexMatch> = None;
 
-            for (from_with_proto, ctx) in context_chain {
+            for (from_with_proto, ctx, captures) in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     let mut pat_context = pat_context_ptr.borrow_mut();
                     let match_pat = pat_context.match_at_mut(pat_index);
@@ -208,8 +208,8 @@ impl ParseState {
                     }
 
                     match_pat.ensure_compiled_if_possible();
-                    let refs_regex = if match_pat.has_captures && cur_level.captures.is_some() {
-                        let &(ref region, ref s) = cur_level.captures.as_ref().unwrap();
+                    let refs_regex = if match_pat.has_captures && captures.is_some() {
+                        let &(ref region, ref s) = captures.unwrap();
                         Some(match_pat.compile_with_refs(region, s))
                     } else {
                         None
@@ -451,15 +451,23 @@ impl ParseState {
             MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
-            let proto = if i == 0 {
+            // if a with_prototype was specified, and multiple contexts were pushed,
+            // then the with_prototype applies only to the last context pushed, i.e.
+            // top most on the stack after all the contexts are pushed - this is also
+            // referred to as the "target" of the push by sublimehq - see
+            // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
+            let proto = if i == ctx_refs.len() - 1 {
                 pat.with_prototype.clone()
             } else {
                 None
             };
             let ctx_ptr = r.resolve();
             let captures = {
-                let ctx = ctx_ptr.borrow();
-                if ctx.uses_backrefs {
+                let mut uses_backrefs = ctx_ptr.borrow().uses_backrefs;
+                if let Some(ref proto) = proto {
+                    uses_backrefs = uses_backrefs || proto.borrow().uses_backrefs;
+                }
+                if uses_backrefs {
                     Some((regions.clone(), line.to_owned()))
                 } else {
                     None
@@ -535,6 +543,7 @@ mod tests {
         test_stack.push(Scope::new("text.html.ruby").unwrap());
         test_stack.push(Scope::new("text.html.basic").unwrap());
         test_stack.push(Scope::new("source.js.embedded.html").unwrap());
+        test_stack.push(Scope::new("source.js").unwrap());
         test_stack.push(Scope::new("string.quoted.single.js").unwrap());
         test_stack.push(Scope::new("source.ruby.rails.embedded.html").unwrap());
         test_stack.push(Scope::new("meta.function.parameters.ruby").unwrap());
@@ -718,5 +727,29 @@ contexts:
         let ops = state.parse_line(line);
         debug_print_ops(line, &ops);
         ops
+    }
+
+    #[test]
+    fn can_parse_issue120() {
+        let ps = SyntaxSet::load_from_folder("testdata").unwrap();
+        let syntax = ps.find_syntax_by_name("Embed_Escape Used by tests in src/parsing/parser.rs").unwrap();
+
+        let line1 = "\"abctest\" foobar";
+        let expect1 = [
+            "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.begin.html>",
+            "<meta.attribute-with-value.style.html>, <source.css>",
+            "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.end.html>",
+            "<meta.attribute-with-value.style.html>, <source.css>, <test.embedded>",
+            "<top-level.test>",
+        ];
+        expect_scope_stacks_with_syntax(&line1, &expect1, syntax.to_owned());
+
+        let line2 = ">abctest</style>foobar";
+        let expect2 = [
+            "<meta.tag.style.begin.html>, <punctuation.definition.tag.end.html>",
+            "<source.css.embedded.html>, <test.embedded>",
+            "<top-level.test>",
+        ];
+        expect_scope_stacks_with_syntax(&line2, &expect2, syntax.to_owned());
     }
 }

@@ -95,7 +95,6 @@ impl SyntaxSet {
         for entry in WalkDir::new(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
-                // println!("{}", entry.path().display());
                 let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
                 if let Some(path_str) = entry.path().to_str() {
                     self.path_syntaxes.push((path_str.to_string(), self.syntaxes.len()));

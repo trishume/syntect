@@ -57,6 +57,20 @@ pub struct Context {
     pub patterns: Vec<Pattern>,
 }
 
+impl Context {
+    pub fn new(meta_include_prototype: bool) -> Context {
+        Context {
+            meta_scope: Vec::new(),
+            meta_content_scope: Vec::new(),
+            meta_include_prototype: meta_include_prototype,
+            clear_scopes: None,
+            uses_backrefs: false,
+            patterns: Vec::new(),
+            prototype: None,
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Pattern {
     Match(MatchPattern),

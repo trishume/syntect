@@ -1,6 +1,12 @@
 //! An example of using syntect for testing syntax definitions.
 //! Basically exactly the same as what Sublime Text can do,
 //! but without needing ST installed
+// To run tests only for a particular package, while showing the operations, you could use:
+// cargo run --example syntest -- --debug testdata/Packages/Makefile/
+// to specify that the syntax definitions should be parsed instead of loaded from the dump file,
+// you can tell it where to parse them from - the following will execute only 1 syntax test after
+// parsing the sublime-syntax files in the JavaScript folder:
+// cargo run --example syntest testdata/Packages/JavaScript/syntax_test_json.json testdata/Packages/JavaScript/
 extern crate syntect;
 extern crate walkdir;
 #[macro_use]
@@ -123,7 +129,8 @@ fn process_assertions(assertion: &AssertionRange, test_against_line_scopes: &Vec
 }
 
 /// If `parse_test_lines` is `false` then lines that only contain assertions are not parsed
-fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
+fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, debug: bool) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
+    use syntect::util::debug_print_ops;
     let f = File::open(path).unwrap();
     let mut reader = BufReader::new(f);
     let mut line = String::new();
@@ -189,7 +196,17 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
                 test_against_line_number = current_line_number;
                 previous_non_assertion_line = line.to_string();
             }
+            if debug && !line_only_has_assertion {
+                println!("-- debugging line {} -- scope stack: {:?}", current_line_number, stack);
+            }
             let ops = state.parse_line(&line);
+            if debug && !line_only_has_assertion {
+                if ops.is_empty() && !line.is_empty() {
+                    println!("no operations for this line...");
+                } else {
+                    debug_print_ops(&line, &ops);
+                }
+            }
             let mut col: usize = 0;
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
                 stack.apply(op);
@@ -227,7 +244,12 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let mut args: Vec<String> = std::env::args().collect();
+    let debug_arg = args.iter().position(|s| s == "--debug");
+    if debug_arg.is_some() {
+        args.remove(debug_arg.unwrap());
+    }
+
     let tests_path = if args.len() < 2 {
         "."
     } else {
@@ -254,21 +276,21 @@ fn main() {
         ss.link_syntaxes();
     }
 
-    let exit_code = recursive_walk(&ss, &tests_path);
+    let exit_code = recursive_walk(&ss, &tests_path, debug_arg.is_some());
     println!("exiting with code {}", exit_code);
     std::process::exit(exit_code);
 
 }
 
 
-fn recursive_walk(ss: &SyntaxSet, path: &str) -> i32 {
+fn recursive_walk(ss: &SyntaxSet, path: &str, debug: bool) -> i32 {
     let mut exit_code: i32 = 0; // exit with code 0 by default, if all tests pass
     let walker = WalkDir::new(path).into_iter();
     for entry in walker.filter_entry(|e|e.file_type().is_dir() || is_a_syntax_test_file(e)) {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
             println!("Testing file {}", entry.path().display());
-            let result = test_file(&ss, entry.path(), true);
+            let result = test_file(&ss, entry.path(), true, debug);
             println!("{:?}", result);
             if exit_code != 2 { // leave exit code 2 if there was an error
                 if let Err(_) = result { // set exit code 2 if there was an error
