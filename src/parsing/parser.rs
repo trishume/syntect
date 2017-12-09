@@ -159,9 +159,9 @@ impl ParseState {
             let context_chain = {
                 let proto_start = self.proto_starts.last().cloned().unwrap_or(0);
                 // Sublime applies with_prototypes from bottom to top
-                let with_prototypes = self.stack[proto_start..].iter().filter_map(|lvl| lvl.prototype.as_ref().cloned()).map(|ctx| (true, ctx));
-                let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx));
-                let cur_context = Some((false, cur_level.context.clone())).into_iter();
+                let with_prototypes = self.stack[proto_start..].iter().filter_map(|lvl| lvl.prototype.as_ref().map(|ctx| (true, ctx.clone(), lvl.captures.as_ref())));
+                let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx, None));
+                let cur_context = Some((false, cur_level.context.clone(), cur_level.captures.as_ref())).into_iter();
                 with_prototypes.chain(cur_prototype).chain(cur_context)
             };
 
@@ -172,7 +172,7 @@ impl ParseState {
             let mut match_from_with_proto = false;
             let mut cur_match: Option<RegexMatch> = None;
 
-            for (from_with_proto, ctx) in context_chain {
+            for (from_with_proto, ctx, captures) in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     let mut pat_context = pat_context_ptr.borrow_mut();
                     let match_pat = pat_context.match_at_mut(pat_index);
@@ -208,8 +208,8 @@ impl ParseState {
                     }
 
                     match_pat.ensure_compiled_if_possible();
-                    let refs_regex = if match_pat.has_captures && cur_level.captures.is_some() {
-                        let &(ref region, ref s) = cur_level.captures.as_ref().unwrap();
+                    let refs_regex = if match_pat.has_captures && captures.is_some() {
+                        let &(ref region, ref s) = captures.unwrap();
                         Some(match_pat.compile_with_refs(region, s))
                     } else {
                         None
@@ -457,44 +457,17 @@ impl ParseState {
             // referred to as the "target" of the push by sublimehq - see
             // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
             let proto = if i == ctx_refs.len() - 1 {
-                if pat.with_prototype.is_some() {
-                    let p = pat.with_prototype.clone().unwrap();
-                    {
-                        // loop through all the patterns that are direct children of the
-                        // with_prototype context
-                        let mut b = p.borrow_mut();
-                        for pattern in b.patterns.iter_mut() {
-                            match pattern {
-                                &mut Pattern::Match(ref mut match_pat) => {
-                                    // and compile each match pattern that contains a backreference,
-                                    // making use of the capture group values obtained from the match
-                                    // that pushed the with_prototype context onto the stack.
-                                    // this is necessary, because the with_prototype can be applied
-                                    // many levels deep - after other contexts are pushed onto the stack,
-                                    // but the backreferences should always refer to the captures that
-                                    // pushed the with_prototype, not the captures from the match that
-                                    // pushed the top context onto the stack (indeed, that match may not
-                                    // even have had any capture groups which would previously have caused
-                                    // a panic)
-                                    if match_pat.has_captures {
-                                        match_pat.regex = Some(match_pat.compile_with_refs(regions, line));
-                                    }
-                                },
-                                &mut Pattern::Include(_) => {}, // TODO: included contexts can also contain backrefs in their match patterns - see https://github.com/trishume/syntect/issues/104
-                            }
-                        }
-                    }
-                    Some(p)
-                } else {
-                    None
-                }
+                pat.with_prototype.clone()
             } else {
                 None
             };
             let ctx_ptr = r.resolve();
             let captures = {
-                let ctx = ctx_ptr.borrow();
-                if ctx.uses_backrefs {
+                let mut uses_backrefs = ctx_ptr.borrow().uses_backrefs;
+                if let Some(ref proto) = proto {
+                    uses_backrefs = uses_backrefs || proto.borrow().uses_backrefs;
+                }
+                if uses_backrefs {
                     Some((regions.clone(), line.to_owned()))
                 } else {
                     None
