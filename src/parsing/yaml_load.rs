@@ -283,24 +283,12 @@ impl SyntaxDefinition {
             MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state)?)
         } else if let Ok(y) = get_key(map, "embed", Some) {
             // Same as push so we translate it to what it would be
-            let embedded_context = {
-                let mut embed_context = vec!();
+            let mut embed_escape_context_yaml = vec!();
+            if let Ok(s) = get_key(map, "embed_scope", Some) {
                 let mut commands = Hash::new();
-                if let Ok(s) = get_key(map, "embed_scope", Some) {
-                    commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
-                    embed_context.push(Yaml::Hash(commands));
-                }
-                commands = Hash::new();
-                commands.insert(Yaml::String("match".to_string()), Yaml::String("".to_string()));
-                commands.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
-                embed_context.push(Yaml::Hash(commands));
-                SyntaxDefinition::parse_context(
-                    &embed_context,
-                    state,
-                    false
-                )?
-            };
-
+                commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
+                embed_escape_context_yaml.push(Yaml::Hash(commands));
+            }
             if let Ok(v) = get_key(map, "escape", Some) {
                 let mut match_map = Hash::new();
                 match_map.insert(Yaml::String("match".to_string()), v.clone());
@@ -308,12 +296,13 @@ impl SyntaxDefinition {
                 if let Ok(y) = get_key(map, "escape_captures", Some) {
                     match_map.insert(Yaml::String("captures".to_string()), y.clone());
                 }
+                embed_escape_context_yaml.push(Yaml::Hash(match_map));
                 let escape_context = SyntaxDefinition::parse_context(
-                    &[Yaml::Hash(match_map)],
+                    &embed_escape_context_yaml,
                     state,
                     false
                 )?;
-                MatchOperation::Push(vec![ContextReference::Inline(escape_context), ContextReference::Inline(embedded_context), SyntaxDefinition::parse_reference(y, state)?])
+                MatchOperation::Push(vec![ContextReference::Inline(escape_context), SyntaxDefinition::parse_reference(y, state)?])
             } else {
                 return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
             }
@@ -679,8 +668,7 @@ mod tests {
               captures:
                 1: meta.tag.style.begin.html punctuation.definition.tag.end.html
               push:
-                - [{ match: '(?i)(?=</style)', pop: true }]
-                - [{ meta_content_scope: 'source.css.embedded.html'}, { match: '', pop: true }]
+                - [{ meta_content_scope: 'source.css.embedded.html'}, { match: '(?i)(?=</style)', pop: true }]
                 - scope:source.css
               with_prototype:
                 - match: (?=(?i)(?=</style))
