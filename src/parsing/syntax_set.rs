@@ -301,15 +301,30 @@ impl SyntaxSet {
                 context.prototype = Some((*proto_ptr).clone());
             }
         }
+
+        // Backrefs can be included indirectly from other contexts
+        // TODO this only properly solves a single level of indirection if the
+        // backref is only through a recursive include that context may not
+        // have been linked yet and thus won't necessarily have an accurate
+        // uses_backrefs field. However, this is probably good enough for all
+        // existing cases and fixing it would require another entire recursive
+        // pass over the tree. This would be way easier if contexts were in a
+        // flat arena like I should have done from the start.
+        let mut uses_backrefs = context.uses_backrefs;
         for pattern in &mut context.patterns {
             match *pattern {
                 Pattern::Match(ref mut match_pat) => self.link_match_pat(syntax, match_pat),
-                Pattern::Include(ref mut context_ref) => self.link_ref(syntax, context_ref),
+                Pattern::Include(ref mut context_ref) => {
+                    let linked_uses_backrefs = self.link_ref(syntax, context_ref);
+                    uses_backrefs = linked_uses_backrefs || uses_backrefs;
+                }
             }
         }
+        context.uses_backrefs = uses_backrefs;
     }
 
-    fn link_ref(&self, syntax: &SyntaxDefinition, context_ref: &mut ContextReference) {
+    /// Returns whether the linked pattern uses backrefs
+    fn link_ref(&self, syntax: &SyntaxDefinition, context_ref: &mut ContextReference) -> bool {
         // println!("{:?}", context_ref);
         use super::syntax_definition::ContextReference::*;
         let maybe_new_context = match *context_ref {
@@ -340,10 +355,14 @@ impl SyntaxSet {
             }
             Direct(_) => None,
         };
+
+        let mut uses_backrefs = false;
         if let Some(new_context) = maybe_new_context {
+            uses_backrefs = new_context.borrow().uses_backrefs;
             let mut new_ref = Direct(LinkerLink { link: Rc::downgrade(new_context) });
             mem::swap(context_ref, &mut new_ref);
         }
+        uses_backrefs
     }
 
     fn link_match_pat(&self, syntax: &SyntaxDefinition, match_pat: &mut MatchPattern) {
