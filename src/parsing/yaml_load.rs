@@ -66,7 +66,8 @@ impl SyntaxDefinition {
     /// In case you want to create your own SyntaxDefinition's in memory from strings.
     /// Generally you should use a `SyntaxSet`
     pub fn load_from_str(s: &str,
-                         lines_include_newline: bool)
+                         lines_include_newline: bool,
+                         fallback_name: Option<&str>)
                          -> Result<SyntaxDefinition, ParseSyntaxError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
@@ -77,12 +78,13 @@ impl SyntaxDefinition {
         }
         let doc = &docs[0];
         let mut scope_repo = SCOPE_REPO.lock().unwrap();
-        SyntaxDefinition::parse_top_level(doc, scope_repo.deref_mut(), lines_include_newline)
+        SyntaxDefinition::parse_top_level(doc, scope_repo.deref_mut(), lines_include_newline, fallback_name)
     }
 
     fn parse_top_level(doc: &Yaml,
                        scope_repo: &mut ScopeRepository,
-                       lines_include_newline: bool)
+                       lines_include_newline: bool,
+                       fallback_name: Option<&str>)
                        -> Result<SyntaxDefinition, ParseSyntaxError> {
         let h = doc.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
@@ -113,7 +115,7 @@ impl SyntaxDefinition {
         SyntaxDefinition::add_initial_contexts(&mut contexts, &mut state, top_level_scope);
 
         let defn = SyntaxDefinition {
-            name: get_key(h, "name", |x| x.as_str()).unwrap_or("Unnamed").to_owned(),
+            name: get_key(h, "name", |x| x.as_str()).unwrap_or(fallback_name.unwrap_or("Unnamed")).to_owned(),
             scope: top_level_scope,
             file_extensions: {
                 get_key(h, "file_extensions", |x| x.as_vec())
@@ -563,7 +565,7 @@ mod tests {
     fn can_parse() {
         let defn: SyntaxDefinition =
             SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}",
-                                            false)
+                                            false, None)
                 .unwrap();
         assert_eq!(defn.name, "C");
         assert_eq!(defn.scope, Scope::new("source.c").unwrap());
@@ -603,7 +605,7 @@ mod tests {
             - match: '\"'
               pop: true
         ",
-                                            false)
+                                            false, None)
                 .unwrap();
         assert_eq!(defn2.name, "C");
         let top_level_scope = Scope::new("source.c").unwrap();
@@ -673,7 +675,7 @@ mod tests {
               with_prototype:
                 - match: (?=(?i)(?=</style))
                   pop: true
-        "#,false).unwrap();
+        "#,false, None).unwrap();
 
         let def_with_embed = SyntaxDefinition::load_from_str(r#"
         name: C
@@ -689,7 +691,7 @@ mod tests {
               embed: scope:source.css
               embed_scope: source.css.embedded.html
               escape: (?i)(?=</style)
-        "#,false).unwrap();
+        "#,false, None).unwrap();
 
         assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
     }
@@ -709,7 +711,7 @@ mod tests {
                 1: meta.tag.style.begin.html punctuation.definition.tag.end.html
               embed: scope:source.css
               embed_scope: source.css.embedded.html
-        "#,false);
+        "#,false, None);
         assert!(def.is_err());
         match def.unwrap_err() {
             ParseSyntaxError::MissingMandatoryKey(key) => assert_eq!(key, "escape"),
@@ -742,7 +744,7 @@ mod tests {
             - match: '(?=\\S)'
               pop: true
         ",
-                                            false)
+                                            false, None)
                 .unwrap();
         assert_eq!(defn.name, "LaTeX");
         let top_level_scope = Scope::new("text.tex.latex").unwrap();
@@ -763,6 +765,17 @@ mod tests {
             }
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn can_use_fallback_name() {
+        let def = SyntaxDefinition::load_from_str(r#"
+        scope: source.c
+        contexts:
+          main:
+            - match: ''
+        "#,false, Some("C"));
+        assert_eq!(def.unwrap().name, "C");
     }
 
     #[test]

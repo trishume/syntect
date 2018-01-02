@@ -687,11 +687,11 @@ contexts:
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");
         let line_with_newline = format!("{}\n", line_without_newline);
-        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true).unwrap();
+        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
         expect_scope_stacks_with_syntax(&line_with_newline, expect, syntax_newlines);
 
         println!("Parsing without newlines");
-        let syntax_nonewlines = SyntaxDefinition::load_from_str(&syntax, false).unwrap();
+        let syntax_nonewlines = SyntaxDefinition::load_from_str(&syntax, false, None).unwrap();
         expect_scope_stacks_with_syntax(&line_without_newline, expect, syntax_nonewlines);
     }
 

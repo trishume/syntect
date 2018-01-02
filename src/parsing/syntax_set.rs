@@ -43,7 +43,7 @@ fn load_syntax_file(p: &Path,
     let mut s = String::new();
     f.read_to_string(&mut s)?;
 
-    Ok(SyntaxDefinition::load_from_str(&s, lines_include_newline)?)
+    Ok(SyntaxDefinition::load_from_str(&s, lines_include_newline, p.file_stem().and_then(|x| x.to_str()))?)
 }
 
 impl Default for SyntaxSet {
@@ -124,7 +124,7 @@ impl SyntaxSet {
     pub fn load_plain_text_syntax(&mut self) {
         let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: \
                  {main: []}";
-        let syn = SyntaxDefinition::load_from_str(s, false).unwrap();
+        let syn = SyntaxDefinition::load_from_str(s, false, None).unwrap();
         self.syntaxes.push(syn);
     }
 
