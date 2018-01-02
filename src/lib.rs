@@ -15,7 +15,7 @@
 //! Some docs have example code but a good place to look is the `syncat` example as well as the source code
 //! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
 
-#![doc(html_root_url = "https://docs.rs/syntect/1.8.2")]
+#![doc(html_root_url = "https://docs.rs/syntect/2.0.0")]
 
 #[cfg(feature = "yaml-load")]
 extern crate yaml_rust;

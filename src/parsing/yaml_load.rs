@@ -65,6 +65,8 @@ __main:
 impl SyntaxDefinition {
     /// In case you want to create your own SyntaxDefinition's in memory from strings.
     /// Generally you should use a `SyntaxSet`
+    ///
+    /// `fallback_name` is an optional name to use when the YAML doesn't provide a `name` key.
     pub fn load_from_str(s: &str,
                          lines_include_newline: bool,
                          fallback_name: Option<&str>)
