@@ -136,7 +136,13 @@ impl SyntaxSet {
     }
 
     pub fn find_syntax_by_name<'a>(&'a self, name: &str) -> Option<&'a SyntaxDefinition> {
-        self.syntaxes.iter().find(|&s| name == &s.name)
+        self.syntaxes.iter().find(|&s| &s.name == name).or_else(|| {
+            // if it didn't find the syntax by the name key in the syntax def (because it is optional), try searching the filename
+            // to ensure compatibility with ST3, whereby the base sublime-syntax file name is used as the name key if it is not present in the YAML
+            let mut file_name = name.to_string();
+            file_name.push_str(".sublime-syntax");
+            self.find_syntax_by_path(&file_name)
+        })
     }
 
     pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxDefinition> {
