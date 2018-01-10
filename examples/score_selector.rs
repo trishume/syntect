@@ -7,6 +7,10 @@ use std::str::FromStr;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 1 {
+        println!("Expected use: {} \"scope stack\" \"scope selector\"", &args[0]);
+        return;
+    }
     // format the scope selector to include a space at the beginning, because, currently, ScopeSelector expects excludes to begin with " -"
     // but somebody might just type "-punctuation" on the commandline, for example
     let selector = ScopeSelectors::from_str(&format!(" {}", &args[2])).expect("Unable to parse scope selector");
