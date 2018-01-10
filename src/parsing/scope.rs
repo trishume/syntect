@@ -390,7 +390,7 @@ impl ScopeStack {
             ScopeStackOp::Clear(amount) => {
                 let cleared = match amount {
                     ClearAmount::TopN(n) => {
-                        // don't try to clear more scopes than are on the stack 
+                        // don't try to clear more scopes than are on the stack
                         let to_leave = self.scopes.len() - min(n, self.scopes.len());
                         self.scopes.split_off(to_leave)
                     }
@@ -475,18 +475,19 @@ impl ScopeStack {
     ///     None);
     /// ```
     pub fn does_match(&self, stack: &[Scope]) -> Option<MatchPower> {
-        let mut sel_index: usize = 0;
+        let mut sel_index: usize = self.scopes.len() - 1;
         let mut score: f64 = 0.0;
-        for (i, scope) in stack.iter().enumerate() {
+        for (i, scope) in stack.iter().rev().enumerate() {
             let sel_scope = self.scopes[sel_index];
             if sel_scope.is_prefix_of(*scope) {
                 let len = sel_scope.len();
+                let stack_index = stack.len() - i - 1;
                 // equivalent to score |= len << (ATOM_LEN_BITS*i) on a large unsigned
-                score += (len as f64) * ((ATOM_LEN_BITS * (i as u16)) as f64).exp2();
-                sel_index += 1;
-                if sel_index >= self.scopes.len() {
+                score += (len as f64) * ((ATOM_LEN_BITS * (stack_index as u16)) as f64).exp2();
+                if sel_index == 0 {
                     return Some(MatchPower(score));
                 }
+                sel_index -= 1;
             }
         }
         None
@@ -608,5 +609,19 @@ mod tests {
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
                    None);
+    }
+
+    #[test]
+    fn nested_matching_works() {
+        use std::str::FromStr;
+        let nested = ScopeStack::from_str("test2 test3")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("test1 test2 test3 test2 test3").unwrap().as_slice())
+                       .unwrap();
+        let no_nesting = ScopeStack::from_str("test2 test3")
+                       .unwrap()
+                       .does_match(ScopeStack::from_str("test1 test2 test3").unwrap().as_slice())
+                       .unwrap();
+        assert!(nested > no_nesting);
     }
 }
