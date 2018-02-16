@@ -21,7 +21,7 @@ regex-syntax = { version = "0.4", optional = true }
 lazy_static = "1.0"
 bitflags = "1.0"
 plist = "0.2"
-bincode = { version = "0.9", optional = true }
+bincode = { version = "1.0", optional = true }
 flate2 = { version = "1.0", optional = true }
 libflate = { version = "0.1.8", optional = true }
 fnv = { version = "1.0", optional = true }

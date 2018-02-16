@@ -7,7 +7,7 @@
 //! You can use these methods to manage your own caching of compiled syntaxes and
 //! themes. And even your own `serde::Serialize` structures if you want to
 //! be consistent with your format.
-use bincode::{Infinite, Result};
+use bincode::Result;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use bincode::deserialize_from;
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
@@ -40,13 +40,13 @@ use libflate::zlib::Encoder;
 #[cfg(feature = "dump-create")]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
     let mut encoder = ZlibEncoder::new(output, Compression::best());
-    serialize_into(&mut encoder, to_dump, Infinite)
+    serialize_into(&mut encoder, to_dump)
 }
 
 #[cfg(feature = "dump-create-rs")]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
     let mut encoder = Encoder::new(output)?;
-    serialize_into(&mut encoder, to_dump, Infinite)?;
+    serialize_into(&mut encoder, to_dump)?;
     encoder.finish().into_result()?;
     Ok(())
 }
@@ -71,13 +71,13 @@ pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> 
 #[cfg(feature = "dump-load")]
 pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
     let mut decoder = ZlibDecoder::new(input);
-    deserialize_from(&mut decoder, Infinite)
+    deserialize_from(&mut decoder)
 }
 
 #[cfg(feature = "dump-load-rs")]
 pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
     let mut decoder: Decoder<R> = Decoder::new(input)?;
-    deserialize_from(&mut decoder, Infinite)
+    deserialize_from(&mut decoder)
 }
 
 /// Returns a fully loaded syntax set from
