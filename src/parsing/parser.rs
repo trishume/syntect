@@ -1,6 +1,6 @@
 use super::syntax_definition::*;
 use super::scope::*;
-use onig::{SearchOptions, Region};
+use onig::{MatchParam, Region, SearchOptions};
 use std::usize;
 use std::collections::{HashMap, HashSet};
 use std::i32;
@@ -219,12 +219,17 @@ impl ParseState {
                     } else {
                         match_pat.regex.as_ref().unwrap()
                     };
-                    let matched = regex.search_with_options(line,
-                                                            *start,
-                                                            line.len(),
-                                                            SearchOptions::SEARCH_OPTION_NONE,
-                                                            Some(regions));
-                    if let Some(match_start) = matched {
+                    let matched = regex.search_with_param(line,
+                                                          *start,
+                                                          line.len(),
+                                                          SearchOptions::SEARCH_OPTION_NONE,
+                                                          Some(regions),
+                                                          MatchParam::default());
+
+                    // If there's an error during search, treat it as non-matching.
+                    // For example, in case of catastrophic backtracking, onig should
+                    // fail with a "retry-limit-in-match over" error eventually.
+                    if let Ok(Some(match_start)) = matched {
                         let match_end = regions.pos(0).unwrap().1;
                         // this is necessary to avoid infinite looping on dumb patterns
                         let does_something = match match_pat.operation {
