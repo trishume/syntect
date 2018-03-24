@@ -24,31 +24,19 @@ use highlighting::ThemeSet;
 use std::path::Path;
 #[cfg(feature = "dump-create")]
 use flate2::write::ZlibEncoder;
-#[cfg(feature = "dump-load")]
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use flate2::read::ZlibDecoder;
-#[cfg(feature = "dump-create")]
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use flate2::Compression;
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use serde::Serialize;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use serde::de::DeserializeOwned;
-#[cfg(feature = "dump-load-rs")]
-use libflate::zlib::Decoder;
-#[cfg(feature = "dump-create-rs")]
-use libflate::zlib::Encoder;
 
-#[cfg(feature = "dump-create")]
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
     let mut encoder = ZlibEncoder::new(output, Compression::best());
     serialize_into(&mut encoder, to_dump)
-}
-
-#[cfg(feature = "dump-create-rs")]
-pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
-    let mut encoder = Encoder::new(output)?;
-    serialize_into(&mut encoder, to_dump)?;
-    encoder.finish().into_result()?;
-    Ok(())
 }
 
 /// Dumps an object to a binary array in the same format as `dump_to_file`
@@ -68,15 +56,9 @@ pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> 
     dump_to_writer(o, out)
 }
 
-#[cfg(feature = "dump-load")]
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
     let mut decoder = ZlibDecoder::new(input);
-    deserialize_from(&mut decoder)
-}
-
-#[cfg(feature = "dump-load-rs")]
-pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
-    let mut decoder: Decoder<R> = Decoder::new(input)?;
     deserialize_from(&mut decoder)
 }
 

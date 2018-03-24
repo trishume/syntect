@@ -31,10 +31,8 @@ extern crate plist;
 extern crate bincode;
 #[macro_use]
 extern crate bitflags;
-#[cfg(any(feature = "dump-load", feature = "dump-create"))]
+#[cfg(any(feature = "dump-load", feature = "dump-create", feature = "dump-load-rs", feature = "dump-create-rs"))]
 extern crate flate2;
-#[cfg(any(feature = "dump-load-rs", feature = "dump-create-rs"))]
-extern crate libflate;
 #[cfg(feature = "parsing")]
 extern crate fnv;
 extern crate serde;
