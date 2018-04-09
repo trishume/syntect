@@ -168,6 +168,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [catmark](https://github.com/bestouff/catmark), a console markdown printer, uses `syntect` for code blocks.
 - [crowbook](https://github.com/lise-henry/crowbook), a Markdown book generator, uses `syntect` for code blocks.
 - [syntect_server](https://github.com/sourcegraph/syntect_server), an HTTP server for syntax highlighting.
+- [mdcat](https://github.com/lunaryorn/mdcat), a console markdown printer, uses `syntect` for code blocks.
 
 ## License and Acknowledgements
 
