@@ -169,88 +169,27 @@ impl ParseState {
             // println!("token at {} on {}", start, line.trim_right());
 
             let mut min_start = usize::MAX;
-            let mut match_from_with_proto = false;
             let mut cur_match: Option<RegexMatch> = None;
+            let mut match_from_with_proto = false;
 
             for (from_with_proto, ctx, captures) in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     let mut pat_context = pat_context_ptr.borrow_mut();
                     let match_pat = pat_context.match_at_mut(pat_index);
-                    // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
-                    let match_ptr = match_pat as *const MatchPattern;
 
-                    // Avoid matching the same pattern twice in the same place, causing an infinite loop
-                    if matched.contains(&match_ptr) {
-                        continue;
-                    }
-
-                    if let Some(maybe_region) =
-                           search_cache.get(&match_ptr) {
-                        let mut valid_entry = true;
-                        if let Some(ref region) = *maybe_region {
-                            let match_start = region.pos(0).unwrap().0;
-                            if match_start < *start {
-                                valid_entry = false;
-                            } else if match_start < min_start {
-                                // print!("match {} at {} on {}", match_pat.regex_str, match_start, line);
-                                min_start = match_start;
-                                match_from_with_proto = from_with_proto;
-                                cur_match = Some(RegexMatch {
-                                    regions: region.clone(),
-                                    context: pat_context_ptr.clone(),
-                                    pat_index: pat_index,
-                                });
-                            }
-                        }
-                        if valid_entry {
-                            continue;
-                        }
-                    }
-
-                    match_pat.ensure_compiled_if_possible();
-                    let refs_regex = if match_pat.has_captures && captures.is_some() {
-                        let &(ref region, ref s) = captures.unwrap();
-                        Some(match_pat.compile_with_refs(region, s))
-                    } else {
-                        None
-                    };
-                    let regex = if let Some(ref rgx) = refs_regex {
-                        rgx
-                    } else {
-                        match_pat.regex.as_ref().unwrap()
-                    };
-                    let matched = regex.search_with_param(line,
-                                                          *start,
-                                                          line.len(),
-                                                          SearchOptions::SEARCH_OPTION_NONE,
-                                                          Some(regions),
-                                                          MatchParam::default());
-
-                    // If there's an error during search, treat it as non-matching.
-                    // For example, in case of catastrophic backtracking, onig should
-                    // fail with a "retry-limit-in-match over" error eventually.
-                    if let Ok(Some(match_start)) = matched {
-                        let match_end = regions.pos(0).unwrap().1;
-                        // this is necessary to avoid infinite looping on dumb patterns
-                        let does_something = match match_pat.operation {
-                            MatchOperation::None => match_start != match_end,
-                            _ => true,
-                        };
-                        if refs_regex.is_none() && does_something {
-                            search_cache.insert(match_pat, Some(regions.clone()));
-                        }
-                        if match_start < min_start && does_something {
-                            // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
+                    if let Some((match_start, match_region)) = self.search(
+                        line, *start, match_pat, captures, search_cache, matched, regions
+                    ) {
+                        if match_start < min_start {
+                            // Match is earlier in text, use that
                             min_start = match_start;
-                            match_from_with_proto = from_with_proto;
                             cur_match = Some(RegexMatch {
-                                regions: regions.clone(),
+                                regions: match_region,
                                 context: pat_context_ptr.clone(),
                                 pat_index: pat_index,
                             });
+                            match_from_with_proto = from_with_proto;
                         }
-                    } else if refs_regex.is_none() {
-                        search_cache.insert(match_pat, None);
                     }
                 }
             }
@@ -273,6 +212,79 @@ impl ParseState {
         } else {
             false
         }
+    }
+
+    fn search(&self,
+              line: &str,
+              start: usize,
+              match_pat: &mut MatchPattern,
+              captures: Option<&(Region, String)>,
+              search_cache: &mut SearchCache,
+              matched: &mut MatchedPatterns,
+              regions: &mut Region)
+              -> Option<(usize, Region)> {
+        // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
+        let match_ptr = match_pat as *const MatchPattern;
+
+        // Avoid matching the same pattern twice in the same place, causing an infinite loop
+        if matched.contains(&match_ptr) {
+            return None;
+        }
+
+        if let Some(maybe_region) = search_cache.get(&match_ptr) {
+            if let Some(ref region) = *maybe_region {
+                let match_start = region.pos(0).unwrap().0;
+                if match_start >= start {
+                    // Cached match is valid, return it. Otherwise do another
+                    // search below.
+                    return Some((match_start, region.clone()));
+                }
+            } else {
+                // Didn't find a match earlier, so no point trying to match it again
+                return None;
+            }
+        }
+
+        match_pat.ensure_compiled_if_possible();
+        let refs_regex = if match_pat.has_captures && captures.is_some() {
+            let &(ref region, ref s) = captures.unwrap();
+            Some(match_pat.compile_with_refs(region, s))
+        } else {
+            None
+        };
+        let regex = if let Some(ref rgx) = refs_regex {
+            rgx
+        } else {
+            match_pat.regex.as_ref().unwrap()
+        };
+        let matched = regex.search_with_param(line,
+                                              start,
+                                              line.len(),
+                                              SearchOptions::SEARCH_OPTION_NONE,
+                                              Some(regions),
+                                              MatchParam::default());
+
+        // If there's an error during search, treat it as non-matching.
+        // For example, in case of catastrophic backtracking, onig should
+        // fail with a "retry-limit-in-match over" error eventually.
+        if let Ok(Some(match_start)) = matched {
+            let match_end = regions.pos(0).unwrap().1;
+            // this is necessary to avoid infinite looping on dumb patterns
+            let does_something = match match_pat.operation {
+                MatchOperation::None => match_start != match_end,
+                _ => true,
+            };
+            if refs_regex.is_none() && does_something {
+                search_cache.insert(match_pat, Some(regions.clone()));
+            }
+            if does_something {
+                // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
+                return Some((match_start, regions.clone()));
+            }
+        } else if refs_regex.is_none() {
+            search_cache.insert(match_pat, None);
+        }
+        return None;
     }
 
     /// Returns true if the stack was changed
