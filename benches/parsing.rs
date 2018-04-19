@@ -1,19 +1,20 @@
-#![feature(test)]
-
-extern crate test;
+#[macro_use]
+extern crate criterion;
 extern crate syntect;
-use test::Bencher;
 
-use syntect::parsing::{SyntaxSet, ParseState, SyntaxDefinition};
+use criterion::{Bencher, Criterion};
 use std::fs::File;
 use std::io::Read;
+use syntect::parsing::{ParseState, SyntaxDefinition, SyntaxSet};
 
-fn do_parse(s: &str, syntax: &SyntaxDefinition) {
+fn do_parse(s: &str, syntax: &SyntaxDefinition) -> usize {
     let mut state = ParseState::new(syntax);
+    let mut count = 0;
     for line in s.lines() {
         let ops = state.parse_line(line);
-        test::black_box(&ops);
+        count += ops.len();
     }
+    count
 }
 
 fn parse_file(b: &mut Bencher, path_s: &str) {
@@ -25,38 +26,27 @@ fn parse_file(b: &mut Bencher, path_s: &str) {
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
-    do_parse(&s, syntax);
-    b.iter(|| {
-        do_parse(&s, syntax);
-    });
+    b.iter(|| do_parse(&s, syntax));
 }
 
-#[bench]
-fn bench_parsing_nesting(b: &mut Bencher) {
-    parse_file(b, "testdata/highlight_test.erb");
+fn parsing_benchmark(c: &mut Criterion) {
+    c.bench_function_over_inputs(
+        "parse",
+        |b, s| parse_file(b, s),
+        vec![
+            "testdata/highlight_test.erb",
+            "testdata/InspiredGitHub.tmtheme/InspiredGitHub.tmTheme",
+            "testdata/Packages/Ruby/Ruby.sublime-syntax",
+            "testdata/jquery.js",
+            "testdata/parser.rs",
+            "src/parsing/scope.rs",
+        ],
+    );
 }
 
-#[bench]
-fn bench_parsing_xml(b: &mut Bencher) {
-    parse_file(b, "testdata/InspiredGitHub.tmtheme/InspiredGitHub.tmTheme");
+criterion_group! {
+    name = benches;
+    config = Criterion::default().sample_size(20);
+    targets = parsing_benchmark
 }
-
-#[bench]
-fn bench_parsing_yaml(b: &mut Bencher) {
-    parse_file(b, "testdata/Packages/Ruby/Ruby.sublime-syntax");
-}
-
-#[bench]
-fn bench_parsing_jquery(b: &mut Bencher) {
-    parse_file(b, "testdata/jquery.js");
-}
-
-#[bench]
-fn bench_parsing_rustc(b: &mut Bencher) {
-    parse_file(b, "testdata/parser.rs");
-}
-
-#[bench]
-fn bench_parsing_scope(b: &mut Bencher) {
-    parse_file(b, "src/parsing/scope.rs");
-}
+criterion_main!(benches);
