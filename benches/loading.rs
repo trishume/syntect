@@ -50,7 +50,7 @@ fn loading_benchmark(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(100);
+    config = Criterion::default().sample_size(50);
     targets = loading_benchmark
 }
 criterion_main!(benches);
