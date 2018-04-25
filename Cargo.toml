@@ -29,6 +29,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 
 [dev-dependencies]
+criterion = "0.2"
 rayon = "1.0.0"
 regex = "0.2"
 getopts = "0.2"
@@ -59,3 +60,15 @@ default = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create"]
 
 # [profile.release]
 # debug = true
+
+[[bench]]
+name = "highlighting"
+harness = false
+
+[[bench]]
+name = "loading"
+harness = false
+
+[[bench]]
+name = "parsing"
+harness = false
