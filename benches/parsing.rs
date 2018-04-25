@@ -17,12 +17,22 @@ fn do_parse(s: &str, syntax: &SyntaxDefinition) -> usize {
     count
 }
 
-fn parse_file(b: &mut Bencher, path_s: &str) {
+fn parse_file(b: &mut Bencher, file: &str) {
+    let path = match file {
+        "highlight_test.erb" => "testdata/highlight_test.erb",
+        "InspiredGitHub.tmTheme" => "testdata/InspiredGitHub.tmtheme/InspiredGitHub.tmTheme",
+        "Ruby.sublime-syntax" => "testdata/Packages/Ruby/Ruby.sublime-syntax",
+        "jquery.js" => "testdata/jquery.js",
+        "parser.rs" => "testdata/parser.rs",
+        "scope.rs" => "src/parsing/scope.rs",
+        _ => panic!("Unknown test file {}", file),
+    };
+
     // don't load from dump so we don't count lazy regex compilation time
     let ps = SyntaxSet::load_defaults_nonewlines();
 
-    let syntax = ps.find_syntax_for_file(path_s).unwrap().unwrap();
-    let mut f = File::open(path_s).unwrap();
+    let syntax = ps.find_syntax_for_file(path).unwrap().unwrap();
+    let mut f = File::open(path).unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
@@ -34,12 +44,12 @@ fn parsing_benchmark(c: &mut Criterion) {
         "parse",
         |b, s| parse_file(b, s),
         vec![
-            "testdata/highlight_test.erb",
-            "testdata/InspiredGitHub.tmtheme/InspiredGitHub.tmTheme",
-            "testdata/Packages/Ruby/Ruby.sublime-syntax",
-            "testdata/jquery.js",
-            "testdata/parser.rs",
-            "src/parsing/scope.rs",
+            "highlight_test.erb",
+            "InspiredGitHub.tmTheme",
+            "Ruby.sublime-syntax",
+            "jquery.js",
+            "parser.rs",
+            "scope.rs",
         ],
     );
 }
