@@ -27,11 +27,10 @@ use fnv::FnvHasher;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseState {
     stack: Vec<StateLevel>,
+    first_line: bool,
     // See issue #101. Contains indices of frames pushed by `with_prototype`s.
     // Doesn't look at `with_prototype`s below top of stack.
     proto_starts: Vec<usize>,
-    // The line being parsed (starting at 0)
-    line: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -39,7 +38,6 @@ struct StateLevel {
     context: ContextPtr,
     prototype: Option<ContextPtr>,
     captures: Option<(Region, String)>,
-    non_consuming_push_at: Option<(usize, usize)>,
 }
 
 fn context_ptr_eq(a: &ContextPtr, b: &ContextPtr) -> bool {
@@ -65,10 +63,6 @@ struct RegexMatch {
     regions: Region,
     context: ContextPtr,
     pat_index: usize,
-    /// Whether the match consumed at least one input character or not.
-    /// E.g. an empty match at the current position doesn't consume anything,
-    /// it doesn't advance the position at which we're matching.
-    consuming: bool,
 }
 
 /// maps the pattern to the start index, which is -1 if not found.
@@ -174,12 +168,11 @@ impl ParseState {
             context: syntax.contexts["__start"].clone(),
             prototype: None,
             captures: None,
-            non_consuming_push_at: None,
         };
         ParseState {
             stack: vec![start_state],
+            first_line: true,
             proto_starts: Vec::new(),
-            line: 0,
         }
     }
 
@@ -199,23 +192,25 @@ impl ParseState {
         let mut match_start = 0;
         let mut res = Vec::new();
 
-        if self.line == 0 {
+        if self.first_line {
             let cur_level = &self.stack[self.stack.len() - 1];
             let context = cur_level.context.borrow();
             if !context.meta_content_scope.is_empty() {
                 res.push((0, ScopeStackOp::Push(context.meta_content_scope[0])));
             }
+            self.first_line = false;
         }
-        self.line += 1;
 
         let mut regions = Region::with_capacity(8);
         let fnv = BuildHasherDefault::<FnvHasher>::default();
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
+        let mut non_consuming_push_at = None;
 
         while self.parse_next_token(line,
                                     &mut match_start,
                                     &mut search_cache,
                                     &mut regions,
+                                    &mut non_consuming_push_at,
                                     &mut res) {
         }
 
@@ -227,8 +222,14 @@ impl ParseState {
                         start: &mut usize,
                         search_cache: &mut SearchCache,
                         regions: &mut Region,
+                        non_consuming_push_at: &mut Option<(usize, usize)>,
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
+
+        let check_pop_loop = non_consuming_push_at
+            .map(|(pos, stack_depth)| pos == *start && stack_depth == self.stack.len())
+            .unwrap_or(false);
+
         let (cur_match, match_from_with_proto, pop_would_loop) = {
             let cur_level = &self.stack[self.stack.len() - 1];
             let prototype: Option<ContextPtr> = {
@@ -259,10 +260,6 @@ impl ParseState {
             let mut match_from_with_proto = false;
             let mut pop_would_loop = false;
 
-            let check_pop_loop = cur_level.non_consuming_push_at
-                .map(|(line, pos)| self.line == line && pos == *start)
-                .unwrap_or(false);
-
             for (from_with_proto, ctx, captures) in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     let mut pat_context = pat_context_ptr.borrow_mut();
@@ -282,16 +279,15 @@ impl ParseState {
 
                             // println!("setting as current match");
 
-                            let consuming = match_end > *start;
-
                             min_start = match_start;
                             cur_match = Some(RegexMatch {
                                 regions: match_region,
                                 context: pat_context_ptr.clone(),
                                 pat_index,
-                                consuming,
                             });
                             match_from_with_proto = from_with_proto;
+
+                            let consuming = match_end > *start;
                             pop_would_loop = check_pop_loop && !consuming && match match_pat.operation {
                                 MatchOperation::Pop => true,
                                 _ => false,
@@ -321,11 +317,31 @@ impl ParseState {
                     return false;
                 }
                 *start += 1;
+                *non_consuming_push_at = None;
                 return true;
             }
 
             let match_end = reg_match.regions.pos(0).unwrap().1;
-            *start = match_end;
+            let consuming = match_end > *start;
+            if consuming {
+                // The match consumes some characters. So update the position
+                // and clear state we use for checking for loops.
+                *start = match_end;
+                *non_consuming_push_at = None;
+            } else {
+                // The match doesn't consume any characters. If this is a
+                // "push", remember the position and stack size so that we can
+                // check the next "pop" for loops. Otherwise leave the state,
+                // because a non-consuming "set" could also result in a loop.
+                let context = reg_match.context.borrow();
+                let match_pattern = context.match_at(reg_match.pat_index);
+                match match_pattern.operation {
+                    MatchOperation::Push(_) => {
+                        *non_consuming_push_at = Some((match_end, self.stack.len() + 1));
+                    },
+                    _ => {}
+                }
+            }
 
             // ignore `with_prototype`s below this if a context is pushed
             if match_from_with_proto {
@@ -457,7 +473,7 @@ impl ParseState {
         }
         self.push_meta_ops(false, match_end, &*level_context, &pat.operation, ops);
 
-        self.perform_op(line, &reg_match.regions, reg_match.consuming, pat)
+        self.perform_op(line, &reg_match.regions, pat)
     }
 
     fn push_meta_ops(&self,
@@ -565,28 +581,12 @@ impl ParseState {
     }
 
     /// Returns true if the stack was changed
-    fn perform_op(&mut self, line: &str, regions: &Region, consuming: bool, pat: &MatchPattern) -> bool {
-        let (ctx_refs, non_consuming_push_at) = match pat.operation {
-            MatchOperation::Push(ref ctx_refs) => {
-                let match_end = regions.pos(0).unwrap().1;
-                let non_consuming_push_at = if !consuming {
-                    Some((self.line, match_end))
-                } else {
-                    None
-                };
-                (ctx_refs, non_consuming_push_at)
-            },
+    fn perform_op(&mut self, line: &str, regions: &Region, pat: &MatchPattern) -> bool {
+        let ctx_refs = match pat.operation {
+            MatchOperation::Push(ref ctx_refs) => ctx_refs,
             MatchOperation::Set(ref ctx_refs) => {
-                let previous = self.stack.pop();
-                // If the "set" replaces a state with a non-consuming match,
-                // we need to keep checking for looping, otherwise it would be
-                // possible for a sequence like "push -> set -> pop" to loop.
-                let non_consuming_push_at = if !consuming {
-                    previous.and_then(|s| s.non_consuming_push_at)
-                } else {
-                    None
-                };
-                (ctx_refs, non_consuming_push_at)
+                self.stack.pop();
+                ctx_refs
             }
             MatchOperation::Pop => {
                 self.stack.pop();
@@ -617,18 +617,10 @@ impl ParseState {
                     None
                 }
             };
-            // If multiple contexts are pushed, we only need to check for a loop
-            // when we get back to the first context that was pushed.
-            let non_consuming_push_at = if i == 0 {
-                non_consuming_push_at
-            } else {
-                None
-            };
             self.stack.push(StateLevel {
                 context: ctx_ptr,
                 prototype: proto,
                 captures,
-                non_consuming_push_at,
             });
         }
         true
