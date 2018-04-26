@@ -153,8 +153,9 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 //
 // * If there's another rule that matches at the same position and does not
 //   result in a loop, use that instead.
-// * Otherwise, go to the next position and continue matching in the current
-//   context.
+// * Otherwise, go to the next position and go through all the rules in the
+//   current context again. Note that it means that the "pop" could again be the
+//   winning rule, but that's ok as it wouldn't result in a loop anymore.
 //
 // So in our input string, we'd skip one character and try to match the rules
 // again. This time, the "\w+" wins because it comes first.
