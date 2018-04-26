@@ -205,7 +205,8 @@ impl ParseState {
         let mut regions = Region::with_capacity(8);
         let fnv = BuildHasherDefault::<FnvHasher>::default();
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
-        let mut non_consuming_push_at = None;
+        // Used for detecting loops with push/pop, see long comment above.
+        let mut non_consuming_push_at = (0, 0);
 
         while self.parse_next_token(line,
                                     &mut match_start,
@@ -223,13 +224,14 @@ impl ParseState {
                         start: &mut usize,
                         search_cache: &mut SearchCache,
                         regions: &mut Region,
-                        non_consuming_push_at: &mut Option<(usize, usize)>,
+                        non_consuming_push_at: &mut (usize, usize),
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
 
-        let check_pop_loop = non_consuming_push_at
-            .map(|(pos, stack_depth)| pos == *start && stack_depth == self.stack.len())
-            .unwrap_or(false);
+        let check_pop_loop = {
+            let (pos, stack_depth) = *non_consuming_push_at;
+            pos == *start && stack_depth == self.stack.len()
+        };
 
         let (cur_match, match_from_with_proto, pop_would_loop) = {
             let cur_level = &self.stack[self.stack.len() - 1];
@@ -318,31 +320,25 @@ impl ParseState {
                     return false;
                 }
                 *start += 1;
-                *non_consuming_push_at = None;
                 return true;
             }
 
             let match_end = reg_match.regions.pos(0).unwrap().1;
+
             let consuming = match_end > *start;
-            if consuming {
-                // The match consumes some characters. So update the position
-                // and clear state we use for checking for loops.
-                *start = match_end;
-                *non_consuming_push_at = None;
-            } else {
+            if !consuming {
                 // The match doesn't consume any characters. If this is a
                 // "push", remember the position and stack size so that we can
                 // check the next "pop" for loops. Otherwise leave the state,
-                // because a non-consuming "set" could also result in a loop.
+                // e.g. non-consuming "set" could also result in a loop.
                 let context = reg_match.context.borrow();
                 let match_pattern = context.match_at(reg_match.pat_index);
-                match match_pattern.operation {
-                    MatchOperation::Push(_) => {
-                        *non_consuming_push_at = Some((match_end, self.stack.len() + 1));
-                    },
-                    _ => {}
+                if let MatchOperation::Push(_) = match_pattern.operation {
+                    *non_consuming_push_at = (match_end, self.stack.len() + 1);
                 }
             }
+
+            *start = match_end;
 
             // ignore `with_prototype`s below this if a context is pushed
             if match_from_with_proto {
