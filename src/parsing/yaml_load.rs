@@ -54,8 +54,11 @@ struct ParserState<'a> {
     lines_include_newline: bool,
 }
 
+// `__start` must not include prototypes from the actual syntax definition,
+// otherwise it's possible that a prototype makes us pop out of `__start`.
 static START_CONTEXTS: &'static str = "
 __start:
+    - meta_include_prototype: false
     - match: ''
       push: __main
 __main:

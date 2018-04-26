@@ -676,6 +676,27 @@ mod tests {
     }
 
     #[test]
+    fn can_parse_prototype_that_pops_main() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  prototype:
+    # This causes us to pop out of the main context. Sublime Text handles that
+    # by pushing main back automatically.
+    - match: (?=!)
+      pop: true
+  main:
+    - match: foo
+      scope: test.good
+"#;
+
+        let line = "foo!";
+        let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
     fn can_parse_syntax_with_newline_in_character_class() {
         let syntax = r#"
 name: test
