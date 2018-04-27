@@ -2,7 +2,7 @@ use super::syntax_definition::*;
 use super::scope::*;
 use onig::{MatchParam, Region, SearchOptions};
 use std::usize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::i32;
 use std::hash::BuildHasherDefault;
 use std::ptr;
@@ -67,7 +67,98 @@ struct RegexMatch {
 
 /// maps the pattern to the start index, which is -1 if not found.
 type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
-type MatchedPatterns = HashSet<*const MatchPattern, BuildHasherDefault<FnvHasher>>;
+
+// To understand the implementation of this, here's an introduction to how
+// Sublime Text syntax definitions work.
+//
+// Let's say we have the following made-up syntax definition:
+//
+//     contexts:
+//       main:
+//         - match: A
+//           scope: scope.a.first
+//           push: context-a
+//         - match: b
+//           scope: scope.b
+//         - match: \w+
+//           scope: scope.other
+//       context-a:
+//         - match: a+
+//           scope: scope.a.rest
+//         - match: (?=.)
+//           pop: true
+//
+// There are two contexts, `main` and `context-a`. Each context contains a list
+// of match rules with instructions for how to proceed.
+//
+// Let's say we have the input string " Aaaabxxx". We start at position 0 in
+// the string. We keep a stack of contexts, which at the beginning is just main.
+//
+// So we start by looking at the top of the context stack (main), and look at
+// the rules in order. The rule that wins is the first one that matches
+// "earliest" in the input string. In our example:
+//
+// 1. The first one matches "A". Note that matches are not anchored, so this
+//    matches at position 1.
+// 2. The second one matches "b", so position 5. The first rule is winning.
+// 3. The third one matches "\w+", so also position 1. But because the first
+//    rule comes first, it wins.
+//
+// So now we execute the winning rule. Whenever we matched some text, we assign
+// the scope (if there is one) to the matched text and advance our position to
+// after the matched text. The scope is "scope.a.first" and our new position is
+// after the "A", so 2. The "push" means that we should change our stack by
+// pushing `context-a` on top of it.
+//
+// In the next step, we repeat the above, but now with the rules in `context-a`.
+// The result is that we match "a+" and assign "scope.a.rest" to "aaa", and our
+// new position is now after the "aaa". Note that there was no instruction for
+// changing the stack, so we stay in that context.
+//
+// In the next step, the first rule doesn't match anymore, so we go to the next
+// rule where "(?=.)" matches. The instruction is to "pop", which means we
+// pop the top of our context stack, which means we're now back in main.
+//
+// This time in main, we match "b", and in the next step we match the rest with
+// "\w+", and we're done.
+//
+//
+// ## Preventing loops
+//
+// These are the basics of how matching works. Now, you saw that you can write
+// patterns that result in an empty match and don't change the position. These
+// are called non-consuming matches. The problem with them is that they could
+// result in infinite loops. Let's look at a syntax where that is the case:
+//
+//     contexts:
+//       main:
+//         - match: (?=.)
+//           push: test
+//       test:
+//         - match: \w+
+//           scope: word
+//         - match: (?=.)
+//           pop: true
+//
+// This is a bit silly, but it's a minimal example for explaining how matching
+// works in that case.
+//
+// Let's say we have the input string " hello". In `main`, our rule matches and
+// we go into `test` and stay at position 0. Now, the best match is the rule
+// with "pop". But if we used that rule, we'd pop back to `main` and would still
+// be at the same position we started at! So this would be an infinite loop,
+// which we don't want.
+//
+// So what Sublime Text does in case a looping rule "won":
+//
+// * If there's another rule that matches at the same position and does not
+//   result in a loop, use that instead.
+// * Otherwise, go to the next position and go through all the rules in the
+//   current context again. Note that it means that the "pop" could again be the
+//   winning rule, but that's ok as it wouldn't result in a loop anymore.
+//
+// So in our input string, we'd skip one character and try to match the rules
+// again. This time, the "\w+" wins because it comes first.
 
 impl ParseState {
     /// Create a state from a syntax, keeps its own reference counted
@@ -87,7 +178,7 @@ impl ParseState {
     }
 
     /// Parses a single line of the file. Because of the way regex engines work you unfortunately
-    /// have to pass in a single line contigous in memory. This can be bad for really long lines.
+    /// have to pass in a single line contiguous in memory. This can be bad for really long lines.
     /// Sublime Text avoids this by just not highlighting lines that are too long (thousands of characters).
     ///
     /// For efficiency reasons this returns only the changes to the current scope at each point in the line.
@@ -95,12 +186,11 @@ impl ParseState {
     /// Look at the code in `highlighter.rs` for an example of doing this for highlighting purposes.
     ///
     /// The vector is in order both by index to apply at (the `usize`) and also by order to apply them at a
-    /// given index (e.g popping old scopes before pusing new scopes).
+    /// given index (e.g popping old scopes before pushing new scopes).
     pub fn parse_line(&mut self, line: &str) -> Vec<(usize, ScopeStackOp)> {
         assert!(self.stack.len() > 0,
                 "Somehow main context was popped from the stack");
         let mut match_start = 0;
-        let mut prev_match_start = 0;
         let mut res = Vec::new();
 
         if self.first_line {
@@ -115,21 +205,15 @@ impl ParseState {
         let mut regions = Region::with_capacity(8);
         let fnv = BuildHasherDefault::<FnvHasher>::default();
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
-        let fnv2 = BuildHasherDefault::<FnvHasher>::default();
-        // Fixes issue https://github.com/trishume/syntect/issues/25
-        let mut matched: MatchedPatterns = HashSet::with_capacity_and_hasher(4, fnv2);
+        // Used for detecting loops with push/pop, see long comment above.
+        let mut non_consuming_push_at = (0, 0);
 
         while self.parse_next_token(line,
                                     &mut match_start,
                                     &mut search_cache,
-                                    &mut matched,
                                     &mut regions,
+                                    &mut non_consuming_push_at,
                                     &mut res) {
-            // We only care about not repeatedly matching things at the same location
-            if match_start != prev_match_start {
-                matched.clear();
-            }
-            prev_match_start = match_start;
         }
 
         res
@@ -139,11 +223,17 @@ impl ParseState {
                         line: &str,
                         start: &mut usize,
                         search_cache: &mut SearchCache,
-                        matched: &mut MatchedPatterns,
                         regions: &mut Region,
+                        non_consuming_push_at: &mut (usize, usize),
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
-        let (cur_match, match_from_with_proto) = {
+
+        let check_pop_loop = {
+            let (pos, stack_depth) = *non_consuming_push_at;
+            pos == *start && stack_depth == self.stack.len()
+        };
+
+        let (cur_match, match_from_with_proto, pop_would_loop) = {
             let cur_level = &self.stack[self.stack.len() - 1];
             let prototype: Option<ContextPtr> = {
                 let ctx_ref = cur_level.context.borrow();
@@ -171,33 +261,83 @@ impl ParseState {
             let mut min_start = usize::MAX;
             let mut cur_match: Option<RegexMatch> = None;
             let mut match_from_with_proto = false;
+            let mut pop_would_loop = false;
 
             for (from_with_proto, ctx, captures) in context_chain {
                 for (pat_context_ptr, pat_index) in context_iter(ctx) {
                     let mut pat_context = pat_context_ptr.borrow_mut();
                     let match_pat = pat_context.match_at_mut(pat_index);
 
-                    if let Some((match_start, match_region)) = self.search(
-                        line, *start, match_pat, captures, search_cache, matched, regions
+                    if let Some(match_region) = self.search(
+                        line, *start, match_pat, captures, search_cache, regions
                     ) {
-                        if match_start < min_start {
-                            // Match is earlier in text, use that
+                        let (match_start, match_end) = match_region.pos(0).unwrap();
+
+                        // println!("matched pattern {:?} at start {} end {}", match_pat.regex_str, match_start, match_end);
+
+                        if match_start < min_start || (match_start == min_start && pop_would_loop) {
+                            // New match is earlier in text than old match,
+                            // or old match was a looping pop at the same
+                            // position.
+
+                            // println!("setting as current match");
+
                             min_start = match_start;
                             cur_match = Some(RegexMatch {
                                 regions: match_region,
                                 context: pat_context_ptr.clone(),
-                                pat_index: pat_index,
+                                pat_index,
                             });
                             match_from_with_proto = from_with_proto;
+
+                            let consuming = match_end > *start;
+                            pop_would_loop = check_pop_loop && !consuming && match match_pat.operation {
+                                MatchOperation::Pop => true,
+                                _ => false,
+                            };
                         }
                     }
                 }
             }
-            (cur_match, match_from_with_proto)
+            (cur_match, match_from_with_proto, pop_would_loop)
         };
 
         if let Some(reg_match) = cur_match {
-            let (_, match_end) = reg_match.regions.pos(0).unwrap();
+            if pop_would_loop {
+                // A push that doesn't consume anything (a regex that resulted
+                // in an empty match at the current position) can not be
+                // followed by a non-consuming pop. Otherwise we're back where
+                // we started and would try the same sequence of matches again,
+                // resulting in an infinite loop. In this case, Sublime Text
+                // advances one character and tries again, thus preventing the
+                // loop.
+
+                // println!("pop_would_loop for match {:?}, start {}", reg_match, *start);
+
+                if *start == line.len() {
+                    // End of line, no character to advance and no point trying
+                    // any more patterns.
+                    return false;
+                }
+                *start += 1;
+                return true;
+            }
+
+            let match_end = reg_match.regions.pos(0).unwrap().1;
+
+            let consuming = match_end > *start;
+            if !consuming {
+                // The match doesn't consume any characters. If this is a
+                // "push", remember the position and stack size so that we can
+                // check the next "pop" for loops. Otherwise leave the state,
+                // e.g. non-consuming "set" could also result in a loop.
+                let context = reg_match.context.borrow();
+                let match_pattern = context.match_at(reg_match.pat_index);
+                if let MatchOperation::Push(_) = match_pattern.operation {
+                    *non_consuming_push_at = (match_end, self.stack.len() + 1);
+                }
+            }
+
             *start = match_end;
 
             // ignore `with_prototype`s below this if a context is pushed
@@ -207,7 +347,8 @@ impl ParseState {
             }
 
             let level_context = self.stack[self.stack.len() - 1].context.clone();
-            self.exec_pattern(line, reg_match, level_context, matched, ops);
+            self.exec_pattern(line, reg_match, level_context, ops);
+
             true
         } else {
             false
@@ -220,16 +361,10 @@ impl ParseState {
               match_pat: &mut MatchPattern,
               captures: Option<&(Region, String)>,
               search_cache: &mut SearchCache,
-              matched: &mut MatchedPatterns,
               regions: &mut Region)
-              -> Option<(usize, Region)> {
+              -> Option<Region> {
         // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
         let match_ptr = match_pat as *const MatchPattern;
-
-        // Avoid matching the same pattern twice in the same place, causing an infinite loop
-        if matched.contains(&match_ptr) {
-            return None;
-        }
 
         if let Some(maybe_region) = search_cache.get(&match_ptr) {
             if let Some(ref region) = *maybe_region {
@@ -237,7 +372,7 @@ impl ParseState {
                 if match_start >= start {
                     // Cached match is valid, return it. Otherwise do another
                     // search below.
-                    return Some((match_start, region.clone()));
+                    return Some(region.clone());
                 }
             } else {
                 // Didn't find a match earlier, so no point trying to match it again
@@ -279,7 +414,7 @@ impl ParseState {
             }
             if does_something {
                 // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
-                return Some((match_start, regions.clone()));
+                return Some(regions.clone());
             }
         } else if refs_regex.is_none() {
             search_cache.insert(match_pat, None);
@@ -292,24 +427,13 @@ impl ParseState {
                     line: &str,
                     reg_match: RegexMatch,
                     level_context_ptr: ContextPtr,
-                    matched: &mut MatchedPatterns,
                     ops: &mut Vec<(usize, ScopeStackOp)>)
                     -> bool {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context.borrow();
         let pat = context.match_at(reg_match.pat_index);
         let level_context = level_context_ptr.borrow();
-        // println!("running pattern {:?} on '{}' at {}", pat.regex_str, line, match_start);
-
-        // We only worry about keeping track to avoid infinite loops on pushes and sets
-        // So that we fix #25 but don't break like #28
-        match pat.operation {
-            MatchOperation::Push(_) |
-            MatchOperation::Set(_) => {
-                matched.insert(pat as *const MatchPattern);
-            },
-            MatchOperation::Pop | MatchOperation:: None => ()
-        };
+        // println!("running pattern {:?} on '{}' at {}, operation {:?}", pat.regex_str, line, match_start, pat.operation);
 
         self.push_meta_ops(true, match_start, &*level_context, &pat.operation, ops);
         for s in &pat.scope {
@@ -493,7 +617,7 @@ impl ParseState {
             self.stack.push(StateLevel {
                 context: ctx_ptr,
                 prototype: proto,
-                captures: captures,
+                captures,
             });
         }
         true
@@ -610,6 +734,57 @@ mod tests {
     }
 
     #[test]
+    fn can_parse_preprocessor_rules() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_name("C").unwrap();
+            ParseState::new(syntax)
+        };
+
+        assert_eq!(ops("#ifdef FOO", &mut state), vec![
+            (0, Push(Scope::new("source.c").unwrap())),
+            (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
+            (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+            (6, Pop(1)),
+            (10, Pop(1)),
+        ]);
+        assert_eq!(ops("{", &mut state), vec![
+            (0, Push(Scope::new("meta.block.c").unwrap())),
+            (0, Push(Scope::new("punctuation.section.block.begin.c").unwrap())),
+            (1, Pop(1)),
+        ]);
+        assert_eq!(ops("#else", &mut state), vec![
+            (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
+            (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+            (5, Pop(1)),
+            (5, Pop(1)),
+        ]);
+        assert_eq!(ops("{", &mut state), vec![
+            (0, Push(Scope::new("meta.block.c").unwrap())),
+            (0, Push(Scope::new("punctuation.section.block.begin.c").unwrap())),
+            (1, Pop(1)),
+        ]);
+        assert_eq!(ops("#endif", &mut state), vec![
+            (0, Pop(1)),
+            (0, Push(Scope::new("meta.block.c").unwrap())),
+            (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
+            (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+            (6, Pop(2)),
+            (6, Pop(2)),
+            (6, Push(Scope::new("meta.block.c").unwrap())),
+        ]);
+        assert_eq!(ops("    foo;", &mut state), vec![
+            (7, Push(Scope::new("punctuation.terminator.c").unwrap())),
+            (8, Pop(1)),
+        ]);
+        assert_eq!(ops("}", &mut state), vec![
+            (0, Push(Scope::new("punctuation.section.block.end.c").unwrap())),
+            (1, Pop(1)),
+            (1, Pop(1)),
+        ]);
+    }
+
+    #[test]
     fn can_parse_issue25() {
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
@@ -666,6 +841,8 @@ mod tests {
 
     #[test]
     fn can_parse_infinite_seeming_loop() {
+        // See https://github.com/SublimeTextIssues/Core/issues/1190 for an
+        // explanation.
         let line = "#infinite_seeming_loop_test hello";
         let expect = [
             "<source.test>, <keyword.test>",
@@ -722,6 +899,320 @@ contexts:
         expect_scope_stacks(&line, &expect, syntax);
     }
 
+    #[test]
+    fn can_parse_issue120() {
+        let ps = SyntaxSet::load_from_folder("testdata").unwrap();
+        let syntax = ps.find_syntax_by_name("Embed_Escape Used by tests in src/parsing/parser.rs").unwrap();
+
+        let line1 = "\"abctest\" foobar";
+        let expect1 = [
+            "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.begin.html>",
+            "<meta.attribute-with-value.style.html>, <source.css>",
+            "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.end.html>",
+            "<meta.attribute-with-value.style.html>, <source.css>, <test.embedded>",
+            "<top-level.test>",
+        ];
+        expect_scope_stacks_with_syntax(&line1, &expect1, syntax.to_owned());
+
+        let line2 = ">abctest</style>foobar";
+        let expect2 = [
+            "<meta.tag.style.begin.html>, <punctuation.definition.tag.end.html>",
+            "<source.css.embedded.html>, <test.embedded>",
+            "<top-level.test>",
+        ];
+        expect_scope_stacks_with_syntax(&line2, &expect2, syntax.to_owned());
+    }
+
+    #[test]
+    fn can_parse_non_consuming_pop_that_would_loop() {
+        // See https://github.com/trishume/syntect/issues/127
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    # This makes us go into "test" without consuming any characters
+    - match: (?=hello)
+      push: test
+  test:
+    # If we used this match, we'd go back to "main" without consuming anything,
+    # and then back into "test", infinitely looping. ST detects this at this
+    # point and ignores this match until at least one character matched.
+    - match: (?!world)
+      pop: true
+    - match: \w+
+      scope: test.matched
+"#;
+
+        let line = "hello";
+        let expect = ["<source.test>, <test.matched>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_set_and_pop_that_would_loop() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    # This makes us go into "a" without advancing
+    - match: (?=test)
+      push: a
+  a:
+    # This makes us go into "b" without advancing
+    - match: (?=t)
+      set: b
+  b:
+    # If we used this match, we'd go back to "main" without having advanced,
+    # which means we'd have an infinite loop like with the previous test.
+    # So even for a "set", we have to check if we're advancing or not.
+    - match: (?=t)
+      pop: true
+    - match: \w+
+      scope: test.matched
+"#;
+
+        let line = "test";
+        let expect = ["<source.test>, <test.matched>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_set_after_consuming_push_that_does_not_loop() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    # This makes us go into "a", but we consumed a character
+    - match: t
+      push: a
+    - match: \w+
+      scope: test.matched
+  a:
+    # This makes us go into "b" without consuming
+    - match: (?=e)
+      set: b
+  b:
+    # This match does not result in an infinite loop because we already consumed
+    # a character to get into "a", so it's ok to pop back into "main".
+    - match: (?=e)
+      pop: true
+"#;
+
+        let line = "test";
+        let expect = ["<source.test>, <test.matched>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_set_after_consuming_set_that_does_not_loop() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: (?=hello)
+      push: a
+    - match: \w+
+      scope: test.matched
+  a:
+    - match: h
+      set: b
+  b:
+    - match: (?=e)
+      set: c
+  c:
+    # This is not an infinite loop because "a" consumed a character, so we can
+    # actually pop back into main and then match the rest of the input.
+    - match: (?=e)
+      pop: true
+"#;
+
+        let line = "hello";
+        let expect = ["<source.test>, <test.matched>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_pop_that_would_loop_at_end_of_line() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    # This makes us go into "test" without consuming, even at the end of line
+    - match: ""
+      push: test
+  test:
+    - match: ""
+      pop: true
+    - match: \w+
+      scope: test.matched
+"#;
+
+        let line = "hello";
+        let expect = ["<source.test>, <test.matched>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_empty_but_consuming_set_that_does_not_loop() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: (?=hello)
+      push: a
+    - match: ello
+      scope: test.good
+  a:
+    # This is an empty match, but it consumed a character (the "h")
+    - match: (?=e)
+      set: b
+  b:
+    # .. so it's ok to pop back to main from here
+    - match: ""
+      pop: true
+    - match: ello
+      scope: test.bad
+"#;
+
+        let line = "hello";
+        let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_pop_that_does_not_loop() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    # This is a non-consuming push, so "b" will need to check for a
+    # non-consuming pop
+    - match: (?=hello)
+      push: [b, a]
+    - match: ello
+      scope: test.good
+  a:
+    # This pop is ok, it consumed "h"
+    - match: (?=e)
+      pop: true
+  b:
+    # This is non-consuming, and we set to "c"
+    - match: (?=e)
+      set: c
+  c:
+    # It's ok to pop back to "main" here because we consumed a character in the
+    # meantime.
+    - match: ""
+      pop: true
+    - match: ello
+      scope: test.bad
+"#;
+
+        let line = "hello";
+        let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_pop_with_multi_push_that_does_not_loop() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: (?=hello)
+      push: [b, a]
+    - match: ello
+      scope: test.good
+  a:
+    # This pop is ok, as we're not popping back to "main" yet (which would loop),
+    # we're popping to "b"
+    - match: ""
+      pop: true
+    - match: \w+
+      scope: test.bad
+  b:
+    - match: \w+
+      scope: test.good
+"#;
+
+        let line = "hello";
+        let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_pop_of_recursive_context_that_does_not_loop() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: xxx
+      scope: test.good
+    - include: basic-identifiers
+
+  basic-identifiers:
+    - match: '\w+::'
+      scope: test.matched
+      push: no-type-names
+
+  no-type-names:
+      - include: basic-identifiers
+      - match: \w+
+        scope: test.matched.inside
+      # This is a tricky one because when this is the best match,
+      # we have two instances of "no-type-names" on the stack, so we're popping
+      # back from "no-type-names" to another "no-type-names".
+      - match: ''
+        pop: true
+"#;
+
+        let line = "foo::bar::* xxx";
+        let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_pop_order() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: (?=hello)
+      push: test
+  test:
+    # This matches first
+    - match: (?=e)
+      push: good
+    # But this (looping) match replaces it, because it's an earlier match
+    - match: (?=h)
+      pop: true
+    # And this should not replace it, as it's a later match (only matches at
+    # the same position can replace looping pops).
+    - match: (?=o)
+      push: bad
+  good:
+    - match: \w+
+      scope: test.good
+  bad:
+    - match: \w+
+      scope: test.bad
+"#;
+
+        let line = "hello";
+        let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");
         let line_with_newline = format!("{}\n", line_without_newline);
@@ -765,29 +1256,5 @@ contexts:
         let ops = state.parse_line(line);
         debug_print_ops(line, &ops);
         ops
-    }
-
-    #[test]
-    fn can_parse_issue120() {
-        let ps = SyntaxSet::load_from_folder("testdata").unwrap();
-        let syntax = ps.find_syntax_by_name("Embed_Escape Used by tests in src/parsing/parser.rs").unwrap();
-
-        let line1 = "\"abctest\" foobar";
-        let expect1 = [
-            "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.begin.html>",
-            "<meta.attribute-with-value.style.html>, <source.css>",
-            "<meta.attribute-with-value.style.html>, <string.quoted.double>, <punctuation.definition.string.end.html>",
-            "<meta.attribute-with-value.style.html>, <source.css>, <test.embedded>",
-            "<top-level.test>",
-        ];
-        expect_scope_stacks_with_syntax(&line1, &expect1, syntax.to_owned());
-
-        let line2 = ">abctest</style>foobar";
-        let expect2 = [
-            "<meta.tag.style.begin.html>, <punctuation.definition.tag.end.html>",
-            "<source.css.embedded.html>, <test.embedded>",
-            "<top-level.test>",
-        ];
-        expect_scope_stacks_with_syntax(&line2, &expect2, syntax.to_owned());
     }
 }
