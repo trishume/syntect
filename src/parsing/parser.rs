@@ -63,6 +63,8 @@ struct RegexMatch {
     regions: Region,
     context: ContextPtr,
     pat_index: usize,
+    from_with_prototype: bool,
+    would_loop: bool,
 }
 
 /// maps the pattern to the start index, which is -1 if not found.
@@ -227,83 +229,20 @@ impl ParseState {
                         non_consuming_push_at: &mut (usize, usize),
                         ops: &mut Vec<(usize, ScopeStackOp)>)
                         -> bool {
-
         let check_pop_loop = {
             let (pos, stack_depth) = *non_consuming_push_at;
             pos == *start && stack_depth == self.stack.len()
         };
 
-        let (cur_match, match_from_with_proto, pop_would_loop) = {
-            let cur_level = &self.stack[self.stack.len() - 1];
-            let prototype: Option<ContextPtr> = {
-                let ctx_ref = cur_level.context.borrow();
-                ctx_ref.prototype.clone()
-            };
+        // Trim proto_starts that are no longer valid
+        while self.proto_starts.last().map(|start| *start >= self.stack.len()).unwrap_or(false) {
+            self.proto_starts.pop();
+        }
 
-            // Trim proto_starts that are no longer valid
-            while self.proto_starts.last().map(|start| *start >= self.stack.len()).unwrap_or(false) {
-                self.proto_starts.pop();
-            }
+        let best_match = self.find_best_match(line, *start, search_cache, regions, check_pop_loop);
 
-            // Build an iterator for the contexts we want to visit in order
-            let context_chain = {
-                let proto_start = self.proto_starts.last().cloned().unwrap_or(0);
-                // Sublime applies with_prototypes from bottom to top
-                let with_prototypes = self.stack[proto_start..].iter().filter_map(|lvl| lvl.prototype.as_ref().map(|ctx| (true, ctx.clone(), lvl.captures.as_ref())));
-                let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx, None));
-                let cur_context = Some((false, cur_level.context.clone(), cur_level.captures.as_ref())).into_iter();
-                with_prototypes.chain(cur_prototype).chain(cur_context)
-            };
-
-            // println!("{:#?}", cur_level);
-            // println!("token at {} on {}", start, line.trim_right());
-
-            let mut min_start = usize::MAX;
-            let mut cur_match: Option<RegexMatch> = None;
-            let mut match_from_with_proto = false;
-            let mut pop_would_loop = false;
-
-            for (from_with_proto, ctx, captures) in context_chain {
-                for (pat_context_ptr, pat_index) in context_iter(ctx) {
-                    let mut pat_context = pat_context_ptr.borrow_mut();
-                    let match_pat = pat_context.match_at_mut(pat_index);
-
-                    if let Some(match_region) = self.search(
-                        line, *start, match_pat, captures, search_cache, regions
-                    ) {
-                        let (match_start, match_end) = match_region.pos(0).unwrap();
-
-                        // println!("matched pattern {:?} at start {} end {}", match_pat.regex_str, match_start, match_end);
-
-                        if match_start < min_start || (match_start == min_start && pop_would_loop) {
-                            // New match is earlier in text than old match,
-                            // or old match was a looping pop at the same
-                            // position.
-
-                            // println!("setting as current match");
-
-                            min_start = match_start;
-                            cur_match = Some(RegexMatch {
-                                regions: match_region,
-                                context: pat_context_ptr.clone(),
-                                pat_index,
-                            });
-                            match_from_with_proto = from_with_proto;
-
-                            let consuming = match_end > *start;
-                            pop_would_loop = check_pop_loop && !consuming && match match_pat.operation {
-                                MatchOperation::Pop => true,
-                                _ => false,
-                            };
-                        }
-                    }
-                }
-            }
-            (cur_match, match_from_with_proto, pop_would_loop)
-        };
-
-        if let Some(reg_match) = cur_match {
-            if pop_would_loop {
+        if let Some(reg_match) = best_match {
+            if reg_match.would_loop {
                 // A push that doesn't consume anything (a regex that resulted
                 // in an empty match at the current position) can not be
                 // followed by a non-consuming pop. Otherwise we're back where
@@ -341,7 +280,7 @@ impl ParseState {
             *start = match_end;
 
             // ignore `with_prototype`s below this if a context is pushed
-            if match_from_with_proto {
+            if reg_match.from_with_prototype {
                 // use current height, since we're before the actual push
                 self.proto_starts.push(self.stack.len());
             }
@@ -353,6 +292,77 @@ impl ParseState {
         } else {
             false
         }
+    }
+
+    fn find_best_match(&self,
+                       line: &str,
+                       start: usize,
+                       search_cache: &mut SearchCache,
+                       regions: &mut Region,
+                       check_pop_loop: bool)
+                       -> Option<RegexMatch> {
+        let cur_level = &self.stack[self.stack.len() - 1];
+        let prototype: Option<ContextPtr> = {
+            let ctx_ref = cur_level.context.borrow();
+            ctx_ref.prototype.clone()
+        };
+
+        // Build an iterator for the contexts we want to visit in order
+        let context_chain = {
+            let proto_start = self.proto_starts.last().cloned().unwrap_or(0);
+            // Sublime applies with_prototypes from bottom to top
+            let with_prototypes = self.stack[proto_start..].iter().filter_map(|lvl| lvl.prototype.as_ref().map(|ctx| (true, ctx.clone(), lvl.captures.as_ref())));
+            let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx, None));
+            let cur_context = Some((false, cur_level.context.clone(), cur_level.captures.as_ref())).into_iter();
+            with_prototypes.chain(cur_prototype).chain(cur_context)
+        };
+
+        // println!("{:#?}", cur_level);
+        // println!("token at {} on {}", start, line.trim_right());
+
+        let mut min_start = usize::MAX;
+        let mut best_match: Option<RegexMatch> = None;
+        let mut pop_would_loop = false;
+
+        for (from_with_proto, ctx, captures) in context_chain {
+            for (pat_context_ptr, pat_index) in context_iter(ctx) {
+                let mut pat_context = pat_context_ptr.borrow_mut();
+                let match_pat = pat_context.match_at_mut(pat_index);
+
+                if let Some(match_region) = self.search(
+                    line, start, match_pat, captures, search_cache, regions
+                ) {
+                    let (match_start, match_end) = match_region.pos(0).unwrap();
+
+                    // println!("matched pattern {:?} at start {} end {}", match_pat.regex_str, match_start, match_end);
+
+                    if match_start < min_start || (match_start == min_start && pop_would_loop) {
+                        // New match is earlier in text than old match,
+                        // or old match was a looping pop at the same
+                        // position.
+
+                        // println!("setting as current match");
+
+                        min_start = match_start;
+
+                        let consuming = match_end > start;
+                        pop_would_loop = check_pop_loop && !consuming && match match_pat.operation {
+                            MatchOperation::Pop => true,
+                            _ => false,
+                        };
+
+                        best_match = Some(RegexMatch {
+                            regions: match_region,
+                            context: pat_context_ptr.clone(),
+                            pat_index,
+                            from_with_prototype: from_with_proto,
+                            would_loop: pop_would_loop,
+                        });
+                    }
+                }
+            }
+        }
+        best_match
     }
 
     fn search(&self,
