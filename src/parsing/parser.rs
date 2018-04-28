@@ -358,6 +358,12 @@ impl ParseState {
                             from_with_prototype: from_with_proto,
                             would_loop: pop_would_loop,
                         });
+
+                        if match_start == start && !pop_would_loop {
+                            // We're not gonna find a better match after this,
+                            // so as an optimization we can stop matching now.
+                            return best_match;
+                        }
                     }
                 }
             }
