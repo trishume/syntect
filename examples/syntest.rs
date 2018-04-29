@@ -21,6 +21,7 @@ use std::path::Path;
 use std::io::{BufRead, BufReader};
 use std::fs::File;
 use std::cmp::{min, max};
+use std::time::Instant;
 use walkdir::{DirEntry, WalkDir};
 use std::str::FromStr;
 use regex::Regex;
@@ -250,6 +251,11 @@ fn main() {
         args.remove(debug_arg.unwrap());
     }
 
+    let time_arg = args.iter().position(|s| s == "--time");
+    if time_arg.is_some() {
+        args.remove(time_arg.unwrap());
+    }
+
     let tests_path = if args.len() < 2 {
         "."
     } else {
@@ -276,22 +282,28 @@ fn main() {
         ss.link_syntaxes();
     }
 
-    let exit_code = recursive_walk(&ss, &tests_path, debug_arg.is_some());
+    let exit_code = recursive_walk(&ss, &tests_path, debug_arg.is_some(), time_arg.is_some());
     println!("exiting with code {}", exit_code);
     std::process::exit(exit_code);
 
 }
 
 
-fn recursive_walk(ss: &SyntaxSet, path: &str, debug: bool) -> i32 {
+fn recursive_walk(ss: &SyntaxSet, path: &str, debug: bool, time: bool) -> i32 {
     let mut exit_code: i32 = 0; // exit with code 0 by default, if all tests pass
     let walker = WalkDir::new(path).into_iter();
     for entry in walker.filter_entry(|e|e.file_type().is_dir() || is_a_syntax_test_file(e)) {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
             println!("Testing file {}", entry.path().display());
+            let start = Instant::now();
             let result = test_file(&ss, entry.path(), true, debug);
+            let elapsed = start.elapsed();
             println!("{:?}", result);
+            if time {
+                let ms = (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64;
+                println!("{} ms for file {}", ms, entry.path().display());
+            }
             if exit_code != 2 { // leave exit code 2 if there was an error
                 if let Err(_) = result { // set exit code 2 if there was an error
                     exit_code = 2;
