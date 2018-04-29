@@ -39,6 +39,7 @@ fn main() {
     opts.optopt("t", "theme-file", "THEME_FILE", "Theme file to use. May be a path, or an embedded theme. Embedded themes will take precendence. Default: base16-ocean.dark");
     opts.optopt("s", "extra-syntaxes", "SYNTAX_FOLDER", "Additional folder to search for .sublime-syntax files in.");
     opts.optflag("e", "no-default-syntaxes", "Doesn't load default syntaxes, intended for use with --extra-syntaxes.");
+    opts.optflag("n", "no-newlines", "Uses the no newlines versions of syntaxes and dumps.");
     opts.optflag("c", "cache-theme", "Cache the parsed theme file.");
 
     let matches = match opts.parse(&args[1..]) {
@@ -46,14 +47,17 @@ fn main() {
         Err(f) => { panic!(f.to_string()) }
     };
 
+    let no_newlines = matches.opt_present("no-newlines");
     let mut ss = if matches.opt_present("no-default-syntaxes") {
         SyntaxSet::new()
+    } else if no_newlines {
+        SyntaxSet::load_defaults_nonewlines()
     } else {
         SyntaxSet::load_defaults_newlines()
     };
 
     if let Some(folder) = matches.opt_str("extra-syntaxes") {
-        ss.load_syntaxes(folder, true).unwrap();
+        ss.load_syntaxes(folder, !no_newlines).unwrap();
         ss.link_syntaxes();
     }
 
@@ -98,11 +102,19 @@ fn main() {
             // It also allows re-using the line buffer, which should be a tiny bit faster.
             let mut line = String::new();
             while highlighter.reader.read_line(&mut line).unwrap() > 0 {
+                if no_newlines && line.ends_with("\n") {
+                    let _ = line.pop();
+                }
+
                 {
                     let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
                     print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
                 }
                 line.clear();
+
+                if no_newlines {
+                    println!("");
+                }
             }
 
             // Clear the formatting
