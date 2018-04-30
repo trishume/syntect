@@ -55,6 +55,8 @@ pub mod html;
 mod escape;
 
 use std::io::Error as IoError;
+use std::error::Error;
+use std::fmt;
 #[cfg(all(feature = "yaml-load", feature = "parsing"))]
 use parsing::ParseSyntaxError;
 use highlighting::{ParseThemeError, SettingsError};
@@ -100,5 +102,47 @@ impl From<ParseThemeError> for LoadingError {
 impl From<ParseSyntaxError> for LoadingError {
     fn from(error: ParseSyntaxError) -> LoadingError {
         LoadingError::ParseSyntax(error)
+    }
+}
+
+impl fmt::Display for LoadingError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use LoadingError::*;
+
+        match *self {
+            WalkDir(ref error) => error.fmt(f),
+            Io(ref error) => error.fmt(f),
+            #[cfg(feature = "yaml-load")]
+            ParseSyntax(_) => write!(f, "Invalid syntax file"),
+            ParseTheme(_) => write!(f, "Invalid syntax theme"),
+            ReadSettings(_) => write!(f, "Invalid syntax theme settings"),
+            BadPath => write!(f, "Invalid path"),
+        }
+    }
+}
+
+impl Error for LoadingError {
+    fn description(&self) -> &str {
+        use LoadingError::*;
+
+        match *self {
+            WalkDir(ref error) => error.description(),
+            Io(ref error) => error.description(),
+            #[cfg(feature = "yaml-load")]
+            ParseSyntax(_) => "Invalid syntax file",
+            ParseTheme(_) => "Invalid syntax theme",
+            ReadSettings(_) => "Invalid syntax theme settings",
+            BadPath => "Invalid path",
+        }
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        use LoadingError::*;
+
+        match *self {
+            WalkDir(ref error) => Some(error),
+            Io(ref error) => Some(error),
+            _ => None,
+        }
     }
 }
