@@ -112,11 +112,7 @@ impl fmt::Display for LoadingError {
         match *self {
             WalkDir(ref error) => error.fmt(f),
             Io(ref error) => error.fmt(f),
-            #[cfg(feature = "yaml-load")]
-            ParseSyntax(_) => write!(f, "Invalid syntax file"),
-            ParseTheme(_) => write!(f, "Invalid syntax theme"),
-            ReadSettings(_) => write!(f, "Invalid syntax theme settings"),
-            BadPath => write!(f, "Invalid path"),
+            _ => write!(f, "{}", self.description()),
         }
     }
 }
