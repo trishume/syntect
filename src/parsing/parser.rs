@@ -250,13 +250,17 @@ impl ParseState {
 
                 // println!("pop_would_loop for match {:?}, start {}", reg_match, *start);
 
-                if *start == line.len() {
+                // nth(1) gets the next character if there is one. Need to do
+                // this instead of just += 1 because we have byte indices and
+                // unicode characters can be more than 1 byte.
+                if let Some((i, _)) = line[*start..].char_indices().nth(1) {
+                    *start += i;
+                    return true;
+                } else {
                     // End of line, no character to advance and no point trying
                     // any more patterns.
                     return false;
                 }
-                *start += 1;
-                return true;
             }
 
             let match_end = reg_match.regions.pos(0).unwrap().1;
@@ -1317,6 +1321,30 @@ contexts:
             (0, Push(Scope::new("other").unwrap())),
             (4, Pop(1))
         ]);
+    }
+
+    #[test]
+    fn can_parse_text_with_unicode_to_skip() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: (?=.)
+      push: test
+  test:
+    - match: (?=.)
+      pop: true
+    - match: x
+      scope: test.good
+"#;
+
+        // U+03C0 GREEK SMALL LETTER PI, 2 bytes in UTF-8
+        expect_scope_stacks("\u{03C0}x", &["<source.test>, <test.good>"], syntax);
+        // U+0800 SAMARITAN LETTER ALAF, 3 bytes in UTF-8
+        expect_scope_stacks("\u{0800}x", &["<source.test>, <test.good>"], syntax);
+        // U+1F600 GRINNING FACE, 4 bytes in UTF-8
+        expect_scope_stacks("\u{1F600}x", &["<source.test>, <test.good>"], syntax);
     }
 
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
