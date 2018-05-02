@@ -15,7 +15,6 @@ exclude = [
 
 [dependencies]
 yaml-rust = { version = "0.4", optional = true }
-onig = { version = "3.2.1", optional = true }
 walkdir = "2.0"
 regex-syntax = { version = "0.4", optional = true }
 lazy_static = "1.0"
@@ -25,7 +24,7 @@ bincode = { version = "1.0", optional = true }
 flate2 = { version = "1.0", optional = true, default-features = false }
 fnv = { version = "1.0", optional = true }
 regex = "*"
-fancy-regex = { git = "https://github.com/google/fancy-regex.git" }
+fancy-regex = { git = "https://github.com/google/fancy-regex.git", optional = true }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -51,7 +50,7 @@ dump-create = ["flate2/default", "bincode"]
 # Pure Rust dump creation, worse compressor so produces larger dumps than dump-create
 dump-create-rs = ["flate2/rust_backend", "bincode"]
 
-parsing = ["onig", "regex-syntax", "fnv"]
+parsing = ["fancy-regex", "regex-syntax", "fnv"]
 # The `assets` feature enables inclusion of the default theme and syntax packages.
 # For `assets` to do anything, it requires one of `dump-load-rs` or `dump-load` to be set.
 assets = []
