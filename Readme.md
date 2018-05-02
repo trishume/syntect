@@ -103,7 +103,7 @@ All measurements were taken on a mid 2012 15" retina Macbook Pro.
     - Atom takes 6 seconds
     - Sublime Text 3 dev build takes 98ms (highlighting only, takes ~200ms click to pixels), despite having a super fancy javascript syntax definition.
     - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors (Compare [vim's grammar](https://github.com/vim/vim/blob/master/runtime/syntax/javascript.vim) to [Sublime's](https://github.com/sublimehq/Packages/blob/master/JavaScript/JavaScript.sublime-syntax)).
-    - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex defintion for ES6 syntax.
+    - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex definition for ES6 syntax.
 - Simple syntaxes are faster, JS is one of the most complex. It only takes 34ms to highlight a 1700 line 62kb XML file or 50,000 lines/sec.
 - ~138ms to load and link all the syntax definitions in the default Sublime package set.
     - but only ~23ms to load and link all the syntax definitions from an internal pre-made binary dump with lazy regex compilation.
