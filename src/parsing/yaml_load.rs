@@ -407,14 +407,14 @@ impl SyntaxDefinition {
     }
 }
 
-/// Rewrite a regex that matches `\n` to one that matches `\z` (end of string) instead.
+/// Rewrite a regex that matches `\n` to one that matches `$` (end of line) instead.
 /// That allows the regex to be used to match lines that don't include a trailing newline character.
 ///
 /// The reason we're doing this is because the regexes in the syntax definitions assume that the
 /// lines that are being matched on include a trailing newline.
 ///
 /// Note that the rewrite is just an approximation and there's a couple of cases it can not handle,
-/// due to `\z` being an anchor whereas `\n` matches a character.
+/// due to `$` being an anchor whereas `\n` matches a character.
 fn rewrite_regex(regex: String) -> String {
     if !regex.contains(r"\n") {
         return regex;
@@ -441,10 +441,10 @@ impl<'a> RegexRewriter<'a> {
                     self.next();
                     if let Some(c2) = self.peek() {
                         self.next();
-                        // Replacing `\n?` with `\z?` would make parsing later fail with
-                        // "invalid operand of repeat expression"
+                        // Replacing `\n?` with `$?` would make parsing later fail with
+                        // "target of repeat operator is invalid"
                         if c2 == b'n' && self.peek() != Some(b'?') {
-                            result.extend_from_slice(br"\z");
+                            result.extend_from_slice(b"$");
                         } else {
                             result.push(c);
                             result.push(c2);
@@ -458,20 +458,9 @@ impl<'a> RegexRewriter<'a> {
                     if matches_newline && self.peek() != Some(b'?') {
                         result.extend_from_slice(b"(?:");
                         result.append(&mut content);
-                        result.extend_from_slice(br"|\z)");
+                        result.extend_from_slice(br"|$)");
                     } else {
                         result.append(&mut content);
-                    }
-                }
-                b'(' => {
-                    // `\z` can't be used in repeat or look-behind, so strip that
-                    if self.skip_if(br"(?:\n)?") ||
-                        self.skip_if(br"(?<!\n)") ||
-                        self.skip_if(br"(?<=\n)") {
-                        // continue after skipped text
-                    } else {
-                        self.next();
-                        result.push(c);
                     }
                 }
                 _ => {
@@ -547,15 +536,6 @@ impl<'a> RegexRewriter<'a> {
 
     fn next(&mut self) {
         self.index += 1;
-    }
-
-    fn skip_if(&mut self, s: &[u8]) -> bool {
-        if self.bytes[self.index..].starts_with(s) {
-            self.index += s.len();
-            true
-        } else {
-            false
-        }
     }
 }
 
@@ -797,21 +777,21 @@ mod tests {
         assert_eq!(&rewrite(r"[]a]"), r"[]a]");
         assert_eq!(&rewrite(r"[[a]]"), r"[[a]]");
 
-        assert_eq!(&rewrite(r"\n"), r"\z");
-        assert_eq!(&rewrite(r"\[\n"), r"\[\z");
+        assert_eq!(&rewrite(r"\n"), r"$");
+        assert_eq!(&rewrite(r"\[\n"), r"\[$");
         assert_eq!(&rewrite(r"a\n?"), r"a\n?");
-        assert_eq!(&rewrite(r"[abc\n]"), r"(?:[abc\n]|\z)");
+        assert_eq!(&rewrite(r"[abc\n]"), r"(?:[abc\n]|$)");
         assert_eq!(&rewrite(r"[^\n]"), r"[^\n]");
         assert_eq!(&rewrite(r"[^]\n]"), r"[^]\n]");
         assert_eq!(&rewrite(r"[\n]?"), r"[\n]?");
         // Removing the `\n` might result in an empty character class, so we should leave it.
-        assert_eq!(&rewrite(r"[\n]"), r"(?:[\n]|\z)");
-        assert_eq!(&rewrite(r"[]\n]"), r"(?:[]\n]|\z)");
+        assert_eq!(&rewrite(r"[\n]"), r"(?:[\n]|$)");
+        assert_eq!(&rewrite(r"[]\n]"), r"(?:[]\n]|$)");
         // In order to properly understand nesting, we'd have to have a full parser, so ignore it.
         assert_eq!(&rewrite(r"[[a]&&[\n]]"), r"[[a]&&[\n]]");
 
-        assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab");
-        assert_eq!(&rewrite(r"ab(?<!\n)"), r"ab");
-        assert_eq!(&rewrite(r"ab(?<=\n)"), r"ab");
+        assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab(?:$)?");
+        assert_eq!(&rewrite(r"(?<!\n)ab"), r"(?<!$)ab");
+        assert_eq!(&rewrite(r"(?<=\n)ab"), r"(?<=$)ab");
     }
 }
