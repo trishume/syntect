@@ -157,8 +157,7 @@ impl SyntaxSet {
                 return ext_res;
             }
         }
-        let lower = s.to_ascii_lowercase();
-        self.syntaxes.iter().find(|&s| lower == s.name.to_ascii_lowercase())
+        self.syntaxes.iter().find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
     }
 
     /// Try to find the syntax for a file based on its first line.
