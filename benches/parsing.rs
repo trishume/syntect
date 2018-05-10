@@ -1,62 +1,62 @@
-#![feature(test)]
-
-extern crate test;
+#[macro_use]
+extern crate criterion;
 extern crate syntect;
-use test::Bencher;
 
-use syntect::parsing::{SyntaxSet, ParseState, SyntaxDefinition};
+use criterion::{Bencher, Criterion};
 use std::fs::File;
 use std::io::Read;
+use syntect::parsing::{ParseState, SyntaxDefinition, SyntaxSet};
 
-fn do_parse(s: &str, syntax: &SyntaxDefinition) {
+fn do_parse(s: &str, syntax: &SyntaxDefinition) -> usize {
     let mut state = ParseState::new(syntax);
+    let mut count = 0;
     for line in s.lines() {
         let ops = state.parse_line(line);
-        test::black_box(&ops);
+        count += ops.len();
     }
+    count
 }
 
-fn parse_file(b: &mut Bencher, path_s: &str) {
+fn parse_file(b: &mut Bencher, file: &str) {
+    let path = match file {
+        "highlight_test.erb" => "testdata/highlight_test.erb",
+        "InspiredGitHub.tmTheme" => "testdata/InspiredGitHub.tmtheme/InspiredGitHub.tmTheme",
+        "Ruby.sublime-syntax" => "testdata/Packages/Ruby/Ruby.sublime-syntax",
+        "jquery.js" => "testdata/jquery.js",
+        "parser.rs" => "testdata/parser.rs",
+        "scope.rs" => "src/parsing/scope.rs",
+        _ => panic!("Unknown test file {}", file),
+    };
+
     // don't load from dump so we don't count lazy regex compilation time
     let ps = SyntaxSet::load_defaults_nonewlines();
 
-    let syntax = ps.find_syntax_for_file(path_s).unwrap().unwrap();
-    let mut f = File::open(path_s).unwrap();
+    let syntax = ps.find_syntax_for_file(path).unwrap().unwrap();
+    let mut f = File::open(path).unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
-    do_parse(&s, syntax);
-    b.iter(|| {
-        do_parse(&s, syntax);
-    });
+    b.iter(|| do_parse(&s, syntax));
 }
 
-#[bench]
-fn bench_parsing_nesting(b: &mut Bencher) {
-    parse_file(b, "testdata/highlight_test.erb");
+fn parsing_benchmark(c: &mut Criterion) {
+    c.bench_function_over_inputs(
+        "parse",
+        |b, s| parse_file(b, s),
+        vec![
+            "highlight_test.erb",
+            "InspiredGitHub.tmTheme",
+            "Ruby.sublime-syntax",
+            "jquery.js",
+            "parser.rs",
+            "scope.rs",
+        ],
+    );
 }
 
-#[bench]
-fn bench_parsing_xml(b: &mut Bencher) {
-    parse_file(b, "testdata/InspiredGitHub.tmtheme/InspiredGitHub.tmTheme");
+criterion_group! {
+    name = benches;
+    config = Criterion::default().sample_size(20);
+    targets = parsing_benchmark
 }
-
-#[bench]
-fn bench_parsing_yaml(b: &mut Bencher) {
-    parse_file(b, "testdata/Packages/Ruby/Ruby.sublime-syntax");
-}
-
-#[bench]
-fn bench_parsing_jquery(b: &mut Bencher) {
-    parse_file(b, "testdata/jquery.js");
-}
-
-#[bench]
-fn bench_parsing_rustc(b: &mut Bencher) {
-    parse_file(b, "testdata/parser.rs");
-}
-
-#[bench]
-fn bench_parsing_scope(b: &mut Bencher) {
-    parse_file(b, "src/parsing/scope.rs");
-}
+criterion_main!(benches);

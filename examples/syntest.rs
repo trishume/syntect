@@ -1,6 +1,12 @@
 //! An example of using syntect for testing syntax definitions.
 //! Basically exactly the same as what Sublime Text can do,
 //! but without needing ST installed
+// To run tests only for a particular package, while showing the operations, you could use:
+// cargo run --example syntest -- --debug testdata/Packages/Makefile/
+// to specify that the syntax definitions should be parsed instead of loaded from the dump file,
+// you can tell it where to parse them from - the following will execute only 1 syntax test after
+// parsing the sublime-syntax files in the JavaScript folder:
+// cargo run --example syntest testdata/Packages/JavaScript/syntax_test_json.json testdata/Packages/JavaScript/
 extern crate syntect;
 extern crate walkdir;
 #[macro_use]
@@ -15,7 +21,8 @@ use std::path::Path;
 use std::io::{BufRead, BufReader};
 use std::fs::File;
 use std::cmp::{min, max};
-use walkdir::{DirEntry, WalkDir, WalkDirIterator};
+use std::time::Instant;
+use walkdir::{DirEntry, WalkDir};
 use std::str::FromStr;
 use regex::Regex;
 
@@ -123,7 +130,8 @@ fn process_assertions(assertion: &AssertionRange, test_against_line_scopes: &Vec
 }
 
 /// If `parse_test_lines` is `false` then lines that only contain assertions are not parsed
-fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
+fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, debug: bool) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
+    use syntect::util::debug_print_ops;
     let f = File::open(path).unwrap();
     let mut reader = BufReader::new(f);
     let mut line = String::new();
@@ -138,7 +146,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
     // parse the syntax test header in the first line of the file
     let header_line = line.clone();
     let search_result = SYNTAX_TEST_HEADER_PATTERN.captures(&header_line);
-    let captures = try!(search_result.ok_or(SyntaxTestHeaderError::MalformedHeader));
+    let captures = search_result.ok_or(SyntaxTestHeaderError::MalformedHeader)?;
 
     let testtoken_start = captures.name("testtoken_start").unwrap().as_str();
     let testtoken_end = captures.name("testtoken_end").map_or(None, |c|Some(c.as_str()));
@@ -146,7 +154,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
 
     // find the relevant syntax definition to parse the file with - case is important!
     println!("The test file references syntax definition file: {}", syntax_file);
-    let syntax = try!(ss.find_syntax_by_path(syntax_file).ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound));
+    let syntax = ss.find_syntax_by_path(syntax_file).ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound)?;
 
     // iterate over the lines of the file, testing them
     let mut state = ParseState::new(syntax);
@@ -167,14 +175,15 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
             let result = process_assertions(&assertion, &scopes_on_line_being_tested);
             total_assertions += &assertion.end_char - &assertion.begin_char;
             for failure in result.iter().filter(|r|!r.success) {
-                let chars = &previous_non_assertion_line[failure.column_begin..failure.column_end];
+                let length = failure.column_end - failure.column_begin;
+                let text: String = previous_non_assertion_line.chars().skip(failure.column_begin).take(length).collect();
                 println!("  Assertion selector {:?} \
                     from line {:?} failed against line {:?}, column range {:?}-{:?} \
                     (with text {:?}) \
                     has scope {:?}",
                     assertion.scope_selector_text.trim(),
                     current_line_number, test_against_line_number, failure.column_begin, failure.column_end,
-                    chars,
+                    text,
                     scopes_on_line_being_tested.iter().skip_while(|s|s.char_start + s.text_len <= failure.column_begin).next().unwrap_or(scopes_on_line_being_tested.last().unwrap()).scope
                 );
                 assertion_failures += failure.column_end - failure.column_begin;
@@ -188,7 +197,17 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
                 test_against_line_number = current_line_number;
                 previous_non_assertion_line = line.to_string();
             }
+            if debug && !line_only_has_assertion {
+                println!("-- debugging line {} -- scope stack: {:?}", current_line_number, stack);
+            }
             let ops = state.parse_line(&line);
+            if debug && !line_only_has_assertion {
+                if ops.is_empty() && !line.is_empty() {
+                    println!("no operations for this line...");
+                } else {
+                    debug_print_ops(&line, &ops);
+                }
+            }
             let mut col: usize = 0;
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
                 stack.apply(op);
@@ -226,7 +245,17 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool) -> Result<Synt
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let mut args: Vec<String> = std::env::args().collect();
+    let debug_arg = args.iter().position(|s| s == "--debug");
+    if debug_arg.is_some() {
+        args.remove(debug_arg.unwrap());
+    }
+
+    let time_arg = args.iter().position(|s| s == "--time");
+    if time_arg.is_some() {
+        args.remove(time_arg.unwrap());
+    }
+
     let tests_path = if args.len() < 2 {
         "."
     } else {
@@ -253,22 +282,28 @@ fn main() {
         ss.link_syntaxes();
     }
 
-    let exit_code = recursive_walk(&ss, &tests_path);
+    let exit_code = recursive_walk(&ss, &tests_path, debug_arg.is_some(), time_arg.is_some());
     println!("exiting with code {}", exit_code);
     std::process::exit(exit_code);
 
 }
 
 
-fn recursive_walk(ss: &SyntaxSet, path: &str) -> i32 {
+fn recursive_walk(ss: &SyntaxSet, path: &str, debug: bool, time: bool) -> i32 {
     let mut exit_code: i32 = 0; // exit with code 0 by default, if all tests pass
     let walker = WalkDir::new(path).into_iter();
     for entry in walker.filter_entry(|e|e.file_type().is_dir() || is_a_syntax_test_file(e)) {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
             println!("Testing file {}", entry.path().display());
-            let result = test_file(&ss, entry.path(), true);
+            let start = Instant::now();
+            let result = test_file(&ss, entry.path(), true, debug);
+            let elapsed = start.elapsed();
             println!("{:?}", result);
+            if time {
+                let ms = (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64;
+                println!("{} ms for file {}", ms, entry.path().display());
+            }
             if exit_code != 2 { // leave exit code 2 if there was an error
                 if let Err(_) = result { // set exit code 2 if there was an error
                     exit_code = 2;

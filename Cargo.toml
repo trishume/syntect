@@ -1,38 +1,39 @@
 [package]
 name = "syntect"
 description = "library for high quality syntax highlighting and code intelligence using Sublime Text's grammars"
-documentation = "http://thume.ca/rustdoc/syntect/syntect/"
+documentation = "https://docs.rs/syntect"
 repository = "https://github.com/trishume/syntect"
 keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
 categories = ["parser-implementations", "parsing", "text-processing"]
 readme = "Readme.md"
 license = "MIT"
-version = "1.7.2"
+version = "2.0.1" # remember to update html_root_url
 authors = ["Tristan Hume <tristan@thume.ca>"]
 exclude = [
     "testdata/*",
 ]
 
 [dependencies]
-yaml-rust = { version = "0.3.5", optional = true }
-onig = { version = "^1.2", optional = true }
-walkdir = "^1.0"
-regex-syntax = { version = "^0.4", optional = true }
-lazy_static = "^0.2"
-bitflags = "^0.8"
+yaml-rust = { version = "0.4", optional = true }
+onig = { version = "3.2.1", optional = true }
+walkdir = "2.0"
+regex-syntax = { version = "0.4", optional = true }
+lazy_static = "1.0"
+bitflags = "1.0"
 plist = "0.2"
-bincode = { version = "0.8", optional = true }
-flate2 = { version = "^0.2", optional = true }
-libflate = { version = "0.1.8", optional = true }
-fnv = { version = "^1.0", optional = true }
+bincode = { version = "1.0", optional = true }
+flate2 = { version = "1.0", optional = true, default-features = false }
+fnv = { version = "1.0", optional = true }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
 
 [dev-dependencies]
-rayon = "0.8.0"
-regex = "0.2.1"
+criterion = "0.2"
+rayon = "1.0.0"
+regex = "0.2"
 getopts = "0.2"
+pretty_assertions = "0.5.0"
 
 [features]
 
@@ -41,15 +42,14 @@ getopts = "0.2"
 # your binary will be smaller if you choose the same one for each.
 
 # Pure Rust dump loading, slower than regular `dump-load`
-dump-load-rs = ["libflate", "bincode"]
+dump-load-rs = ["flate2/rust_backend", "bincode"]
 # Dump loading using flate2, which depends on the miniz C library.
-dump-load = ["flate2", "bincode"]
+dump-load = ["flate2/default", "bincode"]
 # Dump creation using flate2, which depends on the miniz C library.
-dump-create = ["flate2", "bincode"]
+dump-create = ["flate2/default", "bincode"]
 # Pure Rust dump creation, worse compressor so produces larger dumps than dump-create
-dump-create-rs = ["libflate", "bincode"]
+dump-create-rs = ["flate2/rust_backend", "bincode"]
 
-static-onig = ["onig/static-libonig"]
 parsing = ["onig", "regex-syntax", "fnv"]
 # The `assets` feature enables inclusion of the default theme and syntax packages.
 # For `assets` to do anything, it requires one of `dump-load-rs` or `dump-load` to be set.
@@ -60,3 +60,15 @@ default = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create"]
 
 # [profile.release]
 # debug = true
+
+[[bench]]
+name = "highlighting"
+harness = false
+
+[[bench]]
+name = "loading"
+harness = false
+
+[[bench]]
+name = "parsing"
+harness = false

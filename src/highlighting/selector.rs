@@ -57,11 +57,11 @@ impl FromStr for ScopeSelector {
             if i == 0 {
                 path_str = selector;
             } else {
-                excludes.push(try!(ScopeStack::from_str(selector)));
+                excludes.push(ScopeStack::from_str(selector)?);
             }
         }
         Ok(ScopeSelector {
-            path: try!(ScopeStack::from_str(path_str)),
+            path: ScopeStack::from_str(path_str)?,
             excludes: excludes,
         })
     }
@@ -95,7 +95,7 @@ impl FromStr for ScopeSelectors {
     fn from_str(s: &str) -> Result<ScopeSelectors, ParseScopeError> {
         let mut selectors = Vec::new();
         for selector in s.split(&[',', '|'][..]) {
-            selectors.push(try!(ScopeSelector::from_str(selector)))
+            selectors.push(ScopeSelector::from_str(selector)?)
         }
         Ok(ScopeSelectors { selectors: selectors })
     }

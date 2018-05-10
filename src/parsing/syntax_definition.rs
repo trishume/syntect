@@ -5,7 +5,7 @@
 //! into this data structure?
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
-use onig::{self, Regex, Region, Syntax};
+use onig::{Regex, RegexOptions, Region, Syntax};
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use super::scope::*;
@@ -55,6 +55,20 @@ pub struct Context {
     pub uses_backrefs: bool,
 
     pub patterns: Vec<Pattern>,
+}
+
+impl Context {
+    pub fn new(meta_include_prototype: bool) -> Context {
+        Context {
+            meta_scope: Vec::new(),
+            meta_content_scope: Vec::new(),
+            meta_include_prototype: meta_include_prototype,
+            clear_scopes: None,
+            uses_backrefs: false,
+            patterns: Vec::new(),
+            prototype: None,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -225,7 +239,7 @@ impl MatchPattern {
     pub fn compile_with_refs(&self, region: &Region, s: &str) -> Regex {
         // TODO don't panic on invalid regex
         Regex::with_options(&self.regex_with_substitutes(region, s),
-                            onig::REGEX_OPTION_CAPTURE_GROUP,
+                            RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
                             Syntax::default())
             .unwrap()
     }
@@ -233,7 +247,7 @@ impl MatchPattern {
     fn compile_regex(&mut self) {
         // TODO don't panic on invalid regex
         let compiled = Regex::with_options(&self.regex_str,
-                                           onig::REGEX_OPTION_CAPTURE_GROUP,
+                                           RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
                                            Syntax::default())
             .unwrap();
         self.regex = Some(compiled);
@@ -287,7 +301,7 @@ mod tests {
     use super::*;
     #[test]
     fn can_compile_refs() {
-        use onig::{self, Regex, Region};
+        use onig::{SearchOptions, Regex, Region};
         let pat = MatchPattern {
             has_captures: true,
             regex_str: String::from(r"lol \\ \2 \1 '\9' \wz"),
@@ -300,7 +314,7 @@ mod tests {
         let r = Regex::new(r"(\\\[\]\(\))(b)(c)(d)(e)").unwrap();
         let mut region = Region::new();
         let s = r"\[]()bcde";
-        assert!(r.match_with_options(s, 0, onig::SEARCH_OPTION_NONE, Some(&mut region)).is_some());
+        assert!(r.match_with_options(s, 0, SearchOptions::SEARCH_OPTION_NONE, Some(&mut region)).is_some());
 
         let regex_res = pat.regex_with_substitutes(&region, s);
         assert_eq!(regex_res, r"lol \\ b \\\[\]\(\) '' \wz");

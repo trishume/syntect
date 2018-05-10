@@ -13,7 +13,7 @@ use std::ops::DerefMut;
 pub enum ParseSyntaxError {
     /// Invalid YAML file syntax, or at least something yaml_rust can't handle
     InvalidYaml(ScanError),
-    /// The file must contain at least on YAML document
+    /// The file must contain at least one YAML document
     EmptyFile,
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
@@ -54,8 +54,11 @@ struct ParserState<'a> {
     lines_include_newline: bool,
 }
 
+// `__start` must not include prototypes from the actual syntax definition,
+// otherwise it's possible that a prototype makes us pop out of `__start`.
 static START_CONTEXTS: &'static str = "
 __start:
+    - meta_include_prototype: false
     - match: ''
       push: __main
 __main:
@@ -65,8 +68,11 @@ __main:
 impl SyntaxDefinition {
     /// In case you want to create your own SyntaxDefinition's in memory from strings.
     /// Generally you should use a `SyntaxSet`
+    ///
+    /// `fallback_name` is an optional name to use when the YAML doesn't provide a `name` key.
     pub fn load_from_str(s: &str,
-                         lines_include_newline: bool)
+                         lines_include_newline: bool,
+                         fallback_name: Option<&str>)
                          -> Result<SyntaxDefinition, ParseSyntaxError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
@@ -77,14 +83,15 @@ impl SyntaxDefinition {
         }
         let doc = &docs[0];
         let mut scope_repo = SCOPE_REPO.lock().unwrap();
-        SyntaxDefinition::parse_top_level(doc, scope_repo.deref_mut(), lines_include_newline)
+        SyntaxDefinition::parse_top_level(doc, scope_repo.deref_mut(), lines_include_newline, fallback_name)
     }
 
     fn parse_top_level(doc: &Yaml,
                        scope_repo: &mut ScopeRepository,
-                       lines_include_newline: bool)
+                       lines_include_newline: bool,
+                       fallback_name: Option<&str>)
                        -> Result<SyntaxDefinition, ParseSyntaxError> {
-        let h = try!(doc.as_hash().ok_or(ParseSyntaxError::TypeMismatch));
+        let h = doc.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
         let mut variables = HashMap::new();
         if let Ok(map) = get_key(h, "variables", |x| x.as_hash()) {
@@ -94,9 +101,9 @@ impl SyntaxDefinition {
                 }
             }
         }
-        let contexts_hash = try!(get_key(h, "contexts", |x| x.as_hash()));
-        let top_level_scope = try!(scope_repo.build(try!(get_key(h, "scope", |x| x.as_str())))
-            .map_err(ParseSyntaxError::InvalidScope));
+        let contexts_hash = get_key(h, "contexts", |x| x.as_hash())?;
+        let top_level_scope = scope_repo.build(get_key(h, "scope", |x| x.as_str())?)
+            .map_err(ParseSyntaxError::InvalidScope)?;
         let mut state = ParserState {
             scope_repo: scope_repo,
             variables: variables,
@@ -105,7 +112,7 @@ impl SyntaxDefinition {
             lines_include_newline: lines_include_newline,
         };
 
-        let mut contexts = try!(SyntaxDefinition::parse_contexts(contexts_hash, &mut state));
+        let mut contexts = SyntaxDefinition::parse_contexts(contexts_hash, &mut state)?;
         if !contexts.contains_key("main") {
             return Err(ParseSyntaxError::MainMissing);
         }
@@ -113,7 +120,7 @@ impl SyntaxDefinition {
         SyntaxDefinition::add_initial_contexts(&mut contexts, &mut state, top_level_scope);
 
         let defn = SyntaxDefinition {
-            name: get_key(h, "name", |x| x.as_str()).unwrap_or("Unnamed").to_owned(),
+            name: get_key(h, "name", |x| x.as_str()).unwrap_or(fallback_name.unwrap_or("Unnamed")).to_owned(),
             scope: top_level_scope,
             file_extensions: {
                 get_key(h, "file_extensions", |x| x.as_vec())
@@ -141,7 +148,7 @@ impl SyntaxDefinition {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
                 let is_prototype = name == "prototype";
                 let context_ptr =
-                    try!(SyntaxDefinition::parse_context(val_vec, state, is_prototype));
+                    SyntaxDefinition::parse_context(val_vec, state, is_prototype)?;
                 contexts.insert(name.to_owned(), context_ptr);
             }
         }
@@ -152,25 +159,18 @@ impl SyntaxDefinition {
                      state: &mut ParserState,
                      is_prototype: bool)
                      -> Result<ContextPtr, ParseSyntaxError> {
-        let mut context = Context {
-            meta_scope: Vec::new(),
-            meta_content_scope: Vec::new(),
-            meta_include_prototype: !is_prototype,
-            clear_scopes: None,
-            uses_backrefs: false,
-            patterns: Vec::new(),
-            prototype: None,
-        };
+        let mut context = Context::new(!is_prototype);
+
         for y in vec.iter() {
-            let map = try!(y.as_hash().ok_or(ParseSyntaxError::TypeMismatch));
+            let map = y.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
             let mut is_special = false;
             if let Some(x) = get_key(map, "meta_scope", |x| x.as_str()).ok() {
-                context.meta_scope = try!(str_to_scopes(x, state.scope_repo));
+                context.meta_scope = str_to_scopes(x, state.scope_repo)?;
                 is_special = true;
             }
             if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
-                context.meta_content_scope = try!(str_to_scopes(x, state.scope_repo));
+                context.meta_content_scope = str_to_scopes(x, state.scope_repo)?;
                 is_special = true;
             }
             if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
@@ -187,10 +187,10 @@ impl SyntaxDefinition {
             }
             if !is_special {
                 if let Some(x) = get_key(map, "include", Some).ok() {
-                    let reference = try!(SyntaxDefinition::parse_reference(x, state));
+                    let reference = SyntaxDefinition::parse_reference(x, state)?;
                     context.patterns.push(Pattern::Include(reference));
                 } else {
-                    let pattern = try!(SyntaxDefinition::parse_match_pattern(map, state));
+                    let pattern = SyntaxDefinition::parse_match_pattern(map, state)?;
                     if pattern.has_captures {
                         context.uses_backrefs = true;
                     }
@@ -214,16 +214,16 @@ impl SyntaxDefinition {
             };
             if parts[0].starts_with("scope:") {
                 Ok(ContextReference::ByScope {
-                    scope: try!(state.scope_repo
+                    scope: state.scope_repo
                         .build(&parts[0][6..])
-                        .map_err(ParseSyntaxError::InvalidScope)),
+                        .map_err(ParseSyntaxError::InvalidScope)?,
                     sub_context: sub_context,
                 })
             } else if parts[0].ends_with(".sublime-syntax") {
-                let stem = try!(Path::new(parts[0])
+                let stem = Path::new(parts[0])
                     .file_stem()
                     .and_then(|x| x.to_str())
-                    .ok_or(ParseSyntaxError::BadFileRef));
+                    .ok_or(ParseSyntaxError::BadFileRef)?;
                 Ok(ContextReference::File {
                     name: stem.to_owned(),
                     sub_context: sub_context,
@@ -232,7 +232,7 @@ impl SyntaxDefinition {
                 Ok(ContextReference::Named(parts[0].to_owned()))
             }
         } else if let Some(v) = y.as_vec() {
-            let context = try!(SyntaxDefinition::parse_context(v, state, false));
+            let context = SyntaxDefinition::parse_context(v, state, false)?;
             Ok(ContextReference::Inline(context))
         } else {
             Err(ParseSyntaxError::TypeMismatch)
@@ -250,7 +250,7 @@ impl SyntaxDefinition {
     fn parse_match_pattern(map: &Hash,
                            state: &mut ParserState)
                            -> Result<MatchPattern, ParseSyntaxError> {
-        let raw_regex = try!(get_key(map, "match", |x| x.as_str()));
+        let raw_regex = get_key(map, "match", |x| x.as_str())?;
         let regex_str_1 = Self::resolve_variables(raw_regex, state);
         // if the passed in strings don't include newlines (unlike Sublime) we can't match on them
         let regex_str = if state.lines_include_newline {
@@ -260,17 +260,18 @@ impl SyntaxDefinition {
         };
         // println!("{:?}", regex_str);
 
-        let scope = try!(get_key(map, "scope", |x| x.as_str())
+        let scope = get_key(map, "scope", |x| x.as_str())
             .ok()
             .map(|s| str_to_scopes(s, state.scope_repo))
-            .unwrap_or_else(|| Ok(vec![])));
+            .unwrap_or_else(|| Ok(vec![]))?;
+
 
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
             let mut res_map = Vec::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
                     res_map.push((key_int as usize,
-                                   try!(str_to_scopes(val_str, state.scope_repo))));
+                                  str_to_scopes(val_str, state.scope_repo)?));
                 }
             }
             Some(res_map)
@@ -284,16 +285,54 @@ impl SyntaxDefinition {
             has_captures = state.backref_regex.find(&regex_str).is_some();
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", Some) {
-            MatchOperation::Push(try!(SyntaxDefinition::parse_pushargs(y, state)))
+            MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state)?)
         } else if let Ok(y) = get_key(map, "set", Some) {
-            MatchOperation::Set(try!(SyntaxDefinition::parse_pushargs(y, state)))
+            MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state)?)
+        } else if let Ok(y) = get_key(map, "embed", Some) {
+            // Same as push so we translate it to what it would be
+            let mut embed_escape_context_yaml = vec!();
+            if let Ok(s) = get_key(map, "embed_scope", Some) {
+                let mut commands = Hash::new();
+                commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
+                embed_escape_context_yaml.push(Yaml::Hash(commands));
+            }
+            if let Ok(v) = get_key(map, "escape", Some) {
+                let mut match_map = Hash::new();
+                match_map.insert(Yaml::String("match".to_string()), v.clone());
+                match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
+                if let Ok(y) = get_key(map, "escape_captures", Some) {
+                    match_map.insert(Yaml::String("captures".to_string()), y.clone());
+                }
+                embed_escape_context_yaml.push(Yaml::Hash(match_map));
+                let escape_context = SyntaxDefinition::parse_context(
+                    &embed_escape_context_yaml,
+                    state,
+                    false
+                )?;
+                MatchOperation::Push(vec![ContextReference::Inline(escape_context), SyntaxDefinition::parse_reference(y, state)?])
+            } else {
+                return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
+            }
+
         } else {
             MatchOperation::None
         };
 
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
             // should a with_prototype include the prototype? I don't think so.
-            Some(try!(SyntaxDefinition::parse_context(v, state, true)))
+            Some(Self::parse_context(v, state, true)?)
+        } else if let Ok(v) = get_key(map, "escape", Some) {
+            let mut context = Context::new(false);
+            let mut match_map = Hash::new();
+            match_map.insert(Yaml::String("match".to_string()), Yaml::String(format!("(?={})", v.as_str().unwrap())));
+            match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
+            let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state)?;
+            if pattern.has_captures {
+                context.uses_backrefs = true;
+            }
+            context.patterns.push(Pattern::Match(pattern));
+
+            Some(Rc::new(RefCell::new(context)))
         } else {
             None
         };
@@ -307,6 +346,7 @@ impl SyntaxDefinition {
             operation: operation,
             with_prototype: with_prototype,
         };
+
         Ok(pattern)
     }
 
@@ -314,7 +354,7 @@ impl SyntaxDefinition {
                       state: &mut ParserState)
                       -> Result<Vec<ContextReference>, ParseSyntaxError> {
         // check for a push of multiple items
-        if y.as_vec().map_or(false, |v| !v.is_empty() && v[0].as_str().is_some()) {
+        if y.as_vec().map_or(false, |v| !v.is_empty() && (v[0].as_str().is_some() || (v[0].as_vec().is_some() && v[0].as_vec().unwrap()[0].as_hash().is_some()))) {
             // this works because Result implements FromIterator to handle the errors
             y.as_vec()
                 .unwrap()
@@ -367,14 +407,14 @@ impl SyntaxDefinition {
     }
 }
 
-/// Rewrite a regex that matches `\n` to one that matches `\z` (end of string) instead.
+/// Rewrite a regex that matches `\n` to one that matches `$` (end of line) instead.
 /// That allows the regex to be used to match lines that don't include a trailing newline character.
 ///
 /// The reason we're doing this is because the regexes in the syntax definitions assume that the
 /// lines that are being matched on include a trailing newline.
 ///
 /// Note that the rewrite is just an approximation and there's a couple of cases it can not handle,
-/// due to `\z` being an anchor whereas `\n` matches a character.
+/// due to `$` being an anchor whereas `\n` matches a character.
 fn rewrite_regex(regex: String) -> String {
     if !regex.contains(r"\n") {
         return regex;
@@ -401,10 +441,10 @@ impl<'a> RegexRewriter<'a> {
                     self.next();
                     if let Some(c2) = self.peek() {
                         self.next();
-                        // Replacing `\n?` with `\z?` would make parsing later fail with
-                        // "invalid operand of repeat expression"
+                        // Replacing `\n?` with `$?` would make parsing later fail with
+                        // "target of repeat operator is invalid"
                         if c2 == b'n' && self.peek() != Some(b'?') {
-                            result.extend_from_slice(br"\z");
+                            result.extend_from_slice(b"$");
                         } else {
                             result.push(c);
                             result.push(c2);
@@ -418,20 +458,9 @@ impl<'a> RegexRewriter<'a> {
                     if matches_newline && self.peek() != Some(b'?') {
                         result.extend_from_slice(b"(?:");
                         result.append(&mut content);
-                        result.extend_from_slice(br"|\z)");
+                        result.extend_from_slice(br"|$)");
                     } else {
                         result.append(&mut content);
-                    }
-                }
-                b'(' => {
-                    // `\z` can't be used in repeat or look-behind, so strip that
-                    if self.skip_if(br"(?:\n)?") ||
-                        self.skip_if(br"(?<!\n)") ||
-                        self.skip_if(br"(?<=\n)") {
-                        // continue after skipped text
-                    } else {
-                        self.next();
-                        result.push(c);
                     }
                 }
                 _ => {
@@ -508,15 +537,6 @@ impl<'a> RegexRewriter<'a> {
     fn next(&mut self) {
         self.index += 1;
     }
-
-    fn skip_if(&mut self, s: &[u8]) -> bool {
-        if self.bytes[self.index..].starts_with(s) {
-            self.index += s.len();
-            true
-        } else {
-            false
-        }
-    }
 }
 
 
@@ -530,7 +550,7 @@ mod tests {
     fn can_parse() {
         let defn: SyntaxDefinition =
             SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}",
-                                            false)
+                                            false, None)
                 .unwrap();
         assert_eq!(defn.name, "C");
         assert_eq!(defn.scope, Scope::new("source.c").unwrap());
@@ -570,7 +590,7 @@ mod tests {
             - match: '\"'
               pop: true
         ",
-                                            false)
+                                            false, None)
                 .unwrap();
         assert_eq!(defn2.name, "C");
         let top_level_scope = Scope::new("source.c").unwrap();
@@ -622,6 +642,128 @@ mod tests {
     }
 
     #[test]
+    fn can_parse_embed_as_with_prototypes() {
+        let old_def = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        variables:
+          ident: '[QY]+'
+        contexts:
+          main:
+            - match: '(>)\s*'
+              captures:
+                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+              push:
+                - [{ meta_content_scope: 'source.css.embedded.html'}, { match: '(?i)(?=</style)', pop: true }]
+                - scope:source.css
+              with_prototype:
+                - match: (?=(?i)(?=</style))
+                  pop: true
+        "#,false, None).unwrap();
+
+        let def_with_embed = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        variables:
+          ident: '[QY]+'
+        contexts:
+          main:
+            - match: '(>)\s*'
+              captures:
+                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+              embed: scope:source.css
+              embed_scope: source.css.embedded.html
+              escape: (?i)(?=</style)
+        "#,false, None).unwrap();
+
+        assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
+    }
+
+    #[test]
+    fn errors_on_embed_without_escape() {
+        let def = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c, h]
+        variables:
+          ident: '[QY]+'
+        contexts:
+          main:
+            - match: '(>)\s*'
+              captures:
+                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
+              embed: scope:source.css
+              embed_scope: source.css.embedded.html
+        "#,false, None);
+        assert!(def.is_err());
+        match def.unwrap_err() {
+            ParseSyntaxError::MissingMandatoryKey(key) => assert_eq!(key, "escape"),
+            _ => assert!(false, "Got unexpected ParseSyntaxError"),
+        }
+    }
+
+    #[test]
+    fn can_parse_ugly_yaml() {
+        let defn: SyntaxDefinition =
+            SyntaxDefinition::load_from_str("
+        name: LaTeX
+        scope: text.tex.latex
+        contexts:
+          main:
+            - match: '((\\\\)(?:framebox|makebox))\\b'
+              captures:
+                1: support.function.box.latex
+                2: punctuation.definition.backslash.latex
+              push:
+                - [{meta_scope: meta.function.box.latex}, {match: '', pop: true}]
+                - argument
+                - optional-arguments
+          argument:
+            - match: '\\{'
+              scope: punctuation.definition.group.brace.begin.latex
+            - match: '(?=\\S)'
+              pop: true
+          optional-arguments:
+            - match: '(?=\\S)'
+              pop: true
+        ",
+                                            false, None)
+                .unwrap();
+        assert_eq!(defn.name, "LaTeX");
+        let top_level_scope = Scope::new("text.tex.latex").unwrap();
+        assert_eq!(defn.scope, top_level_scope);
+
+        let first_pattern: &Pattern = &defn.contexts["main"].borrow().patterns[0];
+        match first_pattern {
+            &Pattern::Match(ref match_pat) => {
+                let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
+                assert_eq!(&m[0], &(1,vec![Scope::new("support.function.box.latex").unwrap()]));
+
+                //use parsing::syntax_definition::ContextReference::*;
+                // TODO: check the first pushed reference is Inline(...) and has a meta_scope of meta.function.box.latex
+                // TODO: check the second pushed reference is Named("argument".to_owned())
+                // TODO: check the third pushed reference is Named("optional-arguments".to_owned())
+
+                assert!(match_pat.with_prototype.is_none());
+            }
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn can_use_fallback_name() {
+        let def = SyntaxDefinition::load_from_str(r#"
+        scope: source.c
+        contexts:
+          main:
+            - match: ''
+        "#,false, Some("C"));
+        assert_eq!(def.unwrap().name, "C");
+    }
+
+    #[test]
     fn can_rewrite_regex() {
         fn rewrite(s: &str) -> String {
             rewrite_regex(s.to_string())
@@ -635,21 +777,21 @@ mod tests {
         assert_eq!(&rewrite(r"[]a]"), r"[]a]");
         assert_eq!(&rewrite(r"[[a]]"), r"[[a]]");
 
-        assert_eq!(&rewrite(r"\n"), r"\z");
-        assert_eq!(&rewrite(r"\[\n"), r"\[\z");
+        assert_eq!(&rewrite(r"\n"), r"$");
+        assert_eq!(&rewrite(r"\[\n"), r"\[$");
         assert_eq!(&rewrite(r"a\n?"), r"a\n?");
-        assert_eq!(&rewrite(r"[abc\n]"), r"(?:[abc\n]|\z)");
+        assert_eq!(&rewrite(r"[abc\n]"), r"(?:[abc\n]|$)");
         assert_eq!(&rewrite(r"[^\n]"), r"[^\n]");
         assert_eq!(&rewrite(r"[^]\n]"), r"[^]\n]");
         assert_eq!(&rewrite(r"[\n]?"), r"[\n]?");
         // Removing the `\n` might result in an empty character class, so we should leave it.
-        assert_eq!(&rewrite(r"[\n]"), r"(?:[\n]|\z)");
-        assert_eq!(&rewrite(r"[]\n]"), r"(?:[]\n]|\z)");
+        assert_eq!(&rewrite(r"[\n]"), r"(?:[\n]|$)");
+        assert_eq!(&rewrite(r"[]\n]"), r"(?:[]\n]|$)");
         // In order to properly understand nesting, we'd have to have a full parser, so ignore it.
         assert_eq!(&rewrite(r"[[a]&&[\n]]"), r"[[a]&&[\n]]");
 
-        assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab");
-        assert_eq!(&rewrite(r"ab(?<!\n)"), r"ab");
-        assert_eq!(&rewrite(r"ab(?<=\n)"), r"ab");
+        assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab(?:$)?");
+        assert_eq!(&rewrite(r"(?<!\n)ab"), r"(?<!$)ab");
+        assert_eq!(&rewrite(r"(?<=\n)ab"), r"(?<=$)ab");
     }
 }

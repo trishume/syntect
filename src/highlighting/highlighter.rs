@@ -8,7 +8,7 @@ use std::iter::Iterator;
 use parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
 use super::selector::ScopeSelector;
 use super::theme::Theme;
-use super::style::{Style, StyleModifier, FontStyle, BLACK, WHITE};
+use super::style::{Color, FontStyle, Style, StyleModifier};
 
 /// Basically a wrapper around a `Theme` preparing it to be used for highlighting.
 /// This is part of the API to preserve the possibility of caching
@@ -173,8 +173,8 @@ impl<'a> Highlighter<'a> {
     /// Basically what plain text gets highlighted as.
     pub fn get_default(&self) -> Style {
         Style {
-            foreground: self.theme.settings.foreground.unwrap_or(BLACK),
-            background: self.theme.settings.background.unwrap_or(WHITE),
+            foreground: self.theme.settings.foreground.unwrap_or(Color::BLACK),
+            background: self.theme.settings.background.unwrap_or(Color::WHITE),
             font_style: FontStyle::empty(),
         }
     }

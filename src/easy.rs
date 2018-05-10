@@ -105,8 +105,8 @@ impl<'a> HighlightFile<'a> {
                                theme: &'a Theme)
                                -> io::Result<HighlightFile<'a>> {
         let path: &Path = path_obj.as_ref();
-        let f = try!(File::open(path));
-        let syntax = try!(ss.find_syntax_for_file(path))
+        let f = File::open(path)?;
+        let syntax = ss.find_syntax_for_file(path)?
             .unwrap_or_else(|| ss.find_syntax_plain_text());
 
         Ok(HighlightFile {

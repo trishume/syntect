@@ -1,7 +1,11 @@
 # syntect
-[![Build Status](https://travis-ci.org/trishume/syntect.svg?branch=master)](https://travis-ci.org/trishume/syntect) [![Crates.io](https://img.shields.io/crates/v/syntect.svg?maxAge=2592000)]() [![Crates.io](https://img.shields.io/crates/l/syntect.svg?maxAge=2592000)]()
+[![Crates.io](https://img.shields.io/crates/v/syntect.svg?maxAge=2591000)](https://crates.io/crates/syntect)
+[![Documentation](https://docs.rs/syntect/badge.svg)](https://docs.rs/syntect)
+[![Crates.io](https://img.shields.io/crates/l/syntect.svg?maxAge=2591000)]()
+[![Build Status](https://travis-ci.org/trishume/syntect.svg?branch=master)](https://travis-ci.org/trishume/syntect)
+[![codecov](https://codecov.io/gh/trishume/syntect/branch/master/graph/badge.svg)](https://codecov.io/gh/trishume/syntect)
 
-`syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax). It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust.
+`syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax). It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust. It's used in production by at least two companies, and by [many open source projects](#projects-using-syntect).
 
 If you are writing a text editor (or something else needing highlighting) in Rust and this library doesn't fit your needs, I consider that a bug and you should file an issue or email me.
 
@@ -10,17 +14,17 @@ I won't be committing much anymore because the marginal return on additional wor
 I'll also quite possibly still fix issues and definitely offer advice and knowledge on how the library works. Basically I'll be maintaining the library but not developing it further.
 I've spent months working on, tweaking, optimizing, documenting and testing this library. If you still have any reasons you don't think it fits your needs, file an issue or email me.
 
-### Rendered docs: <http://thume.ca/rustdoc/syntect/syntect/>
+### Rendered docs: <https://docs.rs/syntect>
 
 ## Getting Started
 
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "1.7"
+syntect = "1.8"
 ```
 
-After that take a look at the [documentation](http://thume.ca/rustdoc/syntect/syntect/) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
+After that take a look at the [documentation](https://docs.rs/syntect) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
 
 **Note:** with stable Rust on Linux there is a possibility you might have to add `./target/debug/build/onig_sys-*/out/lib/` to your `LD_LIBRARY_PATH` environment variable. I dunno why or even if this happens on other places than Travis, but see `travis.yml` for what it does to make it work. Do this if you see `libonig.so: cannot open shared object file`.
 
@@ -99,7 +103,7 @@ All measurements were taken on a mid 2012 15" retina Macbook Pro.
     - Atom takes 6 seconds
     - Sublime Text 3 dev build takes 98ms (highlighting only, takes ~200ms click to pixels), despite having a super fancy javascript syntax definition.
     - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors (Compare [vim's grammar](https://github.com/vim/vim/blob/master/runtime/syntax/javascript.vim) to [Sublime's](https://github.com/sublimehq/Packages/blob/master/JavaScript/JavaScript.sublime-syntax)).
-    - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex defintion for ES6 syntax.
+    - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex definition for ES6 syntax.
 - Simple syntaxes are faster, JS is one of the most complex. It only takes 34ms to highlight a 1700 line 62kb XML file or 50,000 lines/sec.
 - ~138ms to load and link all the syntax definitions in the default Sublime package set.
     - but only ~23ms to load and link all the syntax definitions from an internal pre-made binary dump with lazy regex compilation.
@@ -118,7 +122,7 @@ Any time the file is changed the latest cached state is found, the cache is clea
 
 ### Parallelizing
 
-`syntect` doesn't provide any built-in facilities to enable highlighting in parallel. Some of the important data structures are not thread-safe, either, most notably `SyntaxSet`. However, if you find yourself in need of highlighting lots of files in parallel, the recommendation is to use some sort of thread pooling, along with the `thread_local!` macro from `libstd`, so that each thread that needs, say, a `SyntaxSet`, will have one, while minimizing the amount of them that need to be initialized. For adding parallelism to a previously single-threaded program, the recommended thread pooling is [`rayon`](https://github.com/nikomatsakis/rayon). However, if you're working in an already-threaded context where there might be more threads than you want (such as writing a handler for an Iron request), the recommendation is to force all highlighting to be done within a fixed-size thread pool using [`scoped-thread-pool`](https://github.com/reem/scoped-thread-pool). An example of the former is in `examples/parsyncat.rs`.
+`syntect` doesn't provide any built-in facilities to enable highlighting in parallel. Some of the important data structures are not thread-safe, either, most notably `SyntaxSet`. However, if you find yourself in need of highlighting lots of files in parallel, the recommendation is to use some sort of thread pooling, along with the `thread_local!` macro from `libstd`, so that each thread that needs, say, a `SyntaxSet`, will have one, while minimizing the amount of them that need to be initialized. For adding parallelism to a previously single-threaded program, the recommended thread pooling is [`rayon`](https://github.com/nikomatsakis/rayon). However, if you're working in an already-threaded context where there might be more threads than you want (such as writing a handler for an Iron request), the recommendation is to force all highlighting to be done within a fixed-size thread pool using [`rust-scoped-pool`](https://github.com/reem/rust-scoped-pool). An example of the former is in `examples/parsyncat.rs`.
 
 See [#20](https://github.com/trishume/syntect/issues/20) and [#78](https://github.com/trishume/syntect/pull/78) for more detail and discussion about why `syntect` doesn't provide parallelism by default.
 
@@ -164,6 +168,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [catmark](https://github.com/bestouff/catmark), a console markdown printer, uses `syntect` for code blocks.
 - [crowbook](https://github.com/lise-henry/crowbook), a Markdown book generator, uses `syntect` for code blocks.
 - [syntect_server](https://github.com/sourcegraph/syntect_server), an HTTP server for syntax highlighting.
+- [mdcat](https://github.com/lunaryorn/mdcat), a console markdown printer, uses `syntect` for code blocks.
 
 ## License and Acknowledgements
 

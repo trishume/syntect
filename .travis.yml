@@ -1,14 +1,28 @@
 language: rust
+sudo: required
 email:
   recipients:
     - trishume@gmail.com
   on_success: change # default: change
   on_failure: change # default: always
-rust:
-  # Travis nightly tests are currently flakey as hell and fail for no reason before `cargo test` is run
-  # Try enabling this again later.
-  # - nightly
-  - stable
+
+matrix:
+  include:
+    - rust: stable
+      addons:
+        apt:
+          packages:
+            # cargo-tarpaulin needs this
+            - libssl-dev
+    - rust: beta
+    - rust: nightly
+  allow_failures:
+    - rust: nightly
+
+cache:
+  - apt
+  - cargo
+
 script:
   - cargo build
   - |
@@ -27,4 +41,11 @@ script:
   - rm -Rf examples && cargo test --lib --no-default-features
   # Test the build configuration that Xi uses
   - cargo test --lib --no-default-features --features "assets dump-load-rs"
-after_success: curl https://raw.githubusercontent.com/trishume/syntect/master/scripts/travis-doc-upload.sh | sh
+
+after_success: |
+  if [[ "$TRAVIS_RUST_VERSION" = stable ]]; then
+    bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
+    # Calculate test coverage
+    cargo tarpaulin --out Xml
+    bash <(curl -s https://codecov.io/bash)
+  fi

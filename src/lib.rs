@@ -14,6 +14,9 @@
 //!
 //! Some docs have example code but a good place to look is the `syncat` example as well as the source code
 //! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
+
+#![doc(html_root_url = "https://docs.rs/syntect/2.0.1")]
+
 #[cfg(feature = "yaml-load")]
 extern crate yaml_rust;
 #[cfg(feature = "parsing")]
@@ -28,16 +31,17 @@ extern crate plist;
 extern crate bincode;
 #[macro_use]
 extern crate bitflags;
-#[cfg(any(feature = "dump-load", feature = "dump-create"))]
+#[cfg(any(feature = "dump-load", feature = "dump-create", feature = "dump-load-rs", feature = "dump-create-rs"))]
 extern crate flate2;
-#[cfg(any(feature = "dump-load-rs", feature = "dump-create-rs"))]
-extern crate libflate;
 #[cfg(feature = "parsing")]
 extern crate fnv;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+#[cfg(test)]
+#[macro_use]
+extern crate pretty_assertions;
 pub mod highlighting;
 pub mod parsing;
 pub mod util;
@@ -51,6 +55,8 @@ pub mod html;
 mod escape;
 
 use std::io::Error as IoError;
+use std::error::Error;
+use std::fmt;
 #[cfg(all(feature = "yaml-load", feature = "parsing"))]
 use parsing::ParseSyntaxError;
 use highlighting::{ParseThemeError, SettingsError};
@@ -96,5 +102,43 @@ impl From<ParseThemeError> for LoadingError {
 impl From<ParseSyntaxError> for LoadingError {
     fn from(error: ParseSyntaxError) -> LoadingError {
         LoadingError::ParseSyntax(error)
+    }
+}
+
+impl fmt::Display for LoadingError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use LoadingError::*;
+
+        match *self {
+            WalkDir(ref error) => error.fmt(f),
+            Io(ref error) => error.fmt(f),
+            _ => write!(f, "{}", self.description()),
+        }
+    }
+}
+
+impl Error for LoadingError {
+    fn description(&self) -> &str {
+        use LoadingError::*;
+
+        match *self {
+            WalkDir(ref error) => error.description(),
+            Io(ref error) => error.description(),
+            #[cfg(feature = "yaml-load")]
+            ParseSyntax(_) => "Invalid syntax file",
+            ParseTheme(_) => "Invalid syntax theme",
+            ReadSettings(_) => "Invalid syntax theme settings",
+            BadPath => "Invalid path",
+        }
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        use LoadingError::*;
+
+        match *self {
+            WalkDir(ref error) => Some(error),
+            Io(ref error) => Some(error),
+            _ => None,
+        }
     }
 }

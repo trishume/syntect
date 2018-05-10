@@ -1,2 +1,10 @@
-target
+# cargo
+target/
 Cargo.lock
+
+# IDEA
+.idea/
+*.iml
+
+# VS Code
+.vscode/

@@ -7,7 +7,7 @@
 //! You can use these methods to manage your own caching of compiled syntaxes and
 //! themes. And even your own `serde::Serialize` structures if you want to
 //! be consistent with your format.
-use bincode::{ErrorKind, Infinite, Result};
+use bincode::Result;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use bincode::deserialize_from;
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
@@ -24,31 +24,19 @@ use highlighting::ThemeSet;
 use std::path::Path;
 #[cfg(feature = "dump-create")]
 use flate2::write::ZlibEncoder;
-#[cfg(feature = "dump-load")]
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use flate2::read::ZlibDecoder;
-#[cfg(feature = "dump-create")]
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use flate2::Compression;
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use serde::Serialize;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use serde::de::DeserializeOwned;
-#[cfg(feature = "dump-load-rs")]
-use libflate::zlib::Decoder;
-#[cfg(feature = "dump-create-rs")]
-use libflate::zlib::Encoder;
 
-#[cfg(feature = "dump-create")]
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
-    let mut encoder = ZlibEncoder::new(output, Compression::Best);
-    serialize_into(&mut encoder, to_dump, Infinite)
-}
-
-#[cfg(feature = "dump-create-rs")]
-pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
-    let mut encoder = Encoder::new(output)?;
-    serialize_into(&mut encoder, to_dump, Infinite)?;
-    encoder.finish().into_result()?;
-    Ok(())
+    let mut encoder = ZlibEncoder::new(output, Compression::best());
+    serialize_into(&mut encoder, to_dump)
 }
 
 /// Dumps an object to a binary array in the same format as `dump_to_file`
@@ -64,20 +52,14 @@ pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
 /// compressed with the `flate2` crate.
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
-    let out = BufWriter::new(try!(File::create(path).map_err(ErrorKind::IoError)));
+    let out = BufWriter::new(File::create(path)?);
     dump_to_writer(o, out)
 }
 
-#[cfg(feature = "dump-load")]
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
     let mut decoder = ZlibDecoder::new(input);
-    deserialize_from(&mut decoder, Infinite)
-}
-
-#[cfg(feature = "dump-load-rs")]
-pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
-    let mut decoder: Decoder<R> = try!(Decoder::new(input));
-    deserialize_from(&mut decoder, Infinite)
+    deserialize_from(&mut decoder)
 }
 
 /// Returns a fully loaded syntax set from
@@ -90,7 +72,7 @@ pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
 /// Returns a fully loaded syntax set from a binary dump file.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
-    let f = try!(File::open(path).map_err(ErrorKind::IoError));
+    let f = File::open(path)?;
     let reader = BufReader::new(f);
     from_reader(reader)
 }
