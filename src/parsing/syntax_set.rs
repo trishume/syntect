@@ -188,7 +188,7 @@ impl SyntaxSet {
     }
 
     /// Convenience method that tries to find the syntax for a file path,
-    /// first by extension and then by first line of the file if that doesn't work.
+    /// first by extension/name and then by first line of the file if that doesn't work.
     /// May IO Error because it sometimes tries to read the first line of the file.
     ///
     /// # Examples
@@ -207,7 +207,9 @@ impl SyntaxSet {
                                                 -> io::Result<Option<&SyntaxDefinition>> {
         let path: &Path = path_obj.as_ref();
         let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
-        let ext_syntax = self.find_syntax_by_extension(extension);
+        let ext_syntax = self.find_syntax_by_extension(extension)
+                             .or_else(|| self.find_syntax_by_extension(
+                                     path.file_name().and_then(|n| n.to_str()).unwrap_or("")));
         let line_syntax = if ext_syntax.is_none() {
             let mut line = String::new();
             let f = File::open(path)?;
