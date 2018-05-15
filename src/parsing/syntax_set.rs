@@ -437,6 +437,7 @@ mod tests {
                    "Go");
         assert_eq!(&ps.find_syntax_for_file(".bashrc").unwrap().unwrap().name,
                    "Bourne Again Shell (bash)");
+        assert_eq!(&ps.find_syntax_for_file("Rakefile").unwrap().unwrap().name, "Ruby");
         assert!(&ps.find_syntax_by_first_line("derp derp hi lol").is_none());
         assert_eq!(&ps.find_syntax_by_path("Packages/Rust/Rust.sublime-syntax").unwrap().name,
                    "Rust");
