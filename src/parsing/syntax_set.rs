@@ -101,6 +101,8 @@ impl SyntaxSet {
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
                 if let Some(path_str) = entry.path().to_str() {
+                    // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
+                    // can still be loaded the same way.
                     let path = Path::new(path_str);
                     let path_parts: Vec<_> = path.iter().map(|c| c.to_str().unwrap()).collect();
                     self.path_syntaxes.push((path_parts.join("/").to_string(), self.syntaxes.len()));
