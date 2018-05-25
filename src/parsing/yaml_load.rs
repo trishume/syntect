@@ -247,6 +247,21 @@ impl SyntaxDefinition {
         })
     }
 
+    fn try_compile_regex(regex_str: &str) -> Result<(), ParseSyntaxError> {
+        // Replace backreferences with a dummy placeholder value
+        let mut regex_str = String::from(regex_str);
+        for i in 0..10 {
+            regex_str = regex_str.replace(&format!("\\{}", i), "placeholder");
+        }
+
+        match Regex::new(&regex_str) {
+            Err(onig_error) => {
+                Err(ParseSyntaxError::RegexCompileError(onig_error))
+            },
+            _ => Ok(())
+        }
+    }
+
     fn parse_match_pattern(map: &Hash,
                            state: &mut ParserState)
                            -> Result<MatchPattern, ParseSyntaxError> {
@@ -259,6 +274,8 @@ impl SyntaxDefinition {
             rewrite_regex(regex_str_1)
         };
         // println!("{:?}", regex_str);
+
+        Self::try_compile_regex(&regex_str)?;
 
         let scope = get_key(map, "scope", |x| x.as_str())
             .ok()
@@ -701,6 +718,24 @@ mod tests {
         match def.unwrap_err() {
             ParseSyntaxError::MissingMandatoryKey(key) => assert_eq!(key, "escape"),
             _ => assert!(false, "Got unexpected ParseSyntaxError"),
+        }
+    }
+
+    #[test]
+    fn errors_on_regex_compile_error() {
+        let def = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [test]
+        contexts:
+          main:
+            - match: '[a'
+              scope: keyword.name
+        "#,false, None);
+        assert!(def.is_err());
+        match def.unwrap_err() {
+            ParseSyntaxError::RegexCompileError(_) => {},
+            _ => assert!(false, "Got unexpedted ParseSyntaxError"),
         }
     }
 
