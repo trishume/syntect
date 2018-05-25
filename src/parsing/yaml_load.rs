@@ -3,7 +3,7 @@ use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
-use onig::{self, Regex, Captures};
+use onig::{self, Regex, Captures, RegexOptions, Syntax};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::error::Error;
@@ -296,7 +296,10 @@ impl SyntaxDefinition {
             regex_str = regex_str.replace(&format!("\\{}", i), "placeholder");
         }
 
-        match Regex::new(&regex_str) {
+        let result = Regex::with_options(&regex_str,
+                                         RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
+                                         Syntax::default());
+        match result {
             Err(onig_error) => {
                 Err(ParseSyntaxError::RegexCompileError(regex_str, onig_error))
             },
@@ -777,7 +780,7 @@ mod tests {
         assert!(def.is_err());
         match def.unwrap_err() {
             ParseSyntaxError::RegexCompileError(ref regex, _) => assert_eq!("[a", regex),
-            _ => assert!(false, "Got unexpedted ParseSyntaxError"),
+            _ => assert!(false, "Got unexpected ParseSyntaxError"),
         }
     }
 
