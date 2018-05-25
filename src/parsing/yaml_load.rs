@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use onig::{self, Regex, Captures};
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::error::Error;
+use std::fmt;
 use std::path::Path;
 use std::ops::DerefMut;
 
@@ -18,7 +20,7 @@ pub enum ParseSyntaxError {
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
     /// Invalid regex
-    RegexCompileError(onig::Error),
+    RegexCompileError(String, onig::Error),
     /// A scope that syntect's scope implementation can't handle
     InvalidScope(ParseScopeError),
     /// A reference to another file that is invalid
@@ -29,6 +31,46 @@ pub enum ParseSyntaxError {
     /// Sorry this doesn't give you any way to narrow down where this is.
     /// Maybe use Sublime Text to figure it out.
     TypeMismatch,
+}
+
+impl fmt::Display for ParseSyntaxError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use ParseSyntaxError::*;
+
+        match *self {
+            RegexCompileError(ref regex, ref error) =>
+                write!(f, "Error while compiling regex '{}': {}",
+                       regex, error.description()),
+            _ => write!(f, "{}", self.description())
+        }
+    }
+}
+
+impl Error for ParseSyntaxError {
+    fn description(&self) -> &str {
+        use ParseSyntaxError::*;
+
+        match *self {
+            InvalidYaml(_) => "Invalid YAML file syntax",
+            EmptyFile => "Empty file",
+            MissingMandatoryKey(_) => "Missing mandatory key in YAML file",
+            RegexCompileError(_, ref error) => error.description(),
+            InvalidScope(_) => "Invalid scope",
+            BadFileRef => "Invalid file reference",
+            MainMissing => "Context 'main' is missing",
+            TypeMismatch => "Type mismatch",
+        }
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        use ParseSyntaxError::*;
+
+        match *self {
+            InvalidYaml(ref error) => Some(error),
+            RegexCompileError(_, ref error) => Some(error),
+            _ => None,
+        }
+    }
 }
 
 fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a Hash,
@@ -256,7 +298,7 @@ impl SyntaxDefinition {
 
         match Regex::new(&regex_str) {
             Err(onig_error) => {
-                Err(ParseSyntaxError::RegexCompileError(onig_error))
+                Err(ParseSyntaxError::RegexCompileError(regex_str, onig_error))
             },
             _ => Ok(())
         }
@@ -734,7 +776,7 @@ mod tests {
         "#,false, None);
         assert!(def.is_err());
         match def.unwrap_err() {
-            ParseSyntaxError::RegexCompileError(_) => {},
+            ParseSyntaxError::RegexCompileError(ref regex, _) => assert_eq!("[a", regex),
             _ => assert!(false, "Got unexpedted ParseSyntaxError"),
         }
     }
