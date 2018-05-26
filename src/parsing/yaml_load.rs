@@ -482,6 +482,10 @@ fn rewrite_regex(regex: String) -> String {
         return regex;
     }
 
+    // A special fix to rewrite a pattern from the `Rd` syntax that the RegexRewriter can not
+    // handle properly.
+    let regex = regex.replace("(?:\\n)?", "(?:$|)");
+
     let rewriter = RegexRewriter {
         bytes: regex.as_bytes(),
         index: 0,
@@ -870,7 +874,7 @@ mod tests {
         // In order to properly understand nesting, we'd have to have a full parser, so ignore it.
         assert_eq!(&rewrite(r"[[a]&&[\n]]"), r"[[a]&&[\n]]");
 
-        assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab(?:$)?");
+        assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab(?:$|)");
         assert_eq!(&rewrite(r"(?<!\n)ab"), r"(?<!$)ab");
         assert_eq!(&rewrite(r"(?<=\n)ab"), r"(?<=$)ab");
     }
