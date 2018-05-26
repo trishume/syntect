@@ -290,11 +290,8 @@ impl SyntaxDefinition {
     }
 
     fn try_compile_regex(regex_str: &str) -> Result<(), ParseSyntaxError> {
-        // Replace backreferences with a dummy placeholder value
-        let mut regex_str = String::from(regex_str);
-        for i in 0..10 {
-            regex_str = regex_str.replace(&format!("\\{}", i), "placeholder");
-        }
+        // Replace backreferences with a placeholder value that will also appear in errors
+        let regex_str = substitute_backrefs_in_regex(regex_str, |i| Some(format!("<placeholder_{}>", i)));
 
         let result = Regex::with_options(&regex_str,
                                          RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
