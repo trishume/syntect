@@ -260,6 +260,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
 
     if out_opts.summary {
         if let Ok(SyntaxTestFileResult::FailedAssertions(failures, _)) = res {
+            // Don't print total assertion count so that diffs don't pick up new succeeding tests
             println!("FAILED {}: {}", path.display(), failures);
         }
     } else {
@@ -324,30 +325,39 @@ fn main() {
 fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
     let mut exit_code: i32 = 0; // exit with code 0 by default, if all tests pass
     let walker = WalkDir::new(path).into_iter();
+
+    // accumulate and sort for consistency of diffs across machines
+    let mut files = Vec::new();
     for entry in walker.filter_entry(|e|e.file_type().is_dir() || is_a_syntax_test_file(e)) {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
-            if !out_opts.summary {
-                println!("Testing file {}", entry.path().display());
-            }
-            let start = Instant::now();
-            let result = test_file(&ss, entry.path(), true, out_opts);
-            let elapsed = start.elapsed();
-            if out_opts.time {
-                let ms = (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64;
-                println!("{} ms for file {}", ms, entry.path().display());
-            }
-            if exit_code != 2 { // leave exit code 2 if there was an error
-                if let Err(_) = result { // set exit code 2 if there was an error
-                    exit_code = 2;
-                } else if let Ok(ok) = result {
-                    if let SyntaxTestFileResult::FailedAssertions(_, _) = ok {
-                        exit_code = 1; // otherwise, if there were failures, exit with code 1
-                    }
+            files.push(entry.path().to_owned());
+        }
+    }
+    files.sort();
+
+    for path in &files {
+        if !out_opts.summary {
+            println!("Testing file {}", path.display());
+        }
+        let start = Instant::now();
+        let result = test_file(&ss, path, true, out_opts);
+        let elapsed = start.elapsed();
+        if out_opts.time {
+            let ms = (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64;
+            println!("{} ms for file {}", ms, path.display());
+        }
+        if exit_code != 2 { // leave exit code 2 if there was an error
+            if let Err(_) = result { // set exit code 2 if there was an error
+                exit_code = 2;
+            } else if let Ok(ok) = result {
+                if let SyntaxTestFileResult::FailedAssertions(_, _) = ok {
+                    exit_code = 1; // otherwise, if there were failures, exit with code 1
                 }
             }
         }
     }
+
     exit_code
 }
 
