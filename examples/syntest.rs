@@ -12,6 +12,8 @@ extern crate walkdir;
 #[macro_use]
 extern crate lazy_static;
 extern crate regex;
+extern crate getopts;
+
 //extern crate onig;
 use syntect::parsing::{SyntaxSet, ParseState, ScopeStack, Scope};
 use syntect::highlighting::ScopeSelectors;
@@ -22,9 +24,11 @@ use std::io::{BufRead, BufReader};
 use std::fs::File;
 use std::cmp::{min, max};
 use std::time::Instant;
-use walkdir::{DirEntry, WalkDir};
 use std::str::FromStr;
+
+use getopts::Options;
 use regex::Regex;
+use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyntaxTestHeaderError {
@@ -81,7 +85,7 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
         if let Some(captures) = SYNTAX_TEST_ASSERTION_PATTERN.captures(&token_and_rest_of_line[testtoken_start.len()..]) {
             let mut sst = captures.get(3).unwrap().as_str(); // get the scope selector text
             let mut only_whitespace_after_token_end = true;
-            
+
             if let Some(token) = testtoken_end { // if there is an end token defined in the test file header
                 if let Some(end_token_pos) = sst.find(token) { // and there is an end token in the line
                     let (ss, after_token_end) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
@@ -245,26 +249,26 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, debug: bool) -
 }
 
 fn main() {
-    let mut args: Vec<String> = std::env::args().collect();
-    let debug_arg = args.iter().position(|s| s == "--debug");
-    if debug_arg.is_some() {
-        args.remove(debug_arg.unwrap());
-    }
+    let args: Vec<String> = std::env::args().collect();
+    let mut opts = Options::new();
+    opts.optflag("d", "debug", "Show parsing results for each test line");
+    opts.optflag("t", "time", "Time execution as a more broad-ranging benchmark");
 
-    let time_arg = args.iter().position(|s| s == "--time");
-    if time_arg.is_some() {
-        args.remove(time_arg.unwrap());
-    }
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => { m }
+        Err(f) => { panic!(f.to_string()) }
+    };
 
-    let tests_path = if args.len() < 2 {
+    let tests_path = if matches.free.len() < 1 {
         "."
     } else {
         &args[1]
     };
-    let syntaxes_path = if args.len() == 3 {
-        &args[2]
-    } else {
+
+    let syntaxes_path = if matches.free.len() < 2 {
         ""
+    } else {
+        &args[2]
     };
 
     // load the syntaxes from disk if told to
@@ -282,7 +286,7 @@ fn main() {
         ss.link_syntaxes();
     }
 
-    let exit_code = recursive_walk(&ss, &tests_path, debug_arg.is_some(), time_arg.is_some());
+    let exit_code = recursive_walk(&ss, &tests_path, matches.opt_present("debug"), matches.opt_present("time"));
     println!("exiting with code {}", exit_code);
     std::process::exit(exit_code);
 
