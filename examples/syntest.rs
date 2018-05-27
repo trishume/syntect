@@ -55,6 +55,13 @@ lazy_static! {
         )(.*)$"#).unwrap();
 }
 
+#[derive(Clone, Copy)]
+struct OutputOptions {
+    time: bool,
+    debug: bool,
+    summary: bool,
+}
+
 #[derive(Debug)]
 struct AssertionRange<'a> {
     begin_char: usize,
@@ -134,7 +141,7 @@ fn process_assertions(assertion: &AssertionRange, test_against_line_scopes: &Vec
 }
 
 /// If `parse_test_lines` is `false` then lines that only contain assertions are not parsed
-fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, debug: bool) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
+fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: OutputOptions) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
     use syntect::util::debug_print_ops;
     let f = File::open(path).unwrap();
     let mut reader = BufReader::new(f);
@@ -157,7 +164,9 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, debug: bool) -
     let syntax_file = captures.name("syntax_file").unwrap().as_str();
 
     // find the relevant syntax definition to parse the file with - case is important!
-    println!("The test file references syntax definition file: {}", syntax_file);
+    if !out_opts.summary {
+        println!("The test file references syntax definition file: {}", syntax_file);
+    }
     let syntax = ss.find_syntax_by_path(syntax_file).ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound)?;
 
     // iterate over the lines of the file, testing them
@@ -181,15 +190,17 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, debug: bool) -
             for failure in result.iter().filter(|r|!r.success) {
                 let length = failure.column_end - failure.column_begin;
                 let text: String = previous_non_assertion_line.chars().skip(failure.column_begin).take(length).collect();
-                println!("  Assertion selector {:?} \
-                    from line {:?} failed against line {:?}, column range {:?}-{:?} \
-                    (with text {:?}) \
-                    has scope {:?}",
-                    assertion.scope_selector_text.trim(),
-                    current_line_number, test_against_line_number, failure.column_begin, failure.column_end,
-                    text,
-                    scopes_on_line_being_tested.iter().skip_while(|s|s.char_start + s.text_len <= failure.column_begin).next().unwrap_or(scopes_on_line_being_tested.last().unwrap()).scope
-                );
+                if !out_opts.summary {
+                    println!("  Assertion selector {:?} \
+                        from line {:?} failed against line {:?}, column range {:?}-{:?} \
+                        (with text {:?}) \
+                        has scope {:?}",
+                        assertion.scope_selector_text.trim(),
+                        current_line_number, test_against_line_number, failure.column_begin, failure.column_end,
+                        text,
+                        scopes_on_line_being_tested.iter().skip_while(|s|s.char_start + s.text_len <= failure.column_begin).next().unwrap_or(scopes_on_line_being_tested.last().unwrap()).scope
+                    );
+                }
                 assertion_failures += failure.column_end - failure.column_begin;
             }
             line_only_has_assertion = assertion.is_pure_assertion_line;
@@ -201,11 +212,11 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, debug: bool) -
                 test_against_line_number = current_line_number;
                 previous_non_assertion_line = line.to_string();
             }
-            if debug && !line_only_has_assertion {
+            if out_opts.debug && !line_only_has_assertion {
                 println!("-- debugging line {} -- scope stack: {:?}", current_line_number, stack);
             }
             let ops = state.parse_line(&line);
-            if debug && !line_only_has_assertion {
+            if out_opts.debug && !line_only_has_assertion {
                 if ops.is_empty() && !line.is_empty() {
                     println!("no operations for this line...");
                 } else {
@@ -241,11 +252,21 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, debug: bool) -
         }
         line = line.replace("\r", &"");
     }
-    if assertion_failures > 0 {
+    let res = if assertion_failures > 0 {
         Ok(SyntaxTestFileResult::FailedAssertions(assertion_failures, total_assertions))
     } else {
         Ok(SyntaxTestFileResult::Success(total_assertions))
+    };
+
+    if out_opts.summary {
+        if let Ok(SyntaxTestFileResult::FailedAssertions(failures, _)) = res {
+            println!("FAILED {}: {}", path.display(), failures);
+        }
+    } else {
+        println!("{:?}", res);
     }
+
+    res
 }
 
 fn main() {
@@ -253,6 +274,7 @@ fn main() {
     let mut opts = Options::new();
     opts.optflag("d", "debug", "Show parsing results for each test line");
     opts.optflag("t", "time", "Time execution as a more broad-ranging benchmark");
+    opts.optflag("s", "summary", "Print only summary of test failures");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => { m }
@@ -286,25 +308,32 @@ fn main() {
         ss.link_syntaxes();
     }
 
-    let exit_code = recursive_walk(&ss, &tests_path, matches.opt_present("debug"), matches.opt_present("time"));
+    let out_opts = OutputOptions {
+        debug: matches.opt_present("debug"),
+        time: matches.opt_present("time"),
+        summary: matches.opt_present("summary"),
+    };
+
+    let exit_code = recursive_walk(&ss, &tests_path, out_opts);
     println!("exiting with code {}", exit_code);
     std::process::exit(exit_code);
 
 }
 
 
-fn recursive_walk(ss: &SyntaxSet, path: &str, debug: bool, time: bool) -> i32 {
+fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
     let mut exit_code: i32 = 0; // exit with code 0 by default, if all tests pass
     let walker = WalkDir::new(path).into_iter();
     for entry in walker.filter_entry(|e|e.file_type().is_dir() || is_a_syntax_test_file(e)) {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
-            println!("Testing file {}", entry.path().display());
+            if !out_opts.summary {
+                println!("Testing file {}", entry.path().display());
+            }
             let start = Instant::now();
-            let result = test_file(&ss, entry.path(), true, debug);
+            let result = test_file(&ss, entry.path(), true, out_opts);
             let elapsed = start.elapsed();
-            println!("{:?}", result);
-            if time {
+            if out_opts.time {
                 let ms = (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64;
                 println!("{} ms for file {}", ms, entry.path().display());
             }
