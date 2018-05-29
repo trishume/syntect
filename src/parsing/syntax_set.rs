@@ -209,10 +209,10 @@ impl SyntaxSet {
                                                 path_obj: P)
                                                 -> io::Result<Option<&SyntaxDefinition>> {
         let path: &Path = path_obj.as_ref();
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
-        let ext_syntax = self.find_syntax_by_extension(extension)
-                             .or_else(|| self.find_syntax_by_extension(
-                                     path.file_name().and_then(|n| n.to_str()).unwrap_or("")));
+        let ext_syntax = self.find_syntax_by_extension(file_name).or_else(
+                            || self.find_syntax_by_extension(extension));
         let line_syntax = if ext_syntax.is_none() {
             let mut line = String::new();
             let f = File::open(path)?;
@@ -418,9 +418,25 @@ impl FirstLineCache {
 mod tests {
     use super::*;
     use parsing::{Scope, syntax_definition};
+    use std::collections::HashMap;
+
     #[test]
     fn can_load() {
         let mut ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+
+        let cmake_dummy_syntax = SyntaxDefinition {
+            name: "CMake".to_string(),
+            file_extensions: vec!["CMakeLists.txt".to_string(), "cmake".to_string()],
+            scope: Scope::new("source.cmake").unwrap(),
+            first_line_match: None,
+            hidden: false,
+            prototype: None,
+            variables: HashMap::new(),
+            contexts: HashMap::new(),
+        };
+
+        ps.add_syntax(cmake_dummy_syntax);
+
         assert_eq!(&ps.find_syntax_by_first_line("#!/usr/bin/env node").unwrap().name,
                    "JavaScript");
         ps.load_plain_text_syntax();
@@ -440,6 +456,10 @@ mod tests {
                    "Go");
         assert_eq!(&ps.find_syntax_for_file(".bashrc").unwrap().unwrap().name,
                    "Bourne Again Shell (bash)");
+        assert_eq!(&ps.find_syntax_for_file("CMakeLists.txt").unwrap().unwrap().name,
+                   "CMake");
+        assert_eq!(&ps.find_syntax_for_file("test.cmake").unwrap().unwrap().name,
+                   "CMake");
         assert_eq!(&ps.find_syntax_for_file("Rakefile").unwrap().unwrap().name, "Ruby");
         assert!(&ps.find_syntax_by_first_line("derp derp hi lol").is_none());
         assert_eq!(&ps.find_syntax_by_path("Packages/Rust/Rust.sublime-syntax").unwrap().name,
