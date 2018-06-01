@@ -350,8 +350,11 @@ impl SyntaxDefinition {
         } else if let Ok(y) = get_key(map, "embed", Some) {
             // Same as push so we translate it to what it would be
             let mut embed_escape_context_yaml = vec!();
+            let mut commands = Hash::new();
+            commands.insert(Yaml::String("meta_include_prototype".to_string()), Yaml::Boolean(false));
+            embed_escape_context_yaml.push(Yaml::Hash(commands));
             if let Ok(s) = get_key(map, "embed_scope", Some) {
-                let mut commands = Hash::new();
+                commands = Hash::new();
                 commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
                 embed_escape_context_yaml.push(Yaml::Hash(commands));
             }
@@ -718,7 +721,7 @@ mod tests {
               captures:
                 1: meta.tag.style.begin.html punctuation.definition.tag.end.html
               push:
-                - [{ meta_content_scope: 'source.css.embedded.html'}, { match: '(?i)(?=</style)', pop: true }]
+                - [{ meta_include_prototype: false }, { meta_content_scope: 'source.css.embedded.html' }, { match: '(?i)(?=</style)', pop: true }]
                 - scope:source.css
               with_prototype:
                 - match: (?=(?i)(?=</style))
