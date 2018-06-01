@@ -136,7 +136,7 @@ impl ScopeRepository {
         if s.is_empty() {
             return Ok(Scope { a: 0, b: 0 });
         }
-        let parts: Vec<usize> = s.split('.').map(|a| self.atom_to_index(a)).collect();
+        let parts: Vec<usize> = s.trim_right_matches('.').split('.').map(|a| self.atom_to_index(a)).collect();
         if parts.len() > 8 {
             return Err(ParseScopeError::TooManyAtoms);
         }
@@ -540,6 +540,8 @@ mod tests {
         assert_eq!(repo.to_string(s2), "source.php.wow");
         assert!(repo.build("source.php").unwrap() != repo.build("source.perl").unwrap());
         assert!(repo.build("source.php").unwrap() != repo.build("source.php.wagon").unwrap());
+        assert_eq!(repo.build("comment.line.").unwrap(),
+                   repo.build("comment.line").unwrap());
     }
     #[test]
     fn global_repo_works() {
