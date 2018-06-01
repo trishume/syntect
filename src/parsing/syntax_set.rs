@@ -16,6 +16,7 @@ use std::rc::Rc;
 
 use std::sync::Mutex;
 use onig::Regex;
+use parsing::syntax_definition::ContextId;
 
 /// A syntax set holds a bunch of syntaxes and manages
 /// loading them and the crucial operation of *linking*.
@@ -25,6 +26,7 @@ use onig::Regex;
 ///
 /// Re-linking— linking, adding more unlinked syntaxes with `load_syntaxes`,
 /// and then linking again—is allowed.
+// TODO: clone?
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyntaxSet {
     syntaxes: Vec<SyntaxDefinition>,
@@ -121,6 +123,11 @@ impl SyntaxSet {
         &self.syntaxes[..]
     }
 
+    // TODO: visibility
+    pub fn get_syntax(&self, index: usize) -> &SyntaxDefinition {
+        &self.syntaxes[index]
+    }
+
     /// Rarely useful method that loads in a syntax with no highlighting rules for plain text.
     /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some
     /// reason the default Sublime plain text syntax is still in `.tmLanguage` format.
@@ -145,6 +152,16 @@ impl SyntaxSet {
 
     pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxDefinition> {
         self.syntaxes.iter().find(|&s| s.file_extensions.iter().any(|e| e == extension))
+    }
+
+    // TODO: visibility
+    pub fn find_syntax_index_by_scope(&self, scope: Scope) -> Option<usize> {
+        self.syntaxes.iter().position(|s| s.scope == scope)
+    }
+
+    // TODO: visibility
+    pub fn find_syntax_index_by_name<'a>(&'a self, name: &str) -> Option<usize> {
+        self.syntaxes.iter().position(|s| name == &s.name)
     }
 
     /// Searches for a syntax first by extension and then by case-insensitive name
@@ -249,16 +266,19 @@ impl SyntaxSet {
     /// This operation is idempotent, but takes time even on already linked syntax sets.
     pub fn link_syntaxes(&mut self) {
         // 2 loops necessary to satisfy borrow checker :-(
-        for syntax in &mut self.syntaxes {
-            if let Some(proto_ptr) = syntax.contexts.get("prototype") {
-                Self::recursively_mark_no_prototype(syntax, proto_ptr.clone());
-                syntax.prototype = Some((*proto_ptr).clone());
+        for (syntax_index, syntax) in self.syntaxes.iter_mut().enumerate() {
+            if let Some(context_index) = syntax.find_context_index_by_name("prototype") {
+//                let prototype = &mut syntax.contexts[context_index];
+                // TODO: this works but is it nice? Would it be nicer to make
+                // recursively_mark_no_prototype a method on SyntaxDefinition?
+                Self::recursively_mark_no_prototype(&mut syntax.contexts, context_index);
+                syntax.prototype = Some(ContextId::new(syntax_index, context_index))
             }
         }
-        for syntax in &self.syntaxes {
-            for context_ptr in syntax.contexts.values() {
-                let mut mut_ref = context_ptr.borrow_mut();
-                self.link_context(syntax, mut_ref.deref_mut());
+        for syntax_index in 0..self.syntaxes.len() {
+            let contexts = self.syntaxes[syntax_index].contexts.len();
+            for context_index in 0..contexts {
+                self.link_context(syntax_index, context_index);
             }
         }
         self.is_linked = true;
@@ -266,99 +286,103 @@ impl SyntaxSet {
 
     /// Anything recursively included by the prototype shouldn't include the prototype.
     /// This marks them as such.
-    fn recursively_mark_no_prototype(syntax: &SyntaxDefinition, context_ptr: ContextPtr) {
-        if let Ok(mut mut_ref) = context_ptr.try_borrow_mut() {
-            let context = mut_ref.deref_mut();
-            context.meta_include_prototype = false;
-            for pattern in &mut context.patterns {
-                match *pattern {
-                    // Apparently inline blocks also don't include the prototype when within the prototype.
-                    // This is really weird, but necessary to run the YAML syntax.
-                    Pattern::Match(ref mut match_pat) => {
-                        let maybe_context_refs = match match_pat.operation {
-                            MatchOperation::Push(ref context_refs) |
-                            MatchOperation::Set(ref context_refs) => Some(context_refs),
-                            MatchOperation::Pop | MatchOperation::None => None,
-                        };
-                        if let Some(context_refs) = maybe_context_refs {
-                            for context_ref in context_refs.iter() {
-                                match context_ref {
-                                    ContextReference::Inline(ref context_ptr) => {
-                                        Self::recursively_mark_no_prototype(syntax, context_ptr.clone());
-                                    },
-                                    ContextReference::Named(ref s) => {
-                                        if let Some(context_ptr) = syntax.contexts.get(s) {
-                                            Self::recursively_mark_no_prototype(syntax, context_ptr.clone());
-                                        }
-                                    },
-                                    _ => (),
-                                }
+    fn recursively_mark_no_prototype(contexts: &mut [Context], context_id: usize) {
+        contexts[context_id].meta_include_prototype = false;
+        for pattern in &mut contexts[context_id].patterns {
+            match *pattern {
+                // Apparently inline blocks also don't include the prototype when within the prototype.
+                // This is really weird, but necessary to run the YAML syntax.
+                Pattern::Match(ref mut match_pat) => {
+                    let maybe_context_refs = match match_pat.operation {
+                        MatchOperation::Push(ref context_refs) |
+                        MatchOperation::Set(ref context_refs) => Some(context_refs),
+                        MatchOperation::Pop | MatchOperation::None => None,
+                    };
+                    if let Some(context_refs) = maybe_context_refs {
+                        for context_ref in context_refs.iter() {
+                            match context_ref {
+                                ContextReference::Inline(ref context) => {
+                                    Self::recursively_mark_no_prototype(contexts, context);
+                                },
+                                ContextReference::Named(ref s) => {
+                                    if let Ok(i) = contexts.binary_search_by_key(&s, |c| &c.name) {
+                                        Self::recursively_mark_no_prototype(contexts, context_id);
+                                    }
+                                },
+                                _ => (),
                             }
                         }
                     }
-                    Pattern::Include(ContextReference::Named(ref s)) => {
-                        if let Some(context_ptr) = syntax.contexts.get(s) {
-                            Self::recursively_mark_no_prototype(syntax, context_ptr.clone());
-                        }
-                    }
-                    _ => (),
                 }
+                Pattern::Include(ContextReference::Named(ref s)) => {
+                    if let Ok(i) = contexts.binary_search_by_key(&s, |c| &c.name) {
+                        // FIXME does this work?
+                        let context = &mut contexts[i];
+                        Self::recursively_mark_no_prototype(contexts, context_id);
+                    }
+                }
+                _ => (),
             }
         }
     }
 
-    fn link_context(&self, syntax: &SyntaxDefinition, context: &mut Context) {
+    fn link_context(&mut self, syntax_index: usize, context_index: usize) {
+        let context = self.syntaxes[syntax_index].contexts[context_index];
         if context.meta_include_prototype {
-            if let Some(ref proto_ptr) = syntax.prototype {
-                context.prototype = Some((*proto_ptr).clone());
-            }
+            context.prototype = syntax.prototype.clone();
         }
         for pattern in &mut context.patterns {
             match *pattern {
-                Pattern::Match(ref mut match_pat) => self.link_match_pat(syntax, match_pat),
-                Pattern::Include(ref mut context_ref) => self.link_ref(syntax, context_ref),
+                Pattern::Match(ref mut match_pat) => self.link_match_pat(syntax, syntax_index, match_pat),
+                Pattern::Include(ref mut context_ref) => self.link_ref(syntax, syntax_index, context_ref),
             }
         }
     }
 
-    fn link_ref(&self, syntax: &SyntaxDefinition, context_ref: &mut ContextReference) {
+    fn link_ref(&self, syntax: &SyntaxDefinition, syntax_index: usize, context_ref: &mut ContextReference) {
         // println!("{:?}", context_ref);
         use super::syntax_definition::ContextReference::*;
-        let maybe_new_context = match *context_ref {
+        let linked_context_id = match *context_ref {
             Named(ref s) => {
                 // This isn't actually correct, but it is better than nothing/crashing.
                 // This is being phased out anyhow, see https://github.com/sublimehq/Packages/issues/73
                 // Fixes issue #30
                 if s == "$top_level_main" {
-                    syntax.contexts.get("main")
+                    self.context_id(syntax_index, "main")
                 } else {
-                    syntax.contexts.get(s)
+                    self.context_id(syntax_index, s)
                 }
             }
-            Inline(ref context_ptr) => {
-                let mut mut_ref = context_ptr.borrow_mut();
-                self.link_context(syntax, mut_ref.deref_mut());
+            Inline(ref mut context_ptr) => {
+                self.link_context(syntax, syntax_index, context_ptr);
                 None
             }
             ByScope { scope, ref sub_context } => {
-                let other_syntax = self.find_syntax_by_scope(scope);
+                let other_syntax_index = self.find_syntax_index_by_scope(scope);
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
-                other_syntax.and_then(|s| s.contexts.get(context_name))
+                other_syntax_index.and_then(|i| self.context_id(i, context_name))
             }
             File { ref name, ref sub_context } => {
-                let other_syntax = self.find_syntax_by_name(name);
+                let other_syntax_index = self.find_syntax_index_by_name(&name);
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
-                other_syntax.and_then(|s| s.contexts.get(context_name))
+                other_syntax_index.and_then(|i| self.context_id(i, context_name))
             }
             Direct(_) => None,
         };
-        if let Some(new_context) = maybe_new_context {
-            let mut new_ref = Direct(LinkerLink { link: Rc::downgrade(new_context) });
+        if let Some(context_id) = linked_context_id {
+            let mut new_ref = Direct(context_id);
             mem::swap(context_ref, &mut new_ref);
         }
     }
 
-    fn link_match_pat(&self, syntax: &SyntaxDefinition, match_pat: &mut MatchPattern) {
+    // TODO: method order
+    fn context_id(&self, syntax_index: usize, context_name: &str) -> Option<ContextId> {
+        self.syntaxes[syntax_index]
+            .find_context_index_by_name(context_name)
+            .map(|context_index| ContextId::new(syntax_index, context_index))
+    }
+
+    fn link_match_pat(&self, syntax: &SyntaxDefinition, syntax_index: usize, match_pat: &mut MatchPattern) {
         let maybe_context_refs = match match_pat.operation {
             MatchOperation::Push(ref mut context_refs) |
             MatchOperation::Set(ref mut context_refs) => Some(context_refs),
@@ -366,12 +390,11 @@ impl SyntaxSet {
         };
         if let Some(context_refs) = maybe_context_refs {
             for context_ref in context_refs.iter_mut() {
-                self.link_ref(syntax, context_ref);
+                self.link_ref(syntax, syntax_index, context_ref);
             }
         }
-        if let Some(ref context_ptr) = match_pat.with_prototype {
-            let mut mut_ref = context_ptr.borrow_mut();
-            self.link_context(syntax, mut_ref.deref_mut());
+        if let Some(ref mut context) = match_pat.with_prototype {
+            self.link_context(syntax, syntax_index, context);
         }
     }
 }
@@ -436,7 +459,8 @@ mod tests {
             hidden: false,
             prototype: None,
             variables: HashMap::new(),
-            contexts: HashMap::new(),
+            start_context: Context::new("test", false),
+            contexts: Vec::new(),
         };
 
         ps.add_syntax(cmake_dummy_syntax);
@@ -471,8 +495,8 @@ mod tests {
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // assert!(false);
-        let main_context = syntax.contexts.get("main").unwrap();
-        let count = syntax_definition::context_iter(main_context.clone()).count();
+        let main_context = syntax.find_context_by_name("main").unwrap();
+        let count = syntax_definition::context_iter(&ps, main_context).count();
         assert_eq!(count, 109);
     }
 }

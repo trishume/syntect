@@ -7,6 +7,7 @@ use std::i32;
 use std::hash::BuildHasherDefault;
 use std::ptr;
 use fnv::FnvHasher;
+use parsing::syntax_set::SyntaxSet;
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
 /// If you are parsing an entire file you create one of these at the start and use it
@@ -24,9 +25,11 @@ use fnv::FnvHasher;
 ///
 /// **Note:** Caching is for advanced users who have tons of time to maximize performance or want to do so eventually.
 /// It is not recommended that you try caching the first time you implement highlighting.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParseState {
-    stack: Vec<StateLevel>,
+// TODO: removed PartialEq, Eq from this because SyntaxSet is not
+#[derive(Debug, Clone)]
+pub struct ParseState<'a> {
+    syntax_set: &'a SyntaxSet,
+    stack: Vec<StateLevel<'a>>,
     first_line: bool,
     // See issue #101. Contains indices of frames pushed by `with_prototype`s.
     // Doesn't look at `with_prototype`s below top of stack.
@@ -34,21 +37,17 @@ pub struct ParseState {
 }
 
 #[derive(Debug, Clone)]
-struct StateLevel {
-    context: ContextPtr,
-    prototype: Option<ContextPtr>,
+struct StateLevel<'a> {
+    context: &'a Context,
+    prototype: Option<&'a Context>,
     captures: Option<(Region, String)>,
 }
 
-fn context_ptr_eq(a: &ContextPtr, b: &ContextPtr) -> bool {
-    ptr::eq(a.as_ptr(), b.as_ptr())
-}
-
-impl PartialEq for StateLevel {
+impl<'a> PartialEq for StateLevel<'a> {
     fn eq(&self, other: &StateLevel) -> bool {
-        context_ptr_eq(&self.context, &other.context) &&
+        self.context == other.context &&
         match (&self.prototype, &other.prototype) {
-            (&Some(ref a), &Some(ref b)) => context_ptr_eq(a, b),
+            (&Some(ref a), &Some(ref b)) => a == b,
             (&None, &None) => true,
             _ => false,
         } &&
@@ -56,12 +55,12 @@ impl PartialEq for StateLevel {
     }
 }
 
-impl Eq for StateLevel {}
+impl<'a> Eq for StateLevel<'a> {}
 
 #[derive(Debug)]
-struct RegexMatch {
+struct RegexMatch<'a> {
     regions: Region,
-    context: ContextPtr,
+    context: &'a Context,
     pat_index: usize,
     from_with_prototype: bool,
     would_loop: bool,
@@ -162,17 +161,18 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 // So in our input string, we'd skip one character and try to match the rules
 // again. This time, the "\w+" wins because it comes first.
 
-impl ParseState {
+impl<'a> ParseState<'a> {
     /// Create a state from a syntax, keeps its own reference counted
     /// pointer to the main context of the syntax.
-    pub fn new(syntax: &SyntaxDefinition) -> ParseState {
+    pub fn new(syntax_set: &'a SyntaxSet, syntax: &'a SyntaxDefinition) -> ParseState<'a> {
         let start_state = StateLevel {
             // __start is a special context we add in yaml_load.rs
-            context: syntax.contexts["__start"].clone(),
+            context: &syntax.start_context,
             prototype: None,
             captures: None,
         };
         ParseState {
+            syntax_set,
             stack: vec![start_state],
             first_line: true,
             proto_starts: Vec::new(),
@@ -197,7 +197,7 @@ impl ParseState {
 
         if self.first_line {
             let cur_level = &self.stack[self.stack.len() - 1];
-            let context = cur_level.context.borrow();
+            let context = cur_level.context;
             if !context.meta_content_scope.is_empty() {
                 res.push((0, ScopeStackOp::Push(context.meta_content_scope[0])));
             }
@@ -270,7 +270,7 @@ impl ParseState {
                 // "push", remember the position and stack size so that we can
                 // check the next "pop" for loops. Otherwise leave the state,
                 // e.g. non-consuming "set" could also result in a loop.
-                let context = reg_match.context.borrow();
+                let context = reg_match.context;
                 let match_pattern = context.match_at(reg_match.pat_index);
                 if let MatchOperation::Push(_) = match_pattern.operation {
                     *non_consuming_push_at = (match_end, self.stack.len() + 1);
@@ -285,7 +285,7 @@ impl ParseState {
                 self.proto_starts.push(self.stack.len());
             }
 
-            let level_context = self.stack[self.stack.len() - 1].context.clone();
+            let level_context = self.stack[self.stack.len() - 1].context;
             self.exec_pattern(line, reg_match, level_context, ops);
 
             true
@@ -300,12 +300,9 @@ impl ParseState {
                        search_cache: &mut SearchCache,
                        regions: &mut Region,
                        check_pop_loop: bool)
-                       -> Option<RegexMatch> {
+                       -> Option<RegexMatch<'a>> {
         let cur_level = &self.stack[self.stack.len() - 1];
-        let prototype: Option<ContextPtr> = {
-            let ctx_ref = cur_level.context.borrow();
-            ctx_ref.prototype.clone()
-        };
+        let prototype = cur_level.context.prototype.map(|p| p.resolve(self.syntax_set));
 
         // Build an iterator for the contexts we want to visit in order
         let context_chain = {
@@ -313,7 +310,7 @@ impl ParseState {
             // Sublime applies with_prototypes from bottom to top
             let with_prototypes = self.stack[proto_start..].iter().filter_map(|lvl| lvl.prototype.as_ref().map(|ctx| (true, ctx.clone(), lvl.captures.as_ref())));
             let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx, None));
-            let cur_context = Some((false, cur_level.context.clone(), cur_level.captures.as_ref())).into_iter();
+            let cur_context = Some((false, cur_level.context, cur_level.captures.as_ref())).into_iter();
             with_prototypes.chain(cur_prototype).chain(cur_context)
         };
 
@@ -325,8 +322,7 @@ impl ParseState {
         let mut pop_would_loop = false;
 
         for (from_with_proto, ctx, captures) in context_chain {
-            for (pat_context_ptr, pat_index) in context_iter(ctx) {
-                let pat_context = pat_context_ptr.borrow();
+            for (pat_context, pat_index) in context_iter(self.syntax_set, ctx) {
                 let match_pat = pat_context.match_at(pat_index);
 
                 if let Some(match_region) = self.search(
@@ -353,7 +349,7 @@ impl ParseState {
 
                         best_match = Some(RegexMatch {
                             regions: match_region,
-                            context: pat_context_ptr.clone(),
+                            context: pat_context,
                             pat_index,
                             from_with_prototype: from_with_proto,
                             would_loop: pop_would_loop,
@@ -447,17 +443,16 @@ impl ParseState {
     /// Returns true if the stack was changed
     fn exec_pattern(&mut self,
                     line: &str,
-                    reg_match: RegexMatch,
-                    level_context_ptr: ContextPtr,
+                    reg_match: RegexMatch<'a>,
+                    level_context: &Context,
                     ops: &mut Vec<(usize, ScopeStackOp)>)
                     -> bool {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
-        let context = reg_match.context.borrow();
+        let context = reg_match.context;
         let pat = context.match_at(reg_match.pat_index);
-        let level_context = level_context_ptr.borrow();
         // println!("running pattern {:?} on '{}' at {}, operation {:?}", pat.regex_str, line, match_start, pat.operation);
 
-        self.push_meta_ops(true, match_start, &*level_context, &pat.operation, ops);
+        self.push_meta_ops(true, match_start, level_context, &pat.operation, ops);
         for s in &pat.scope {
             // println!("pushing {:?} at {}", s, match_start);
             ops.push((match_start, ScopeStackOp::Push(*s)));
@@ -535,8 +530,7 @@ impl ParseState {
                 if initial {
                     // add each context's meta scope
                     for r in context_refs.iter() {
-                        let ctx_ptr = r.resolve();
-                        let ctx = ctx_ptr.borrow();
+                        let ctx = r.resolve(self.syntax_set);
 
                         if !is_set {
                             if let Some(clear_amount) = ctx.clear_scopes {
@@ -550,16 +544,14 @@ impl ParseState {
                     }
                 } else {
                     let repush = (is_set && (!cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty())) || context_refs.iter().any(|r| {
-                        let ctx_ptr = r.resolve();
-                        let ctx = ctx_ptr.borrow();
+                        let ctx = r.resolve(self.syntax_set);
 
                         !ctx.meta_content_scope.is_empty() || (ctx.clear_scopes.is_some() && is_set)
                     });
                     if repush {
                         // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
                         let mut num_to_pop : usize = context_refs.iter().map(|r| {
-                            let ctx_ptr = r.resolve();
-                            let ctx = ctx_ptr.borrow();
+                            let ctx = r.resolve(self.syntax_set);
                             ctx.meta_scope.len()
                         }).sum();
 
@@ -575,8 +567,7 @@ impl ParseState {
 
                         // now we push meta scope and meta context scope for each context pushed
                         for r in context_refs {
-                            let ctx_ptr = r.resolve();
-                            let ctx = ctx_ptr.borrow();
+                            let ctx = r.resolve(self.syntax_set);
 
                             // for some reason, contrary to my reading of the docs, set does this after the token
                             if is_set {
@@ -600,7 +591,7 @@ impl ParseState {
     }
 
     /// Returns true if the stack was changed
-    fn perform_op(&mut self, line: &str, regions: &Region, pat: &MatchPattern) -> bool {
+    fn perform_op(&mut self, line: &str, regions: &Region, pat: &'a MatchPattern) -> bool {
         let (ctx_refs, old_proto) = match pat.operation {
             MatchOperation::Push(ref ctx_refs) => (ctx_refs, None),
             MatchOperation::Set(ref ctx_refs) => {
@@ -623,15 +614,15 @@ impl ParseState {
                 // top most on the stack after all the contexts are pushed - this is also
                 // referred to as the "target" of the push by sublimehq - see
                 // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
-                pat.with_prototype.clone().or_else(|| old_proto.clone())
+                pat.with_prototype.as_ref().clone().or_else(|| old_proto.clone())
             } else {
                 None
             };
-            let ctx_ptr = r.resolve();
+            let context = r.resolve(self.syntax_set);
             let captures = {
-                let mut uses_backrefs = ctx_ptr.borrow().uses_backrefs;
+                let mut uses_backrefs = context.uses_backrefs;
                 if let Some(ref proto) = proto {
-                    uses_backrefs = uses_backrefs || proto.borrow().uses_backrefs;
+                    uses_backrefs = uses_backrefs || proto.uses_backrefs;
                 }
                 if uses_backrefs {
                     Some((regions.clone(), line.to_owned()))
@@ -640,7 +631,7 @@ impl ParseState {
                 }
             };
             self.stack.push(StateLevel {
-                context: ctx_ptr,
+                context,
                 prototype: proto,
                 captures,
             });
@@ -661,10 +652,10 @@ mod tests {
 
     #[test]
     fn can_parse_simple() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
-            let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
-            ParseState::new(syntax)
+            let syntax = ss.find_syntax_by_name("Ruby on Rails").unwrap();
+            ParseState::new(&ss, syntax)
         };
 
         let ops1 = ops("module Bob::Wow::Troll::Five; 5; end", &mut state);
@@ -697,10 +688,10 @@ mod tests {
 
     #[test]
     fn can_parse_includes() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
-            let syntax = ps.find_syntax_by_name("HTML (Rails)").unwrap();
-            ParseState::new(syntax)
+            let syntax = ss.find_syntax_by_name("HTML (Rails)").unwrap();
+            ParseState::new(&ss, syntax)
         };
 
         let ops = ops("<script>var lol = '<% def wow(", &mut state);
@@ -723,10 +714,10 @@ mod tests {
 
     #[test]
     fn can_parse_backrefs() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
-            let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
-            ParseState::new(syntax)
+            let syntax = ss.find_syntax_by_name("Ruby on Rails").unwrap();
+            ParseState::new(&ss, syntax)
         };
 
         // For parsing HEREDOC, the "SQL" is captured at the beginning and then used in another
@@ -760,10 +751,10 @@ mod tests {
 
     #[test]
     fn can_parse_preprocessor_rules() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
-            let syntax = ps.find_syntax_by_name("C").unwrap();
-            ParseState::new(syntax)
+            let syntax = ss.find_syntax_by_name("C").unwrap();
+            ParseState::new(&ss, syntax)
         };
 
         assert_eq!(ops("#ifdef FOO", &mut state), vec![
@@ -811,10 +802,10 @@ mod tests {
 
     #[test]
     fn can_parse_issue25() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
-            let syntax = ps.find_syntax_by_name("C").unwrap();
-            ParseState::new(syntax)
+            let syntax = ss.find_syntax_by_name("C").unwrap();
+            ParseState::new(&ss, syntax)
         };
 
         // test fix for issue #25
@@ -1374,7 +1365,7 @@ contexts:
         syntax_set.add_syntax(syntax);
         syntax_set.link_syntaxes();
 
-        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        let mut state = ParseState::new(&syntax_set, &syntax_set.syntaxes()[0]);
         let ops = ops(line, &mut state);
         expect_scope_stacks_for_ops(ops, expect);
     }

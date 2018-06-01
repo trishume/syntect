@@ -39,17 +39,18 @@ use std::path::Path;
 /// ```
 pub struct HighlightLines<'a> {
     highlighter: Highlighter<'a>,
-    parse_state: ParseState,
+    parse_state: ParseState<'a>,
     highlight_state: HighlightState,
 }
 
 impl<'a> HighlightLines<'a> {
-    pub fn new(syntax: &SyntaxDefinition, theme: &'a Theme) -> HighlightLines<'a> {
+    // TODO: should syntax come first or the set?
+    pub fn new(syntax_set: &'a SyntaxSet, syntax: &'a SyntaxDefinition, theme: &'a Theme) -> HighlightLines<'a> {
         let highlighter = Highlighter::new(theme);
         let hstate = HighlightState::new(&highlighter, ScopeStack::new());
         HighlightLines {
             highlighter: highlighter,
-            parse_state: ParseState::new(syntax),
+            parse_state: ParseState::new(syntax_set, syntax),
             highlight_state: hstate,
         }
     }
@@ -101,7 +102,7 @@ impl<'a> HighlightFile<'a> {
     /// }
     /// ```
     pub fn new<P: AsRef<Path>>(path_obj: P,
-                               ss: &SyntaxSet,
+                               ss: &'a SyntaxSet,
                                theme: &'a Theme)
                                -> io::Result<HighlightFile<'a>> {
         let path: &Path = path_obj.as_ref();
@@ -111,7 +112,7 @@ impl<'a> HighlightFile<'a> {
 
         Ok(HighlightFile {
             reader: BufReader::new(f),
-            highlight_lines: HighlightLines::new(syntax, theme),
+            highlight_lines: HighlightLines::new(ss, syntax, theme),
         })
     }
 }
@@ -184,10 +185,10 @@ mod tests {
 
     #[test]
     fn can_highlight_lines() {
-        let ps = SyntaxSet::load_defaults_nonewlines();
+        let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
-        let syntax = ps.find_syntax_by_extension("rs").unwrap();
-        let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+        let syntax = ss.find_syntax_by_extension("rs").unwrap();
+        let mut h = HighlightLines::new(&ss, syntax, &ts.themes["base16-ocean.dark"]);
         let ranges = h.highlight("pub struct Wow { hi: u64 }");
         assert!(ranges.len() > 4);
     }
@@ -205,7 +206,7 @@ mod tests {
     #[test]
     fn can_find_regions() {
         let ss = SyntaxSet::load_defaults_nonewlines();
-        let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap());
+        let mut state = ParseState::new(&ss, ss.find_syntax_by_extension("rb").unwrap());
         let line = "lol =5+2";
         let ops = state.parse_line(line);
 
@@ -229,7 +230,7 @@ mod tests {
     #[test]
     fn can_find_regions_with_trailing_newline() {
         let ss = SyntaxSet::load_defaults_newlines();
-        let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap());
+        let mut state = ParseState::new(&ss, ss.find_syntax_by_extension("rb").unwrap());
         let lines = ["# hello world\n", "lol=5+2\n"];
         let mut stack = ScopeStack::new();
 

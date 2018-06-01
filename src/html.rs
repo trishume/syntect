@@ -38,9 +38,9 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for no newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_nonewlines()`. If you think this is the wrong
 /// choice of `SyntaxSet` to accept, I'm not sure of it either, email me.
-pub fn highlighted_snippet_for_string(s: &str, syntax: &SyntaxDefinition, theme: &Theme) -> String {
+pub fn highlighted_snippet_for_string(s: &str, ss: &SyntaxSet, syntax: &SyntaxDefinition, theme: &Theme) -> String {
     let mut output = String::new();
-    let mut highlighter = HighlightLines::new(syntax, theme);
+    let mut highlighter = HighlightLines::new(ss, syntax, theme);
     let c = theme.settings.background.unwrap_or(Color::WHITE);
     write!(output,
            "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
@@ -241,9 +241,9 @@ mod tests {
     use highlighting::{ThemeSet, Style, Highlighter, HighlightIterator, HighlightState};
     #[test]
     fn tokens() {
-        let ps = SyntaxSet::load_defaults_nonewlines();
-        let syntax = ps.find_syntax_by_name("Markdown").unwrap();
-        let mut state = ParseState::new(syntax);
+        let ss = SyntaxSet::load_defaults_nonewlines();
+        let syntax = ss.find_syntax_by_name("Markdown").unwrap();
+        let mut state = ParseState::new(&ss, syntax);
         let line = "[w](t.co) *hi* **five**";
         let ops = state.parse_line(line);
 
@@ -271,7 +271,7 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let s = include_str!("../testdata/highlight_test.erb");
         let syntax = ss.find_syntax_by_extension("erb").unwrap();
-        let html = highlighted_snippet_for_string(s, syntax, &ts.themes["base16-ocean.dark"]);
+        let html = highlighted_snippet_for_string(s, &ss, syntax, &ts.themes["base16-ocean.dark"]);
         assert_eq!(html, include_str!("../testdata/test3.html"));
         let html2 = highlighted_snippet_for_file("testdata/highlight_test.erb",
                                                  &ss,
