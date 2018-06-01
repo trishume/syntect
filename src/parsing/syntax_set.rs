@@ -101,7 +101,11 @@ impl SyntaxSet {
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
                 if let Some(path_str) = entry.path().to_str() {
-                    self.path_syntaxes.push((path_str.to_string(), self.syntaxes.len()));
+                    // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
+                    // can still be loaded the same way.
+                    let path = Path::new(path_str);
+                    let path_parts: Vec<_> = path.iter().map(|c| c.to_str().unwrap()).collect();
+                    self.path_syntaxes.push((path_parts.join("/").to_string(), self.syntaxes.len()));
                 }
                 self.syntaxes.push(syntax);
             }
@@ -187,7 +191,7 @@ impl SyntaxSet {
     }
 
     /// Convenience method that tries to find the syntax for a file path,
-    /// first by extension and then by first line of the file if that doesn't work.
+    /// first by extension/name and then by first line of the file if that doesn't work.
     /// May IO Error because it sometimes tries to read the first line of the file.
     ///
     /// # Examples
@@ -205,8 +209,10 @@ impl SyntaxSet {
                                                 path_obj: P)
                                                 -> io::Result<Option<&SyntaxDefinition>> {
         let path: &Path = path_obj.as_ref();
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
-        let ext_syntax = self.find_syntax_by_extension(extension);
+        let ext_syntax = self.find_syntax_by_extension(file_name).or_else(
+                            || self.find_syntax_by_extension(extension));
         let line_syntax = if ext_syntax.is_none() {
             let mut line = String::new();
             let f = File::open(path)?;
@@ -412,9 +418,25 @@ impl FirstLineCache {
 mod tests {
     use super::*;
     use parsing::{Scope, syntax_definition};
+    use std::collections::HashMap;
+
     #[test]
     fn can_load() {
         let mut ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+
+        let cmake_dummy_syntax = SyntaxDefinition {
+            name: "CMake".to_string(),
+            file_extensions: vec!["CMakeLists.txt".to_string(), "cmake".to_string()],
+            scope: Scope::new("source.cmake").unwrap(),
+            first_line_match: None,
+            hidden: false,
+            prototype: None,
+            variables: HashMap::new(),
+            contexts: HashMap::new(),
+        };
+
+        ps.add_syntax(cmake_dummy_syntax);
+
         assert_eq!(&ps.find_syntax_by_first_line("#!/usr/bin/env node").unwrap().name,
                    "JavaScript");
         ps.load_plain_text_syntax();
@@ -432,6 +454,13 @@ mod tests {
                        .unwrap()
                        .name,
                    "Go");
+        assert_eq!(&ps.find_syntax_for_file(".bashrc").unwrap().unwrap().name,
+                   "Bourne Again Shell (bash)");
+        assert_eq!(&ps.find_syntax_for_file("CMakeLists.txt").unwrap().unwrap().name,
+                   "CMake");
+        assert_eq!(&ps.find_syntax_for_file("test.cmake").unwrap().unwrap().name,
+                   "CMake");
+        assert_eq!(&ps.find_syntax_for_file("Rakefile").unwrap().unwrap().name, "Ruby");
         assert!(&ps.find_syntax_by_first_line("derp derp hi lol").is_none());
         assert_eq!(&ps.find_syntax_by_path("Packages/Rust/Rust.sublime-syntax").unwrap().name,
                    "Rust");

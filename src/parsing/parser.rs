@@ -1229,6 +1229,34 @@ contexts:
         expect_scope_stacks(&line, &expect, syntax);
     }
 
+    #[test]
+    fn can_parse_prototype_with_embed() {
+        let syntax = r#"
+name: Javadoc
+scope: text.html.javadoc
+contexts:
+  prototype:
+    - match: \*
+      scope: punctuation.definition.comment.javadoc
+
+  main:
+    - meta_include_prototype: false
+    - match: /\*\*
+      scope: comment.block.documentation.javadoc punctuation.definition.comment.begin.javadoc
+      embed: contents
+      embed_scope: comment.block.documentation.javadoc text.html.javadoc
+      escape: \*/
+      escape_captures:
+        0: comment.block.documentation.javadoc punctuation.definition.comment.end.javadoc
+
+  contents:
+    - match: ''
+"#;
+
+        let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        expect_scope_stacks_with_syntax("/** * */", &["<comment.block.documentation.javadoc>, <punctuation.definition.comment.begin.javadoc>", "<comment.block.documentation.javadoc>, <text.html.javadoc>, <punctuation.definition.comment.javadoc>", "<comment.block.documentation.javadoc>, <punctuation.definition.comment.end.javadoc>"], syntax);
+    }
+
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");
         let line_with_newline = format!("{}\n", line_without_newline);

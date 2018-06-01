@@ -207,31 +207,39 @@ impl ContextReference {
     }
 }
 
+pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -> String
+    where F: Fn(usize) -> Option<String>
+{
+    let mut reg_str = String::with_capacity(regex_str.len());
+
+    let mut last_was_escape = false;
+    for c in regex_str.chars() {
+        if last_was_escape && c.is_digit(10) {
+            let val = c.to_digit(10).unwrap() as usize;
+            if let Some(sub) = substituter(val) {
+                reg_str.push_str(&sub);
+            }
+        } else if last_was_escape {
+            reg_str.push('\\');
+            reg_str.push(c);
+        } else if c != '\\' {
+            reg_str.push(c);
+        }
+
+        last_was_escape = c == '\\' && !last_was_escape;
+    }
+    reg_str
+}
+
 impl MatchPattern {
+
     /// substitutes back-refs in Regex with regions from s
     /// used for match patterns which refer to captures from the pattern
     /// that pushed them.
     pub fn regex_with_substitutes(&self, region: &Region, s: &str) -> String {
-        let mut reg_str = String::new();
-
-        let mut last_was_escape = false;
-        for c in self.regex_str.chars() {
-            if last_was_escape && c.is_digit(10) {
-                let val = c.to_digit(10).unwrap();
-                if let Some((start, end)) = region.pos(val as usize) {
-                    let escaped = escape(&s[start..end]);
-                    reg_str.push_str(&escaped);
-                }
-            } else if last_was_escape {
-                reg_str.push('\\');
-                reg_str.push(c);
-            } else if c != '\\' {
-                reg_str.push(c);
-            }
-
-            last_was_escape = c == '\\' && !last_was_escape;
-        }
-        reg_str
+        substitute_backrefs_in_regex(&self.regex_str, |i| {
+            region.pos(i).map(|(start, end)| escape(&s[start..end]))
+        })
     }
 
     /// Used by the parser to compile a regex which needs to reference

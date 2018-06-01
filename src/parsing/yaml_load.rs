@@ -3,9 +3,11 @@ use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
-use onig::{self, Regex, Captures};
+use onig::{self, Regex, Captures, RegexOptions, Syntax};
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::error::Error;
+use std::fmt;
 use std::path::Path;
 use std::ops::DerefMut;
 
@@ -18,7 +20,7 @@ pub enum ParseSyntaxError {
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
     /// Invalid regex
-    RegexCompileError(onig::Error),
+    RegexCompileError(String, onig::Error),
     /// A scope that syntect's scope implementation can't handle
     InvalidScope(ParseScopeError),
     /// A reference to another file that is invalid
@@ -29,6 +31,46 @@ pub enum ParseSyntaxError {
     /// Sorry this doesn't give you any way to narrow down where this is.
     /// Maybe use Sublime Text to figure it out.
     TypeMismatch,
+}
+
+impl fmt::Display for ParseSyntaxError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use ParseSyntaxError::*;
+
+        match *self {
+            RegexCompileError(ref regex, ref error) =>
+                write!(f, "Error while compiling regex '{}': {}",
+                       regex, error.description()),
+            _ => write!(f, "{}", self.description())
+        }
+    }
+}
+
+impl Error for ParseSyntaxError {
+    fn description(&self) -> &str {
+        use ParseSyntaxError::*;
+
+        match *self {
+            InvalidYaml(_) => "Invalid YAML file syntax",
+            EmptyFile => "Empty file",
+            MissingMandatoryKey(_) => "Missing mandatory key in YAML file",
+            RegexCompileError(_, ref error) => error.description(),
+            InvalidScope(_) => "Invalid scope",
+            BadFileRef => "Invalid file reference",
+            MainMissing => "Context 'main' is missing",
+            TypeMismatch => "Type mismatch",
+        }
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        use ParseSyntaxError::*;
+
+        match *self {
+            InvalidYaml(ref error) => Some(error),
+            RegexCompileError(_, ref error) => Some(error),
+            _ => None,
+        }
+    }
 }
 
 fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a Hash,
@@ -247,6 +289,21 @@ impl SyntaxDefinition {
         })
     }
 
+    fn try_compile_regex(regex_str: &str) -> Result<(), ParseSyntaxError> {
+        // Replace backreferences with a placeholder value that will also appear in errors
+        let regex_str = substitute_backrefs_in_regex(regex_str, |i| Some(format!("<placeholder_{}>", i)));
+
+        let result = Regex::with_options(&regex_str,
+                                         RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
+                                         Syntax::default());
+        match result {
+            Err(onig_error) => {
+                Err(ParseSyntaxError::RegexCompileError(regex_str, onig_error))
+            },
+            _ => Ok(())
+        }
+    }
+
     fn parse_match_pattern(map: &Hash,
                            state: &mut ParserState)
                            -> Result<MatchPattern, ParseSyntaxError> {
@@ -259,6 +316,8 @@ impl SyntaxDefinition {
             rewrite_regex(regex_str_1)
         };
         // println!("{:?}", regex_str);
+
+        Self::try_compile_regex(&regex_str)?;
 
         let scope = get_key(map, "scope", |x| x.as_str())
             .ok()
@@ -291,8 +350,11 @@ impl SyntaxDefinition {
         } else if let Ok(y) = get_key(map, "embed", Some) {
             // Same as push so we translate it to what it would be
             let mut embed_escape_context_yaml = vec!();
+            let mut commands = Hash::new();
+            commands.insert(Yaml::String("meta_include_prototype".to_string()), Yaml::Boolean(false));
+            embed_escape_context_yaml.push(Yaml::Hash(commands));
             if let Ok(s) = get_key(map, "embed_scope", Some) {
-                let mut commands = Hash::new();
+                commands = Hash::new();
                 commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
                 embed_escape_context_yaml.push(Yaml::Hash(commands));
             }
@@ -419,6 +481,10 @@ fn rewrite_regex(regex: String) -> String {
     if !regex.contains(r"\n") {
         return regex;
     }
+
+    // A special fix to rewrite a pattern from the `Rd` syntax that the RegexRewriter can not
+    // handle properly.
+    let regex = regex.replace("(?:\\n)?", "(?:$|)");
 
     let rewriter = RegexRewriter {
         bytes: regex.as_bytes(),
@@ -655,7 +721,7 @@ mod tests {
               captures:
                 1: meta.tag.style.begin.html punctuation.definition.tag.end.html
               push:
-                - [{ meta_content_scope: 'source.css.embedded.html'}, { match: '(?i)(?=</style)', pop: true }]
+                - [{ meta_include_prototype: false }, { meta_content_scope: 'source.css.embedded.html' }, { match: '(?i)(?=</style)', pop: true }]
                 - scope:source.css
               with_prototype:
                 - match: (?=(?i)(?=</style))
@@ -700,6 +766,24 @@ mod tests {
         assert!(def.is_err());
         match def.unwrap_err() {
             ParseSyntaxError::MissingMandatoryKey(key) => assert_eq!(key, "escape"),
+            _ => assert!(false, "Got unexpected ParseSyntaxError"),
+        }
+    }
+
+    #[test]
+    fn errors_on_regex_compile_error() {
+        let def = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [test]
+        contexts:
+          main:
+            - match: '[a'
+              scope: keyword.name
+        "#,false, None);
+        assert!(def.is_err());
+        match def.unwrap_err() {
+            ParseSyntaxError::RegexCompileError(ref regex, _) => assert_eq!("[a", regex),
             _ => assert!(false, "Got unexpected ParseSyntaxError"),
         }
     }
@@ -790,7 +874,7 @@ mod tests {
         // In order to properly understand nesting, we'd have to have a full parser, so ignore it.
         assert_eq!(&rewrite(r"[[a]&&[\n]]"), r"[[a]&&[\n]]");
 
-        assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab(?:$)?");
+        assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab(?:$|)");
         assert_eq!(&rewrite(r"(?<!\n)ab"), r"(?<!$)ab");
         assert_eq!(&rewrite(r"(?<=\n)ab"), r"(?<=$)ab");
     }

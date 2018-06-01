@@ -21,7 +21,7 @@ I've spent months working on, tweaking, optimizing, documenting and testing this
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "1.8"
+syntect = "2.1"
 ```
 
 After that take a look at the [documentation](https://docs.rs/syntect) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
@@ -169,6 +169,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [crowbook](https://github.com/lise-henry/crowbook), a Markdown book generator, uses `syntect` for code blocks.
 - [syntect_server](https://github.com/sourcegraph/syntect_server), an HTTP server for syntax highlighting.
 - [mdcat](https://github.com/lunaryorn/mdcat), a console markdown printer, uses `syntect` for code blocks.
+- [bat](https://github.com/sharkdp/bat), a `cat(1)` clone, uses `syntect` for syntax highlighting.
 
 ## License and Acknowledgements
 
