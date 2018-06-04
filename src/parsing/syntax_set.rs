@@ -14,10 +14,6 @@ use std::ops::DerefMut;
 use std::mem;
 use std::rc::Rc;
 
-// TODO this is unused in nightly but used in stable, remove eventually
-#[allow(unused_imports)]
-use std::ascii::AsciiExt;
-
 use std::sync::Mutex;
 use onig::Regex;
 

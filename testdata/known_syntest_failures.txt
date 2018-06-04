@@ -2,5 +2,5 @@ loading syntax definitions from testdata/Packages
 FAILED testdata/Packages/ASP/syntax_test_asp.asp: 162
 FAILED testdata/Packages/C#/tests/syntax_test_Strings.cs: 38
 FAILED testdata/Packages/LaTeX/syntax_test_latex.tex: 1
-FAILED testdata/Packages/Makefile/syntax_test_makefile.mak: 7
+FAILED testdata/Packages/Makefile/syntax_test_makefile.mak: 6
 exiting with code 1
