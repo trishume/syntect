@@ -608,14 +608,17 @@ impl ParseState {
             MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
-            // if a with_prototype was specified, and multiple contexts were pushed,
-            // then the with_prototype applies only to the last context pushed, i.e.
-            // top most on the stack after all the contexts are pushed - this is also
-            // referred to as the "target" of the push by sublimehq - see
-            // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
             let proto = if i == 0 && pat.with_prototype.is_none() {
+                // a `with_prototype` stays active when the context is `set`
+                // until the context layer in the stack (where the `with_prototype`
+                // was initially applied) is popped off.
                 old_proto.clone()
             } else if i == ctx_refs.len() - 1 {
+                // if a with_prototype was specified, and multiple contexts were pushed,
+                // then the with_prototype applies only to the last context pushed, i.e.
+                // top most on the stack after all the contexts are pushed - this is also
+                // referred to as the "target" of the push by sublimehq - see
+                // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
                 pat.with_prototype.clone()
             } else {
                 None
