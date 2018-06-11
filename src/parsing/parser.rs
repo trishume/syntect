@@ -1298,6 +1298,9 @@ contexts:
     - match: e
       scope: e
       pop: true
+    - match: f
+      scope: f
+      set: [next1, next2]
   next3:
     - match: d
       scope: d
@@ -1314,9 +1317,9 @@ contexts:
             ], SyntaxDefinition::load_from_str(&syntax, true, None).unwrap()
         );
         expect_scope_stacks_with_syntax(
-            "5cedcea",
+            "5cfcecbedcdea",
             &[
-                "<5>", "<cwith>", "<e>", "<d>", "<cwithout>", "<a>"
+                "<5>", "<cwith>", "<f>", "<e>", "<b>", "<d>", "<cwithout>", "<a>"
             ], SyntaxDefinition::load_from_str(&syntax, true, None).unwrap()
         );
     }
