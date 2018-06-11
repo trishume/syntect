@@ -595,11 +595,11 @@ impl ParseState {
 
     /// Returns true if the stack was changed
     fn perform_op(&mut self, line: &str, regions: &Region, pat: &MatchPattern) -> bool {
-        let ctx_refs = match pat.operation {
-            MatchOperation::Push(ref ctx_refs) => ctx_refs,
+        let (ctx_refs, old_proto) = match pat.operation {
+            MatchOperation::Push(ref ctx_refs) => (ctx_refs, None),
             MatchOperation::Set(ref ctx_refs) => {
-                self.stack.pop();
-                ctx_refs
+                let old_proto = self.stack.pop().and_then(|s| s.prototype);
+                (ctx_refs, old_proto)
             }
             MatchOperation::Pop => {
                 self.stack.pop();
@@ -613,7 +613,9 @@ impl ParseState {
             // top most on the stack after all the contexts are pushed - this is also
             // referred to as the "target" of the push by sublimehq - see
             // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
-            let proto = if i == ctx_refs.len() - 1 {
+            let proto = if i == 0 && pat.with_prototype.is_none() {
+                old_proto.clone()
+            } else if i == ctx_refs.len() - 1 {
                 pat.with_prototype.clone()
             } else {
                 None
@@ -1255,6 +1257,54 @@ contexts:
 
         let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
         expect_scope_stacks_with_syntax("/** * */", &["<comment.block.documentation.javadoc>, <punctuation.definition.comment.begin.javadoc>", "<comment.block.documentation.javadoc>, <text.html.javadoc>, <punctuation.definition.comment.javadoc>", "<comment.block.documentation.javadoc>, <punctuation.definition.comment.end.javadoc>"], syntax);
+    }
+
+    #[test]
+    fn can_parse_with_prototype_set() {
+        let syntax = r#"%YAML 1.2
+---
+scope: source.test-set-with-proto
+contexts:
+  main:
+    - match: a
+      scope: a
+      set: next1
+      with_prototype:
+        - match: '1'
+          scope: '1'
+        - match: '2'
+          scope: '2'
+        - match: '3'
+          scope: '3'
+        - match: '4'
+          scope: '4'
+    - match: '5'
+      scope: '5'
+  next1:
+    - match: b
+      scope: b
+      set: next2
+  next2:
+    - match: c
+      scope: c
+      push: next3
+    - match: e
+      scope: e
+      pop: true
+  next3:
+    - match: d
+      scope: d
+    - match: (?=e)
+      pop: true
+"#;
+
+        let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        expect_scope_stacks_with_syntax(
+            "a1b2c3d4e5",
+            &[
+                "<a>", "<1>", "<b>", "<2>", "<c>", "<3>", "<d>", "<4>", "<e>", "<5>"
+            ], syntax
+        );
     }
 
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
