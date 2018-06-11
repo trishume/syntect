@@ -608,7 +608,7 @@ impl ParseState {
             MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
-            let proto = if i == 0 && pat.with_prototype.is_none() {
+            let proto = if i == ctx_refs.len() - 1 && pat.with_prototype.is_none() {
                 // a `with_prototype` stays active when the context is `set`
                 // until the context layer in the stack (where the `with_prototype`
                 // was initially applied) is popped off.
@@ -1283,6 +1283,10 @@ contexts:
           scope: '4'
     - match: '5'
       scope: '5'
+      set: [next3, next2]
+      with_prototype:
+        - match: c
+          scope: cwith
   next1:
     - match: b
       scope: b
@@ -1299,14 +1303,21 @@ contexts:
       scope: d
     - match: (?=e)
       pop: true
+    - match: c
+      scope: cwithout
 "#;
 
-        let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
         expect_scope_stacks_with_syntax(
             "a1b2c3d4e5",
             &[
                 "<a>", "<1>", "<b>", "<2>", "<c>", "<3>", "<d>", "<4>", "<e>", "<5>"
-            ], syntax
+            ], SyntaxDefinition::load_from_str(&syntax, true, None).unwrap()
+        );
+        expect_scope_stacks_with_syntax(
+            "5cedcea",
+            &[
+                "<5>", "<cwith>", "<e>", "<d>", "<cwithout>", "<a>"
+            ], SyntaxDefinition::load_from_str(&syntax, true, None).unwrap()
         );
     }
 
