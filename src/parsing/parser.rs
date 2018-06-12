@@ -617,7 +617,7 @@ impl ParseState {
                 // top most on the stack after all the contexts are pushed - this is also
                 // referred to as the "target" of the push by sublimehq - see
                 // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
-                pat.with_prototype.clone().or(old_proto.clone())
+                pat.with_prototype.clone().or_else(|| old_proto.clone())
             } else {
                 None
             };
