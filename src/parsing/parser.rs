@@ -614,7 +614,11 @@ impl<'a> ParseState<'a> {
                 // top most on the stack after all the contexts are pushed - this is also
                 // referred to as the "target" of the push by sublimehq - see
                 // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
-                pat.with_prototype.as_ref().clone().or_else(|| old_proto.clone())
+                if let Some(ref p) = pat.with_prototype {
+                    Some(p.resolve(self.syntax_set))
+                } else {
+                    old_proto
+                }
             } else {
                 None
             };

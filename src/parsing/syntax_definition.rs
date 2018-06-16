@@ -107,7 +107,7 @@ pub struct MatchPattern {
     pub scope: Vec<Scope>,
     pub captures: Option<CaptureMapping>,
     pub operation: MatchOperation,
-    pub with_prototype: Option<ContextPtr>,
+    pub with_prototype: Option<ContextReference>,
 
     #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
     regex: AtomicLazyCell<Regex>,
@@ -124,7 +124,8 @@ pub enum ContextReference {
         name: String,
         sub_context: Option<String>,
     },
-    Inline(Context),
+//    Inline(Context),
+    Inline(String),
     Direct(ContextId),
 }
 
@@ -158,7 +159,8 @@ impl<'a> Iterator for MatchIter<'a> {
                     Pattern::Match(_) => return Some((context, index)),
                     Pattern::Include(ref ctx_ref) => {
                         let ctx_ptr = match *ctx_ref {
-                            ContextReference::Inline(ref context) => context,
+                            // TODO:
+//                            ContextReference::Inline(ref context) => context,
                             ContextReference::Direct(ref context_id) => {
                                 context_id.resolve(self.syntax_set)
                             }
@@ -199,9 +201,10 @@ impl Context {
 
 impl ContextReference {
     /// find the pointed to context, panics if ref is not linked
-    pub fn resolve<'a>(&'a self, syntax_set: &'a SyntaxSet) -> &'a Context {
+    pub fn resolve<'a>(&self, syntax_set: &'a SyntaxSet) -> &'a Context {
         match *self {
-            ContextReference::Inline(ref ptr) => ptr,
+            // TODO?
+            // ContextReference::Inline(ref ptr) => ptr,
             ContextReference::Direct(ref context_id) => context_id.resolve(syntax_set),
             _ => panic!("Can only call resolve on linked references: {:?}", self),
         }
@@ -252,7 +255,7 @@ impl MatchPattern {
         scope: Vec<Scope>,
         captures: Option<CaptureMapping>,
         operation: MatchOperation,
-        with_prototype: Option<ContextPtr>,
+        with_prototype: Option<ContextReference>,
     ) -> MatchPattern {
         MatchPattern {
             has_captures,

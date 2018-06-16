@@ -271,7 +271,7 @@ impl SyntaxSet {
 //                let prototype = &mut syntax.contexts[context_index];
                 // TODO: this works but is it nice? Would it be nicer to make
                 // recursively_mark_no_prototype a method on SyntaxDefinition?
-                Self::recursively_mark_no_prototype(&mut syntax.contexts, context_index);
+                Self::recursively_mark_no_prototype(syntax, context_index);
                 syntax.prototype = Some(ContextId::new(syntax_index, context_index))
             }
         }
@@ -286,13 +286,15 @@ impl SyntaxSet {
 
     /// Anything recursively included by the prototype shouldn't include the prototype.
     /// This marks them as such.
-    fn recursively_mark_no_prototype(contexts: &mut [Context], context_id: usize) {
-        contexts[context_id].meta_include_prototype = false;
-        for pattern in &mut contexts[context_id].patterns {
+    fn recursively_mark_no_prototype(syntax: &mut SyntaxDefinition, context_id: usize) {
+        syntax.contexts[context_id].meta_include_prototype = false;
+
+        let mut prototype_indexes = Vec::new();
+        for pattern in &syntax.contexts[context_id].patterns {
             match *pattern {
                 // Apparently inline blocks also don't include the prototype when within the prototype.
                 // This is really weird, but necessary to run the YAML syntax.
-                Pattern::Match(ref mut match_pat) => {
+                Pattern::Match(ref match_pat) => {
                     let maybe_context_refs = match match_pat.operation {
                         MatchOperation::Push(ref context_refs) |
                         MatchOperation::Set(ref context_refs) => Some(context_refs),
@@ -301,12 +303,9 @@ impl SyntaxSet {
                     if let Some(context_refs) = maybe_context_refs {
                         for context_ref in context_refs.iter() {
                             match context_ref {
-                                ContextReference::Inline(ref context) => {
-                                    Self::recursively_mark_no_prototype(contexts, context);
-                                },
-                                ContextReference::Named(ref s) => {
+                                ContextReference::Inline(ref s) | ContextReference::Named(ref s) => {
                                     if let Ok(i) = contexts.binary_search_by_key(&s, |c| &c.name) {
-                                        Self::recursively_mark_no_prototype(contexts, context_id);
+                                        prototype_indexes.push(i);
                                     }
                                 },
                                 _ => (),
@@ -315,31 +314,34 @@ impl SyntaxSet {
                     }
                 }
                 Pattern::Include(ContextReference::Named(ref s)) => {
-                    if let Ok(i) = contexts.binary_search_by_key(&s, |c| &c.name) {
-                        // FIXME does this work?
-                        let context = &mut contexts[i];
-                        Self::recursively_mark_no_prototype(contexts, context_id);
+                    if let Some(i) = syntax.find_context_index_by_name(s) {
+                        prototype_indexes.push(i);
                     }
                 }
                 _ => (),
             }
         }
+
+        for prototype_index in prototype_indexes {
+            Self::recursively_mark_no_prototype(syntax, prototype_index);
+        }
     }
 
-    fn link_context(&mut self, syntax_index: usize, context_index: usize) {
-        let context = self.syntaxes[syntax_index].contexts[context_index];
+    fn link_context(&self, syntax_index: usize, context_index: usize) {
+        let prototype = self.syntaxes[syntax_index].prototype.clone();
+        let context = &mut self.syntaxes[syntax_index].contexts[context_index];
         if context.meta_include_prototype {
-            context.prototype = syntax.prototype.clone();
+            context.prototype = prototype;
         }
         for pattern in &mut context.patterns {
             match *pattern {
-                Pattern::Match(ref mut match_pat) => self.link_match_pat(syntax, syntax_index, match_pat),
-                Pattern::Include(ref mut context_ref) => self.link_ref(syntax, syntax_index, context_ref),
+                Pattern::Match(ref mut match_pat) => self.link_match_pat(syntax_index, match_pat),
+                Pattern::Include(ref mut context_ref) => self.link_ref(syntax_index, context_ref),
             }
         }
     }
 
-    fn link_ref(&self, syntax: &SyntaxDefinition, syntax_index: usize, context_ref: &mut ContextReference) {
+    fn link_ref(&self, syntax_index: usize, context_ref: &mut ContextReference) {
         // println!("{:?}", context_ref);
         use super::syntax_definition::ContextReference::*;
         let linked_context_id = match *context_ref {
@@ -354,7 +356,8 @@ impl SyntaxSet {
                 }
             }
             Inline(ref mut context_ptr) => {
-                self.link_context(syntax, syntax_index, context_ptr);
+                // TODO:
+//                self.link_context(syntax, syntax_index, context_ptr);
                 None
             }
             ByScope { scope, ref sub_context } => {
@@ -382,7 +385,7 @@ impl SyntaxSet {
             .map(|context_index| ContextId::new(syntax_index, context_index))
     }
 
-    fn link_match_pat(&self, syntax: &SyntaxDefinition, syntax_index: usize, match_pat: &mut MatchPattern) {
+    fn link_match_pat(&self, syntax_index: usize, match_pat: &mut MatchPattern) {
         let maybe_context_refs = match match_pat.operation {
             MatchOperation::Push(ref mut context_refs) |
             MatchOperation::Set(ref mut context_refs) => Some(context_refs),
@@ -390,11 +393,12 @@ impl SyntaxSet {
         };
         if let Some(context_refs) = maybe_context_refs {
             for context_ref in context_refs.iter_mut() {
-                self.link_ref(syntax, syntax_index, context_ref);
+                self.link_ref(syntax_index, context_ref);
             }
         }
         if let Some(ref mut context) = match_pat.with_prototype {
-            self.link_context(syntax, syntax_index, context);
+            // TODO
+            //self.link_context(syntax, syntax_index, context);
         }
     }
 }

@@ -211,27 +211,33 @@ impl SyntaxDefinition {
     fn parse_contexts(map: &Hash,
                       state: &mut ParserState)
                       -> Result<HashMap<String, Context>, ParseSyntaxError> {
-        let mut contexts = HashMap::new();
+        let mut contexts = Vec::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
                 let is_prototype = name == "prototype";
-                let context =
-                    SyntaxDefinition::parse_context(name, val_vec, state, is_prototype)?;
-                contexts.insert(name.to_owned(), context);
+                SyntaxDefinition::parse_context(name, val_vec, state, &mut contexts, is_prototype)?;
             }
         }
-        Ok(contexts)
+
+        let mut context_map = HashMap::new();
+        for context in contexts {
+            // TODO: the caller doesn't really need a map anymore, just needs
+            // to know which one is the main context.
+            context_map.insert(context.name.clone(), context);
+        }
+        Ok(context_map)
     }
 
     fn parse_context(name: &str,
                      vec: &[Yaml],
                      // TODO: Maybe just pass the scope repo if that's all that's needed?
                      state: &mut ParserState,
+                     contexts: &mut Vec<Context>,
                      is_prototype: bool)
-                     -> Result<Context, ParseSyntaxError> {
+                     -> Result<(), ParseSyntaxError> {
         let mut context = Context::new(name, !is_prototype);
 
-        for y in vec.iter() {
+        for (i, y) in vec.iter().enumerate() {
             let map = y.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
             let mut is_special = false;
@@ -256,11 +262,14 @@ impl SyntaxDefinition {
                 is_special = true;
             }
             if !is_special {
+                let subname = format!("{}.{}.include", name, i);
                 if let Some(x) = get_key(map, "include", Some).ok() {
-                    let reference = SyntaxDefinition::parse_reference(x, state)?;
+                    let reference = SyntaxDefinition::parse_reference(
+                        &subname, x, state, contexts)?;
                     context.patterns.push(Pattern::Include(reference));
                 } else {
-                    let pattern = SyntaxDefinition::parse_match_pattern(map, state)?;
+                    let pattern = SyntaxDefinition::parse_match_pattern(
+                        &subname, map, state, contexts)?;
                     if pattern.has_captures {
                         context.uses_backrefs = true;
                     }
@@ -269,11 +278,15 @@ impl SyntaxDefinition {
             }
 
         }
-        Ok(context)
+
+        contexts.push(context);
+        Ok(())
     }
 
-    fn parse_reference(y: &Yaml,
-                       state: &mut ParserState)
+    fn parse_reference(name: &str,
+                       y: &Yaml,
+                       state: &mut ParserState,
+                       contexts: &mut Vec<Context>)
                        -> Result<ContextReference, ParseSyntaxError> {
         if let Some(s) = y.as_str() {
             let parts: Vec<&str> = s.split('#').collect();
@@ -302,9 +315,8 @@ impl SyntaxDefinition {
                 Ok(ContextReference::Named(parts[0].to_owned()))
             }
         } else if let Some(v) = y.as_vec() {
-            // TODO: we could generate a nicer name here by passing in some args
-            let context = SyntaxDefinition::parse_context("internal_inline", v, state, false)?;
-            Ok(ContextReference::Inline(context))
+            SyntaxDefinition::parse_context(&name, v, state, contexts, false)?;
+            Ok(ContextReference::Inline(name.to_string()))
         } else {
             Err(ParseSyntaxError::TypeMismatch)
         }
@@ -333,8 +345,10 @@ impl SyntaxDefinition {
         }
     }
 
-    fn parse_match_pattern(map: &Hash,
-                           state: &mut ParserState)
+    fn parse_match_pattern(name: &str,
+                           map: &Hash,
+                           state: &mut ParserState,
+                           contexts: &mut Vec<Context>)
                            -> Result<MatchPattern, ParseSyntaxError> {
         let raw_regex = get_key(map, "match", |x| x.as_str())?;
         let regex_str_1 = Self::resolve_variables(raw_regex, state);
@@ -373,9 +387,11 @@ impl SyntaxDefinition {
             has_captures = state.backref_regex.find(&regex_str).is_some();
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", Some) {
-            MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state)?)
+            let subname = format!("{}.push", name);
+            MatchOperation::Push(SyntaxDefinition::parse_pushargs(&subname, y, state, contexts)?)
         } else if let Ok(y) = get_key(map, "set", Some) {
-            MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state)?)
+            let subname = format!("{}.set", name);
+            MatchOperation::Set(SyntaxDefinition::parse_pushargs(&subname, y, state, contexts)?)
         } else if let Ok(y) = get_key(map, "embed", Some) {
             // Same as push so we translate it to what it would be
             let mut embed_escape_context_yaml = vec!();
@@ -395,13 +411,17 @@ impl SyntaxDefinition {
                     match_map.insert(Yaml::String("captures".to_string()), y.clone());
                 }
                 embed_escape_context_yaml.push(Yaml::Hash(match_map));
-                let escape_context = SyntaxDefinition::parse_context(
-                    "internal_escape",
+                let subname = format!("{}.embed", name);
+                SyntaxDefinition::parse_context(
+                    &subname,
                     &embed_escape_context_yaml,
                     state,
+                    contexts,
                     false
                 )?;
-                MatchOperation::Push(vec![ContextReference::Inline(escape_context), SyntaxDefinition::parse_reference(y, state)?])
+                let subname2 = format!("{}.embed_TODO", name);
+                MatchOperation::Push(vec![ContextReference::Inline(subname),
+                                          SyntaxDefinition::parse_reference(&subname2, y, state, contexts)?])
             } else {
                 return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
             }
@@ -411,20 +431,25 @@ impl SyntaxDefinition {
         };
 
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
+            let subname = format!("{}.with_prototype", name);
             // should a with_prototype include the prototype? I don't think so.
-            Some(Self::parse_context("unused", v, state, true)?)
+            Self::parse_context(&subname, v, state, contexts, true)?;
+            Some(ContextReference::Named(subname))
         } else if let Ok(v) = get_key(map, "escape", Some) {
-            let mut context = Context::new("unused", false);
+            let subname = format!("{}.escape", name);
+
+            let mut context = Context::new(&subname, false);
             let mut match_map = Hash::new();
             match_map.insert(Yaml::String("match".to_string()), Yaml::String(format!("(?={})", v.as_str().unwrap())));
             match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
-            let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state)?;
+            let pattern = SyntaxDefinition::parse_match_pattern(&subname, &match_map, state, contexts)?;
             if pattern.has_captures {
                 context.uses_backrefs = true;
             }
             context.patterns.push(Pattern::Match(pattern));
 
-            Some(context)
+            contexts.push(context);
+            Some(ContextReference::Named(subname))
         } else {
             None
         };
@@ -441,8 +466,10 @@ impl SyntaxDefinition {
         Ok(pattern)
     }
 
-    fn parse_pushargs(y: &Yaml,
-                      state: &mut ParserState)
+    fn parse_pushargs(name: &str,
+                      y: &Yaml,
+                      state: &mut ParserState,
+                      contexts: &mut Vec<Context>)
                       -> Result<Vec<ContextReference>, ParseSyntaxError> {
         // check for a push of multiple items
         if y.as_vec().map_or(false, |v| !v.is_empty() && (v[0].as_str().is_some() || (v[0].as_vec().is_some() && v[0].as_vec().unwrap()[0].as_hash().is_some()))) {
@@ -450,10 +477,13 @@ impl SyntaxDefinition {
             y.as_vec()
                 .unwrap()
                 .iter()
-                .map(|x| SyntaxDefinition::parse_reference(x, state))
+                .enumerate()
+                .map(|(i, x)| SyntaxDefinition::parse_reference(
+                    &format!("{}.{}", name, i), x, state, contexts))
                 .collect()
         } else {
-            Ok(vec![try!(SyntaxDefinition::parse_reference(y, state))])
+            let reference = SyntaxDefinition::parse_reference(name, y, state, contexts)?;
+            Ok(vec![reference])
         }
     }
 
@@ -470,7 +500,12 @@ impl SyntaxDefinition {
         let yaml = &yaml_docs[0];
 
         let main_yaml : &[Yaml] = yaml["__main"].as_vec().unwrap();
-        let mut main = SyntaxDefinition::parse_context("__main", main_yaml, state, false).unwrap();
+        // TODO: fix this
+        let mut main = {
+            let mut new_context = Vec::new();
+            SyntaxDefinition::parse_context("__main", main_yaml, state, &mut new_context, false).unwrap();
+            new_context.pop().unwrap()
+        };
 
         if let Some(real_main) = contexts.get_mut("main") {
             main.meta_include_prototype = real_main.meta_include_prototype;
@@ -486,7 +521,12 @@ impl SyntaxDefinition {
         contexts.insert("__main".to_owned(), main);
 
         let start_yaml : &[Yaml] = yaml["__start"].as_vec().unwrap();
-        let mut start = SyntaxDefinition::parse_context("__start", start_yaml, state, false).unwrap();
+        // TODO: fix this
+        let mut start = {
+            let mut new_context = Vec::new();
+            SyntaxDefinition::parse_context("__start", start_yaml, state, &mut new_context, false).unwrap();
+            new_context.pop().unwrap()
+        };
         start.meta_content_scope = vec![top_level_scope];
 
         start
