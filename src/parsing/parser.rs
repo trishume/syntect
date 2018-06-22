@@ -302,7 +302,11 @@ impl<'a> ParseState<'a> {
                        check_pop_loop: bool)
                        -> Option<RegexMatch<'a>> {
         let cur_level = &self.stack[self.stack.len() - 1];
-        let prototype = cur_level.context.prototype.map(|p| p.resolve(self.syntax_set));
+        let prototype = if let Some(ref p) = cur_level.context.prototype {
+            Some(p.resolve(self.syntax_set))
+        } else {
+            None
+        };
 
         // Build an iterator for the contexts we want to visit in order
         let context_chain = {

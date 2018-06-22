@@ -170,7 +170,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
     let syntax = ss.find_syntax_by_path(syntax_file).ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound)?;
 
     // iterate over the lines of the file, testing them
-    let mut state = ParseState::new(syntax);
+    let mut state = ParseState::new(&ss, syntax);
     let mut stack = ScopeStack::new();
 
     let mut current_line_number = 1;

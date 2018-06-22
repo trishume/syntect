@@ -59,6 +59,34 @@ impl Default for SyntaxSet {
     }
 }
 
+struct ContextMap {
+    scopes: Vec<Scope>,
+    // TODO: should this be files?
+    syntax_names: Vec<String>,
+    context_names: Vec<Vec<String>>,
+}
+
+impl ContextMap {
+    fn new(scopes: Vec<Scope>, syntax_names: Vec<String>, context_names: Vec<Vec<String>>) -> Self {
+        ContextMap { scopes, syntax_names, context_names }
+    }
+
+    fn find_by_scope(&self, scope: Scope, context_name: &str) -> Option<ContextId> {
+        let syntax_index = self.scopes.iter().position(|&s| s == scope);
+        syntax_index.and_then(|i| self.find_context_by_name(i, context_name))
+    }
+
+    fn find_by_name(&self, syntax_name: &str, context_name: &str) -> Option<ContextId> {
+        let syntax_index = self.syntax_names.iter().position(|name| name == syntax_name);
+        syntax_index.and_then(|i| self.find_context_by_name(i, context_name))
+    }
+
+    fn find_context_by_name(&self, syntax_index: usize, context_name: &str) -> Option<ContextId> {
+        self.context_names[syntax_index].binary_search_by_key(&context_name, |c| &c).ok()
+            .map(|i| ContextId::new(syntax_index, i))
+    }
+}
+
 impl SyntaxSet {
     pub fn new() -> SyntaxSet {
         SyntaxSet::default()
@@ -265,6 +293,25 @@ impl SyntaxSet {
     /// which is why it isn't done by default, except by the load_from_folder constructor.
     /// This operation is idempotent, but takes time even on already linked syntax sets.
     pub fn link_syntaxes(&mut self) {
+        let mut scopes = Vec::with_capacity(self.syntaxes.len());
+        let mut syntax_names = Vec::with_capacity(self.syntaxes.len());
+        let mut context_names = Vec::with_capacity(self.syntaxes.len());
+
+        // TODO: merge this and the next loop?
+        for syntax in &self.syntaxes {
+            // TODO: can we use references instead?
+            scopes.push(syntax.scope.clone());
+            syntax_names.push(syntax.name.clone());
+
+            let mut contexts = Vec::with_capacity(syntax.contexts.len());
+            for context in &syntax.contexts {
+                contexts.push(context.name.clone());
+            }
+            context_names.push(contexts);
+        }
+
+        let context_map = ContextMap::new(scopes, syntax_names, context_names);
+
         // 2 loops necessary to satisfy borrow checker :-(
         for (syntax_index, syntax) in self.syntaxes.iter_mut().enumerate() {
             if let Some(context_index) = syntax.find_context_index_by_name("prototype") {
@@ -275,10 +322,10 @@ impl SyntaxSet {
                 syntax.prototype = Some(ContextId::new(syntax_index, context_index))
             }
         }
-        for syntax_index in 0..self.syntaxes.len() {
-            let contexts = self.syntaxes[syntax_index].contexts.len();
-            for context_index in 0..contexts {
-                self.link_context(syntax_index, context_index);
+        for (syntax_index, syntax) in self.syntaxes.iter_mut().enumerate() {
+            let prototype = syntax.prototype.clone();
+            for context in syntax.contexts.iter_mut() {
+                Self::link_context(context, syntax_index, &prototype, &context_map);
             }
         }
         self.is_linked = true;
@@ -327,48 +374,44 @@ impl SyntaxSet {
         }
     }
 
-    fn link_context(&self, syntax_index: usize, context_index: usize) {
-        let prototype = self.syntaxes[syntax_index].prototype.clone();
-        let context = &mut self.syntaxes[syntax_index].contexts[context_index];
+    fn link_context(context: &mut Context, syntax_index: usize, prototype: &Option<ContextId>, map: &ContextMap) {
         if context.meta_include_prototype {
-            context.prototype = prototype;
+            context.prototype = prototype.clone();
         }
         for pattern in &mut context.patterns {
             match *pattern {
-                Pattern::Match(ref mut match_pat) => self.link_match_pat(syntax_index, match_pat),
-                Pattern::Include(ref mut context_ref) => self.link_ref(syntax_index, context_ref),
+                Pattern::Match(ref mut match_pat) => Self::link_match_pat(match_pat, syntax_index, map),
+                Pattern::Include(ref mut context_ref) => Self::link_ref(context_ref, syntax_index, map),
             }
         }
     }
 
-    fn link_ref(&self, syntax_index: usize, context_ref: &mut ContextReference) {
+    fn link_ref(context_ref: &mut ContextReference, syntax_index: usize, map: &ContextMap) {
         // println!("{:?}", context_ref);
         use super::syntax_definition::ContextReference::*;
         let linked_context_id = match *context_ref {
-            Named(ref s) => {
+            Named(ref s) | Inline(ref s) => {
                 // This isn't actually correct, but it is better than nothing/crashing.
                 // This is being phased out anyhow, see https://github.com/sublimehq/Packages/issues/73
                 // Fixes issue #30
                 if s == "$top_level_main" {
-                    self.context_id(syntax_index, "main")
+                    map.find_context_by_name(syntax_index, "main")
                 } else {
-                    self.context_id(syntax_index, s)
+                    map.find_context_by_name(syntax_index, s)
                 }
             }
-            Inline(ref mut context_ptr) => {
+//            Inline(ref mut context_ptr) => {
                 // TODO:
 //                self.link_context(syntax, syntax_index, context_ptr);
-                None
-            }
+//                None
+//            }
             ByScope { scope, ref sub_context } => {
-                let other_syntax_index = self.find_syntax_index_by_scope(scope);
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
-                other_syntax_index.and_then(|i| self.context_id(i, context_name))
+                map.find_by_scope(scope, context_name)
             }
             File { ref name, ref sub_context } => {
-                let other_syntax_index = self.find_syntax_index_by_name(&name);
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
-                other_syntax_index.and_then(|i| self.context_id(i, context_name))
+                map.find_by_name(&name, context_name)
             }
             Direct(_) => None,
         };
@@ -378,14 +421,7 @@ impl SyntaxSet {
         }
     }
 
-    // TODO: method order
-    fn context_id(&self, syntax_index: usize, context_name: &str) -> Option<ContextId> {
-        self.syntaxes[syntax_index]
-            .find_context_index_by_name(context_name)
-            .map(|context_index| ContextId::new(syntax_index, context_index))
-    }
-
-    fn link_match_pat(&self, syntax_index: usize, match_pat: &mut MatchPattern) {
+    fn link_match_pat(match_pat: &mut MatchPattern, syntax_index: usize, map: &ContextMap) {
         let maybe_context_refs = match match_pat.operation {
             MatchOperation::Push(ref mut context_refs) |
             MatchOperation::Set(ref mut context_refs) => Some(context_refs),
@@ -393,12 +429,11 @@ impl SyntaxSet {
         };
         if let Some(context_refs) = maybe_context_refs {
             for context_ref in context_refs.iter_mut() {
-                self.link_ref(syntax_index, context_ref);
+                Self::link_ref(context_ref, syntax_index, map);
             }
         }
-        if let Some(ref mut context) = match_pat.with_prototype {
-            // TODO
-            //self.link_context(syntax, syntax_index, context);
+        if let Some(ref mut context_ref) = match_pat.with_prototype {
+            Self::link_ref(context_ref, syntax_index, map);
         }
     }
 }
