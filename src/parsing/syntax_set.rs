@@ -3,6 +3,7 @@ use super::scope::*;
 #[cfg(feature = "yaml-load")]
 use super::super::LoadingError;
 
+use std::collections::HashSet;
 use std::path::Path;
 #[cfg(feature = "yaml-load")]
 use walkdir::WalkDir;
@@ -318,7 +319,11 @@ impl SyntaxSet {
 //                let prototype = &mut syntax.contexts[context_index];
                 // TODO: this works but is it nice? Would it be nicer to make
                 // recursively_mark_no_prototype a method on SyntaxDefinition?
-                Self::recursively_mark_no_prototype(syntax, context_index);
+                let mut no_prototype = HashSet::new();
+                Self::recursively_mark_no_prototype(syntax, context_index, &mut no_prototype);
+                for context_id in no_prototype {
+                    syntax.contexts[context_id].meta_include_prototype = false;
+                }
                 syntax.prototype = Some(ContextId::new(syntax_index, context_index))
             }
         }
@@ -333,10 +338,12 @@ impl SyntaxSet {
 
     /// Anything recursively included by the prototype shouldn't include the prototype.
     /// This marks them as such.
-    fn recursively_mark_no_prototype(syntax: &mut SyntaxDefinition, context_id: usize) {
-        syntax.contexts[context_id].meta_include_prototype = false;
+    fn recursively_mark_no_prototype(syntax: &SyntaxDefinition, context_id: usize, no_prototype: &mut HashSet<usize>) {
+        let first_time = no_prototype.insert(context_id);
+        if !first_time {
+            return;
+        }
 
-        let mut prototype_indexes = Vec::new();
         for pattern in &syntax.contexts[context_id].patterns {
             match *pattern {
                 // Apparently inline blocks also don't include the prototype when within the prototype.
@@ -352,7 +359,7 @@ impl SyntaxSet {
                             match context_ref {
                                 ContextReference::Inline(ref s) | ContextReference::Named(ref s) => {
                                     if let Ok(i) = contexts.binary_search_by_key(&s, |c| &c.name) {
-                                        prototype_indexes.push(i);
+                                        Self::recursively_mark_no_prototype(syntax, i, no_prototype);
                                     }
                                 },
                                 _ => (),
@@ -362,15 +369,11 @@ impl SyntaxSet {
                 }
                 Pattern::Include(ContextReference::Named(ref s)) => {
                     if let Some(i) = syntax.find_context_index_by_name(s) {
-                        prototype_indexes.push(i);
+                        Self::recursively_mark_no_prototype(syntax, i, no_prototype);
                     }
                 }
                 _ => (),
             }
-        }
-
-        for prototype_index in prototype_indexes {
-            Self::recursively_mark_no_prototype(syntax, prototype_index);
         }
     }
 
