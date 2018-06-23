@@ -329,6 +329,7 @@ impl SyntaxSet {
         }
         for (syntax_index, syntax) in self.syntaxes.iter_mut().enumerate() {
             let prototype = syntax.prototype.clone();
+            Self::link_context(&mut syntax.start_context, syntax_index, &prototype, &context_map);
             for context in syntax.contexts.iter_mut() {
                 Self::link_context(context, syntax_index, &prototype, &context_map);
             }

@@ -44,6 +44,8 @@ pub struct SyntaxDefinition {
 
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
+    // TODO: Maybe this should just be a context_index, so the context is also in the Vec just like
+    // the others.
     pub start_context: Context,
     // TODO: Try out Vec sorted by name, so we can do binary search to look up by name, and index when linked
 //    #[serde(serialize_with = "ordered_map")]
