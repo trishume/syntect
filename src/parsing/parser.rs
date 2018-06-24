@@ -5,7 +5,6 @@ use std::usize;
 use std::collections::HashMap;
 use std::i32;
 use std::hash::BuildHasherDefault;
-use std::ptr;
 use fnv::FnvHasher;
 use parsing::syntax_set::SyntaxSet;
 

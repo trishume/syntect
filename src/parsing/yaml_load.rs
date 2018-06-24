@@ -4,8 +4,6 @@ use yaml_rust::{YamlLoader, Yaml, ScanError};
 use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
 use onig::{self, Regex, Captures, RegexOptions, Syntax};
-use std::rc::Rc;
-use std::cell::RefCell;
 use std::error::Error;
 use std::fmt;
 use std::path::Path;

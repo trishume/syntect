@@ -11,9 +11,7 @@ use walkdir::WalkDir;
 use std::io::Read;
 use std::io::{self, BufRead, BufReader};
 use std::fs::File;
-use std::ops::DerefMut;
 use std::mem;
-use std::rc::Rc;
 
 use std::sync::Mutex;
 use onig::Regex;

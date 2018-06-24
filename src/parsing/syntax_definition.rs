@@ -7,15 +7,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use lazycell::AtomicLazyCell;
 use onig::{Regex, RegexOptions, Region, Syntax};
-use std::rc::{Rc, Weak};
-use std::cell::RefCell;
 use super::scope::*;
 use regex_syntax::escape;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Serialize, Serializer};
 use parsing::syntax_set::SyntaxSet;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
-pub type ContextPtr = Rc<RefCell<Context>>;
 
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
