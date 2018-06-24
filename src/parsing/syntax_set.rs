@@ -168,6 +168,8 @@ impl SyntaxSet {
         self.syntaxes.push(syn);
     }
 
+    // TODO: could reuse the ContextMap data here?
+
     /// Finds a syntax by its default scope, for example `source.regexp` finds the regex syntax.
     /// This and all similar methods below do a linear search of syntaxes, this should be fast
     /// because there aren't many syntaxes, but don't think you can call it a bajillion times per second.

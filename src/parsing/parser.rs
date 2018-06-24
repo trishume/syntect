@@ -936,6 +936,8 @@ contexts:
             "<meta.attribute-with-value.style.html>, <source.css>, <test.embedded>",
             "<top-level.test>",
         ];
+
+        // TODO: cloning a syntax that has been linked before doesn't really work.
         expect_scope_stacks_with_syntax(&line1, &expect1, syntax.to_owned());
 
         let line2 = ">abctest</style>foobar";

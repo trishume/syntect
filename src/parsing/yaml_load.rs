@@ -262,7 +262,7 @@ impl SyntaxDefinition {
                 is_special = true;
             }
             if !is_special {
-                let subname = format!("{}.{}.include", name, i);
+                let subname = format!("{}.{}", name, i);
                 if let Some(x) = get_key(map, "include", Some).ok() {
                     let reference = SyntaxDefinition::parse_reference(
                         &subname, x, state, contexts)?;
@@ -500,7 +500,7 @@ impl SyntaxDefinition {
         let yaml = &yaml_docs[0];
 
         let main_yaml : &[Yaml] = yaml["__main"].as_vec().unwrap();
-        // TODO: fix this
+        // TODO: Fix this. Maybe directly construct the Context instead of from yaml?
         let mut main = {
             let mut new_context = Vec::new();
             SyntaxDefinition::parse_context("__main", main_yaml, state, &mut new_context, false).unwrap();
@@ -521,7 +521,7 @@ impl SyntaxDefinition {
         contexts.insert("__main".to_owned(), main);
 
         let start_yaml : &[Yaml] = yaml["__start"].as_vec().unwrap();
-        // TODO: fix this
+        // TODO: fix this, see above
         let mut start = {
             let mut new_context = Vec::new();
             SyntaxDefinition::parse_context("__start", start_yaml, state, &mut new_context, false).unwrap();
