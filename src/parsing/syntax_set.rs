@@ -1,5 +1,7 @@
 use super::syntax_definition::*;
 use super::scope::*;
+use super::metadata::{LoadMetadata, RawMetadataEntry};
+
 #[cfg(feature = "yaml-load")]
 use super::super::LoadingError;
 
@@ -91,7 +93,10 @@ impl SyntaxSet {
                                          folder: P,
                                          lines_include_newline: bool)
                                          -> Result<(), LoadingError> {
+        //#[cfg(feature(metadata))]
+        let mut loaded_metadata = LoadMetadata::default();
         self.is_linked = false;
+
         for entry in WalkDir::new(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
@@ -105,8 +110,25 @@ impl SyntaxSet {
                 }
                 self.syntaxes.push(syntax);
             }
+            //#[cfg(feature(metadata))]
+            if entry.path().extension() == Some("tmPreferences".as_ref()) {
+                match RawMetadataEntry::load(entry.path()) {
+                    Ok(meta) => loaded_metadata.add_raw(meta),
+                    Err(err) => eprintln!("metadata load error at {:?}:\n\t{:?}", entry.path(), err),
+                }
+            }
         }
+
+        //#[cfg(feature(metadata))]
+        self.add_metadata(loaded_metadata);
+
         Ok(())
+    }
+
+    fn add_metadata(&mut self, mut metadata: LoadMetadata) {
+        for syntax in self.syntaxes.iter_mut() {
+            syntax.metadata = metadata.metadata_for_scope(syntax.scope);
+        }
     }
 
     /// Add a syntax to the set. If the set was linked it is now only partially linked
@@ -429,6 +451,7 @@ mod tests {
             prototype: None,
             variables: HashMap::new(),
             contexts: HashMap::new(),
+            metadata: None,
         };
 
         ps.add_syntax(cmake_dummy_syntax);

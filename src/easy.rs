@@ -3,8 +3,10 @@
 //! and caching.
 
 use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet, ScopeStackOp};
+use parsing::metadata::{IndentationState};
 use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
-use std::io::{self, BufReader};
+
+use std::io::{self, BufRead, BufReader, Lines};
 use std::fs::File;
 use std::path::Path;
 // use util::debug_print_ops;
@@ -174,6 +176,102 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
     }
 }
 
+pub struct IndentLines<'a> {
+    pub syntax: &'a SyntaxDefinition,
+    pub state: IndentationState,
+    pub indent_str: String,
+}
+
+impl<'a> IndentLines<'a> {
+    pub fn new<S: AsRef<str>>(syntax: &'a SyntaxDefinition, indent_str: S) -> Self {
+        IndentLines {
+            syntax,
+            state: IndentationState::default(),
+            indent_str: indent_str.as_ref().to_string(),
+        }
+    }
+
+    pub fn indent(&mut self, line: &str) -> String {
+        let next_state = self.syntax.metadata.as_ref()
+            .and_then(|m| m.indentation.as_ref())
+            .map(|indenter| {
+                indenter.state_for_line(line, self.state)
+            });
+
+        match next_state {
+            Some(state) => self.apply_state(state, line),
+            None => line.into(),
+        }
+    }
+
+    fn apply_state(&mut self, state: IndentationState, line: &str) -> String {
+        let mut cur_level = self.state.next_indent_level;
+        if state.extra_indent_next_line { cur_level += 1; }
+        if state.decrease_current_indent { cur_level = cur_level.saturating_sub(1); }
+        let result: String = ::std::iter::repeat(self.indent_str.as_str())
+            .take(cur_level)
+            .chain(::std::iter::once(line.trim_left()))
+            .collect();
+        self.state = state;
+        result
+    }
+}
+
+pub struct IndentFile<'a> {
+    pub indent_lines: IndentLines<'a>,
+    pub reader: Lines<BufReader<File>>,
+}
+
+impl<'a> IndentFile<'a> {
+    pub fn new<P: AsRef<Path>>(path: P, ss: &'a SyntaxSet, indent_token: &str)
+        -> io::Result<IndentFile<'a>> {
+            let path = path.as_ref();
+            let f = File::open(path)?;
+            let syntax = ss.find_syntax_for_file(path)?
+                .unwrap_or_else(|| ss.find_syntax_plain_text());
+
+            Ok(IndentFile {
+                indent_lines: IndentLines::new(&syntax, indent_token),
+                reader: BufReader::new(f).lines(),
+            })
+        }
+}
+
+impl<'a> Iterator for IndentFile<'a> {
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let line = self.reader.next()?;
+        Some(self.indent_lines.indent(&line.unwrap()))
+    }
+}
+
+pub struct IndentedLinesIter<'a, I> {
+    pub indent_lines: IndentLines<'a>,
+    pub inner: I,
+}
+
+impl<'a, I> IndentedLinesIter<'a, I> {
+    pub fn new(syntax: &'a SyntaxDefinition, inner: I, indent_token: &str) -> Self {
+        IndentedLinesIter {
+            indent_lines: IndentLines::new(syntax, indent_token),
+            inner,
+        }
+    }
+}
+
+impl<'a, S, I> Iterator for IndentedLinesIter<'a, I> where
+S: AsRef<str>,
+I: Iterator<Item=S>
+{
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let line = self.inner.next()?;
+        Some(self.indent_lines.indent(line.as_ref()))
+    }
+}
+
 #[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
 #[cfg(test)]
 mod tests {
@@ -247,5 +345,44 @@ mod tests {
             let all_ops: Vec<&ScopeStackOp> = ops.iter().map(|t|&t.1).collect();
             assert_eq!(all_ops.len(), iterated_ops.len() - 1); // -1 because we want to ignore the NOOP
         }
+    }
+
+    #[test]
+    fn indentation_smoke_test() {
+        let my_rust_code = r#"
+            struct This {
+thing: String,
+  other_thing: usize,
+            };
+
+fn main() {
+let count = lines.iter();
+{
+// ignore this
+// {
+count + 1;
+}
+}
+}"#;
+        let ps = SyntaxSet::load_from_folder("testdata/Packages/Rust").unwrap();
+        let syntax = ps.find_syntax_by_extension("rs").unwrap();
+        let lines = IndentedLinesIter::new(syntax, my_rust_code.lines(), "    ")
+        .collect::<Vec<_>>().join("\n");
+        let expected = r#"
+struct This {
+    thing: String,
+    other_thing: usize,
+};
+
+fn main() {
+    let count = lines.iter();
+    {
+// ignore this
+// {
+        count + 1;
+    }
+}"#;
+
+        assert_eq!(lines, expected);
     }
 }

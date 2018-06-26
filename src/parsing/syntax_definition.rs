@@ -12,6 +12,8 @@ use super::scope::*;
 use regex_syntax::escape;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use super::metadata::Metadata;
+
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 pub type ContextPtr = Rc<RefCell<Context>>;
 
@@ -37,6 +39,8 @@ pub struct SyntaxDefinition {
     pub variables: HashMap<String, String>,
     #[serde(serialize_with = "ordered_map")]
     pub contexts: HashMap<String, ContextPtr>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub metadata: Option<Metadata>,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]

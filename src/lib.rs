@@ -57,6 +57,8 @@ mod escape;
 use std::io::Error as IoError;
 use std::error::Error;
 use std::fmt;
+
+use serde_json::Error as JsonError;
 #[cfg(all(feature = "yaml-load", feature = "parsing"))]
 use parsing::ParseSyntaxError;
 use highlighting::{ParseThemeError, SettingsError};
@@ -71,6 +73,7 @@ pub enum LoadingError {
     /// a syntax file was invalid in some way
     #[cfg(feature = "yaml-load")]
     ParseSyntax(ParseSyntaxError),
+    ParseJson(JsonError),
     /// a theme file was invalid in some way
     ParseTheme(ParseThemeError),
     /// a theme's Plist syntax was invalid in some way
@@ -97,6 +100,13 @@ impl From<ParseThemeError> for LoadingError {
         LoadingError::ParseTheme(error)
     }
 }
+
+impl From<JsonError> for LoadingError {
+    fn from(src: JsonError) -> LoadingError {
+        LoadingError::ParseJson(src)
+    }
+}
+
 
 #[cfg(all(feature = "yaml-load", feature = "parsing"))]
 impl From<ParseSyntaxError> for LoadingError {
@@ -128,6 +138,7 @@ impl Error for LoadingError {
             Io(ref error) => error.description(),
             #[cfg(feature = "yaml-load")]
             ParseSyntax(ref error) => error.description(),
+            ParseJson(_) => "Failed to parse JSON",
             ParseTheme(_) => "Invalid syntax theme",
             ReadSettings(_) => "Invalid syntax theme settings",
             BadPath => "Invalid path",

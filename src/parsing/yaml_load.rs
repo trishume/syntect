@@ -176,6 +176,8 @@ impl SyntaxDefinition {
             hidden: get_key(h, "hidden", |x| x.as_bool()).unwrap_or(false),
 
             variables: state.variables.clone(),
+            //#[cfg(feature(metadata))]
+            metadata: None,
             contexts: contexts,
             prototype: None,
         };

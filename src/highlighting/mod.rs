@@ -3,7 +3,7 @@
 //! settings like selection colour, `ThemeSet` for loading themes,
 //! as well as things starting with `Highlight` for how to highlight text.
 mod selector;
-mod settings;
+pub mod settings;
 mod style;
 mod theme;
 mod highlighter;
