@@ -1261,6 +1261,34 @@ contexts:
     }
 
     #[test]
+    fn can_parse_context_included_in_prototype_via_named_reference() {
+        let syntax = r#"
+scope: source.test
+contexts:
+  prototype:
+    - match: a
+      push: a
+    - match: b
+      scope: test.bad
+  main:
+    - match: unused
+  # This context is included in the prototype (see `push: a`).
+  # Because of that, ST doesn't apply the prototype to this context, so if
+  # we're in here the "b" shouldn't match.
+  a:
+    - match: a
+      scope: test.good
+"#;
+
+        let stack_states = stack_states(parse("aa b", syntax));
+        assert_eq!(stack_states, vec![
+            "<source.test>",
+            "<source.test>, <test.good>",
+            "<source.test>",
+        ], "Expected test.bad to not match");
+    }
+
+    #[test]
     fn can_parse_with_prototype_set() {
         let syntax = r#"%YAML 1.2
 ---
@@ -1341,14 +1369,13 @@ contexts:
         syntax_set.link_syntaxes();
 
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
-
-        let mut stack = ScopeStack::new();
         let ops = ops(line, &mut state);
+        expect_scope_stacks_for_ops(ops, expect);
+    }
 
+    fn expect_scope_stacks_for_ops(ops: Vec<(usize, ScopeStackOp)>, expect: &[&str]) {
         let mut criteria_met = Vec::new();
-        for &(_, ref op) in ops.iter() {
-            stack.apply(op);
-            let stack_str = format!("{:?}", stack);
+        for stack_str in stack_states(ops) {
             println!("{}", stack_str);
             for expectation in expect.iter() {
                 if stack_str.contains(expectation) {
@@ -1361,9 +1388,31 @@ contexts:
         }
     }
 
+    fn parse(line: &str, syntax: &str) -> Vec<(usize, ScopeStackOp)> {
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
+        let mut syntax_set = SyntaxSet::new();
+        syntax_set.add_syntax(syntax);
+        syntax_set.link_syntaxes();
+
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        ops(line, &mut state)
+    }
+
     fn ops(line: &str, state: &mut ParseState) -> Vec<(usize, ScopeStackOp)> {
         let ops = state.parse_line(line);
         debug_print_ops(line, &ops);
         ops
+    }
+
+    fn stack_states(ops: Vec<(usize, ScopeStackOp)>) -> Vec<String> {
+        let mut states = Vec::new();
+        let mut stack = ScopeStack::new();
+        for &(_, ref op) in ops.iter() {
+            stack.apply(op);
+            let scopes: Vec<String> = stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+            let stack_str = scopes.join(", ");
+            states.push(stack_str);
+        }
+        states
     }
 }

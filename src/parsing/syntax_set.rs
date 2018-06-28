@@ -282,8 +282,16 @@ impl SyntaxSet {
                         };
                         if let Some(context_refs) = maybe_context_refs {
                             for context_ref in context_refs.iter() {
-                                if let ContextReference::Inline(ref context_ptr) = *context_ref {
-                                    Self::recursively_mark_no_prototype(syntax, context_ptr.clone());
+                                match context_ref {
+                                    ContextReference::Inline(ref context_ptr) => {
+                                        Self::recursively_mark_no_prototype(syntax, context_ptr.clone());
+                                    },
+                                    ContextReference::Named(ref s) => {
+                                        if let Some(context_ptr) = syntax.contexts.get(s) {
+                                            Self::recursively_mark_no_prototype(syntax, context_ptr.clone());
+                                        }
+                                    },
+                                    _ => (),
                                 }
                             }
                         }
