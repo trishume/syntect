@@ -5,6 +5,7 @@
 //! into this data structure?
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
+use lazycell::AtomicLazyCell;
 use onig::{Regex, RegexOptions, Region, Syntax};
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
@@ -86,16 +87,17 @@ pub struct MatchIter {
     index_stack: Vec<usize>,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MatchPattern {
     pub has_captures: bool,
     pub regex_str: String,
-    #[serde(skip_serializing, skip_deserializing)]
-    pub regex: Option<Regex>,
     pub scope: Vec<Scope>,
     pub captures: Option<CaptureMapping>,
     pub operation: MatchOperation,
     pub with_prototype: Option<ContextPtr>,
+
+    #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
+    regex: AtomicLazyCell<Regex>,
 }
 
 /// This wrapper only exists so that I can implement a serialization
@@ -186,14 +188,6 @@ impl Context {
             _ => panic!("bad index to match_at"),
         }
     }
-
-    /// Returns a mutable reference, otherwise like `match_at`
-    pub fn match_at_mut(&mut self, index: usize) -> &mut MatchPattern {
-        match self.patterns[index] {
-            Pattern::Match(ref mut match_pat) => match_pat,
-            _ => panic!("bad index to match_at"),
-        }
-    }
 }
 
 impl ContextReference {
@@ -233,6 +227,25 @@ pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -
 
 impl MatchPattern {
 
+    pub fn new(
+        has_captures: bool,
+        regex_str: String,
+        scope: Vec<Scope>,
+        captures: Option<CaptureMapping>,
+        operation: MatchOperation,
+        with_prototype: Option<ContextPtr>,
+    ) -> MatchPattern {
+        MatchPattern {
+            has_captures,
+            regex_str,
+            scope,
+            captures,
+            operation,
+            with_prototype,
+            regex: AtomicLazyCell::new(),
+        }
+    }
+
     /// substitutes back-refs in Regex with regions from s
     /// used for match patterns which refer to captures from the pattern
     /// that pushed them.
@@ -244,7 +257,7 @@ impl MatchPattern {
 
     /// Used by the parser to compile a regex which needs to reference
     /// regions from another matched pattern.
-    pub fn compile_with_refs(&self, region: &Region, s: &str) -> Regex {
+    pub fn regex_with_refs(&self, region: &Region, s: &str) -> Regex {
         // TODO don't panic on invalid regex
         Regex::with_options(&self.regex_with_substitutes(region, s),
                             RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
@@ -252,24 +265,38 @@ impl MatchPattern {
             .unwrap()
     }
 
-    fn compile_regex(&mut self) {
-        // TODO don't panic on invalid regex
-        let compiled = Regex::with_options(&self.regex_str,
-                                           RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
-                                           Syntax::default())
-            .unwrap();
-        self.regex = Some(compiled);
-    }
-
-    /// Makes sure the regex is compiled if it doesn't have captures.
-    /// May compile the regex if it isn't, panicing if compilation fails.
-    #[inline]
-    pub fn ensure_compiled_if_possible(&mut self) {
-        if self.regex.is_none() && !self.has_captures {
-            self.compile_regex();
+    pub fn regex(&self) -> &Regex {
+        if let Some(regex) = self.regex.borrow() {
+            regex
+        } else {
+            // TODO don't panic on invalid regex
+            let regex = Regex::with_options(
+                &self.regex_str,
+                RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
+                Syntax::default(),
+            ).unwrap();
+            // Fill returns an error if it has already been filled. This might
+            // happen if two threads race here. In that case, just use the value
+            // that won and is now in the cell.
+            self.regex.fill(regex).ok();
+            self.regex.borrow().unwrap()
         }
     }
 }
+
+impl Eq for MatchPattern {}
+
+impl PartialEq for MatchPattern {
+    fn eq(&self, other: &MatchPattern) -> bool {
+        self.has_captures == other.has_captures &&
+            self.regex_str == other.regex_str &&
+            self.scope == other.scope &&
+            self.captures == other.captures &&
+            self.operation == other.operation &&
+            self.with_prototype == other.with_prototype
+    }
+}
+
 
 impl Eq for LinkerLink {}
 
@@ -307,17 +334,18 @@ fn ordered_map<K, V, S>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn can_compile_refs() {
         use onig::{SearchOptions, Regex, Region};
         let pat = MatchPattern {
             has_captures: true,
             regex_str: String::from(r"lol \\ \2 \1 '\9' \wz"),
-            regex: None,
             scope: vec![],
             captures: None,
             operation: MatchOperation::None,
             with_prototype: None,
+            regex: AtomicLazyCell::new(),
         };
         let r = Regex::new(r"(\\\[\]\(\))(b)(c)(d)(e)").unwrap();
         let mut region = Region::new();
@@ -326,6 +354,22 @@ mod tests {
 
         let regex_res = pat.regex_with_substitutes(&region, s);
         assert_eq!(regex_res, r"lol \\ b \\\[\]\(\) '' \wz");
-        pat.compile_with_refs(&region, s);
+        pat.regex_with_refs(&region, s);
+    }
+
+    #[test]
+    fn caches_compiled_regex() {
+        let pat = MatchPattern {
+            has_captures: false,
+            regex_str: String::from(r"\w+"),
+            scope: vec![],
+            captures: None,
+            operation: MatchOperation::None,
+            with_prototype: None,
+            regex: AtomicLazyCell::new(),
+        };
+
+        assert!(pat.regex().is_match("test"));
+        assert!(pat.regex.filled());
     }
 }

@@ -399,15 +399,14 @@ impl SyntaxDefinition {
             None
         };
 
-        let pattern = MatchPattern {
-            has_captures: has_captures,
-            regex_str: regex_str,
-            regex: None,
-            scope: scope,
-            captures: captures,
-            operation: operation,
-            with_prototype: with_prototype,
-        };
+        let pattern = MatchPattern::new(
+            has_captures,
+            regex_str,
+            scope,
+            captures,
+            operation,
+            with_prototype,
+        );
 
         Ok(pattern)
     }
