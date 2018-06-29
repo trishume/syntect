@@ -20,7 +20,7 @@ walkdir = "2.0"
 regex-syntax = { version = "0.4", optional = true }
 lazy_static = "1.0"
 bitflags = "1.0"
-plist = "0.2"
+plist = "0.3"
 bincode = { version = "1.0", optional = true }
 flate2 = { version = "1.0", optional = true, default-features = false }
 fnv = { version = "1.0", optional = true }
