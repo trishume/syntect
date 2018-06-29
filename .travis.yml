@@ -36,7 +36,11 @@ script:
   - make assets
   - make syntest
   - rm -Rf examples
-  - cargo doc
+  # Only run doc build on stable until this is fixed: https://github.com/rust-lang/rust/issues/51661
+  - |
+    if [[ "$TRAVIS_RUST_VERSION" = stable ]]; then
+      cargo doc
+    fi
   # default features are required for examples to build - so remove them from sight.
   # Doc-tests may also use default features
   - rm -Rf examples && cargo test --lib --no-default-features
