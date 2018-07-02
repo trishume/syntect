@@ -16,7 +16,7 @@ extern crate getopts;
 
 //extern crate onig;
 use syntect::parsing::{SyntaxSet};
-use syntect::easy::{SyntaxTestFileResult, SyntaxTestOutputOptions, process_syntax_test_assertions};
+use syntect::syntax_tests::{SyntaxTestFileResult, SyntaxTestOutputOptions, process_syntax_test_assertions};
 
 use std::path::Path;
 use std::io::prelude::*;

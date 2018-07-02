@@ -49,6 +49,8 @@ pub mod util;
 pub mod dumps;
 #[cfg(feature = "parsing")]
 pub mod easy;
+#[cfg(feature = "parsing")]
+pub mod syntax_tests;
 #[cfg(feature = "html")]
 pub mod html;
 #[cfg(feature = "html")]
