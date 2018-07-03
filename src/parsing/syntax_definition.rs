@@ -54,7 +54,6 @@ pub struct Context {
     /// This is filled in by the linker at link time
     /// for contexts that have `meta_include_prototype==true`
     /// and are not included from the prototype.
-    #[serde(skip_serializing, skip_deserializing)]
     pub prototype: Option<ContextId>,
     pub uses_backrefs: bool,
 

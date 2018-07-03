@@ -29,10 +29,15 @@ use parsing::syntax_definition::ContextId;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyntaxSet {
     syntaxes: Vec<SyntaxDefinition>,
-    pub is_linked: bool,
     #[serde(skip_serializing, skip_deserializing)]
     first_line_cache: Mutex<FirstLineCache>,
     /// Stores the syntax index for every path that was loaded
+    path_syntaxes: Vec<(String, usize)>,
+}
+
+#[derive(Clone)]
+pub struct SyntaxSetBuilder {
+    syntaxes: Vec<SyntaxDefinition>,
     path_syntaxes: Vec<(String, usize)>,
 }
 
@@ -51,7 +56,6 @@ impl Default for SyntaxSet {
     fn default() -> Self {
         SyntaxSet {
             syntaxes: Vec::new(),
-            is_linked: true,
             first_line_cache: Mutex::new(FirstLineCache::new()),
             path_syntaxes: Vec::new(),
         }
@@ -91,58 +95,24 @@ impl SyntaxSet {
         SyntaxSet::default()
     }
 
+    /// Create a builder from this set to load more syntax definitions.
+    pub fn builder(self) -> SyntaxSetBuilder {
+        let SyntaxSet { syntaxes, path_syntaxes, .. } = self;
+        SyntaxSetBuilder {
+            syntaxes,
+            path_syntaxes,
+        }
+    }
+
     /// Convenience constructor calling `new` and then `load_syntaxes` on the resulting set
     /// defaults to lines given not including newline characters, see the
     /// `load_syntaxes` method docs for an explanation as to why this might not be the best.
     /// It also links all the syntaxes together, see `link_syntaxes` for what that means.
     #[cfg(feature = "yaml-load")]
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<SyntaxSet, LoadingError> {
-        let mut ps = Self::new();
-        ps.load_syntaxes(folder, false)?;
-        ps.link_syntaxes();
-        Ok(ps)
-    }
-
-    /// Loads all the .sublime-syntax files in a folder into this syntax set.
-    /// It does not link the syntaxes, in case you want to serialize this syntax set.
-    ///
-    /// The `lines_include_newline` parameter is used to work around the fact that Sublime Text normally
-    /// passes line strings including newline characters (`\n`) to its regex engine. This results in many
-    /// syntaxes having regexes matching `\n`, which doesn't work if you don't pass in newlines.
-    /// It is recommended that if you can you pass in lines with newlines if you can and pass `true` for this parameter.
-    /// If that is inconvenient pass `false` and the loader will do some hacky find and replaces on the
-    /// match regexes that seem to work for the default syntax set, but may not work for any other syntaxes.
-    ///
-    /// In the future I might include a "slow mode" that copies the lines passed in and appends a newline if there isn't one.
-    /// but in the interest of performance currently this hacky fix will have to do.
-    #[cfg(feature = "yaml-load")]
-    pub fn load_syntaxes<P: AsRef<Path>>(&mut self,
-                                         folder: P,
-                                         lines_include_newline: bool)
-                                         -> Result<(), LoadingError> {
-        self.is_linked = false;
-        for entry in WalkDir::new(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
-            let entry = entry.map_err(LoadingError::WalkDir)?;
-            if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
-                let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
-                if let Some(path_str) = entry.path().to_str() {
-                    // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
-                    // can still be loaded the same way.
-                    let path = Path::new(path_str);
-                    let path_parts: Vec<_> = path.iter().map(|c| c.to_str().unwrap()).collect();
-                    self.path_syntaxes.push((path_parts.join("/").to_string(), self.syntaxes.len()));
-                }
-                self.syntaxes.push(syntax);
-            }
-        }
-        Ok(())
-    }
-
-    /// Add a syntax to the set. If the set was linked it is now only partially linked
-    /// and you'll have to link it again for full linking.
-    pub fn add_syntax(&mut self, syntax: SyntaxDefinition) {
-        self.is_linked = false;
-        self.syntaxes.push(syntax);
+        let mut builder = SyntaxSetBuilder::new();
+        builder.load_syntaxes(folder, false)?;
+        Ok(builder.build())
     }
 
     /// The list of syntaxes in the set
@@ -153,17 +123,6 @@ impl SyntaxSet {
     // TODO: visibility
     pub fn get_syntax(&self, index: usize) -> &SyntaxDefinition {
         &self.syntaxes[index]
-    }
-
-    /// Rarely useful method that loads in a syntax with no highlighting rules for plain text.
-    /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some
-    /// reason the default Sublime plain text syntax is still in `.tmLanguage` format.
-    #[cfg(feature = "yaml-load")]
-    pub fn load_plain_text_syntax(&mut self) {
-        let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: \
-                 {main: []}";
-        let syn = SyntaxDefinition::load_from_str(s, false, None).unwrap();
-        self.syntaxes.push(syn);
     }
 
     // TODO: could reuse the ContextMap data here?
@@ -287,19 +246,79 @@ impl SyntaxSet {
         self.find_syntax_by_name("Plain Text")
             .expect("All syntax sets ought to have a plain text syntax")
     }
+}
+
+
+impl SyntaxSetBuilder {
+    pub fn new() -> SyntaxSetBuilder {
+        SyntaxSetBuilder {
+            syntaxes: Vec::new(),
+            path_syntaxes: Vec::new(),
+        }
+    }
+
+    /// Add a syntax to the set.
+    pub fn add_syntax(&mut self, syntax: SyntaxDefinition) {
+        self.syntaxes.push(syntax);
+    }
+
+    /// Rarely useful method that loads in a syntax with no highlighting rules for plain text.
+    /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some
+    /// reason the default Sublime plain text syntax is still in `.tmLanguage` format.
+    #[cfg(feature = "yaml-load")]
+    pub fn load_plain_text_syntax(&mut self) {
+        let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: \
+                 {main: []}";
+        let syn = SyntaxDefinition::load_from_str(s, false, None).unwrap();
+        self.syntaxes.push(syn);
+    }
+    /// Loads all the .sublime-syntax files in a folder into this syntax set.
+    ///
+    /// The `lines_include_newline` parameter is used to work around the fact that Sublime Text normally
+    /// passes line strings including newline characters (`\n`) to its regex engine. This results in many
+    /// syntaxes having regexes matching `\n`, which doesn't work if you don't pass in newlines.
+    /// It is recommended that if you can you pass in lines with newlines if you can and pass `true` for this parameter.
+    /// If that is inconvenient pass `false` and the loader will do some hacky find and replaces on the
+    /// match regexes that seem to work for the default syntax set, but may not work for any other syntaxes.
+    ///
+    /// In the future I might include a "slow mode" that copies the lines passed in and appends a newline if there isn't one.
+    /// but in the interest of performance currently this hacky fix will have to do.
+    #[cfg(feature = "yaml-load")]
+    pub fn load_syntaxes<P: AsRef<Path>>(&mut self,
+                                         folder: P,
+                                         lines_include_newline: bool)
+                                         -> Result<(), LoadingError> {
+        for entry in WalkDir::new(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
+            let entry = entry.map_err(LoadingError::WalkDir)?;
+            if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
+                let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
+                if let Some(path_str) = entry.path().to_str() {
+                    // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
+                    // can still be loaded the same way.
+                    let path = Path::new(path_str);
+                    let path_parts: Vec<_> = path.iter().map(|c| c.to_str().unwrap()).collect();
+                    self.path_syntaxes.push((path_parts.join("/").to_string(), self.syntaxes.len()));
+                }
+                self.syntaxes.push(syntax);
+            }
+        }
+        Ok(())
+    }
 
     /// This links all the syntaxes in this set directly with pointers for performance purposes.
     /// It is necessary to do this before parsing anything with these syntaxes.
     /// However, it is not possible to serialize a syntax set that has been linked,
     /// which is why it isn't done by default, except by the load_from_folder constructor.
     /// This operation is idempotent, but takes time even on already linked syntax sets.
-    pub fn link_syntaxes(&mut self) {
-        let mut scopes = Vec::with_capacity(self.syntaxes.len());
-        let mut syntax_names = Vec::with_capacity(self.syntaxes.len());
-        let mut context_names = Vec::with_capacity(self.syntaxes.len());
+    pub fn build(self) -> SyntaxSet {
+        let SyntaxSetBuilder { mut syntaxes, path_syntaxes } = self;
+
+        let mut scopes = Vec::with_capacity(syntaxes.len());
+        let mut syntax_names = Vec::with_capacity(syntaxes.len());
+        let mut context_names = Vec::with_capacity(syntaxes.len());
 
         // TODO: merge this and the next loop?
-        for syntax in &self.syntaxes {
+        for syntax in &syntaxes {
             // TODO: can we use references instead?
             scopes.push(syntax.scope.clone());
             syntax_names.push(syntax.name.clone());
@@ -314,9 +333,8 @@ impl SyntaxSet {
         let context_map = ContextMap::new(scopes, syntax_names, context_names);
 
         // 2 loops necessary to satisfy borrow checker :-(
-        for (_, syntax) in self.syntaxes.iter_mut().enumerate() {
-            if let Some(context_index) = syntax.prototype {
-//                let prototype = &mut syntax.contexts[context_index];
+        for (_, syntax) in syntaxes.iter_mut().enumerate() {
+            if let Some(context_index) = syntax.find_context_index_by_name("prototype") {
                 // TODO: this works but is it nice? Would it be nicer to make
                 // recursively_mark_no_prototype a method on SyntaxDefinition?
                 let mut no_prototype = HashSet::new();
@@ -326,13 +344,18 @@ impl SyntaxSet {
                 }
             }
         }
-        for (syntax_index, syntax) in self.syntaxes.iter_mut().enumerate() {
+        for (syntax_index, syntax) in syntaxes.iter_mut().enumerate() {
             let prototype = syntax.prototype.map(|p| ContextId::new(syntax_index, p));
             for context in syntax.contexts.iter_mut() {
                 Self::link_context(context, syntax_index, &prototype, &context_map);
             }
         }
-        self.is_linked = true;
+
+        SyntaxSet {
+            syntaxes,
+            path_syntaxes,
+            first_line_cache: Mutex::new(FirstLineCache::new()),
+        }
     }
 
     /// Anything recursively included by the prototype shouldn't include the prototype.
@@ -402,11 +425,6 @@ impl SyntaxSet {
                     map.find_context_by_name(syntax_index, s)
                 }
             }
-//            Inline(ref mut context_ptr) => {
-                // TODO:
-//                self.link_context(syntax, syntax_index, context_ptr);
-//                None
-//            }
             ByScope { scope, ref sub_context } => {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 map.find_by_scope(scope, context_name)
@@ -490,7 +508,8 @@ mod tests {
 
     #[test]
     fn can_load() {
-        let mut ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.load_syntaxes("testdata/Packages", false).unwrap();
 
         let cmake_dummy_syntax = SyntaxDefinition {
             name: "CMake".to_string(),
@@ -504,11 +523,13 @@ mod tests {
             contexts: Vec::new(),
         };
 
-        ps.add_syntax(cmake_dummy_syntax);
+        builder.add_syntax(cmake_dummy_syntax);
+        builder.load_plain_text_syntax();
+
+        let ps = builder.build();
 
         assert_eq!(&ps.find_syntax_by_first_line("#!/usr/bin/env node").unwrap().name,
                    "JavaScript");
-        ps.load_plain_text_syntax();
         let rails_scope = Scope::new("source.ruby.rails").unwrap();
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         ps.find_syntax_plain_text();

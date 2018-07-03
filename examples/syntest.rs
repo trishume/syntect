@@ -14,8 +14,7 @@ extern crate lazy_static;
 extern crate regex;
 extern crate getopts;
 
-//extern crate onig;
-use syntect::parsing::{SyntaxSet, ParseState, ScopeStack, Scope};
+use syntect::parsing::{SyntaxSet, SyntaxSetBuilder, ParseState, ScopeStack, Scope};
 use syntect::highlighting::ScopeSelectors;
 use syntect::easy::{ScopeRegionIterator};
 
@@ -305,8 +304,9 @@ fn main() {
     };
     if !syntaxes_path.is_empty() {
         println!("loading syntax definitions from {}", syntaxes_path);
-        ss.load_syntaxes(&syntaxes_path, true).unwrap(); // note that we load the version with newlines
-        ss.link_syntaxes();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.load_syntaxes(&syntaxes_path, true).unwrap(); // note that we load the version with newlines
+        ss = builder.build();
     }
 
     let out_opts = OutputOptions {

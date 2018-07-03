@@ -33,16 +33,16 @@ fn highlight_file(b: &mut Bencher, file: &str) {
     };
 
     // don't load from dump so we don't count lazy regex compilation time
-    let ps = SyntaxSet::load_defaults_nonewlines();
+    let ss = SyntaxSet::load_defaults_nonewlines();
     let ts = ThemeSet::load_defaults();
 
-    let syntax = ps.find_syntax_for_file(path).unwrap().unwrap();
+    let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
     let mut f = File::open(path).unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
     b.iter(|| {
-        do_highlight(&s, &ps, syntax, &ts.themes["base16-ocean.dark"])
+        do_highlight(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
     });
 }
 

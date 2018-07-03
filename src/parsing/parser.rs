@@ -651,7 +651,7 @@ impl<'a> ParseState<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, Scope, ScopeStack};
+    use parsing::{SyntaxSet, SyntaxSetBuilder, Scope, ScopeStack};
     use parsing::ScopeStackOp::{Push, Pop, Clear, Restore};
     use util::debug_print_ops;
 
@@ -1370,9 +1370,9 @@ contexts:
     fn expect_scope_stacks_with_syntax(line: &str, expect: &[&str], syntax: SyntaxDefinition) {
         // check that each expected scope stack appears at least once while parsing the given test line
 
-        let mut syntax_set = SyntaxSet::new();
-        syntax_set.add_syntax(syntax);
-        syntax_set.link_syntaxes();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add_syntax(syntax);
+        let syntax_set = builder.build();
 
         let mut state = ParseState::new(&syntax_set, &syntax_set.syntaxes()[0]);
         let ops = ops(line, &mut state);
@@ -1396,11 +1396,11 @@ contexts:
 
     fn parse(line: &str, syntax: &str) -> Vec<(usize, ScopeStackOp)> {
         let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
-        let mut syntax_set = SyntaxSet::new();
-        syntax_set.add_syntax(syntax);
-        syntax_set.link_syntaxes();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add_syntax(syntax);
+        let syntax_set = builder.build();
 
-        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        let mut state = ParseState::new(&syntax_set, &syntax_set.syntaxes()[0]);
         ops(line, &mut state)
     }
 
