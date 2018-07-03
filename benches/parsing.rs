@@ -5,9 +5,9 @@ extern crate syntect;
 use criterion::{Bencher, Criterion};
 use std::fs::File;
 use std::io::Read;
-use syntect::parsing::{ParseState, SyntaxDefinition, SyntaxSet};
+use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 
-fn do_parse(s: &str, ss: &SyntaxSet, syntax: &SyntaxDefinition) -> usize {
+fn do_parse(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference) -> usize {
     let mut state = ParseState::new(ss, syntax);
     let mut count = 0;
     for line in s.lines() {

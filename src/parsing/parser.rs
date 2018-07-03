@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::i32;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
-use parsing::syntax_set::SyntaxSet;
+use parsing::syntax_set::{SyntaxSet, SyntaxReference};
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
 /// If you are parsing an entire file you create one of these at the start and use it
@@ -163,10 +163,9 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 impl<'a> ParseState<'a> {
     /// Create a state from a syntax, keeps its own reference counted
     /// pointer to the main context of the syntax.
-    pub fn new(syntax_set: &'a SyntaxSet, syntax: &'a SyntaxDefinition) -> ParseState<'a> {
+    pub fn new(syntax_set: &'a SyntaxSet, syntax: &'a SyntaxReference) -> ParseState<'a> {
         let start_state = StateLevel {
-            // __start is a special context we add in yaml_load.rs
-            context: &syntax.contexts[syntax.start_context],
+            context: syntax_set.get_context(&syntax.contexts["__start"]),
             prototype: None,
             captures: None,
         };
@@ -302,7 +301,7 @@ impl<'a> ParseState<'a> {
                        -> Option<RegexMatch<'a>> {
         let cur_level = &self.stack[self.stack.len() - 1];
         let prototype = if let Some(ref p) = cur_level.context.prototype {
-            Some(p.resolve(self.syntax_set))
+            Some(self.syntax_set.get_context(p))
         } else {
             None
         };
@@ -924,8 +923,11 @@ contexts:
 
     #[test]
     fn can_parse_issue120() {
-        let ps = SyntaxSet::load_from_folder("testdata").unwrap();
-        let syntax = ps.find_syntax_by_name("Embed_Escape Used by tests in src/parsing/parser.rs").unwrap();
+        let syntax = SyntaxDefinition::load_from_str(
+            include_str!("../../testdata/embed_escape_test.sublime-syntax"),
+            false,
+            None
+        ).unwrap();
 
         let line1 = "\"abctest\" foobar";
         let expect1 = [
@@ -936,8 +938,7 @@ contexts:
             "<top-level.test>",
         ];
 
-        // TODO: cloning a syntax that has been linked before doesn't really work.
-        expect_scope_stacks_with_syntax(&line1, &expect1, syntax.to_owned());
+        expect_scope_stacks_with_syntax(&line1, &expect1, syntax.clone());
 
         let line2 = ">abctest</style>foobar";
         let expect2 = [
@@ -945,7 +946,7 @@ contexts:
             "<source.css.embedded.html>, <test.embedded>",
             "<top-level.test>",
         ];
-        expect_scope_stacks_with_syntax(&line2, &expect2, syntax.to_owned());
+        expect_scope_stacks_with_syntax(&line2, &expect2, syntax.clone());
     }
 
     #[test]

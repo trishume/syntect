@@ -2,7 +2,7 @@
 //! files without caring about intermediate semantic representation
 //! and caching.
 
-use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet, ScopeStackOp};
+use parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, ScopeStackOp};
 use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
 use std::io::{self, BufReader};
 use std::fs::File;
@@ -45,7 +45,7 @@ pub struct HighlightLines<'a> {
 
 impl<'a> HighlightLines<'a> {
     // TODO: should syntax come first or the set?
-    pub fn new(syntax_set: &'a SyntaxSet, syntax: &'a SyntaxDefinition, theme: &'a Theme) -> HighlightLines<'a> {
+    pub fn new(syntax_set: &'a SyntaxSet, syntax: &'a SyntaxReference, theme: &'a Theme) -> HighlightLines<'a> {
         let highlighter = Highlighter::new(theme);
         let hstate = HighlightState::new(&highlighter, ScopeStack::new());
         HighlightLines {

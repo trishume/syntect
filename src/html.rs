@@ -1,6 +1,6 @@
 //! Rendering highlighted code as HTML+CSS
 use std::fmt::Write;
-use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxDefinition, SyntaxSet, SCOPE_REPO};
+use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxReference, SyntaxSet, SCOPE_REPO};
 use easy::{HighlightLines, HighlightFile};
 use highlighting::{Color, FontStyle, Style, Theme};
 use escape::Escape;
@@ -38,7 +38,7 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for no newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_nonewlines()`. If you think this is the wrong
 /// choice of `SyntaxSet` to accept, I'm not sure of it either, email me.
-pub fn highlighted_snippet_for_string(s: &str, ss: &SyntaxSet, syntax: &SyntaxDefinition, theme: &Theme) -> String {
+pub fn highlighted_snippet_for_string(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> String {
     let mut output = String::new();
     let mut highlighter = HighlightLines::new(ss, syntax, theme);
     let c = theme.settings.background.unwrap_or(Color::WHITE);

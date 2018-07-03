@@ -4,14 +4,14 @@ extern crate syntect;
 
 use criterion::{Bencher, Criterion};
 
-use syntect::parsing::{SyntaxSet, SyntaxDefinition, ScopeStack};
+use syntect::parsing::{SyntaxSet, SyntaxReference, ScopeStack};
 use syntect::highlighting::{ThemeSet, Theme};
 use syntect::easy::HighlightLines;
 use std::str::FromStr;
 use std::fs::File;
 use std::io::Read;
 
-fn do_highlight(s: &str, syntax_set: &SyntaxSet, syntax: &SyntaxDefinition, theme: &Theme) -> usize {
+fn do_highlight(s: &str, syntax_set: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> usize {
     let mut h = HighlightLines::new(syntax_set, syntax, theme);
     let mut count = 0;
     for line in s.lines() {

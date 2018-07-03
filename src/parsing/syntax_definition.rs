@@ -17,8 +17,7 @@ pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ContextId {
-    syntax_index: usize,
-    context_index: usize,
+    index: usize,
 }
 
 /// The main data structure representing a syntax definition loaded from a
@@ -37,8 +36,6 @@ pub struct SyntaxDefinition {
     pub hidden: bool,
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
-    pub start_context: usize,
-    pub prototype: Option<usize>,
     pub contexts: Vec<Context>,
 }
 
@@ -150,10 +147,8 @@ impl<'a> Iterator for MatchIter<'a> {
                     Pattern::Match(_) => return Some((context, index)),
                     Pattern::Include(ref ctx_ref) => {
                         let ctx_ptr = match *ctx_ref {
-                            // TODO:
-//                            ContextReference::Inline(ref context) => context,
                             ContextReference::Direct(ref context_id) => {
-                                context_id.resolve(self.syntax_set)
+                                self.syntax_set.get_context(context_id)
                             }
                             _ => return self.next(), // skip this and move onto the next one
                         };
@@ -194,9 +189,7 @@ impl ContextReference {
     /// find the pointed to context, panics if ref is not linked
     pub fn resolve<'a>(&self, syntax_set: &'a SyntaxSet) -> &'a Context {
         match *self {
-            // TODO?
-            // ContextReference::Inline(ref ptr) => ptr,
-            ContextReference::Direct(ref context_id) => context_id.resolve(syntax_set),
+            ContextReference::Direct(ref context_id) => syntax_set.get_context(context_id),
             _ => panic!("Can only call resolve on linked references: {:?}", self),
         }
     }
@@ -227,14 +220,12 @@ pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -
 }
 
 impl ContextId {
-    pub fn new(syntax_index: usize, context_index: usize) -> Self {
-        ContextId { syntax_index, context_index }
+    pub fn new(index: usize) -> Self {
+        ContextId { index }
     }
 
-    // TODO: maybe this should be on SyntaxSet instead?
-    pub fn resolve<'a>(&self, syntax_set: &'a SyntaxSet) -> &'a Context {
-        let syntax = syntax_set.get_syntax(self.syntax_index);
-        &syntax.contexts[self.context_index]
+    pub(crate) fn index(&self) -> usize {
+        self.index
     }
 }
 
@@ -328,7 +319,7 @@ impl PartialEq for MatchPattern {
 
 
 /// Serialize the provided map in natural key order, so that it's deterministic when dumping.
-fn ordered_map<K, V, S>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+pub(crate) fn ordered_map<K, V, S>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer, K: Eq + Hash + Ord + Serialize, V: Serialize
 {
     let ordered: BTreeMap<_, _> = map.iter().collect();
