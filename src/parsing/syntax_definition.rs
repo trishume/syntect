@@ -35,17 +35,10 @@ pub struct SyntaxDefinition {
     pub scope: Scope,
     pub first_line_match: Option<String>,
     pub hidden: bool,
-    /// Filled in at link time to avoid serializing it multiple times
-    #[serde(skip_serializing, skip_deserializing)]
-    pub prototype: Option<ContextId>,
-
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
-    // TODO: Maybe this should just be a context_index, so the context is also in the Vec just like
-    // the others.
-    pub start_context: Context,
-    // TODO: Try out Vec sorted by name, so we can do binary search to look up by name, and index when linked
-//    #[serde(serialize_with = "ordered_map")]
+    pub start_context: usize,
+    pub prototype: Option<usize>,
     pub contexts: Vec<Context>,
 }
 

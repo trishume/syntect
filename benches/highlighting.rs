@@ -11,8 +11,8 @@ use std::str::FromStr;
 use std::fs::File;
 use std::io::Read;
 
-fn do_highlight(s: &str, syntax: &SyntaxDefinition, theme: &Theme) -> usize {
-    let mut h = HighlightLines::new(syntax, theme);
+fn do_highlight(s: &str, syntax_set: &SyntaxSet, syntax: &SyntaxDefinition, theme: &Theme) -> usize {
+    let mut h = HighlightLines::new(syntax_set, syntax, theme);
     let mut count = 0;
     for line in s.lines() {
         let regions = h.highlight(line);
@@ -42,7 +42,7 @@ fn highlight_file(b: &mut Bencher, file: &str) {
     f.read_to_string(&mut s).unwrap();
 
     b.iter(|| {
-        do_highlight(&s, syntax, &ts.themes["base16-ocean.dark"])
+        do_highlight(&s, &ps, syntax, &ts.themes["base16-ocean.dark"])
     });
 }
 

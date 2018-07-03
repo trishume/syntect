@@ -166,7 +166,7 @@ impl<'a> ParseState<'a> {
     pub fn new(syntax_set: &'a SyntaxSet, syntax: &'a SyntaxDefinition) -> ParseState<'a> {
         let start_state = StateLevel {
             // __start is a special context we add in yaml_load.rs
-            context: &syntax.start_context,
+            context: &syntax.contexts[syntax.start_context],
             prototype: None,
             captures: None,
         };

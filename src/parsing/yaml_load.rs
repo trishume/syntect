@@ -172,8 +172,7 @@ impl SyntaxDefinition {
             return Err(ParseSyntaxError::MainMissing);
         }
 
-        // TODO: do we need to link this too?
-        let start_context = SyntaxDefinition::create_initial_context(
+        SyntaxDefinition::add_initial_contexts(
             &mut context_map,
             &mut state,
             top_level_scope,
@@ -183,6 +182,10 @@ impl SyntaxDefinition {
         // Sorting is very important as the way we look up contexts by name
         // during linking is by doing a binary search by name.
         contexts.sort_by(|a, b| a.name.cmp(&b.name));
+
+        let prototype = contexts.binary_search_by_key(&"prototype", |c| &c.name).ok();
+        let start_context = contexts.binary_search_by_key(&"__start", |c| &c.name)
+            .expect("__start context not found");
 
         let defn = SyntaxDefinition {
             name: get_key(h, "name", |x| x.as_str()).unwrap_or(fallback_name.unwrap_or("Unnamed")).to_owned(),
@@ -201,7 +204,7 @@ impl SyntaxDefinition {
             variables: state.variables.clone(),
             start_context,
             contexts,
-            prototype: None,
+            prototype,
         };
         Ok(defn)
     }
@@ -491,9 +494,11 @@ impl SyntaxDefinition {
     /// scope remains. This behaviour is emulated through some added contexts
     /// that are the actual top level contexts used in parsing.
     /// See https://github.com/trishume/syntect/issues/58 for more.
-    fn create_initial_context(contexts: &mut HashMap<String, Context>,
-                              state: &mut ParserState,
-                              top_level_scope: Scope) -> Context {
+    fn add_initial_contexts(
+        contexts: &mut HashMap<String, Context>,
+        state: &mut ParserState,
+        top_level_scope: Scope,
+    ) {
         let yaml_docs = YamlLoader::load_from_str(START_CONTEXT).unwrap();
         let yaml = &yaml_docs[0];
 
@@ -527,7 +532,7 @@ impl SyntaxDefinition {
         };
         start.meta_content_scope = vec![top_level_scope];
 
-        start
+        contexts.insert("__start".to_owned(), start);
     }
 }
 
@@ -737,7 +742,7 @@ mod tests {
         assert_eq!(main.meta_include_prototype, true);
 
         assert_eq!(defn2.find_context_by_name("__main").unwrap().meta_content_scope, n);
-        assert_eq!(defn2.start_context.meta_content_scope, vec![top_level_scope]);
+        assert_eq!(defn2.contexts[defn2.start_context].meta_content_scope, vec![top_level_scope]);
 
         assert_eq!(defn2.find_context_by_name("string").unwrap().meta_scope,
                    vec![Scope::new("string.quoted.double.c").unwrap()]);

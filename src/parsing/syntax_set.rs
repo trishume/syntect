@@ -314,8 +314,8 @@ impl SyntaxSet {
         let context_map = ContextMap::new(scopes, syntax_names, context_names);
 
         // 2 loops necessary to satisfy borrow checker :-(
-        for (syntax_index, syntax) in self.syntaxes.iter_mut().enumerate() {
-            if let Some(context_index) = syntax.find_context_index_by_name("prototype") {
+        for (_, syntax) in self.syntaxes.iter_mut().enumerate() {
+            if let Some(context_index) = syntax.prototype {
 //                let prototype = &mut syntax.contexts[context_index];
                 // TODO: this works but is it nice? Would it be nicer to make
                 // recursively_mark_no_prototype a method on SyntaxDefinition?
@@ -324,12 +324,10 @@ impl SyntaxSet {
                 for context_id in no_prototype {
                     syntax.contexts[context_id].meta_include_prototype = false;
                 }
-                syntax.prototype = Some(ContextId::new(syntax_index, context_index))
             }
         }
         for (syntax_index, syntax) in self.syntaxes.iter_mut().enumerate() {
-            let prototype = syntax.prototype.clone();
-            Self::link_context(&mut syntax.start_context, syntax_index, &prototype, &context_map);
+            let prototype = syntax.prototype.map(|p| ContextId::new(syntax_index, p));
             for context in syntax.contexts.iter_mut() {
                 Self::link_context(context, syntax_index, &prototype, &context_map);
             }
@@ -502,7 +500,7 @@ mod tests {
             hidden: false,
             prototype: None,
             variables: HashMap::new(),
-            start_context: Context::new("test", false),
+            start_context: 0,
             contexts: Vec::new(),
         };
 
