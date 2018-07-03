@@ -44,7 +44,7 @@ fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: 
     for line in text.lines() {
         line_number += 1;
         let mut line_has_assertions = false;
-        
+
         // if the test start token specified is on the line
         if let Some(index) = line.find(token_start) {
             let token_and_rest_of_line = line.split_at(index).1;
@@ -87,7 +87,7 @@ fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: 
                     });
                 }*/
                 assertions.push_back(assertion);
-                
+
                 line_has_assertions = true;
             }
         }
@@ -111,7 +111,7 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
         char_start: usize,
         text_len: usize,
     }
-    
+
     #[derive(Debug)]
     struct RangeTestResult {
         column_begin: usize,
@@ -119,7 +119,7 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
         success: bool,
         actual_scope: String,
     }
-    
+
     fn process_assertions(assertion: &SyntaxTestAssertionRange, test_against_line_scopes: &Vec<ScopedText>) -> Vec<RangeTestResult> {
         use std::cmp::{min, max};
         // find the scope at the specified start column, and start matching the selector through the rest of the tokens on the line from there until the end column is reached
@@ -136,10 +136,10 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
         }
         results
     }
-    
+
     let mut assertions = get_syntax_test_assertions(testtoken_start, testtoken_end, &text);
     //println!("{:?}", assertions);
-    
+
     // iterate over the lines of the file, testing them
     let mut state = ParseState::new(syntax);
     let mut stack = ScopeStack::new();
@@ -148,16 +148,16 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
     let mut scopes_on_line_being_tested = Vec::new();
     let mut line_number = 0;
     let mut relevant_assertions = Vec::new();
-    
+
     let mut assertion_failures: usize = 0;
     let mut total_assertions: usize = 0;
 
     for line_without_char in text.lines() {
         let line = &(line_without_char.to_owned() + "\n");
         line_number += 1;
-        
+
         let eol_offset = offset + line.len();
-        
+
         // parse the line
         let ops = state.parse_line(&line);
         // find assertions that relate to the current line
@@ -182,7 +182,7 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
                 }
             }
         }
-        
+
         {
             let mut col: usize = 0;
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
@@ -206,7 +206,7 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
         
         for assertion in &relevant_assertions {
             let results = process_assertions(&assertion, &scopes_on_line_being_tested);
-            
+
             for result in results {
                 let length = result.column_end - result.column_begin;
                 total_assertions += length;
@@ -227,7 +227,7 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
                 }
             }
         }
-        
+
         offset = eol_offset;
     }
     
@@ -243,21 +243,59 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
 // mod tests {
     #[test]
     fn can_find_test_assertions() {
-        let result = get_syntax_test_assertions(&"//", None,
-            "
-            hello world
-            // <- assertion1
-            // ^^ assertion2
-            
-            foobar
-            //    ^ - assertion3
-            ");
+        let text = "\
+            hello world\n\
+            // <- assertion1\n\
+            // ^^ assertion2\n\
+            \n\
+            foobar\n\
+            //    ^ - assertion3\n\
+            ";
+        let result = get_syntax_test_assertions(&"//", None, &text);
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].line_number, 2);
+        assert_eq!(result[1].line_number, 3);
+        assert_eq!(result[2].line_number, 6);
+        assert_eq!(result[0].test_line_offset, result[1].test_line_offset);
+        assert_eq!(result[2].test_line_offset, text.find("foobar").unwrap());
+        assert_eq!(result[0].scope_selector_text, " assertion1");
+        assert_eq!(result[1].scope_selector_text, " assertion2");
+        assert_eq!(result[2].scope_selector_text, " - assertion3");
+        assert_eq!(result[0].begin_char, 0);
+        assert_eq!(result[0].end_char, 1);
+        assert_eq!(result[1].begin_char, 3);
+        assert_eq!(result[1].end_char, 5);
+        assert_eq!(result[2].begin_char, 6);
+        assert_eq!(result[2].end_char, 7);
+    }
+
+    #[test]
+    fn can_find_test_assertions_with_end_tokens() {
+        let text = "
+hello world
+ <!-- <- assertion1 -->
+<!--  ^^assertion2
+
+foobar
+<!-- ^ - assertion3 -->
+";
+        let result = get_syntax_test_assertions(&"<!--", Some(&"-->"), &text);
         
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].line_number, 3);
         assert_eq!(result[1].line_number, 4);
         assert_eq!(result[2].line_number, 7);
         assert_eq!(result[0].test_line_offset, result[1].test_line_offset);
-        assert!(result[2].test_line_offset > result[0].test_line_offset);
+        assert_eq!(result[2].test_line_offset, text.find("foobar").unwrap());
+        assert_eq!(result[0].scope_selector_text, " assertion1 ");
+        assert_eq!(result[1].scope_selector_text, "assertion2");
+        assert_eq!(result[2].scope_selector_text, " - assertion3 ");
+        assert_eq!(result[0].begin_char, 1);
+        assert_eq!(result[0].end_char, 2);
+        assert_eq!(result[1].begin_char, 6);
+        assert_eq!(result[1].end_char, 8);
+        assert_eq!(result[2].begin_char, 5);
+        assert_eq!(result[2].end_char, 6);
     }
 // }
