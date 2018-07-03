@@ -37,10 +37,10 @@ struct SyntaxTestAssertionRange {
 fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: &str) -> VecDeque<SyntaxTestAssertionRange> {
     let mut assertions = VecDeque::new();
     let mut test_line_offset = 0;
-    //let mut test_line_len = 0;
+    let mut test_line_len = 0;
     let mut line_number = 0;
     let mut offset = 0;
-    //let mut remainder = None;
+
     for line in text.lines() {
         line_number += 1;
         let mut line_has_assertions = false;
@@ -65,7 +65,7 @@ fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: 
                     }
                 }
 
-                let assertion = SyntaxTestAssertionRange {
+                let mut assertion = SyntaxTestAssertionRange {
                     test_line_offset: test_line_offset,
                     line_number: line_number,
                     begin_char: index + if assertion_range > 0 { token_start.len() + assertion_index } else { 0 },
@@ -76,24 +76,30 @@ fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: 
                     scope_selector: ScopeSelectors::from_str(&format!(" {}", &selector_text)).expect(&format!("Scope selector invalid on line {}", line_number)),
                     scope_selector_text: selector_text,
                 };
-                /*if assertion.end_char > test_line_len {
-                    remainder = Some(SyntaxTestAssertionRange {
+                // if the assertion spans over the line being tested
+                if assertion.end_char > test_line_len {
+                    // calculate where on the next line the assertions will occur
+                    let remainder = SyntaxTestAssertionRange {
                         test_line_offset: test_line_offset + test_line_len,
                         line_number: line_number,
-                        begin_char: assertion.begin_char - test_line_len,
+                        begin_char: 0,
                         end_char: assertion.end_char - test_line_len,
                         scope_selector: assertion.scope_selector.clone(),
                         scope_selector_text: assertion.scope_selector_text.clone(),
-                    });
-                }*/
-                assertions.push_back(assertion);
+                    };
+                    assertion.end_char = test_line_len;
+                    assertions.push_back(assertion);
+                    assertions.push_back(remainder);
+                } else {
+                    assertions.push_back(assertion);
+                }
 
                 line_has_assertions = true;
             }
         }
         if !line_has_assertions { // ST seems to ignore lines that have assertions when calculating which line the assertion tests against, regardless of whether they contain any other text
             test_line_offset = offset;
-            //test_line_len = line.len() + 1;
+            test_line_len = line.len() + 1;
         }
         offset += line.len() + 1; // the +1 is for the `\n`. TODO: maybe better to loop over the lines including the newline chars, using https://stackoverflow.com/a/40457615/4473405
     }
@@ -203,7 +209,7 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
                 }
             }
         }
-        
+
         for assertion in &relevant_assertions {
             let results = process_assertions(&assertion, &scopes_on_line_being_tested);
 
@@ -230,7 +236,7 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
 
         offset = eol_offset;
     }
-    
+
     let res = if assertion_failures > 0 {
         SyntaxTestFileResult::FailedAssertions(assertion_failures, total_assertions)
     } else {
@@ -281,7 +287,7 @@ foobar
 <!-- ^ - assertion3 -->
 ";
         let result = get_syntax_test_assertions(&"<!--", Some(&"-->"), &text);
-        
+
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].line_number, 3);
         assert_eq!(result[1].line_number, 4);
@@ -297,5 +303,50 @@ foobar
         assert_eq!(result[1].end_char, 8);
         assert_eq!(result[2].begin_char, 5);
         assert_eq!(result[2].end_char, 6);
+    }
+
+    #[test]
+    fn can_find_test_assertions_that_spans_lines() {
+        let text = "
+hello world
+<!--  ^^^^^^^^^ assertion1
+<!--    ^^^^^^^ assertion2 -->
+foobar
+<!-- ^^^ -assertion3-->
+";
+        let result = get_syntax_test_assertions(&"<!--", Some(&"-->"), &text);
+        println!("{:?}", result);
+
+        assert_eq!(result.len(), 6);
+        assert_eq!(result[0].line_number, 3);
+        assert_eq!(result[1].line_number, 3);
+        assert_eq!(result[2].line_number, 4);
+        assert_eq!(result[3].line_number, 4);
+        assert_eq!(result[4].line_number, 6);
+        assert_eq!(result[5].line_number, 6);
+        assert_eq!(result[0].scope_selector_text, " assertion1");
+        assert_eq!(result[1].scope_selector_text, " assertion1");
+        assert_eq!(result[2].scope_selector_text, " assertion2 ");
+        assert_eq!(result[3].scope_selector_text, " assertion2 ");
+        assert_eq!(result[4].scope_selector_text, " -assertion3");
+        assert_eq!(result[5].scope_selector_text, " -assertion3");
+        assert_eq!(result[0].begin_char, 6);
+        assert_eq!(result[0].end_char, 12);
+        assert_eq!(result[0].test_line_offset, 1);
+        assert_eq!(result[1].begin_char, 0);
+        assert_eq!(result[1].end_char, 3);
+        assert_eq!(result[1].test_line_offset, "\nhello world\n".len());
+
+        assert_eq!(result[2].begin_char, 8);
+        assert_eq!(result[2].end_char, 12);
+        assert_eq!(result[2].test_line_offset, 1);
+        assert_eq!(result[3].begin_char, 0);
+        assert_eq!(result[3].end_char, 3);
+        assert_eq!(result[3].test_line_offset, "\nhello world\n".len());
+
+        assert_eq!(result[4].begin_char, 5);
+        assert_eq!(result[4].end_char, 7);
+        assert_eq!(result[5].begin_char, 0);
+        assert_eq!(result[5].end_char, 1);
     }
 // }
