@@ -52,6 +52,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, out_opts: SyntaxTestOutputOptions) -> 
     if reader.read_line(&mut header_line).unwrap() == 0 {
         return Err(SyntaxTestHeaderError::MalformedHeader);
     }
+    header_line = header_line.replace("\r", &"");
 
     // parse the syntax test header in the first line of the file
     let search_result = SYNTAX_TEST_HEADER_PATTERN.captures(&header_line);
@@ -165,6 +166,7 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: SyntaxTestOutputOptions)
         }
         if exit_code != 2 { // leave exit code 2 if there was an error
             if let Err(_) = result { // set exit code 2 if there was an error
+                println!("{:?}", result);
                 exit_code = 2;
             } else if let Ok(ok) = result {
                 if let SyntaxTestFileResult::FailedAssertions(_, _) = ok {
