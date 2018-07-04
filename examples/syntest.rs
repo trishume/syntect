@@ -93,6 +93,7 @@ fn main() {
     opts.optflag("d", "debug", "Show parsing results for each test line");
     opts.optflag("t", "time", "Time execution as a more broad-ranging benchmark");
     opts.optflag("s", "summary", "Print only summary of test failures");
+    opts.optflag("f", "failfast", "Stop at first failure");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => { m }
@@ -130,6 +131,7 @@ fn main() {
         debug: matches.opt_present("debug"),
         time: matches.opt_present("time"),
         summary: matches.opt_present("summary"),
+        failfast: matches.opt_present("failfast"),
     };
 
     let exit_code = recursive_walk(&ss, &tests_path, out_opts);
@@ -168,9 +170,15 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: SyntaxTestOutputOptions)
             if let Err(_) = result { // set exit code 2 if there was an error
                 println!("{:?}", result);
                 exit_code = 2;
+                if out_opts.failfast {
+                    break;
+                }
             } else if let Ok(ok) = result {
                 if let SyntaxTestFileResult::FailedAssertions(_, _) = ok {
                     exit_code = 1; // otherwise, if there were failures, exit with code 1
+                    if out_opts.failfast {
+                        break;
+                    }
                 }
             }
         }

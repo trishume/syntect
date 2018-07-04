@@ -12,6 +12,7 @@ pub struct SyntaxTestOutputOptions {
     pub time: bool,
     pub debug: bool,
     pub summary: bool,
+    pub failfast: bool,
     //pub output: &'a Write,
 }
 
@@ -107,10 +108,13 @@ fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: 
 }
 
 /// Process the syntax test assertions in the given text, for the given syntax definition, using the test token(s) specified.
+/// It works by finding all the syntax test assertions, then parsing the text line by line. If the line has some assertions against it, those are checked.
+/// Assertions are counted according to their status - succeeded or failed. Failures are also logged to stdout, depending on the output options.
+/// When there are no assertions left to check, it returns those counts.
 /// `text` is the code containing syntax test assertions to be parsed and checked.
 /// `testtoken_start` is the token (normally a comment in the given syntax) that represents that assertions could be on the line.
 /// `testtoken_end` is an optional token that will be stripped from the line when retrieving the scope selector. Useful for syntaxes when the start token represents a block comment, to make the tests easier to construct.
-pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, testtoken_start: &str, testtoken_end: Option<&str>, out_opts: &SyntaxTestOutputOptions) -> SyntaxTestFileResult {
+pub/*(crate)*/ fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, testtoken_start: &str, testtoken_end: Option<&str>, out_opts: &SyntaxTestOutputOptions) -> SyntaxTestFileResult {
     #[derive(Debug)]
     struct ScopedText {
         scope: Vec<Scope>,
@@ -166,7 +170,7 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
 
         // parse the line
         let ops = state.parse_line(&line);
-        // find assertions that relate to the current line
+        // find all the assertions that relate to the current line
         relevant_assertions.clear();
         while let Some(assertion) = assertions.pop_front() {
             let pos = assertion.test_line_offset + assertion.begin_char;
@@ -178,6 +182,8 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
             }
         }
         if !relevant_assertions.is_empty() {
+            // if there are assertions for the line, show the operations for debugging purposes if specified in the output options
+            // (if there are no assertions, or the line contains assertions, debugging it would probably just add noise)
             scopes_on_line_being_tested.clear();
             if out_opts.debug {
                 println!("-- debugging line {} -- scope stack: {:?}", line_number, stack);
@@ -196,6 +202,7 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
                 if s.is_empty() { // in this case we don't care about blank tokens
                     continue;
                 }
+                // if there are assertions against this line, store the scopes for comparison with the assertions
                 if !relevant_assertions.is_empty() {
                     let len = s.chars().count();
                     scopes_on_line_being_tested.push(
@@ -218,8 +225,8 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
                 total_assertions += length;
                 if !result.success {
                     assertion_failures += length;
-                    let text: String = line.chars().skip(result.column_begin).take(length).collect();
                     if !out_opts.summary {
+                        let text: String = line.chars().skip(result.column_begin).take(length).collect();
                         println!("  Assertion selector {:?} \
                             from line {:?} failed against line {:?}, column range {:?}-{:?} \
                             (with text {:?}) \
@@ -235,6 +242,14 @@ pub fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, tes
         }
 
         offset = eol_offset;
+        
+        // no point continuing to parse the file if there are no syntax test assertions left
+        // (unless we want to prove that no panics etc. occur while parsing the rest of the file ofc...)
+        if assertions.is_empty() || (assertion_failures > 0 && out_opts.failfast) {
+            // NOTE: the total counts only really show how many assertions were checked when failing fast
+            //       - they are not accurate total counts
+            break;
+        }
     }
 
     let res = if assertion_failures > 0 {
