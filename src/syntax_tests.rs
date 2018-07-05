@@ -22,7 +22,6 @@ pub enum SyntaxTestFileResult {
     Success(usize),
 }
 
-use std::collections::VecDeque;
 use highlighting::ScopeSelectors;
 
 #[derive(Debug)]
@@ -35,8 +34,8 @@ struct SyntaxTestAssertionRange {
     scope_selector_text: String,
 }
 
-fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: &str) -> VecDeque<SyntaxTestAssertionRange> {
-    let mut assertions = VecDeque::new();
+fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: &str) -> Vec<SyntaxTestAssertionRange> {
+    let mut assertions = Vec::new();
     let mut test_line_offset = 0;
     let mut test_line_len = 0;
     let mut line_number = 0;
@@ -89,10 +88,10 @@ fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: 
                         scope_selector_text: assertion.scope_selector_text.clone(),
                     };
                     assertion.end_char = test_line_len;
-                    assertions.push_back(assertion);
-                    assertions.push_back(remainder);
+                    assertions.push(assertion);
+                    assertions.push(remainder);
                 } else {
-                    assertions.push_back(assertion);
+                    assertions.push(assertion);
                 }
 
                 line_has_assertions = true;
@@ -147,7 +146,7 @@ pub/*(crate)*/ fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text
         results
     }
 
-    let mut assertions = get_syntax_test_assertions(testtoken_start, testtoken_end, &text);
+    let assertions = get_syntax_test_assertions(testtoken_start, testtoken_end, &text);
     //println!("{:?}", assertions);
 
     // iterate over the lines of the file, testing them
@@ -158,6 +157,7 @@ pub/*(crate)*/ fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text
     let mut scopes_on_line_being_tested = Vec::new();
     let mut line_number = 0;
     let mut relevant_assertions = Vec::new();
+    let mut assertion_index = 0;
 
     let mut assertion_failures: usize = 0;
     let mut total_assertions: usize = 0;
@@ -172,12 +172,13 @@ pub/*(crate)*/ fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text
         let ops = state.parse_line(&line);
         // find all the assertions that relate to the current line
         relevant_assertions.clear();
-        while let Some(assertion) = assertions.pop_front() {
+        while assertion_index < assertions.len() {
+            let assertion = &assertions[assertion_index];
             let pos = assertion.test_line_offset + assertion.begin_char;
             if pos >= offset && pos < eol_offset {
                 relevant_assertions.push(assertion);
+                assertion_index += 1;
             } else {
-                assertions.push_front(assertion);
                 break;
             }
         }
@@ -245,7 +246,7 @@ pub/*(crate)*/ fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text
         
         // no point continuing to parse the file if there are no syntax test assertions left
         // (unless we want to prove that no panics etc. occur while parsing the rest of the file ofc...)
-        if assertions.is_empty() || (assertion_failures > 0 && out_opts.failfast) {
+        if assertion_index == assertions.len() || (assertion_failures > 0 && out_opts.failfast) {
             // NOTE: the total counts only really show how many assertions were checked when failing fast
             //       - they are not accurate total counts
             break;
