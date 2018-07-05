@@ -26,6 +26,7 @@ extern crate walkdir;
 extern crate regex_syntax;
 #[macro_use]
 extern crate lazy_static;
+extern crate lazycell;
 extern crate plist;
 #[cfg(any(feature = "dump-load-rs", feature = "dump-load", feature = "dump-create"))]
 extern crate bincode;
@@ -42,6 +43,7 @@ extern crate serde_json;
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;
+
 pub mod highlighting;
 pub mod parsing;
 pub mod util;

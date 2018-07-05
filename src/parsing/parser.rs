@@ -326,8 +326,8 @@ impl ParseState {
 
         for (from_with_proto, ctx, captures) in context_chain {
             for (pat_context_ptr, pat_index) in context_iter(ctx) {
-                let mut pat_context = pat_context_ptr.borrow_mut();
-                let match_pat = pat_context.match_at_mut(pat_index);
+                let pat_context = pat_context_ptr.borrow();
+                let match_pat = pat_context.match_at(pat_index);
 
                 if let Some(match_region) = self.search(
                     line, start, match_pat, captures, search_cache, regions
@@ -374,7 +374,7 @@ impl ParseState {
     fn search(&self,
               line: &str,
               start: usize,
-              match_pat: &mut MatchPattern,
+              match_pat: &MatchPattern,
               captures: Option<&(Region, String)>,
               search_cache: &mut SearchCache,
               regions: &mut Region)
@@ -396,24 +396,30 @@ impl ParseState {
             }
         }
 
-        match_pat.ensure_compiled_if_possible();
-        let refs_regex = if match_pat.has_captures && captures.is_some() {
+        let (matched, can_cache) = if match_pat.has_captures && captures.is_some() {
             let &(ref region, ref s) = captures.unwrap();
-            Some(match_pat.compile_with_refs(region, s))
+            let regex = match_pat.regex_with_refs(region, s);
+            let matched = regex.search_with_param(
+                line,
+                start,
+                line.len(),
+                SearchOptions::SEARCH_OPTION_NONE,
+                Some(regions),
+                MatchParam::default(),
+            );
+            (matched, false)
         } else {
-            None
+            let regex = match_pat.regex();
+            let matched = regex.search_with_param(
+                line,
+                start,
+                line.len(),
+                SearchOptions::SEARCH_OPTION_NONE,
+                Some(regions),
+                MatchParam::default()
+            );
+            (matched, true)
         };
-        let regex = if let Some(ref rgx) = refs_regex {
-            rgx
-        } else {
-            match_pat.regex.as_ref().unwrap()
-        };
-        let matched = regex.search_with_param(line,
-                                              start,
-                                              line.len(),
-                                              SearchOptions::SEARCH_OPTION_NONE,
-                                              Some(regions),
-                                              MatchParam::default());
 
         // If there's an error during search, treat it as non-matching.
         // For example, in case of catastrophic backtracking, onig should
@@ -425,14 +431,14 @@ impl ParseState {
                 MatchOperation::None => match_start != match_end,
                 _ => true,
             };
-            if refs_regex.is_none() && does_something {
+            if can_cache && does_something {
                 search_cache.insert(match_pat, Some(regions.clone()));
             }
             if does_something {
                 // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
                 return Some(regions.clone());
             }
-        } else if refs_regex.is_none() {
+        } else if can_cache {
             search_cache.insert(match_pat, None);
         }
         return None;
