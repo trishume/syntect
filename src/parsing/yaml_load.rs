@@ -126,21 +126,6 @@ impl SyntaxDefinition {
         SyntaxDefinition::parse_top_level(doc, scope_repo.deref_mut(), lines_include_newline, fallback_name)
     }
 
-    // TODO: visibility. also, is this the right file to have these?
-    pub fn find_context_by_name(&self, name: &str) -> Option<&Context> {
-        self.find_context_index_by_name(name).map(|i| &self.contexts[i])
-//        if let Ok(i) = self.contexts.binary_search_by_key(&name, |c| &c.name) {
-//            Some(&self.contexts[i])
-//        } else {
-//            None
-//        }
-    }
-
-    // TODO: visibility
-    pub fn find_context_index_by_name(&self, name: &str) -> Option<usize> {
-        self.contexts.binary_search_by_key(&name, |c| &c.name).ok()
-    }
-
     fn parse_top_level(doc: &Yaml,
                        scope_repo: &mut ScopeRepository,
                        lines_include_newline: bool,
@@ -167,21 +152,16 @@ impl SyntaxDefinition {
             lines_include_newline: lines_include_newline,
         };
 
-        let mut context_map = SyntaxDefinition::parse_contexts(contexts_hash, &mut state)?;
-        if !context_map.contains_key("main") {
+        let mut contexts = SyntaxDefinition::parse_contexts(contexts_hash, &mut state)?;
+        if !contexts.contains_key("main") {
             return Err(ParseSyntaxError::MainMissing);
         }
 
         SyntaxDefinition::add_initial_contexts(
-            &mut context_map,
+            &mut contexts,
             &mut state,
             top_level_scope,
         );
-
-        let mut contexts: Vec<Context> = context_map.into_iter().map(|(_k, v)| v).collect();
-        // Sorting is very important as the way we look up contexts by name
-        // during linking is by doing a binary search by name.
-        contexts.sort_by(|a, b| a.name.cmp(&b.name));
 
         let defn = SyntaxDefinition {
             name: get_key(h, "name", |x| x.as_str()).unwrap_or(fallback_name.unwrap_or("Unnamed")).to_owned(),
@@ -206,7 +186,7 @@ impl SyntaxDefinition {
     fn parse_contexts(map: &Hash,
                       state: &mut ParserState)
                       -> Result<HashMap<String, Context>, ParseSyntaxError> {
-        let mut contexts = Vec::new();
+        let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
                 let is_prototype = name == "prototype";
@@ -214,23 +194,17 @@ impl SyntaxDefinition {
             }
         }
 
-        let mut context_map = HashMap::new();
-        for context in contexts {
-            // TODO: the caller doesn't really need a map anymore, just needs
-            // to know which one is the main context.
-            context_map.insert(context.name.clone(), context);
-        }
-        Ok(context_map)
+        Ok(contexts)
     }
 
     fn parse_context(name: &str,
                      vec: &[Yaml],
                      // TODO: Maybe just pass the scope repo if that's all that's needed?
                      state: &mut ParserState,
-                     contexts: &mut Vec<Context>,
+                     contexts: &mut HashMap<String, Context>,
                      is_prototype: bool)
                      -> Result<(), ParseSyntaxError> {
-        let mut context = Context::new(name, !is_prototype);
+        let mut context = Context::new(!is_prototype);
 
         for (i, y) in vec.iter().enumerate() {
             let map = y.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
@@ -274,14 +248,14 @@ impl SyntaxDefinition {
 
         }
 
-        contexts.push(context);
+        contexts.insert(name.to_string(), context);
         Ok(())
     }
 
     fn parse_reference(name: &str,
                        y: &Yaml,
                        state: &mut ParserState,
-                       contexts: &mut Vec<Context>)
+                       contexts: &mut HashMap<String, Context>)
                        -> Result<ContextReference, ParseSyntaxError> {
         if let Some(s) = y.as_str() {
             let parts: Vec<&str> = s.split('#').collect();
@@ -343,7 +317,7 @@ impl SyntaxDefinition {
     fn parse_match_pattern(name: &str,
                            map: &Hash,
                            state: &mut ParserState,
-                           contexts: &mut Vec<Context>)
+                           contexts: &mut HashMap<String, Context>)
                            -> Result<MatchPattern, ParseSyntaxError> {
         let raw_regex = get_key(map, "match", |x| x.as_str())?;
         let regex_str_1 = Self::resolve_variables(raw_regex, state);
@@ -433,7 +407,7 @@ impl SyntaxDefinition {
         } else if let Ok(v) = get_key(map, "escape", Some) {
             let subname = format!("{}.escape", name);
 
-            let mut context = Context::new(&subname, false);
+            let mut context = Context::new(false);
             let mut match_map = Hash::new();
             match_map.insert(Yaml::String("match".to_string()), Yaml::String(format!("(?={})", v.as_str().unwrap())));
             match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
@@ -443,7 +417,7 @@ impl SyntaxDefinition {
             }
             context.patterns.push(Pattern::Match(pattern));
 
-            contexts.push(context);
+            contexts.insert(subname.clone(), context);
             Some(ContextReference::Named(subname))
         } else {
             None
@@ -464,7 +438,7 @@ impl SyntaxDefinition {
     fn parse_pushargs(name: &str,
                       y: &Yaml,
                       state: &mut ParserState,
-                      contexts: &mut Vec<Context>)
+                      contexts: &mut HashMap<String, Context>)
                       -> Result<Vec<ContextReference>, ParseSyntaxError> {
         // check for a push of multiple items
         if y.as_vec().map_or(false, |v| !v.is_empty() && (v[0].as_str().is_some() || (v[0].as_vec().is_some() && v[0].as_vec().unwrap()[0].as_hash().is_some()))) {
@@ -496,37 +470,31 @@ impl SyntaxDefinition {
         let yaml_docs = YamlLoader::load_from_str(START_CONTEXT).unwrap();
         let yaml = &yaml_docs[0];
 
-        let main_yaml : &[Yaml] = yaml["__main"].as_vec().unwrap();
-        // TODO: Fix this. Maybe directly construct the Context instead of from yaml?
-        let mut main = {
-            let mut new_context = Vec::new();
-            SyntaxDefinition::parse_context("__main", main_yaml, state, &mut new_context, false).unwrap();
-            new_context.pop().unwrap()
-        };
-
-        if let Some(real_main) = contexts.get_mut("main") {
-            main.meta_include_prototype = real_main.meta_include_prototype;
-            main.meta_scope = real_main.meta_scope.clone();
-            main.meta_content_scope = real_main.meta_content_scope.clone();
-
-            // add the top_level_scope as a meta_content_scope to main so
-            // pushes from other syntaxes add the file scope
-            // TODO: this order is not quite correct if main also has a meta_scope
-            real_main.meta_content_scope.insert(0, top_level_scope);
+        let start_yaml : &[Yaml] = yaml["__start"].as_vec().unwrap();
+        SyntaxDefinition::parse_context("__start", start_yaml, state, contexts, false).unwrap();
+        if let Some(start) = contexts.get_mut("__start") {
+            start.meta_content_scope = vec![top_level_scope];
         }
 
-        contexts.insert("__main".to_owned(), main);
+        let main_yaml : &[Yaml] = yaml["__main"].as_vec().unwrap();
+        SyntaxDefinition::parse_context("__main", main_yaml, state, contexts, false).unwrap();
 
-        let start_yaml : &[Yaml] = yaml["__start"].as_vec().unwrap();
-        // TODO: fix this, see above
-        let mut start = {
-            let mut new_context = Vec::new();
-            SyntaxDefinition::parse_context("__start", start_yaml, state, &mut new_context, false).unwrap();
-            new_context.pop().unwrap()
-        };
-        start.meta_content_scope = vec![top_level_scope];
+        let meta_include_prototype = contexts["main"].meta_include_prototype;
+        let meta_scope = contexts["main"].meta_scope.clone();
+        let meta_content_scope = contexts["main"].meta_content_scope.clone();
 
-        contexts.insert("__start".to_owned(), start);
+        if let Some(outer_main) = contexts.get_mut("__main") {
+            outer_main.meta_include_prototype = meta_include_prototype;
+            outer_main.meta_scope = meta_scope;
+            outer_main.meta_content_scope = meta_content_scope;
+        }
+
+        // add the top_level_scope as a meta_content_scope to main so
+        // pushes from other syntaxes add the file scope
+        // TODO: this order is not quite correct if main also has a meta_scope
+        if let Some(main) = contexts.get_mut("main") {
+            main.meta_content_scope.insert(0, top_level_scope);
+        }
     }
 }
 
@@ -730,15 +698,15 @@ mod tests {
         let n: Vec<Scope> = Vec::new();
         println!("{:?}", defn2);
         // assert!(false);
-        let main = defn2.find_context_by_name("main").unwrap();
+        let main = &defn2.contexts["main"];
         assert_eq!(main.meta_content_scope, vec![top_level_scope]);
         assert_eq!(main.meta_scope, n);
         assert_eq!(main.meta_include_prototype, true);
 
-        assert_eq!(defn2.find_context_by_name("__main").unwrap().meta_content_scope, n);
-        assert_eq!(defn2.find_context_by_name("__start").unwrap().meta_content_scope, vec![top_level_scope]);
+        assert_eq!(defn2.contexts["__main"].meta_content_scope, n);
+        assert_eq!(defn2.contexts["__start"].meta_content_scope, vec![top_level_scope]);
 
-        assert_eq!(defn2.find_context_by_name("string").unwrap().meta_scope,
+        assert_eq!(defn2.contexts["string"].meta_scope,
                    vec![Scope::new("string.quoted.double.c").unwrap()]);
         let first_pattern: &Pattern = &main.patterns[0];
         match first_pattern {
@@ -806,7 +774,7 @@ mod tests {
               escape: (?i)(?=</style)
         "#,false, None).unwrap();
 
-        assert_eq!(old_def.find_context_by_name("main").unwrap(), def_with_embed.find_context_by_name("main").unwrap());
+        assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
     }
 
     #[test]
@@ -881,7 +849,7 @@ mod tests {
         let top_level_scope = Scope::new("text.tex.latex").unwrap();
         assert_eq!(defn.scope, top_level_scope);
 
-        let first_pattern: &Pattern = &defn.find_context_by_name("main").unwrap().patterns[0];
+        let first_pattern: &Pattern = &defn.contexts["main"].patterns[0];
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");

@@ -36,12 +36,12 @@ pub struct SyntaxDefinition {
     pub hidden: bool,
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
-    pub contexts: Vec<Context>,
+    #[serde(serialize_with = "ordered_map")]
+    pub contexts: HashMap<String, Context>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Context {
-    pub name: String,
     pub meta_scope: Vec<Scope>,
     pub meta_content_scope: Vec<Scope>,
     /// This being set false in the syntax file implies this field being set false,
@@ -58,12 +58,11 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(name: &str, meta_include_prototype: bool) -> Context {
+    pub fn new(meta_include_prototype: bool) -> Context {
         Context {
-            name: name.to_string(),
             meta_scope: Vec::new(),
             meta_content_scope: Vec::new(),
-            meta_include_prototype: meta_include_prototype,
+            meta_include_prototype,
             clear_scopes: None,
             uses_backrefs: false,
             patterns: Vec::new(),

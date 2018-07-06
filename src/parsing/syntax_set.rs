@@ -311,9 +311,9 @@ impl SyntaxSetBuilder {
 
             let mut map = HashMap::new();
 
-            for context in syntax_contexts {
+            for (name, context) in syntax_contexts {
                 let index = contexts.len();
-                map.insert(context.name.clone(), ContextId::new(index));
+                map.insert(name, ContextId::new(index));
                 contexts.push(context);
             }
 
@@ -524,7 +524,7 @@ mod tests {
             first_line_match: None,
             hidden: false,
             variables: HashMap::new(),
-            contexts: vec![Context::new("__start", false)],
+            contexts: HashMap::new(),
         };
 
         builder.add_syntax(cmake_dummy_syntax);
