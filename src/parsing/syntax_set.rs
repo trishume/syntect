@@ -296,7 +296,7 @@ impl SyntaxSetBuilder {
         let SyntaxSetBuilder { syntaxes: syntax_definitions, path_syntaxes } = self;
 
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
-        let mut contexts = Vec::new();
+        let mut all_contexts = Vec::new();
 
         for syntax_definition in syntax_definitions {
             let SyntaxDefinition {
@@ -306,15 +306,19 @@ impl SyntaxSetBuilder {
                 first_line_match,
                 hidden,
                 variables,
-                contexts: syntax_contexts,
+                contexts,
             } = syntax_definition;
 
             let mut map = HashMap::new();
 
-            for (name, context) in syntax_contexts {
-                let index = contexts.len();
+            let mut contexts: Vec<(String, Context)> = contexts.into_iter().collect();
+            // Sort the values of the HashMap so that the contexts in the
+            // resulting SyntaxSet have a deterministic order for serializing.
+            contexts.sort_by(|(name_a, _), (name_b, _)| name_a.cmp(&name_b));
+            for (name, context) in contexts {
+                let index = all_contexts.len();
                 map.insert(name, ContextId::new(index));
-                contexts.push(context);
+                all_contexts.push(context);
             }
 
             let syntax = SyntaxReference {
@@ -334,11 +338,11 @@ impl SyntaxSetBuilder {
             let prototype = syntax.contexts.get("prototype");
             if let Some(prototype_id) = prototype {
                 // TODO: We could do this after parsing YAML, instead of here?
-                Self::recursively_mark_no_prototype(syntax, prototype_id.index(), &contexts, &mut no_prototype);
+                Self::recursively_mark_no_prototype(syntax, prototype_id.index(), &all_contexts, &mut no_prototype);
             }
 
             for context_id in syntax.contexts.values() {
-                let mut context = &mut contexts[context_id.index()];
+                let mut context = &mut all_contexts[context_id.index()];
                 if let Some(prototype_id) = prototype {
                     if context.meta_include_prototype && !no_prototype.contains(&context_id.index()) {
                         context.prototype = Some(prototype_id.clone());
@@ -350,7 +354,7 @@ impl SyntaxSetBuilder {
 
         SyntaxSet {
             syntaxes,
-            contexts,
+            contexts: all_contexts,
             path_syntaxes,
             first_line_cache: Mutex::new(FirstLineCache::new()),
         }

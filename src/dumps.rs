@@ -153,9 +153,10 @@ mod tests {
         builder2.load_syntaxes("testdata/Packages", false).unwrap();
         let ss2 = builder2.build();
         let bin2 = dump_binary(&ss2);
+        // This is redundant, but assert_eq! can be really slow on a large
+        // vector, so check the length first to fail faster.
         assert_eq!(bin1.len(), bin2.len());
-        // FIXME:
-//        assert_eq!(bin1, bin2);
+        assert_eq!(bin1, bin2);
     }
 
     #[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
