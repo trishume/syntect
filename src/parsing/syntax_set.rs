@@ -237,6 +237,52 @@ impl SyntaxSet {
             .expect("All syntax sets ought to have a plain text syntax")
     }
 
+    pub fn into_builder(self) -> SyntaxSetBuilder {
+        let SyntaxSet { syntaxes, contexts, path_syntaxes, .. } = self;
+
+        let mut context_map = HashMap::with_capacity(contexts.len());
+        for (i, context) in contexts.into_iter().enumerate() {
+            context_map.insert(i, context);
+        }
+
+        let mut builder_syntaxes = Vec::with_capacity(syntaxes.len());
+
+        for syntax in syntaxes {
+            let SyntaxReference {
+                name,
+                file_extensions,
+                scope,
+                first_line_match,
+                hidden,
+                variables,
+                contexts,
+            } = syntax;
+
+            let mut builder_contexts = HashMap::with_capacity(contexts.len());
+            for (name, context_id) in contexts {
+                if let Some(context) = context_map.remove(&context_id.index()) {
+                    builder_contexts.insert(name, context);
+                }
+            }
+
+            let syntax_definition = SyntaxDefinition {
+                name,
+                file_extensions,
+                scope,
+                first_line_match,
+                hidden,
+                variables,
+                contexts: builder_contexts,
+            };
+            builder_syntaxes.push(syntax_definition);
+        }
+
+        SyntaxSetBuilder {
+            syntaxes: builder_syntaxes,
+            path_syntaxes,
+        }
+    }
+
     pub(crate) fn get_context(&self, context_id: &ContextId) -> &Context {
         &self.contexts[context_id.index()]
     }
@@ -584,36 +630,13 @@ mod tests {
 
     #[test]
     fn can_clone() {
-        let mut builder = SyntaxSetBuilder::new();
-
-        let syntax_a = SyntaxDefinition::load_from_str(r#"
-        name: A
-        scope: source.a
-        file_extensions: [a]
-        contexts:
-          main:
-            - match: 'a'
-              scope: a
-            - match: 'go_b'
-              push: scope:source.b#main
-        "#, true, None).unwrap();
-
-        let syntax_b = SyntaxDefinition::load_from_str(r#"
-        name: B
-        scope: source.b
-        file_extensions: [b]
-        contexts:
-          main:
-            - match: 'b'
-              scope: b
-        "#, true, None).unwrap();
-
-        builder.add_syntax(syntax_a);
-        builder.add_syntax(syntax_b);
-
         let cloned_syntax_set = {
-            let syntax_set = builder.build();
-            syntax_set.clone()
+            let mut builder = SyntaxSetBuilder::new();
+            builder.add_syntax(syntax_a());
+            builder.add_syntax(syntax_b());
+
+            let syntax_set_original = builder.build();
+            syntax_set_original.clone()
             // Note: The original syntax set is dropped
         };
 
@@ -623,5 +646,74 @@ mod tests {
         let expected = (7, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert!(ops.contains(&expected),
                 "expected operations to contain {:?}: {:?}", expected, ops);
+    }
+
+    #[test]
+    fn can_add_more_syntaxes_with_builder() {
+        let syntax_set_original = {
+            let mut builder = SyntaxSetBuilder::new();
+            builder.add_syntax(syntax_a());
+            builder.add_syntax(syntax_b());
+            builder.build()
+        };
+
+        let mut builder = syntax_set_original.into_builder();
+
+        let syntax_c = SyntaxDefinition::load_from_str(r#"
+        name: C
+        scope: source.c
+        file_extensions: [c]
+        contexts:
+          main:
+            - match: 'c'
+              scope: c
+            - match: 'go_a'
+              push: scope:source.a#main
+        "#, true, None).unwrap();
+
+        builder.add_syntax(syntax_c);
+
+        let syntax_set = builder.build();
+
+        let syntax = syntax_set.find_syntax_by_extension("c").unwrap();
+        let mut parse_state = ParseState::new(&syntax_set, syntax);
+        let ops = parse_state.parse_line("c go_a a go_b b");
+        let expected = (14, ScopeStackOp::Push(Scope::new("b").unwrap()));
+        assert!(ops.contains(&expected),
+                "expected operations to contain {:?}: {:?}", expected, ops);
+    }
+
+    fn syntax_a() -> SyntaxDefinition {
+        SyntaxDefinition::load_from_str(
+            r#"
+            name: A
+            scope: source.a
+            file_extensions: [a]
+            contexts:
+              main:
+                - match: 'a'
+                  scope: a
+                - match: 'go_b'
+                  push: scope:source.b#main
+            "#,
+            true,
+            None,
+        ).unwrap()
+    }
+
+    fn syntax_b() -> SyntaxDefinition {
+        SyntaxDefinition::load_from_str(
+            r#"
+            name: B
+            scope: source.b
+            file_extensions: [b]
+            contexts:
+              main:
+                - match: 'b'
+                  scope: b
+            "#,
+            true,
+            None,
+        ).unwrap()
     }
 }

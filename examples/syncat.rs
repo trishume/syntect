@@ -48,7 +48,7 @@ fn main() {
     };
 
     let no_newlines = matches.opt_present("no-newlines");
-    let ss = if matches.opt_present("no-default-syntaxes") {
+    let mut ss = if matches.opt_present("no-default-syntaxes") {
         SyntaxSet::new()
     } else if no_newlines {
         SyntaxSet::load_defaults_nonewlines()
@@ -58,9 +58,9 @@ fn main() {
 
     if let Some(folder) = matches.opt_str("extra-syntaxes") {
         // TODO: no way to go back to builder anymore :/
-        //let mut builder = ss.builder();
-        //builder.load_syntaxes(folder, !no_newlines).unwrap();
-        //ss = builder.build();
+        let mut builder = ss.into_builder();
+        builder.load_syntaxes(folder, !no_newlines).unwrap();
+        ss = builder.build();
     }
 
     let ts = ThemeSet::load_defaults();
