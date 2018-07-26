@@ -25,18 +25,18 @@ use parsing::syntax_definition::ContextId;
 ///
 /// Re-linking— linking, adding more unlinked syntaxes with `load_syntaxes`,
 /// and then linking again—is allowed.
-// TODO: clone?
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyntaxSet {
     syntaxes: Vec<SyntaxReference>,
     contexts: Vec<Context>,
-    #[serde(skip_serializing, skip_deserializing)]
-    first_line_cache: Mutex<FirstLineCache>,
     /// Stores the syntax index for every path that was loaded
     path_syntaxes: Vec<(String, usize)>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    first_line_cache: Mutex<FirstLineCache>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SyntaxReference {
     pub name: String,
     pub file_extensions: Vec<String>,
@@ -67,13 +67,25 @@ fn load_syntax_file(p: &Path,
     Ok(SyntaxDefinition::load_from_str(&s, lines_include_newline, p.file_stem().and_then(|x| x.to_str()))?)
 }
 
+impl Clone for SyntaxSet {
+    fn clone(&self) -> SyntaxSet {
+        SyntaxSet {
+            syntaxes: self.syntaxes.clone(),
+            contexts: self.contexts.clone(),
+            path_syntaxes: self.path_syntaxes.clone(),
+            // Will need to be re-initialized
+            first_line_cache: Mutex::new(FirstLineCache::new()),
+        }
+    }
+}
+
 impl Default for SyntaxSet {
     fn default() -> Self {
         SyntaxSet {
             syntaxes: Vec::new(),
             contexts: Vec::new(),
-            first_line_cache: Mutex::new(FirstLineCache::new()),
             path_syntaxes: Vec::new(),
+            first_line_cache: Mutex::new(FirstLineCache::new()),
         }
     }
 }
@@ -513,7 +525,7 @@ impl FirstLineCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{Scope, syntax_definition};
+    use parsing::{ParseState, Scope, syntax_definition};
     use std::collections::HashMap;
 
     #[test]
@@ -568,5 +580,48 @@ mod tests {
         let main_context = ps.get_context(&syntax.contexts["main"]);
         let count = syntax_definition::context_iter(&ps, main_context).count();
         assert_eq!(count, 109);
+    }
+
+    #[test]
+    fn can_clone() {
+        let mut builder = SyntaxSetBuilder::new();
+
+        let syntax_a = SyntaxDefinition::load_from_str(r#"
+        name: A
+        scope: source.a
+        file_extensions: [a]
+        contexts:
+          main:
+            - match: 'a'
+              scope: a
+            - match: 'go_b'
+              push: scope:source.b#main
+        "#, true, None).unwrap();
+
+        let syntax_b = SyntaxDefinition::load_from_str(r#"
+        name: B
+        scope: source.b
+        file_extensions: [b]
+        contexts:
+          main:
+            - match: 'b'
+              scope: b
+        "#, true, None).unwrap();
+
+        builder.add_syntax(syntax_a);
+        builder.add_syntax(syntax_b);
+
+        let cloned_syntax_set = {
+            let syntax_set = builder.build();
+            syntax_set.clone()
+            // Note: The original syntax set is dropped
+        };
+
+        let syntax = cloned_syntax_set.find_syntax_by_extension("a").unwrap();
+        let mut parse_state = ParseState::new(&cloned_syntax_set, syntax);
+        let ops = parse_state.parse_line("a go_b b");
+        let expected = (7, ScopeStackOp::Push(Scope::new("b").unwrap()));
+        assert!(ops.contains(&expected),
+                "expected operations to contain {:?}: {:?}", expected, ops);
     }
 }
