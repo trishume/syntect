@@ -644,8 +644,7 @@ mod tests {
         let mut parse_state = ParseState::new(&cloned_syntax_set, syntax);
         let ops = parse_state.parse_line("a go_b b");
         let expected = (7, ScopeStackOp::Push(Scope::new("b").unwrap()));
-        assert!(ops.contains(&expected),
-                "expected operations to contain {:?}: {:?}", expected, ops);
+        assert_ops_contain(&ops, &expected);
     }
 
     #[test]
@@ -679,9 +678,63 @@ mod tests {
         let mut parse_state = ParseState::new(&syntax_set, syntax);
         let ops = parse_state.parse_line("c go_a a go_b b");
         let expected = (14, ScopeStackOp::Push(Scope::new("b").unwrap()));
-        assert!(ops.contains(&expected),
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn can_use_in_multiple_threads() {
+        use rayon::prelude::*;
+
+        let syntax_set = {
+            let mut builder = SyntaxSetBuilder::new();
+            builder.add_syntax(syntax_a());
+            builder.add_syntax(syntax_b());
+            builder.build()
+        };
+
+        let lines = vec![
+            "a a a",
+            "a go_b b",
+            "go_b b",
+            "go_b b  b",
+        ];
+
+        let results: Vec<Vec<(usize, ScopeStackOp)>> = lines
+            .par_iter()
+            .map(|line| {
+                let syntax = syntax_set.find_syntax_by_extension("a").unwrap();
+                let mut parse_state = ParseState::new(&syntax_set, syntax);
+                parse_state.parse_line(line)
+            })
+            .collect();
+
+        assert_ops_contain(&results[0], &(4, ScopeStackOp::Push(Scope::new("a").unwrap())));
+        assert_ops_contain(&results[1], &(7, ScopeStackOp::Push(Scope::new("b").unwrap())));
+        assert_ops_contain(&results[2], &(5, ScopeStackOp::Push(Scope::new("b").unwrap())));
+        assert_ops_contain(&results[3], &(8, ScopeStackOp::Push(Scope::new("b").unwrap())));
+    }
+
+    #[test]
+    fn is_sync() {
+        check_sync::<SyntaxSet>();
+    }
+
+    #[test]
+    fn is_send() {
+        check_send::<SyntaxSet>();
+    }
+
+    fn assert_ops_contain(
+        ops: &[(usize, ScopeStackOp)],
+        expected: &(usize, ScopeStackOp)
+    ) {
+        assert!(ops.contains(expected),
                 "expected operations to contain {:?}: {:?}", expected, ops);
     }
+
+    fn check_send<T: Send>() {}
+
+    fn check_sync<T: Sync>() {}
 
     fn syntax_a() -> SyntaxDefinition {
         SyntaxDefinition::load_from_str(

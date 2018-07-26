@@ -43,6 +43,8 @@ extern crate serde_json;
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;
+#[cfg(test)]
+extern crate rayon;
 
 pub mod highlighting;
 pub mod parsing;
