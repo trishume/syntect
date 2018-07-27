@@ -283,14 +283,14 @@ mod tests {
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
-            ParseState::new(&ps, syntax)
+            ParseState::new(syntax)
         };
         let ts = ThemeSet::load_defaults();
         let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
 
         let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         let line = "module Bob::Wow::Troll::Five; 5; end";
-        let ops = state.parse_line(line);
+        let ops = state.parse_line(line, &ps);
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();
         // println!("{:#?}", regions);

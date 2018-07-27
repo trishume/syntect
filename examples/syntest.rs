@@ -169,7 +169,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
     let syntax = ss.find_syntax_by_path(syntax_file).ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound)?;
 
     // iterate over the lines of the file, testing them
-    let mut state = ParseState::new(&ss, syntax);
+    let mut state = ParseState::new(syntax);
     let mut stack = ScopeStack::new();
 
     let mut current_line_number = 1;
@@ -214,7 +214,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
             if out_opts.debug && !line_only_has_assertion {
                 println!("-- debugging line {} -- scope stack: {:?}", current_line_number, stack);
             }
-            let ops = state.parse_line(&line);
+            let ops = state.parse_line(&line, &ss);
             if out_opts.debug && !line_only_has_assertion {
                 if ops.is_empty() && !line.is_empty() {
                     println!("no operations for this line...");

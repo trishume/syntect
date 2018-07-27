@@ -284,6 +284,7 @@ impl SyntaxSet {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn get_context(&self, context_id: &ContextId) -> &Context {
         &self.contexts[context_id.index()]
     }
@@ -313,6 +314,7 @@ impl SyntaxSetBuilder {
         let syn = SyntaxDefinition::load_from_str(s, false, None).unwrap();
         self.syntaxes.push(syn);
     }
+
     /// Loads all the .sublime-syntax files in a folder into this syntax set.
     ///
     /// The `lines_include_newline` parameter is used to work around the fact that Sublime Text normally
@@ -644,8 +646,8 @@ mod tests {
         };
 
         let syntax = cloned_syntax_set.find_syntax_by_extension("a").unwrap();
-        let mut parse_state = ParseState::new(&cloned_syntax_set, syntax);
-        let ops = parse_state.parse_line("a go_b b");
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("a go_b b", &cloned_syntax_set);
         let expected = (7, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -678,8 +680,8 @@ mod tests {
         let syntax_set = builder.build();
 
         let syntax = syntax_set.find_syntax_by_extension("c").unwrap();
-        let mut parse_state = ParseState::new(&syntax_set, syntax);
-        let ops = parse_state.parse_line("c go_a a go_b b");
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("c go_a a go_b b", &syntax_set);
         let expected = (14, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -706,8 +708,8 @@ mod tests {
             .par_iter()
             .map(|line| {
                 let syntax = syntax_set.find_syntax_by_extension("a").unwrap();
-                let mut parse_state = ParseState::new(&syntax_set, syntax);
-                parse_state.parse_line(line)
+                let mut parse_state = ParseState::new(syntax);
+                parse_state.parse_line(line, &syntax_set)
             })
             .collect();
 

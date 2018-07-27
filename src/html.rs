@@ -40,7 +40,7 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
 /// choice of `SyntaxSet` to accept, I'm not sure of it either, email me.
 pub fn highlighted_snippet_for_string(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> String {
     let mut output = String::new();
-    let mut highlighter = HighlightLines::new(ss, syntax, theme);
+    let mut highlighter = HighlightLines::new(syntax, theme);
     let c = theme.settings.background.unwrap_or(Color::WHITE);
     write!(output,
            "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
@@ -49,7 +49,7 @@ pub fn highlighted_snippet_for_string(s: &str, ss: &SyntaxSet, syntax: &SyntaxRe
            c.b)
         .unwrap();
     for line in s.lines() {
-        let regions = highlighter.highlight(line);
+        let regions = highlighter.highlight(line, ss);
         let html = styles_to_coloured_html(&regions[..], IncludeBackground::IfDifferent(c));
         output.push_str(&html);
         output.push('\n');
@@ -81,7 +81,7 @@ pub fn highlighted_snippet_for_file<P: AsRef<Path>>(path: P,
         .unwrap();
     for maybe_line in highlighter.reader.lines() {
         let line = maybe_line?;
-        let regions = highlighter.highlight_lines.highlight(&line);
+        let regions = highlighter.highlight_lines.highlight(&line, ss);
         let html = styles_to_coloured_html(&regions[..], IncludeBackground::IfDifferent(c));
         output.push_str(&html);
         output.push('\n');
@@ -164,8 +164,8 @@ fn write_css_color(s: &mut String, c: Color) {
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
-/// let mut h = HighlightLines::new(&ps, syntax, &ts.themes["base16-ocean.dark"]);
-/// let regions = h.highlight("5");
+/// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+/// let regions = h.highlight("5", &ps);
 /// let html = styles_to_coloured_html(&regions[..], IncludeBackground::No);
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```
@@ -243,9 +243,9 @@ mod tests {
     fn tokens() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let syntax = ss.find_syntax_by_name("Markdown").unwrap();
-        let mut state = ParseState::new(&ss, syntax);
+        let mut state = ParseState::new(syntax);
         let line = "[w](t.co) *hi* **five**";
-        let ops = state.parse_line(line);
+        let ops = state.parse_line(line, &ss);
 
         // use util::debug_print_ops;
         // debug_print_ops(line, &ops);

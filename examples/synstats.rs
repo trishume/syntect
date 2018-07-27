@@ -127,7 +127,7 @@ fn count(ss: &SyntaxSet, path: &Path, stats: &mut Stats) {
         None => return
     };
     stats.files += 1;
-    let mut state = ParseState::new(&ss, syntax);
+    let mut state = ParseState::new(syntax);
 
     let f = File::open(path).unwrap();
     let mut reader = BufReader::new(f);
@@ -135,7 +135,7 @@ fn count(ss: &SyntaxSet, path: &Path, stats: &mut Stats) {
     let mut stack = ScopeStack::new();
     while reader.read_line(&mut line).unwrap() > 0 {
         {
-            let ops = state.parse_line(&line);
+            let ops = state.parse_line(&line, &ss);
             stats.chars += line.len();
             count_line(&ops, &line, &mut stack, stats);
         }

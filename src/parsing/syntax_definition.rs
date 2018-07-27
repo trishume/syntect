@@ -15,7 +15,7 @@ use parsing::syntax_set::SyntaxSet;
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ContextId {
     index: usize,
 }
@@ -142,7 +142,9 @@ impl<'a> Iterator for MatchIter<'a> {
             self.index_stack[last_index] = index + 1;
             if index < context.patterns.len() {
                 match context.patterns[index] {
-                    Pattern::Match(_) => return Some((context, index)),
+                    Pattern::Match(_) => {
+                        return Some((context, index));
+                    },
                     Pattern::Include(ref ctx_ref) => {
                         let ctx_ptr = match *ctx_ref {
                             ContextReference::Direct(ref context_id) => {
@@ -191,6 +193,13 @@ impl ContextReference {
             _ => panic!("Can only call resolve on linked references: {:?}", self),
         }
     }
+
+    pub fn id(&self) -> ContextId {
+        match *self {
+            ContextReference::Direct(ref context_id) => context_id.clone(),
+            _ => panic!("Can only get ID of linked references: {:?}", self),
+        }
+    }
 }
 
 pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -> String
@@ -222,6 +231,7 @@ impl ContextId {
         ContextId { index }
     }
 
+    #[inline(always)]
     pub(crate) fn index(&self) -> usize {
         self.index
     }

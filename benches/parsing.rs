@@ -8,10 +8,10 @@ use std::io::Read;
 use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 
 fn do_parse(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference) -> usize {
-    let mut state = ParseState::new(ss, syntax);
+    let mut state = ParseState::new(syntax);
     let mut count = 0;
     for line in s.lines() {
-        let ops = state.parse_line(line);
+        let ops = state.parse_line(line, ss);
         count += ops.len();
     }
     count

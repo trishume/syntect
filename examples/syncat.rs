@@ -109,7 +109,7 @@ fn main() {
                 }
 
                 {
-                    let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
+                    let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line, &ss);
                     print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
                 }
                 line.clear();

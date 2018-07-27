@@ -12,10 +12,10 @@ use std::fs::File;
 use std::io::Read;
 
 fn do_highlight(s: &str, syntax_set: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> usize {
-    let mut h = HighlightLines::new(syntax_set, syntax, theme);
+    let mut h = HighlightLines::new(syntax, theme);
     let mut count = 0;
     for line in s.lines() {
-        let regions = h.highlight(line);
+        let regions = h.highlight(line, syntax_set);
         count += regions.len();
     }
     count
