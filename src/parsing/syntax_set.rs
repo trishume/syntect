@@ -373,7 +373,9 @@ impl SyntaxSetBuilder {
             let mut contexts: Vec<(String, Context)> = contexts.into_iter().collect();
             // Sort the values of the HashMap so that the contexts in the
             // resulting SyntaxSet have a deterministic order for serializing.
-            contexts.sort_by(|(name_a, _), (name_b, _)| name_a.cmp(&name_b));
+            // Because we're sorting by the keys which are unique, we can use
+            // an unstable sort.
+            contexts.sort_unstable_by(|(name_a, _), (name_b, _)| name_a.cmp(&name_b));
             for (name, context) in contexts {
                 let index = all_contexts.len();
                 map.insert(name, ContextId::new(index));

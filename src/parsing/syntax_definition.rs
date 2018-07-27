@@ -111,7 +111,6 @@ pub enum ContextReference {
         name: String,
         sub_context: Option<String>,
     },
-//    Inline(Context),
     Inline(String),
     Direct(ContextId),
 }
