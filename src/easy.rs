@@ -29,7 +29,7 @@ use std::path::Path;
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_extension("rs").unwrap();
-/// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+/// let mut h = HighlightLines::new(&ps, syntax, &ts.themes["base16-ocean.dark"]);
 /// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}";
 /// for line in s.lines() {
 ///     let ranges: Vec<(Style, &str)> = h.highlight(line);

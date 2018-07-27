@@ -164,7 +164,7 @@ fn write_css_color(s: &mut String, c: Color) {
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
-/// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+/// let mut h = HighlightLines::new(&ps, syntax, &ts.themes["base16-ocean.dark"]);
 /// let regions = h.highlight("5");
 /// let html = styles_to_coloured_html(&regions[..], IncludeBackground::No);
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");

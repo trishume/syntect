@@ -226,9 +226,10 @@ impl SyntaxSet {
     ///
     /// # Examples
     /// ```
-    /// use syntect::parsing::SyntaxSet;
-    /// let mut ss = SyntaxSet::new();
-    /// ss.load_plain_text_syntax();
+    /// use syntect::parsing::SyntaxSetBuilder;
+    /// let mut builder = SyntaxSetBuilder::new();
+    /// builder.load_plain_text_syntax();
+    /// let ss = builder.build();
     /// let syntax = ss.find_syntax_by_token("rs").unwrap_or_else(|| ss.find_syntax_plain_text());
     /// assert_eq!(syntax.name, "Plain Text");
     /// ```
