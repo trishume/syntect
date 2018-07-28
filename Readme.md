@@ -173,4 +173,6 @@ Below is a list of projects using Syntect, in approximate order by how long they
 
 ## License and Acknowledgements
 
+Thanks to [Robin Stocker](https://github.com/robinst) and also [Keith Hall](https://github.com/keith-hall) for making awesome substantial contributions of the most important impressive improvements `syntect` has had post-`v1.0`! They deserve lots of credit for where `syntect` is today.
+
 Thanks to [Textmate 2](https://github.com/textmate/textmate) and @defuz's [sublimate](https://github.com/defuz/sublimate) for the existing open source code I used as inspiration and in the case of sublimate's `tmTheme` loader, copy-pasted. All code (including defuz's sublimate code) is released under the MIT license.
