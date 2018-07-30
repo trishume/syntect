@@ -194,10 +194,11 @@ impl ContextReference {
         }
     }
 
+    /// get the context ID this reference points to, panics if ref is not linked
     pub fn id(&self) -> ContextId {
         match *self {
             ContextReference::Direct(ref context_id) => context_id.clone(),
-            _ => panic!("Can only get ID of linked references: {:?}", self),
+            _ => panic!("Can only get ContextId of linked references: {:?}", self),
         }
     }
 }

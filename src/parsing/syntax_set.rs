@@ -17,14 +17,12 @@ use std::sync::Mutex;
 use onig::Regex;
 use parsing::syntax_definition::ContextId;
 
-/// A syntax set holds a bunch of syntaxes and manages
-/// loading them and the crucial operation of *linking*.
+/// A syntax set holds multiple syntaxes that have been linked together.
 ///
-/// Linking replaces the references between syntaxes with direct
-/// pointers. See `link_syntaxes` for more.
+/// Use a `SyntaxSetBuilder` to load syntax definitions and build a syntax set.
 ///
-/// Re-linking— linking, adding more unlinked syntaxes with `load_syntaxes`,
-/// and then linking again—is allowed.
+/// After building, the syntax set is immutable and can no longer be modified.
+/// But you can convert it back to a builder by using `into_builder`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyntaxSet {
     syntaxes: Vec<SyntaxReference>,
@@ -50,6 +48,11 @@ pub struct SyntaxReference {
     pub(crate) contexts: HashMap<String, ContextId>,
 }
 
+/// A syntax set builder is used for loading syntax definitions from the file
+/// system or by adding `SyntaxDefinition` objects.
+///
+/// Once all the syntaxes have been added, call `build` to turn the builder into
+/// a `SyntaxSet` that can be used for parsing or highlighting.
 #[derive(Clone)]
 pub struct SyntaxSetBuilder {
     syntaxes: Vec<SyntaxDefinition>,
@@ -99,7 +102,6 @@ impl SyntaxSet {
     /// Convenience constructor calling `new` and then `load_syntaxes` on the resulting set
     /// defaults to lines given not including newline characters, see the
     /// `load_syntaxes` method docs for an explanation as to why this might not be the best.
-    /// It also links all the syntaxes together, see `link_syntaxes` for what that means.
     #[cfg(feature = "yaml-load")]
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<SyntaxSet, LoadingError> {
         let mut builder = SyntaxSetBuilder::new();
@@ -110,11 +112,6 @@ impl SyntaxSet {
     /// The list of syntaxes in the set
     pub fn syntaxes(&self) -> &[SyntaxReference] {
         &self.syntaxes[..]
-    }
-
-    // TODO: visibility
-    pub fn get_syntax(&self, index: usize) -> &SyntaxReference {
-        &self.syntaxes[index]
     }
 
     /// Finds a syntax by its default scope, for example `source.regexp` finds the regex syntax.
@@ -130,16 +127,6 @@ impl SyntaxSet {
 
     pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxReference> {
         self.syntaxes.iter().find(|&s| s.file_extensions.iter().any(|e| e == extension))
-    }
-
-    // TODO: visibility
-    pub fn find_syntax_index_by_scope(&self, scope: Scope) -> Option<usize> {
-        self.syntaxes.iter().position(|s| s.scope == scope)
-    }
-
-    // TODO: visibility
-    pub fn find_syntax_index_by_name<'a>(&'a self, name: &str) -> Option<usize> {
-        self.syntaxes.iter().position(|s| name == &s.name)
     }
 
     /// Searches for a syntax first by extension and then by case-insensitive name
@@ -238,6 +225,11 @@ impl SyntaxSet {
             .expect("All syntax sets ought to have a plain text syntax")
     }
 
+    /// Converts this syntax set into a builder so that more syntaxes can be
+    /// added to it.
+    ///
+    /// Note that newly added syntaxes can have references to existing syntaxes
+    /// in the set, but not the other way around.
     pub fn into_builder(self) -> SyntaxSetBuilder {
         let SyntaxSet { syntaxes, contexts, path_syntaxes, .. } = self;
 
@@ -348,11 +340,25 @@ impl SyntaxSetBuilder {
         Ok(())
     }
 
-    /// This links all the syntaxes in this set directly with pointers for performance purposes.
-    /// It is necessary to do this before parsing anything with these syntaxes.
-    /// However, it is not possible to serialize a syntax set that has been linked,
-    /// which is why it isn't done by default, except by the load_from_folder constructor.
-    /// This operation is idempotent, but takes time even on already linked syntax sets.
+    /// Build a `SyntaxSet` from the syntaxes that have been added to this
+    /// builder.
+    ///
+    /// ### Linking
+    ///
+    /// The contexts in syntaxes can reference other contexts in the same syntax
+    /// or even other syntaxes. For example, a HTML syntax can reference a CSS
+    /// syntax so that CSS blocks in HTML work as expected.
+    ///
+    /// Those references work in various ways and involve one or two lookups.
+    /// To avoid having to do these lookups during parsing/highlighting, the
+    /// references are changed to directly reference contexts via index. That's
+    /// called linking.
+    ///
+    /// Linking is done in this build step. So in order to get the best
+    /// performance, you should try to avoid calling this too much. Ideally,
+    /// create a `SyntaxSet` once and then use it many times. If you can,
+    /// serialize a `SyntaxSet` for your program and when you run the program,
+    /// directly load the `SyntaxSet`.
     pub fn build(self) -> SyntaxSet {
         let SyntaxSetBuilder { syntaxes: syntax_definitions, path_syntaxes } = self;
 
