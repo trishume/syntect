@@ -14,7 +14,7 @@ use bincode::deserialize_from;
 use bincode::serialize_into;
 use std::fs::File;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
-use std::io::{BufReader, Read};
+use std::io::{BufRead, BufReader};
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use std::io::{BufWriter, Write};
 #[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
@@ -25,7 +25,7 @@ use std::path::Path;
 #[cfg(feature = "dump-create")]
 use flate2::write::ZlibEncoder;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
-use flate2::read::ZlibDecoder;
+use flate2::bufread::ZlibDecoder;
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use flate2::Compression;
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
@@ -57,7 +57,7 @@ pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> 
 }
 
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
-pub fn from_reader<T: DeserializeOwned, R: Read>(input: R) -> Result<T> {
+pub fn from_reader<T: DeserializeOwned, R: BufRead>(input: R) -> Result<T> {
     let mut decoder = ZlibDecoder::new(input);
     deserialize_from(&mut decoder)
 }
