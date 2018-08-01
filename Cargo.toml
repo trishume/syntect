@@ -25,7 +25,7 @@ plist = "0.3"
 bincode = { version = "1.0", optional = true }
 flate2 = { version = "1.0", optional = true, default-features = false }
 fnv = { version = "1.0", optional = true }
-serde = { version = "1.0", features = ["rc"] }
+serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 

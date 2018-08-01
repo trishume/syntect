@@ -2,7 +2,7 @@
 //! files without caring about intermediate semantic representation
 //! and caching.
 
-use parsing::{ScopeStack, ParseState, SyntaxDefinition, SyntaxSet, ScopeStackOp};
+use parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, ScopeStackOp};
 use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
 use std::io::{self, BufReader};
 use std::fs::File;
@@ -32,7 +32,7 @@ use std::path::Path;
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
 /// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}";
 /// for line in s.lines() {
-///     let ranges: Vec<(Style, &str)> = h.highlight(line);
+///     let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
 ///     let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
 ///     println!("{}", escaped);
 /// }
@@ -44,7 +44,7 @@ pub struct HighlightLines<'a> {
 }
 
 impl<'a> HighlightLines<'a> {
-    pub fn new(syntax: &SyntaxDefinition, theme: &'a Theme) -> HighlightLines<'a> {
+    pub fn new(syntax: &SyntaxReference, theme: &'a Theme) -> HighlightLines<'a> {
         let highlighter = Highlighter::new(theme);
         let hstate = HighlightState::new(&highlighter, ScopeStack::new());
         HighlightLines {
@@ -55,9 +55,9 @@ impl<'a> HighlightLines<'a> {
     }
 
     /// Highlights a line of a file
-    pub fn highlight<'b>(&mut self, line: &'b str) -> Vec<(Style, &'b str)> {
+    pub fn highlight<'b>(&mut self, line: &'b str, syntax_set: &SyntaxSet) -> Vec<(Style, &'b str)> {
         // println!("{}", self.highlight_state.path);
-        let ops = self.parse_state.parse_line(line);
+        let ops = self.parse_state.parse_line(line, syntax_set);
         // use util::debug_print_ops;
         // debug_print_ops(line, &ops);
         let iter =
@@ -96,7 +96,7 @@ impl<'a> HighlightFile<'a> {
     /// let mut highlighter = HighlightFile::new("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
     /// for maybe_line in highlighter.reader.lines() {
     ///     let line = maybe_line.unwrap();
-    ///     let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
+    ///     let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line, &ss);
     ///     println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
     /// }
     /// ```
@@ -184,11 +184,11 @@ mod tests {
 
     #[test]
     fn can_highlight_lines() {
-        let ps = SyntaxSet::load_defaults_nonewlines();
+        let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
-        let syntax = ps.find_syntax_by_extension("rs").unwrap();
+        let syntax = ss.find_syntax_by_extension("rs").unwrap();
         let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
-        let ranges = h.highlight("pub struct Wow { hi: u64 }");
+        let ranges = h.highlight("pub struct Wow { hi: u64 }", &ss);
         assert!(ranges.len() > 4);
     }
 
@@ -207,7 +207,7 @@ mod tests {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap());
         let line = "lol =5+2";
-        let ops = state.parse_line(line);
+        let ops = state.parse_line(line, &ss);
 
         let mut stack = ScopeStack::new();
         let mut token_count = 0;
@@ -234,7 +234,7 @@ mod tests {
         let mut stack = ScopeStack::new();
 
         for line in lines.iter() {
-            let ops = state.parse_line(&line);
+            let ops = state.parse_line(&line, &ss);
             println!("{:?}", ops);
 
             let mut iterated_ops: Vec<&ScopeStackOp> = Vec::new();

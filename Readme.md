@@ -122,9 +122,13 @@ Any time the file is changed the latest cached state is found, the cache is clea
 
 ### Parallelizing
 
-`syntect` doesn't provide any built-in facilities to enable highlighting in parallel. Some of the important data structures are not thread-safe, either, most notably `SyntaxSet`. However, if you find yourself in need of highlighting lots of files in parallel, the recommendation is to use some sort of thread pooling, along with the `thread_local!` macro from `libstd`, so that each thread that needs, say, a `SyntaxSet`, will have one, while minimizing the amount of them that need to be initialized. For adding parallelism to a previously single-threaded program, the recommended thread pooling is [`rayon`](https://github.com/nikomatsakis/rayon). However, if you're working in an already-threaded context where there might be more threads than you want (such as writing a handler for an Iron request), the recommendation is to force all highlighting to be done within a fixed-size thread pool using [`rust-scoped-pool`](https://github.com/reem/rust-scoped-pool). An example of the former is in `examples/parsyncat.rs`.
+Since 3.0, `syntect` can be used to do parsing/highlighting in parallel. `SyntaxSet` is both `Send` and `Sync` and so can easily be used from multiple threads. It is also `Clone`, which means you can construct a syntax set and then clone it to use for other threads if you prefer.
 
-See [#20](https://github.com/trishume/syntect/issues/20) and [#78](https://github.com/trishume/syntect/pull/78) for more detail and discussion about why `syntect` doesn't provide parallelism by default.
+Compared to older versions, there's nothing preventing the serialization of a `SyntaxSet` either. So you can directly deserialize a fully linked `SyntaxSet` and start using it for parsing/highlighting. Before, it was always necessary to do linking first.
+
+It is worth mentioning that regex compilation is done lazily only when the regexes are actually needed. Once a regex has been compiled, the compiled version is used for all threads after that. Note that this is done using interior mutability, so if multiple threads happen to encounter the same uncompiled regex at the same time, compiling might happen multiple times. After that, one of the compiled regexes will be used. When a `SyntaxSet` is cloned, the regexes in the cloned set will need to be recompiled currently.
+
+For adding parallelism to a previously single-threaded program, the recommended thread pooling is [`rayon`](https://github.com/nikomatsakis/rayon). However, if you're working in an already-threaded context where there might be more threads than you want (such as writing a handler for an Iron request), the recommendation is to force all highlighting to be done within a fixed-size thread pool using [`rust-scoped-pool`](https://github.com/reem/rust-scoped-pool). An example of the former is in `examples/parsyncat.rs`.
 
 ## Examples Available
 

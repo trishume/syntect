@@ -3,7 +3,7 @@
 //! Although it is a valid example for serializing syntaxes, you probably won't need
 //! to do this yourself unless you want to cache your own compiled grammars.
 extern crate syntect;
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::SyntaxSetBuilder;
 use syntect::highlighting::ThemeSet;
 use syntect::dumps::*;
 use std::env;
@@ -22,16 +22,17 @@ fn main() {
          Some(ref package_dir),
          Some(ref packpath_newlines),
          Some(ref packpath_nonewlines)) if cmd == "synpack" => {
-            let mut ps = SyntaxSet::new();
-            ps.load_plain_text_syntax();
-            ps.load_syntaxes(package_dir, true).unwrap();
-            dump_to_file(&ps, packpath_newlines).unwrap();
+            let mut builder = SyntaxSetBuilder::new();
+            builder.load_plain_text_syntax();
+            builder.load_syntaxes(package_dir, true).unwrap();
+            let ss = builder.build();
+            dump_to_file(&ss, packpath_newlines).unwrap();
 
-            ps = SyntaxSet::new();
-            ps.load_plain_text_syntax();
-            ps.load_syntaxes(package_dir, false).unwrap();
-            dump_to_file(&ps, packpath_nonewlines).unwrap();
-
+            let mut builder_nonewlines = SyntaxSetBuilder::new();
+            builder_nonewlines.load_plain_text_syntax();
+            builder_nonewlines.load_syntaxes(package_dir, false).unwrap();
+            let ss_nonewlines = builder_nonewlines.build();
+            dump_to_file(&ss_nonewlines, packpath_nonewlines).unwrap();
         }
         (Some(ref s), Some(ref theme_dir), Some(ref packpath), None) if s == "themepack" => {
             let ts = ThemeSet::load_from_folder(theme_dir).unwrap();

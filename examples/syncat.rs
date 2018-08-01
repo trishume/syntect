@@ -57,8 +57,10 @@ fn main() {
     };
 
     if let Some(folder) = matches.opt_str("extra-syntaxes") {
-        ss.load_syntaxes(folder, !no_newlines).unwrap();
-        ss.link_syntaxes();
+        // TODO: no way to go back to builder anymore :/
+        let mut builder = ss.into_builder();
+        builder.load_syntaxes(folder, !no_newlines).unwrap();
+        ss = builder.build();
     }
 
     let ts = ThemeSet::load_defaults();
@@ -107,7 +109,7 @@ fn main() {
                 }
 
                 {
-                    let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
+                    let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line, &ss);
                     print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
                 }
                 line.clear();

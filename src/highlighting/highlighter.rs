@@ -290,7 +290,7 @@ mod tests {
 
         let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         let line = "module Bob::Wow::Troll::Five; 5; end";
-        let ops = state.parse_line(line);
+        let ops = state.parse_line(line, &ps);
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();
         // println!("{:#?}", regions);

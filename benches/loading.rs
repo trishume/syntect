@@ -3,7 +3,7 @@ extern crate criterion;
 extern crate syntect;
 
 use criterion::{Bencher, Criterion};
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 use syntect::highlighting::ThemeSet;
 
 
@@ -27,16 +27,16 @@ fn bench_load_theme(b: &mut Bencher) {
 
 fn bench_load_syntaxes(b: &mut Bencher) {
     b.iter(|| {
-        let mut ps = SyntaxSet::new();
-        ps.load_syntaxes("testdata/Packages", false).unwrap()
+        let mut builder = SyntaxSetBuilder::new();
+        builder.load_syntaxes("testdata/Packages", false).unwrap()
     });
 }
 
 fn bench_link_syntaxes(b: &mut Bencher) {
-    let mut ps = SyntaxSet::new();
-    ps.load_syntaxes("testdata/Packages", false).unwrap();
+    let mut builder = SyntaxSetBuilder::new();
+    builder.load_syntaxes("testdata/Packages", false).unwrap();
     b.iter(|| {
-        ps.link_syntaxes();
+        builder.clone().build();
     });
 }
 

@@ -7,14 +7,18 @@ use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use lazycell::AtomicLazyCell;
 use onig::{Regex, RegexOptions, Region, Syntax};
-use std::rc::{Rc, Weak};
-use std::cell::RefCell;
 use super::scope::*;
 use regex_syntax::escape;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Serialize, Serializer};
+use parsing::syntax_set::SyntaxSet;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
-pub type ContextPtr = Rc<RefCell<Context>>;
+
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ContextId {
+    index: usize,
+}
 
 /// The main data structure representing a syntax definition loaded from a
 /// `.sublime-syntax` file. You'll probably only need these as references
@@ -30,17 +34,13 @@ pub struct SyntaxDefinition {
     pub scope: Scope,
     pub first_line_match: Option<String>,
     pub hidden: bool,
-    /// Filled in at link time to avoid serializing it multiple times
-    #[serde(skip_serializing, skip_deserializing)]
-    pub prototype: Option<ContextPtr>,
-
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
     #[serde(serialize_with = "ordered_map")]
-    pub contexts: HashMap<String, ContextPtr>,
+    pub contexts: HashMap<String, Context>,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Context {
     pub meta_scope: Vec<Scope>,
     pub meta_content_scope: Vec<Scope>,
@@ -51,8 +51,7 @@ pub struct Context {
     /// This is filled in by the linker at link time
     /// for contexts that have `meta_include_prototype==true`
     /// and are not included from the prototype.
-    #[serde(skip_serializing, skip_deserializing)]
-    pub prototype: Option<ContextPtr>,
+    pub prototype: Option<ContextId>,
     pub uses_backrefs: bool,
 
     pub patterns: Vec<Pattern>,
@@ -63,7 +62,7 @@ impl Context {
         Context {
             meta_scope: Vec::new(),
             meta_content_scope: Vec::new(),
-            meta_include_prototype: meta_include_prototype,
+            meta_include_prototype,
             clear_scopes: None,
             uses_backrefs: false,
             patterns: Vec::new(),
@@ -72,7 +71,7 @@ impl Context {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Pattern {
     Match(MatchPattern),
     Include(ContextReference),
@@ -82,8 +81,9 @@ pub enum Pattern {
 /// Basically walks the tree of patterns and include directives
 /// in the correct order.
 #[derive(Debug)]
-pub struct MatchIter {
-    ctx_stack: Vec<ContextPtr>,
+pub struct MatchIter<'a> {
+    syntax_set: &'a SyntaxSet,
+    ctx_stack: Vec<&'a Context>,
     index_stack: Vec<usize>,
 }
 
@@ -94,20 +94,13 @@ pub struct MatchPattern {
     pub scope: Vec<Scope>,
     pub captures: Option<CaptureMapping>,
     pub operation: MatchOperation,
-    pub with_prototype: Option<ContextPtr>,
+    pub with_prototype: Option<ContextReference>,
 
     #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
     regex: AtomicLazyCell<Regex>,
 }
 
-/// This wrapper only exists so that I can implement a serialization
-/// trait that crashes if you try and serialize this.
-#[derive(Debug)]
-pub struct LinkerLink {
-    pub link: Weak<RefCell<Context>>,
-}
-
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ContextReference {
     Named(String),
     ByScope {
@@ -118,11 +111,12 @@ pub enum ContextReference {
         name: String,
         sub_context: Option<String>,
     },
-    Inline(ContextPtr),
-    Direct(LinkerLink),
+    Inline(String),
+    Direct(ContextId),
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MatchOperation {
     Push(Vec<ContextReference>),
     Set(Vec<ContextReference>),
@@ -130,10 +124,10 @@ pub enum MatchOperation {
     None,
 }
 
-impl Iterator for MatchIter {
-    type Item = (ContextPtr, usize);
+impl<'a> Iterator for MatchIter<'a> {
+    type Item = (&'a Context, usize);
 
-    fn next(&mut self) -> Option<(ContextPtr, usize)> {
+    fn next(&mut self) -> Option<(&'a Context, usize)> {
         loop {
             if self.ctx_stack.is_empty() {
                 return None;
@@ -143,18 +137,18 @@ impl Iterator for MatchIter {
             // use std::thread::sleep_ms;
             // sleep_ms(500);
             let last_index = self.ctx_stack.len() - 1;
-            let context_ref = self.ctx_stack[last_index].clone();
-            let context = context_ref.borrow();
+            let context = self.ctx_stack[last_index];
             let index = self.index_stack[last_index];
             self.index_stack[last_index] = index + 1;
             if index < context.patterns.len() {
                 match context.patterns[index] {
-                    Pattern::Match(_) => return Some((context_ref.clone(), index)),
+                    Pattern::Match(_) => {
+                        return Some((context, index));
+                    },
                     Pattern::Include(ref ctx_ref) => {
                         let ctx_ptr = match *ctx_ref {
-                            ContextReference::Inline(ref ctx_ptr) => ctx_ptr.clone(),
-                            ContextReference::Direct(ref ctx_ptr) => {
-                                ctx_ptr.link.upgrade().unwrap()
+                            ContextReference::Direct(ref context_id) => {
+                                self.syntax_set.get_context(context_id)
                             }
                             _ => return self.next(), // skip this and move onto the next one
                         };
@@ -173,9 +167,10 @@ impl Iterator for MatchIter {
 /// Returns an iterator over all the match patterns in this context.
 /// It recursively follows include directives. Can only be run on
 /// contexts that have already been linked up.
-pub fn context_iter(ctx: ContextPtr) -> MatchIter {
+pub fn context_iter<'a>(syntax_set: &'a SyntaxSet, context: &'a Context) -> MatchIter<'a> {
     MatchIter {
-        ctx_stack: vec![ctx],
+        syntax_set,
+        ctx_stack: vec![context],
         index_stack: vec![0],
     }
 }
@@ -192,11 +187,18 @@ impl Context {
 
 impl ContextReference {
     /// find the pointed to context, panics if ref is not linked
-    pub fn resolve(&self) -> ContextPtr {
+    pub fn resolve<'a>(&self, syntax_set: &'a SyntaxSet) -> &'a Context {
         match *self {
-            ContextReference::Inline(ref ptr) => ptr.clone(),
-            ContextReference::Direct(ref ptr) => ptr.link.upgrade().unwrap(),
+            ContextReference::Direct(ref context_id) => syntax_set.get_context(context_id),
             _ => panic!("Can only call resolve on linked references: {:?}", self),
+        }
+    }
+
+    /// get the context ID this reference points to, panics if ref is not linked
+    pub fn id(&self) -> ContextId {
+        match *self {
+            ContextReference::Direct(ref context_id) => context_id.clone(),
+            _ => panic!("Can only get ContextId of linked references: {:?}", self),
         }
     }
 }
@@ -225,6 +227,17 @@ pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -
     reg_str
 }
 
+impl ContextId {
+    pub fn new(index: usize) -> Self {
+        ContextId { index }
+    }
+
+    #[inline(always)]
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+}
+
 impl MatchPattern {
 
     pub fn new(
@@ -233,7 +246,7 @@ impl MatchPattern {
         scope: Vec<Scope>,
         captures: Option<CaptureMapping>,
         operation: MatchOperation,
-        with_prototype: Option<ContextPtr>,
+        with_prototype: Option<ContextReference>,
     ) -> MatchPattern {
         MatchPattern {
             has_captures,
@@ -284,6 +297,21 @@ impl MatchPattern {
     }
 }
 
+impl Clone for MatchPattern {
+    fn clone(&self) -> MatchPattern {
+        MatchPattern {
+            has_captures: self.has_captures,
+            regex_str: self.regex_str.clone(),
+            scope: self.scope.clone(),
+            captures: self.captures.clone(),
+            operation: self.operation.clone(),
+            with_prototype: self.with_prototype.clone(),
+            // Can't clone Regex, will have to be recompiled when needed
+            regex: AtomicLazyCell::new(),
+        }
+    }
+}
+
 impl Eq for MatchPattern {}
 
 impl PartialEq for MatchPattern {
@@ -298,32 +326,9 @@ impl PartialEq for MatchPattern {
 }
 
 
-impl Eq for LinkerLink {}
-
-impl PartialEq for LinkerLink {
-    fn eq(&self, other: &LinkerLink) -> bool {
-        self.link.upgrade() == other.link.upgrade()
-    }
-}
-
-
-/// Just panics, we can't do anything with linked up syntaxes
-impl Serialize for LinkerLink {
-    fn serialize<S>(&self, _: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        panic!("Can't serialize syntax definitions which have been linked");
-    }
-}
-
-/// Just panics, we can't do anything with linked up syntaxes
-impl<'de> Deserialize<'de> for LinkerLink {
-    fn deserialize<D>(_: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
-        panic!("No linked syntax should ever have gotten serialized");
-    }
-}
-
 
 /// Serialize the provided map in natural key order, so that it's deterministic when dumping.
-fn ordered_map<K, V, S>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+pub(crate) fn ordered_map<K, V, S>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer, K: Eq + Hash + Ord + Serialize, V: Serialize
 {
     let ordered: BTreeMap<_, _> = map.iter().collect();
