@@ -25,16 +25,16 @@ fn bench_load_theme(b: &mut Bencher) {
     });
 }
 
-fn bench_load_syntaxes(b: &mut Bencher) {
+fn bench_load_from_folder(b: &mut Bencher) {
     b.iter(|| {
         let mut builder = SyntaxSetBuilder::new();
-        builder.load_syntaxes("testdata/Packages", false).unwrap()
+        builder.load_from_folder("testdata/Packages", false).unwrap()
     });
 }
 
 fn bench_link_syntaxes(b: &mut Bencher) {
     let mut builder = SyntaxSetBuilder::new();
-    builder.load_syntaxes("testdata/Packages", false).unwrap();
+    builder.load_from_folder("testdata/Packages", false).unwrap();
     b.iter(|| {
         builder.clone().build();
     });
@@ -44,7 +44,7 @@ fn loading_benchmark(c: &mut Criterion) {
     c.bench_function("load_internal_dump", bench_load_internal_dump);
     c.bench_function("load_internal_themes", bench_load_internal_themes);
     c.bench_function("load_theme", bench_load_theme);
-    c.bench_function("load_syntaxes", bench_load_syntaxes);
+    c.bench_function("load_from_folder", bench_load_from_folder);
     c.bench_function("link_syntaxes", bench_link_syntaxes);
 }
 
