@@ -1398,7 +1398,7 @@ contexts:
         // check that each expected scope stack appears at least once while parsing the given test line
 
         let mut builder = SyntaxSetBuilder::new();
-        builder.add_syntax(syntax);
+        builder.add(syntax);
         let syntax_set = builder.build();
 
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
@@ -1424,7 +1424,7 @@ contexts:
     fn parse(line: &str, syntax: &str) -> Vec<(usize, ScopeStackOp)> {
         let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
         let mut builder = SyntaxSetBuilder::new();
-        builder.add_syntax(syntax);
+        builder.add(syntax);
         let syntax_set = builder.build();
 
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);

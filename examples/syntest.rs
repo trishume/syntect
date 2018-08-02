@@ -305,7 +305,7 @@ fn main() {
     if !syntaxes_path.is_empty() {
         println!("loading syntax definitions from {}", syntaxes_path);
         let mut builder = SyntaxSetBuilder::new();
-        builder.load_syntaxes(&syntaxes_path, true).unwrap(); // note that we load the version with newlines
+        builder.load_from_folder(&syntaxes_path, true).unwrap(); // note that we load the version with newlines
         ss = builder.build();
     }
 

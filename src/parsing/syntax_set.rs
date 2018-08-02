@@ -99,13 +99,16 @@ impl SyntaxSet {
         SyntaxSet::default()
     }
 
-    /// Convenience constructor calling `new` and then `load_syntaxes` on the resulting set
-    /// defaults to lines given not including newline characters, see the
-    /// `load_syntaxes` method docs for an explanation as to why this might not be the best.
+    /// Convenience constructor for creating a builder, then loading syntax
+    /// definitions from a folder and then building the syntax set.
+    ///
+    /// Note that this uses `lines_include_newline` set to `false`, see the
+    /// `load_from_folder` method docs on `SyntaxSetBuilder` for an explanation
+    /// as to why this might not be the best.
     #[cfg(feature = "yaml-load")]
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<SyntaxSet, LoadingError> {
         let mut builder = SyntaxSetBuilder::new();
-        builder.load_syntaxes(folder, false)?;
+        builder.load_from_folder(folder, false)?;
         Ok(builder.build())
     }
 
@@ -209,13 +212,13 @@ impl SyntaxSet {
     /// to use the same highlighting pipeline code.
     ///
     /// This syntax should always be present, if not this method will panic.
-    /// If the way you load syntaxes doesn't create one, use `load_plain_text_syntax`.
+    /// If the way you load syntaxes doesn't create one, use `add_plain_text_syntax`.
     ///
     /// # Examples
     /// ```
     /// use syntect::parsing::SyntaxSetBuilder;
     /// let mut builder = SyntaxSetBuilder::new();
-    /// builder.load_plain_text_syntax();
+    /// builder.add_plain_text_syntax();
     /// let ss = builder.build();
     /// let syntax = ss.find_syntax_by_token("rs").unwrap_or_else(|| ss.find_syntax_plain_text());
     /// assert_eq!(syntax.name, "Plain Text");
@@ -292,7 +295,7 @@ impl SyntaxSetBuilder {
     }
 
     /// Add a syntax to the set.
-    pub fn add_syntax(&mut self, syntax: SyntaxDefinition) {
+    pub fn add(&mut self, syntax: SyntaxDefinition) {
         self.syntaxes.push(syntax);
     }
 
@@ -300,14 +303,14 @@ impl SyntaxSetBuilder {
     /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some
     /// reason the default Sublime plain text syntax is still in `.tmLanguage` format.
     #[cfg(feature = "yaml-load")]
-    pub fn load_plain_text_syntax(&mut self) {
+    pub fn add_plain_text_syntax(&mut self) {
         let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: \
                  {main: []}";
         let syn = SyntaxDefinition::load_from_str(s, false, None).unwrap();
         self.syntaxes.push(syn);
     }
 
-    /// Loads all the .sublime-syntax files in a folder into this syntax set.
+    /// Loads all the .sublime-syntax files in a folder into this builder.
     ///
     /// The `lines_include_newline` parameter is used to work around the fact that Sublime Text normally
     /// passes line strings including newline characters (`\n`) to its regex engine. This results in many
@@ -319,10 +322,11 @@ impl SyntaxSetBuilder {
     /// In the future I might include a "slow mode" that copies the lines passed in and appends a newline if there isn't one.
     /// but in the interest of performance currently this hacky fix will have to do.
     #[cfg(feature = "yaml-load")]
-    pub fn load_syntaxes<P: AsRef<Path>>(&mut self,
-                                         folder: P,
-                                         lines_include_newline: bool)
-                                         -> Result<(), LoadingError> {
+    pub fn load_from_folder<P: AsRef<Path>>(
+        &mut self,
+        folder: P,
+        lines_include_newline: bool
+    ) -> Result<(), LoadingError> {
         for entry in WalkDir::new(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
@@ -588,7 +592,7 @@ mod tests {
     #[test]
     fn can_load() {
         let mut builder = SyntaxSetBuilder::new();
-        builder.load_syntaxes("testdata/Packages", false).unwrap();
+        builder.load_from_folder("testdata/Packages", false).unwrap();
 
         let cmake_dummy_syntax = SyntaxDefinition {
             name: "CMake".to_string(),
@@ -600,8 +604,8 @@ mod tests {
             contexts: HashMap::new(),
         };
 
-        builder.add_syntax(cmake_dummy_syntax);
-        builder.load_plain_text_syntax();
+        builder.add(cmake_dummy_syntax);
+        builder.add_plain_text_syntax();
 
         let ps = builder.build();
 
@@ -643,8 +647,8 @@ mod tests {
     fn can_clone() {
         let cloned_syntax_set = {
             let mut builder = SyntaxSetBuilder::new();
-            builder.add_syntax(syntax_a());
-            builder.add_syntax(syntax_b());
+            builder.add(syntax_a());
+            builder.add(syntax_b());
 
             let syntax_set_original = builder.build();
             syntax_set_original.clone()
@@ -662,8 +666,8 @@ mod tests {
     fn can_add_more_syntaxes_with_builder() {
         let syntax_set_original = {
             let mut builder = SyntaxSetBuilder::new();
-            builder.add_syntax(syntax_a());
-            builder.add_syntax(syntax_b());
+            builder.add(syntax_a());
+            builder.add(syntax_b());
             builder.build()
         };
 
@@ -681,7 +685,7 @@ mod tests {
               push: scope:source.a#main
         "#, true, None).unwrap();
 
-        builder.add_syntax(syntax_c);
+        builder.add(syntax_c);
 
         let syntax_set = builder.build();
 
@@ -698,8 +702,8 @@ mod tests {
 
         let syntax_set = {
             let mut builder = SyntaxSetBuilder::new();
-            builder.add_syntax(syntax_a());
-            builder.add_syntax(syntax_b());
+            builder.add(syntax_a());
+            builder.add(syntax_b());
             builder.build()
         };
 
