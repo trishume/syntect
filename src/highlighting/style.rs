@@ -82,6 +82,16 @@ impl Style {
     }
 }
 
+impl Default for Style {
+    fn default() -> Style {
+        Style {
+            foreground: Color::BLACK,
+            background: Color::WHITE,
+            font_style: FontStyle::empty(),
+        }
+    }
+}
+
 impl StyleModifier {
     /// Applies the other modifier to this one, creating a new modifier.
     /// Values in `other` are preferred.
