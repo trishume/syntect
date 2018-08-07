@@ -60,3 +60,78 @@ pub fn debug_print_ops(line: &str, ops: &[(usize, ScopeStackOp)]) {
         }
     }
 }
+
+
+/// An iterator over the lines of a string, including the line endings.
+///
+/// This is similar to the standard library's `lines` method on `str`, except
+/// that the yielded lines include the trailing newline character(s).
+///
+/// You can use it if you're parsing/highlighting some text that you have as a
+/// string. With this, you can use the "newlines" variant of syntax definitions,
+/// which is recommended.
+///
+/// # Examples
+///
+/// ```
+/// use syntect::util::LinesWithEndings;
+///
+/// let mut lines = LinesWithEndings::from("foo\nbar\nbaz");
+///
+/// assert_eq!(Some("foo\n"), lines.next());
+/// assert_eq!(Some("bar\n"), lines.next());
+/// assert_eq!(Some("baz"), lines.next());
+///
+/// assert_eq!(None, lines.next());
+/// ```
+pub struct LinesWithEndings<'a> {
+    input: &'a str,
+}
+
+impl<'a> LinesWithEndings<'a> {
+    pub fn from(input: &'a str) -> LinesWithEndings<'a> {
+        LinesWithEndings { input }
+    }
+}
+
+impl<'a> Iterator for LinesWithEndings<'a> {
+    type Item = &'a str;
+
+    #[inline]
+    fn next(&mut self) -> Option<&'a str> {
+        if self.input.is_empty() {
+            return None;
+        }
+        let split = self.input
+            .find('\n')
+            .map(|i| i + 1)
+            .unwrap_or_else(|| self.input.len());
+        let (line, rest) = self.input.split_at(split);
+        self.input = rest;
+        Some(line)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lines_with_endings() {
+        fn lines(s: &str) -> Vec<&str> {
+            LinesWithEndings::from(s).collect()
+        }
+
+        assert!(lines("").is_empty());
+        assert_eq!(lines("f"), vec!["f"]);
+        assert_eq!(lines("foo"), vec!["foo"]);
+        assert_eq!(lines("foo\n"), vec!["foo\n"]);
+        assert_eq!(lines("foo\nbar"), vec!["foo\n", "bar"]);
+        assert_eq!(lines("foo\nbar\n"), vec!["foo\n", "bar\n"]);
+        assert_eq!(lines("foo\r\nbar"), vec!["foo\r\n", "bar"]);
+        assert_eq!(lines("foo\r\nbar\r\n"), vec!["foo\r\n", "bar\r\n"]);
+        assert_eq!(lines("\nfoo"), vec!["\n", "foo"]);
+        assert_eq!(lines("\n\n\n"), vec!["\n", "\n", "\n"]);
+    }
+}
