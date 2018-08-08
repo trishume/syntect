@@ -123,28 +123,32 @@ impl<'a> Iterator for LinesWithEndings<'a> {
 /// Generic for testing purposes and fancier use cases, but intended for use with
 /// the `Vec<(Style, &str)>` returned by `highlight` methods. Look at the source
 /// code for `modify_range` for an example usage.
-pub fn split_at<'a, A: Clone>(mut v: &[(A, &'a str)], mut split_i: usize) -> (Vec<(A, &'a str)>, Vec<(A, &'a str)>) {
+pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'a str)>, Vec<(A, &'a str)>) {
+    // This function works by gradually reducing the problem into smaller sub-problems from the front
+    let mut rest = v;
+    let mut rest_split_i = split_i;
+
     // Consume all tokens before the split
     let mut before = Vec::new();
-    for tok in v {
-        if tok.1.len() > split_i {
+    for tok in rest { // Use for instead of a while to avoid bounds checks
+        if tok.1.len() > rest_split_i {
             break;
         }
         before.push(tok.clone());
-        split_i -= tok.1.len();
+        rest_split_i -= tok.1.len();
     }
-    v = &v[before.len()..];
+    rest = &rest[before.len()..];
 
     let mut after = Vec::new();
     // If necessary, split the token the split falls inside
-    if v.len() > 0 && split_i > 0 {
-        let (sa, sb) = v[0].1.split_at(split_i);
-        before.push((v[0].0.clone(), sa));
-        after.push((v[0].0.clone(), sb));
-        v = &v[1..];
+    if rest.len() > 0 && rest_split_i > 0 {
+        let (sa, sb) = rest[0].1.split_at(rest_split_i);
+        before.push((rest[0].0.clone(), sa));
+        after.push((rest[0].0.clone(), sb));
+        rest = &rest[1..];
     }
 
-    after.extend_from_slice(v);
+    after.extend_from_slice(rest);
 
     return (before, after);
 }
