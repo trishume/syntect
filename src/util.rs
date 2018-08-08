@@ -1,5 +1,5 @@
-//! Convenient utility methods, mostly for printing `syntect` data structures
-//! prettily to the terminal.
+//! Convenient helper functions for common use cases:
+//! printing to terminal, iterating lines with `\n`s, modifying ranges of highlighted output
 use highlighting::{Style, StyleModifier};
 use std::fmt::Write;
 use std::ops::Range;
