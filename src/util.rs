@@ -124,29 +124,29 @@ impl<'a> Iterator for LinesWithEndings<'a> {
 /// the `Vec<(Style, &str)>` returned by `highlight` methods. Look at the source
 /// code for `modify_range` for an example usage.
 pub fn split_at<'a, A: Clone>(mut v: &[(A, &'a str)], mut split_i: usize) -> (Vec<(A, &'a str)>, Vec<(A, &'a str)>) {
-  // Consume all tokens before the split
-  let mut before = Vec::new();
-  for tok in v {
-    if tok.1.len() > split_i {
-      break;
+    // Consume all tokens before the split
+    let mut before = Vec::new();
+    for tok in v {
+        if tok.1.len() > split_i {
+            break;
+        }
+        before.push(tok.clone());
+        split_i -= tok.1.len();
     }
-    before.push(tok.clone());
-    split_i -= tok.1.len();
-  }
-  v = &v[before.len()..];
+    v = &v[before.len()..];
 
-  let mut after = Vec::new();
-  // If necessary, split the token the split falls inside
-  if v.len() > 0 && split_i > 0 {
-    let (sa, sb) = v[0].1.split_at(split_i);
-    before.push((v[0].0.clone(), sa));
-    after.push((v[0].0.clone(), sb));
-    v = &v[1..];
-  }
+    let mut after = Vec::new();
+    // If necessary, split the token the split falls inside
+    if v.len() > 0 && split_i > 0 {
+        let (sa, sb) = v[0].1.split_at(split_i);
+        before.push((v[0].0.clone(), sa));
+        after.push((v[0].0.clone(), sb));
+        v = &v[1..];
+    }
 
-  after.extend_from_slice(v);
+    after.extend_from_slice(v);
 
-  return (before, after);
+    return (before, after);
 }
 
 /// Modify part of a highlighted line using a style modifier, useful for highlighting sections of a line.
@@ -166,12 +166,12 @@ pub fn split_at<'a, A: Clone>(mut v: &[(A, &'a str)], mut split_i: usize) -> (Ve
 /// assert_eq!(l2, &[(plain, "a"), (bold, "bc"), (bold, "def"), (plain, "ghi")]);
 /// ```
 pub fn modify_range<'a>(v: &[(Style, &'a str)], r: Range<usize>, modifier: StyleModifier) -> Vec<(Style, &'a str)> {
-  let (mut result, in_and_after) = split_at(v, r.start);
-  let (inside, mut after) = split_at(&in_and_after, r.end - r.start);
+    let (mut result, in_and_after) = split_at(v, r.start);
+    let (inside, mut after) = split_at(&in_and_after, r.end - r.start);
 
-  result.extend(inside.iter().map(|(style, s)| { (style.apply(modifier), *s)}));
-  result.append(&mut after);
-  result
+    result.extend(inside.iter().map(|(style, s)| { (style.apply(modifier), *s)}));
+    result.append(&mut after);
+    result
 }
 
 #[cfg(test)]
@@ -198,25 +198,25 @@ mod tests {
 
     #[test]
     fn test_split_at() {
-      let l: &[(u8, &str)] = &[];
-      let (before, after) = split_at(l, 0); // empty
-      assert_eq!((&before[..], &after[..]), (&[][..],&[][..]));
+        let l: &[(u8, &str)] = &[];
+        let (before, after) = split_at(l, 0); // empty
+        assert_eq!((&before[..], &after[..]), (&[][..],&[][..]));
 
-      let l = &[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")];
+        let l = &[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")];
 
-      let (before, after) = split_at(l, 0); // at start
-      assert_eq!((&before[..], &after[..]), (&[][..],&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..]));
+        let (before, after) = split_at(l, 0); // at start
+        assert_eq!((&before[..], &after[..]), (&[][..],&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..]));
 
-      let (before, after) = split_at(l, 4); // inside token
-      assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "d")][..],&[(1u8, "ef"), (2u8, "ghi")][..]));
+        let (before, after) = split_at(l, 4); // inside token
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "d")][..],&[(1u8, "ef"), (2u8, "ghi")][..]));
 
-      let (before, after) = split_at(l, 3); // between tokens
-      assert_eq!((&before[..], &after[..]), (&[(0u8, "abc")][..],&[(1u8, "def"), (2u8, "ghi")][..]));
+        let (before, after) = split_at(l, 3); // between tokens
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc")][..],&[(1u8, "def"), (2u8, "ghi")][..]));
 
-      let (before, after) = split_at(l, 9); // just after last token
-      assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
+        let (before, after) = split_at(l, 9); // just after last token
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
 
-      let (before, after) = split_at(l, 10); // out of bounds
-      assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
+        let (before, after) = split_at(l, 10); // out of bounds
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
     }
 }
