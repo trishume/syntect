@@ -67,7 +67,13 @@ fn load_syntax_file(p: &Path,
     let mut s = String::new();
     f.read_to_string(&mut s)?;
 
-    Ok(SyntaxDefinition::load_from_str(&s, lines_include_newline, p.file_stem().and_then(|x| x.to_str()))?)
+    Ok(
+        SyntaxDefinition::load_from_str(
+            &s,
+            lines_include_newline,
+            p.file_stem().and_then(|x| x.to_str())
+        ).map_err(|e| LoadingError::ParseSyntax(e, Some(format!("{}", p.display()))))?
+    )
 }
 
 impl Clone for SyntaxSet {
