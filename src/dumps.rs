@@ -85,7 +85,7 @@ impl SyntaxSet {
     ///
     /// This method loads the version for parsing line strings with no `\n` characters at the end.
     /// If you're able to efficiently include newlines at the end of strings, use `load_defaults_newlines`
-    /// since it works better. See `SyntaxSetBuilder::load_from_folder` for more info on this issue.
+    /// since it works better. See `SyntaxSetBuilder::add_from_folder` for more info on this issue.
     ///
     /// This is the recommended way of creating a syntax set for
     /// non-advanced use cases. It is also significantly faster than loading the YAML files.
@@ -129,7 +129,7 @@ mod tests {
         use super::*;
         use parsing::SyntaxSetBuilder;
         let mut builder = SyntaxSetBuilder::new();
-        builder.load_from_folder("testdata/Packages", false).unwrap();
+        builder.add_from_folder("testdata/Packages", false).unwrap();
         let ss = builder.build();
 
         let bin = dump_binary(&ss);
@@ -145,12 +145,12 @@ mod tests {
         use parsing::SyntaxSetBuilder;
 
         let mut builder1 = SyntaxSetBuilder::new();
-        builder1.load_from_folder("testdata/Packages", false).unwrap();
+        builder1.add_from_folder("testdata/Packages", false).unwrap();
         let ss1 = builder1.build();
         let bin1 = dump_binary(&ss1);
 
         let mut builder2 = SyntaxSetBuilder::new();
-        builder2.load_from_folder("testdata/Packages", false).unwrap();
+        builder2.add_from_folder("testdata/Packages", false).unwrap();
         let ss2 = builder2.build();
         let bin2 = dump_binary(&ss2);
         // This is redundant, but assert_eq! can be really slow on a large

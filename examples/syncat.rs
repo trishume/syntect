@@ -59,7 +59,7 @@ fn main() {
     if let Some(folder) = matches.opt_str("extra-syntaxes") {
         // TODO: no way to go back to builder anymore :/
         let mut builder = ss.into_builder();
-        builder.load_from_folder(folder, !no_newlines).unwrap();
+        builder.add_from_folder(folder, !no_newlines).unwrap();
         ss = builder.build();
     }
 
@@ -100,7 +100,7 @@ fn main() {
 
             // We use read_line instead of `for line in highlighter.reader.lines()` because that
             // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
-            // See the documentation for `SyntaxSetBuilder::load_from_folder`.
+            // See the documentation for `SyntaxSetBuilder::add_from_folder`.
             // It also allows re-using the line buffer, which should be a tiny bit faster.
             let mut line = String::new();
             while highlighter.reader.read_line(&mut line).unwrap() > 0 {
