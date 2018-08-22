@@ -46,12 +46,12 @@ impl ThemeSet {
     /// Generate a `ThemeSet` from all themes in a folder
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<ThemeSet, LoadingError> {
         let mut theme_set = Self::new();
-        theme_set.load_themes(folder)?;
+        theme_set.add_from_folder(folder)?;
         Ok(theme_set)
     }
 
     /// Load all the themes in the folder into this `ThemeSet`
-    pub fn load_themes<P: AsRef<Path>>(&mut self, folder: P) -> Result<(), LoadingError> {
+    pub fn add_from_folder<P: AsRef<Path>>(&mut self, folder: P) -> Result<(), LoadingError> {
         let paths = Self::discover_theme_paths(folder)?;
         for p in &paths {
             let theme = Self::get_theme(p)?;
