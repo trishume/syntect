@@ -109,12 +109,12 @@ impl SyntaxSet {
     /// definitions from a folder and then building the syntax set.
     ///
     /// Note that this uses `lines_include_newline` set to `false`, see the
-    /// `load_from_folder` method docs on `SyntaxSetBuilder` for an explanation
+    /// `add_from_folder` method docs on `SyntaxSetBuilder` for an explanation
     /// as to why this might not be the best.
     #[cfg(feature = "yaml-load")]
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<SyntaxSet, LoadingError> {
         let mut builder = SyntaxSetBuilder::new();
-        builder.load_from_folder(folder, false)?;
+        builder.add_from_folder(folder, false)?;
         Ok(builder.build())
     }
 
@@ -328,7 +328,7 @@ impl SyntaxSetBuilder {
     /// In the future I might include a "slow mode" that copies the lines passed in and appends a newline if there isn't one.
     /// but in the interest of performance currently this hacky fix will have to do.
     #[cfg(feature = "yaml-load")]
-    pub fn load_from_folder<P: AsRef<Path>>(
+    pub fn add_from_folder<P: AsRef<Path>>(
         &mut self,
         folder: P,
         lines_include_newline: bool
@@ -598,7 +598,7 @@ mod tests {
     #[test]
     fn can_load() {
         let mut builder = SyntaxSetBuilder::new();
-        builder.load_from_folder("testdata/Packages", false).unwrap();
+        builder.add_from_folder("testdata/Packages", false).unwrap();
 
         let cmake_dummy_syntax = SyntaxDefinition {
             name: "CMake".to_string(),

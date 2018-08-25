@@ -24,13 +24,13 @@ fn main() {
          Some(ref packpath_nonewlines)) if cmd == "synpack" => {
             let mut builder = SyntaxSetBuilder::new();
             builder.add_plain_text_syntax();
-            builder.load_from_folder(package_dir, true).unwrap();
+            builder.add_from_folder(package_dir, true).unwrap();
             let ss = builder.build();
             dump_to_file(&ss, packpath_newlines).unwrap();
 
             let mut builder_nonewlines = SyntaxSetBuilder::new();
             builder_nonewlines.add_plain_text_syntax();
-            builder_nonewlines.load_from_folder(package_dir, false).unwrap();
+            builder_nonewlines.add_from_folder(package_dir, false).unwrap();
             let ss_nonewlines = builder_nonewlines.build();
             dump_to_file(&ss_nonewlines, packpath_nonewlines).unwrap();
         }
