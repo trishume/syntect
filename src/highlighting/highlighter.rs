@@ -207,17 +207,7 @@ impl<'a> Highlighter<'a> {
             font_style: None,
         };
         for item in sorted {
-            if item.style.background.is_some() {
-                modifier.background = item.style.background;
-            }
-            if item.style.foreground.is_some() {
-                modifier.foreground = item.style.foreground;
-            }
-            if let Some(apply_style) = item.style.font_style {
-                let mut font_style = modifier.font_style.unwrap_or_else(||FontStyle::default());
-                font_style.insert(apply_style);
-                modifier.font_style = Some(font_style);
-            }
+            modifier = modifier.apply(item.style);
         }
         return modifier;
     }
@@ -334,10 +324,7 @@ mod tests {
         use parsing::ScopeStack;
         use std::str::FromStr;
         use highlighting::{ThemeSettings, ScopeSelectors};
-        
-        let mut bold_and_italic = FontStyle::BOLD;
-        bold_and_italic.insert(FontStyle::ITALIC);
-        
+
         let test_color_scheme = Theme {
             name: None,
             author: None,
@@ -394,7 +381,7 @@ mod tests {
                            b: 64,
                            a: 0xFF,
                        },
-                       font_style: bold_and_italic,
+                       font_style: FontStyle::BOLD,
                    });
     }
 }
