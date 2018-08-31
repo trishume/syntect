@@ -7,7 +7,7 @@ use std::iter::Iterator;
 
 use parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
 use super::selector::ScopeSelector;
-use super::theme::Theme;
+use super::theme::{Theme, ThemeItem};
 use super::style::{Color, FontStyle, Style, StyleModifier};
 
 /// Basically a wrapper around a `Theme` preparing it to be used for highlighting.
@@ -189,7 +189,7 @@ impl<'a> Highlighter<'a> {
     /// It's only public because I default to making things public for power users unless
     /// I have a good argument nobody will ever need to use the method.
     pub fn get_style(&self, path: &[Scope]) -> StyleModifier {
-        let max_item = self.theme
+        let mut matching_items : Vec<(MatchPower, &ThemeItem)> = self.theme
             .scopes
             .iter()
             .filter_map(|item| {
@@ -197,13 +197,29 @@ impl<'a> Highlighter<'a> {
                     .does_match(path)
                     .map(|score| (score, item))
             })
-            .max_by_key(|&(score, _)| score)
+            .collect();
+        matching_items.sort_unstable_by_key(|&(score, _)| score);
+        let sorted = matching_items.iter()
             .map(|(_, item)| item);
-        StyleModifier {
-            foreground: max_item.and_then(|item| item.style.foreground),
-            background: max_item.and_then(|item| item.style.background),
-            font_style: max_item.and_then(|item| item.style.font_style),
+        let mut modifier = StyleModifier {
+            background: None,
+            foreground: None,
+            font_style: None,
+        };
+        for item in sorted {
+            if item.style.background.is_some() {
+                modifier.background = item.style.background;
+            }
+            if item.style.foreground.is_some() {
+                modifier.foreground = item.style.foreground;
+            }
+            if let Some(apply_style) = item.style.font_style {
+                let mut font_style = modifier.font_style.unwrap_or_else(||FontStyle::default());
+                font_style.insert(apply_style);
+                modifier.font_style = Some(font_style);
+            }
         }
+        return modifier;
     }
 
     /// Like get_style but only guarantees returning any new style
@@ -311,5 +327,74 @@ mod tests {
                        font_style: FontStyle::empty(),
                    },
                     "5"));
+    }
+    
+    #[test]
+    fn can_parse_incremental_styles() {
+        use parsing::ScopeStack;
+        use std::str::FromStr;
+        use highlighting::{ThemeSettings, ScopeSelectors};
+        
+        let mut bold_and_italic = FontStyle::BOLD;
+        bold_and_italic.insert(FontStyle::ITALIC);
+        
+        let test_color_scheme = Theme {
+            name: None,
+            author: None,
+            settings: ThemeSettings::default(),
+            scopes: vec![
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("comment.line").unwrap(),
+                    style: StyleModifier {
+                        foreground: None,
+                        background: Some(Color { r: 64, g: 255, b: 64, a: 255 }),
+                        font_style: None,
+                    },
+                },
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("comment").unwrap(),
+                    style: StyleModifier {
+                        foreground: Some(Color { r: 255, g: 0, b: 0, a: 255 }),
+                        background: None,
+                        font_style: Some(FontStyle::ITALIC),
+                    },
+                },
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("comment.line.rs").unwrap(),
+                    style: StyleModifier {
+                        foreground: None,
+                        background: None,
+                        font_style: Some(FontStyle::BOLD),
+                    },
+                },
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("no.match").unwrap(),
+                    style: StyleModifier {
+                        foreground: None,
+                        background: Some(Color { r: 255, g: 255, b: 255, a: 255 }),
+                        font_style: Some(FontStyle::UNDERLINE),
+                    },
+                },
+            ],
+        };
+        let highlighter = Highlighter::new(&test_color_scheme);
+
+        let scope_stack = ScopeStack::from_str("comment.line.rs").unwrap();
+        let style = highlighter.style_for_stack(&scope_stack.as_slice());
+        assert_eq!(style, Style {
+                       foreground: Color {
+                           r: 255,
+                           g: 0,
+                           b: 0,
+                           a: 0xFF,
+                       },
+                       background: Color {
+                           r: 64,
+                           g: 255,
+                           b: 64,
+                           a: 0xFF,
+                       },
+                       font_style: bold_and_italic,
+                   });
     }
 }
