@@ -198,7 +198,7 @@ impl<'a> Highlighter<'a> {
                     .map(|score| (score, item))
             })
             .collect();
-        matching_items.sort_unstable_by_key(|&(score, _)| score);
+        matching_items.sort_by_key(|&(score, _)| score);
         let sorted = matching_items.iter()
             .map(|(_, item)| item);
         let mut modifier = StyleModifier {
