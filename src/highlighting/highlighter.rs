@@ -179,15 +179,9 @@ impl<'a> Highlighter<'a> {
         }
     }
 
-    /// Figures out which scope selector in the theme best matches this scope stack.
-    /// It only returns any changes to the style that should be applied when the top element
-    /// is pushed on to the stack. These actually aren't guaranteed to be different than the current
-    /// style. Basically what this means is that you have to gradually apply styles starting with the
-    /// default and working your way up the stack in order to get the correct style.
-    ///
-    /// Don't worry if this sounds complex, you shouldn't need to use this method.
-    /// It's only public because I default to making things public for power users unless
-    /// I have a good argument nobody will ever need to use the method.
+    /// Figures out which scope selectors in the color scheme match this scope stack.
+    /// Then, collects the style modifications in score order, to return a modifier
+    /// that encompasses all matching rules from the color scheme.
     pub fn get_style(&self, path: &[Scope]) -> StyleModifier {
         let mut matching_items : Vec<(MatchPower, &ThemeItem)> = self.theme
             .scopes
@@ -212,29 +206,47 @@ impl<'a> Highlighter<'a> {
         return modifier;
     }
 
-    /// Like get_style but only guarantees returning any new style
-    /// if the last element of `path` was just pushed on to the stack.
+    /// It only returns any changes to the style that should be applied when the top element
+    /// is pushed on to the stack. These actually aren't guaranteed to be different than the current
+    /// style. Basically what this means is that you have to gradually apply styles starting with the
+    /// default and working your way up the stack in order to get the correct style.
     /// Panics if `path` is empty.
+    ///
+    /// Don't worry if this sounds complex, you shouldn't need to use this method.
+    /// It's only public because I default to making things public for power users unless
+    /// I have a good argument nobody will ever need to use the method.
     pub fn get_new_style(&self, path: &[Scope]) -> StyleModifier {
         let last_scope = path[path.len() - 1];
         let single_res = self.single_selectors
             .iter()
             .find(|a| a.0.is_prefix_of(last_scope));
-        let mult_res = self.multi_selectors
-            .iter()
+        let mut mult_res : Vec<(MatchPower, &StyleModifier)> = self.multi_selectors
+            .iter() // TODO: filter by selectors containing a scope which is a prefix of last_scope, to avoid trying to calculate match scores where no (new) match will be found?
             .filter_map(|&(ref sel, ref style)| sel.does_match(path).map(|score| (score, style)))
-            .max_by_key(|&(score, _)| score);
+            .collect();
+        
         // println!("{:?}", single_res);
-        if let Some((score, style)) = mult_res {
-            let mut single_score: f64 = -1.0;
-            if let Some(&(scope, _)) = single_res {
-                single_score = (scope.len() as f64) *
-                               ((ATOM_LEN_BITS * ((path.len() - 1) as u16)) as f64).exp2();
+        if !mult_res.is_empty() {
+            if let Some(&(scope, ref style)) = single_res {
+                let single_score = (scope.len() as f64) *
+                                   ((ATOM_LEN_BITS * ((path.len() - 1) as u16)) as f64).exp2();
+                // add the score and related style from the single selector to the matches from the multiple selectors
+                mult_res.push((MatchPower(single_score), style));
             }
-            // println!("multi at {:?} score {:?} single score {:?}", path, score, single_score);
-            if MatchPower(single_score) < score {
-                return *style;
+            mult_res.sort_by_key(|&(score, _)| score);
+            let sorted = mult_res.iter()
+                .map(|(_, item)| item);
+            
+            //let mut modifier = sorted.next().unwrap();
+            let mut modifier = StyleModifier {
+                foreground: None,
+                background: None,
+                font_style: None,
+            };
+            for item in sorted {
+                modifier = modifier.apply(**item);
             }
+            return modifier;
         }
         if let Some(&(_, ref style)) = single_res {
             return *style;
@@ -252,10 +264,7 @@ impl<'a> Highlighter<'a> {
     /// the caller should be caching results.
     pub fn style_for_stack(&self, stack: &[Scope]) -> Style {
         let mut style = self.get_default();
-        for i in 0..stack.len() {
-            let style_mod = self.get_style(&stack[0..i+1]);
-            style = style.apply(style_mod);
-        }
+        style = style.apply(self.get_style(&stack));
         style
     }
 
@@ -269,10 +278,7 @@ impl<'a> Highlighter<'a> {
     /// the caller should be caching results.
     pub fn style_mod_for_stack(&self, stack: &[Scope]) -> StyleModifier {
         let mut style_mod = StyleModifier::default();
-        for i in 0..stack.len() {
-            let next_mod = self.get_style(&stack[0..i+1]);
-            style_mod = style_mod.apply(next_mod);
-        }
+        style_mod = style_mod.apply(self.get_style(&stack));
         style_mod
     }
 }
