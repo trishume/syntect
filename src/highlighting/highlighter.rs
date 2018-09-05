@@ -71,8 +71,7 @@ impl HighlightState {
     pub fn new(highlighter: &Highlighter, initial_stack: ScopeStack) -> HighlightState {
         let mut initial_styles = vec![highlighter.get_default()];
         for i in 0..initial_stack.len() {
-            let style = initial_styles[i];
-            style.apply(highlighter.get_style(initial_stack.bottom_n(i)));
+            let style = highlighter.style_for_stack(initial_stack.bottom_n(i));
             initial_styles.push(style);
         }
 
@@ -126,9 +125,7 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
                 // println!("{:?} - {:?}", op, cur_stack);
                 match op {
                     BasicScopeStackOp::Push(_) => {
-                        // we can push multiple times so this might have changed
-                        let style = *m_styles.last().unwrap();
-                        m_styles.push(style.apply(highlighter.get_new_style(cur_stack)));
+                        m_styles.push(highlighter.style_for_stack(cur_stack));
                     }
                     BasicScopeStackOp::Pop => {
                         m_styles.pop();
@@ -195,6 +192,7 @@ impl<'a> Highlighter<'a> {
         matching_items.sort_by_key(|&(score, _)| score);
         let sorted = matching_items.iter()
             .map(|(_, item)| item);
+        // let mut modifier = sorted.next();
         let mut modifier = StyleModifier {
             background: None,
             foreground: None,
@@ -204,58 +202,6 @@ impl<'a> Highlighter<'a> {
             modifier = modifier.apply(item.style);
         }
         return modifier;
-    }
-
-    /// It only returns any changes to the style that should be applied when the top element
-    /// is pushed on to the stack. These actually aren't guaranteed to be different than the current
-    /// style. Basically what this means is that you have to gradually apply styles starting with the
-    /// default and working your way up the stack in order to get the correct style.
-    /// Panics if `path` is empty.
-    ///
-    /// Don't worry if this sounds complex, you shouldn't need to use this method.
-    /// It's only public because I default to making things public for power users unless
-    /// I have a good argument nobody will ever need to use the method.
-    pub fn get_new_style(&self, path: &[Scope]) -> StyleModifier {
-        let last_scope = path[path.len() - 1];
-        let single_res = self.single_selectors
-            .iter()
-            .find(|a| a.0.is_prefix_of(last_scope));
-        let mut mult_res : Vec<(MatchPower, &StyleModifier)> = self.multi_selectors
-            .iter() // TODO: filter by selectors containing a scope which is a prefix of last_scope, to avoid trying to calculate match scores where no (new) match will be found?
-            .filter_map(|&(ref sel, ref style)| sel.does_match(path).map(|score| (score, style)))
-            .collect();
-        
-        // println!("{:?}", single_res);
-        if !mult_res.is_empty() {
-            if let Some(&(scope, ref style)) = single_res {
-                let single_score = (scope.len() as f64) *
-                                   ((ATOM_LEN_BITS * ((path.len() - 1) as u16)) as f64).exp2();
-                // add the score and related style from the single selector to the matches from the multiple selectors
-                mult_res.push((MatchPower(single_score), style));
-            }
-            mult_res.sort_by_key(|&(score, _)| score);
-            let sorted = mult_res.iter()
-                .map(|(_, item)| item);
-            
-            //let mut modifier = sorted.next().unwrap();
-            let mut modifier = StyleModifier {
-                foreground: None,
-                background: None,
-                font_style: None,
-            };
-            for item in sorted {
-                modifier = modifier.apply(**item);
-            }
-            return modifier;
-        }
-        if let Some(&(_, ref style)) = single_res {
-            return *style;
-        }
-        StyleModifier {
-            foreground: None,
-            background: None,
-            font_style: None,
-        }
     }
 
     /// Returns the fully resolved style for the given stack.
