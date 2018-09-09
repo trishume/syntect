@@ -145,7 +145,7 @@ fn write_css_color(s: &mut String, c: Color) {
 /// use syntect::html::{styles_to_coloured_html, IncludeBackground};
 ///
 /// // Load these once at the start of your program
-/// let ps = SyntaxSet::load_defaults_nonewlines();
+/// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
