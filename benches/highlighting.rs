@@ -7,6 +7,7 @@ use criterion::{Bencher, Criterion};
 use syntect::parsing::{SyntaxSet, SyntaxReference, ScopeStack};
 use syntect::highlighting::{ThemeSet, Theme};
 use syntect::easy::HighlightLines;
+use syntect::html::highlighted_html_for_string;
 use std::str::FromStr;
 use std::fs::File;
 use std::io::Read;
@@ -56,8 +57,24 @@ fn stack_matching(b: &mut Bencher) {
     });
 }
 
+fn highlight_html(b: &mut Bencher) {
+    let ss = SyntaxSet::load_defaults_newlines();
+    let ts = ThemeSet::load_defaults();
+
+    let path = "testdata/parser.rs";
+    let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
+    let mut f = File::open(path).unwrap();
+    let mut s = String::new();
+    f.read_to_string(&mut s).unwrap();
+
+    b.iter(|| {
+        highlighted_html_for_string(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
+    });
+}
+
 fn highlighting_benchmark(c: &mut Criterion) {
     c.bench_function("stack_matching", stack_matching);
+    c.bench_function("highlight_html", highlight_html);
     c.bench_function_over_inputs(
         "highlight",
         |b, s| highlight_file(b, s),
