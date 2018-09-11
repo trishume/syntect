@@ -32,7 +32,7 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
     }
 }
 
-/// Convenience method that combines `start_coloured_html_snippet`, `styles_to_coloured_html`
+/// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
 /// and `HighlightLines` from `syntect::easy` to create a full highlighted HTML snippet for
 /// a string (which can contain many lines).
 ///
@@ -40,17 +40,17 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
 /// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
 pub fn highlighted_html_for_string(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> String {
     let mut highlighter = HighlightLines::new(syntax, theme);
-    let (mut output, bg) = start_coloured_html_snippet(theme);
+    let (mut output, bg) = start_highlighted_html_snippet(theme);
 
     for line in LinesWithEndings::from(s) {
         let regions = highlighter.highlight(line, ss);
-        append_coloured_html_for_styles(&regions[..], IncludeBackground::IfDifferent(bg), &mut output);
+        append_highlighted_html_for_styled_line(&regions[..], IncludeBackground::IfDifferent(bg), &mut output);
     }
     output.push_str("</pre>\n");
     output
 }
 
-/// Convenience method that combines `start_coloured_html_snippet`, `styles_to_coloured_html`
+/// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
 /// and `HighlightFile` from `syntect::easy` to create a full highlighted HTML snippet for
 /// a file.
 ///
@@ -61,13 +61,13 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
                                                  theme: &Theme)
                                                  -> io::Result<String> {
     let mut highlighter = HighlightFile::new(path, ss, theme)?;
-    let (mut output, bg) = start_coloured_html_snippet(theme);
+    let (mut output, bg) = start_highlighted_html_snippet(theme);
 
     let mut line = String::new();
     while highlighter.reader.read_line(&mut line)? > 0 {
         {
             let regions = highlighter.highlight_lines.highlight(&line, ss);
-            append_coloured_html_for_styles(&regions[..], IncludeBackground::IfDifferent(bg), &mut output);
+            append_highlighted_html_for_styled_line(&regions[..], IncludeBackground::IfDifferent(bg), &mut output);
         }
         line.clear();
     }
@@ -111,12 +111,12 @@ pub fn tokens_to_classed_html(line: &str,
     s
 }
 
-/// Determines how background colour attributes are generated
+/// Determines how background color attributes are generated
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IncludeBackground {
     /// Don't include `background-color`, for performance or so that you can use your own background.
     No,
-    /// Set background colour attributes on every node
+    /// Set background color attributes on every node
     Yes,
     /// Only set the `background-color` if it is different than the default (presumably set on a parent element)
     IfDifferent(Color),
@@ -142,7 +142,7 @@ fn write_css_color(s: &mut String, c: Color) {
 /// use syntect::easy::HighlightLines;
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::highlighting::{ThemeSet, Style};
-/// use syntect::html::{styles_to_coloured_html, IncludeBackground};
+/// use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
 ///
 /// // Load these once at the start of your program
 /// let ps = SyntaxSet::load_defaults_newlines();
@@ -151,18 +151,18 @@ fn write_css_color(s: &mut String, c: Color) {
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
 /// let regions = h.highlight("5", &ps);
-/// let html = styles_to_coloured_html(&regions[..], IncludeBackground::No);
+/// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No);
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```
-pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> String {
+pub fn styled_line_to_highlighted_html(v: &[(Style, &str)], bg: IncludeBackground) -> String {
     let mut s: String = String::new();
-    append_coloured_html_for_styles(v, bg, &mut s);
+    append_highlighted_html_for_styled_line(v, bg, &mut s);
     s
 }
 
-/// Like `styles_to_coloured_html` but appends to a `String` for increased efficiency.
-/// In fact `styles_to_coloured_html` is just a wrapper around this function.
-pub fn append_coloured_html_for_styles(v: &[(Style, &str)], bg: IncludeBackground, mut s: &mut String) {
+/// Like `styled_line_to_highlighted_html` but appends to a `String` for increased efficiency.
+/// In fact `styled_line_to_highlighted_html` is just a wrapper around this function.
+pub fn append_highlighted_html_for_styled_line(v: &[(Style, &str)], bg: IncludeBackground, mut s: &mut String) {
     let mut prev_style: Option<&Style> = None;
     for &(ref style, text) in v.iter() {
         let unify_style = if let Some(ps) = prev_style {
@@ -213,12 +213,12 @@ pub fn append_coloured_html_for_styles(v: &[(Style, &str)], bg: IncludeBackgroun
 /// `highlighted_html_for_string`.
 ///
 /// If you don't care about the background color you can just prefix the lines from
-/// `styles_to_coloured_html` with a `<pre>`. This is meant to be used with `IncludeBackground::IfDifferent`.
+/// `styled_line_to_highlighted_html` with a `<pre>`. This is meant to be used with `IncludeBackground::IfDifferent`.
 /// As of `v3.0` this method also returns the background color to be passed to `IfDifferent`.
 ///
 /// You're responsible for creating the string `</pre>` to close this, I'm not gonna provide a
 /// helper for that :-)
-pub fn start_coloured_html_snippet(t: &Theme) -> (String, Color) {
+pub fn start_highlighted_html_snippet(t: &Theme) -> (String, Color) {
     let c = t.settings.background.unwrap_or(Color::WHITE);
     (format!("<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
             c.r,
@@ -252,7 +252,7 @@ mod tests {
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();
 
-        let html2 = styles_to_coloured_html(&regions[..], IncludeBackground::Yes);
+        let html2 = styled_line_to_highlighted_html(&regions[..], IncludeBackground::Yes);
         println!("{}", html2);
         assert_eq!(html2, include_str!("../testdata/test1.html").trim_right());
     }
