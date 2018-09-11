@@ -9,14 +9,14 @@ use std::fs::File;
 use std::path::Path;
 // use util::debug_print_ops;
 
-/// Simple way to go directly from lines of text to coloured
+/// Simple way to go directly from lines of text to colored
 /// tokens.
 ///
 /// Depending on how you load the syntaxes (see the `SyntaxSet` docs)
 /// you can either pass this strings with trailing `\n`s or without.
 ///
 /// # Examples
-/// Prints coloured lines of a string to the terminal
+/// Prints colored lines of a string to the terminal
 ///
 /// ```
 /// use syntect::easy::HighlightLines;
