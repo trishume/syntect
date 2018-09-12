@@ -6,14 +6,14 @@ use std::ops::Range;
 #[cfg(feature = "parsing")]
 use parsing::ScopeStackOp;
 
-/// Formats the styled fragments using 24-bit colour
+/// Formats the styled fragments using 24-bit color
 /// terminal escape codes. Meant for debugging and testing.
 /// It's currently fairly inefficient in its use of escape codes.
 ///
-/// Note that this does not currently ever un-set the colour so that
+/// Note that this does not currently ever un-set the color so that
 /// the end of a line will also get highlighted with the background.
 /// This means if you might want to use `println!("\x1b[0m");` after
-/// to clear the colouring.
+/// to clear the coloring.
 ///
 /// If `bg` is true then the background is also set
 pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {

@@ -186,7 +186,7 @@ impl SyntaxSet {
     ///
     /// ```
     /// use syntect::parsing::SyntaxSet;
-    /// let ss = SyntaxSet::load_defaults_nonewlines();
+    /// let ss = SyntaxSet::load_defaults_newlines();
     /// let syntax = ss.find_syntax_for_file("testdata/highlight_test.erb")
     ///     .unwrap() // for IO errors, you may want to use try!() or another plain text fallback
     ///     .unwrap_or_else(|| ss.find_syntax_plain_text());

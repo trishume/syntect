@@ -9,29 +9,29 @@ use std::fs::File;
 use std::path::Path;
 // use util::debug_print_ops;
 
-/// Simple way to go directly from lines of text to coloured
+/// Simple way to go directly from lines of text to colored
 /// tokens.
 ///
 /// Depending on how you load the syntaxes (see the `SyntaxSet` docs)
 /// you can either pass this strings with trailing `\n`s or without.
 ///
 /// # Examples
-/// Prints coloured lines of a string to the terminal
+/// Prints colored lines of a string to the terminal
 ///
 /// ```
 /// use syntect::easy::HighlightLines;
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::highlighting::{ThemeSet, Style};
-/// use syntect::util::as_24_bit_terminal_escaped;
+/// use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
 ///
 /// // Load these once at the start of your program
-/// let ps = SyntaxSet::load_defaults_nonewlines();
+/// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_extension("rs").unwrap();
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
 /// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}";
-/// for line in s.lines() {
+/// for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
 ///     let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
 ///     let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
 ///     println!("{}", escaped);
@@ -79,9 +79,35 @@ impl<'a> HighlightFile<'a> {
     /// Auto-detects the syntax from the extension and constructs a `HighlightLines` with the correct syntax and theme.
     ///
     /// # Examples
-    /// This example uses `reader.lines()` to get lines without a newline character.
-    /// See the `syncat` example for an example of reading lines with a newline character, which gets slightly more robust
-    /// and fast syntax highlighting, at the cost of a couple extra lines of code.
+    /// Using the `newlines` mode is a bit involved but yields more robust and glitch-free highlighting,
+    /// as well as being slightly faster since it can re-use a line buffer.
+    ///
+    /// ```
+    /// use syntect::parsing::SyntaxSet;
+    /// use syntect::highlighting::{ThemeSet, Style};
+    /// use syntect::util::as_24_bit_terminal_escaped;
+    /// use syntect::easy::HighlightFile;
+    /// use std::io::BufRead;
+    ///
+    /// # use std::io;
+    /// # fn foo() -> io::Result<()> {
+    /// let ss = SyntaxSet::load_defaults_newlines();
+    /// let ts = ThemeSet::load_defaults();
+    ///
+    /// let mut highlighter = HighlightFile::new("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
+    /// let mut line = String::new();
+    /// while highlighter.reader.read_line(&mut line)? > 0 {
+    ///     {
+    ///         let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line, &ss);
+    ///         println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
+    ///     } // until NLL this scope is needed so we can clear the buffer after
+    ///     line.clear(); // read_line appends so we need to clear between lines
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// This example uses `reader.lines()` to get lines without a newline character, it's simpler but may break on rare tricky cases.
     ///
     /// ```
     /// use syntect::parsing::SyntaxSet;

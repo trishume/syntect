@@ -10,7 +10,7 @@
 //!
 //! Almost everything in syntect is divided up into either the `parsing` module
 //! for turning text into text annotated with scopes, and the `highlighting` module
-//! for turning annotated text into styled/coloured text.
+//! for turning annotated text into styled/colored text.
 //!
 //! Some docs have example code but a good place to look is the `syncat` example as well as the source code
 //! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
