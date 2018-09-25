@@ -80,7 +80,8 @@ impl HighlightState {
         }
 
         HighlightState {
-            styles, single_caches,
+            styles,
+            single_caches,
             path: initial_stack,
         }
     }
