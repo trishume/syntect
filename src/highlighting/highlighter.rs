@@ -7,7 +7,7 @@ use std::iter::Iterator;
 
 use parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
 use super::selector::ScopeSelector;
-use super::theme::Theme;
+use super::theme::{Theme, ThemeItem};
 use super::style::{Color, FontStyle, Style, StyleModifier};
 
 /// Basically a wrapper around a `Theme` preparing it to be used for highlighting.
@@ -47,6 +47,7 @@ pub struct Highlighter<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HighlightState {
     styles: Vec<Style>,
+    single_caches: Vec<ScoredStyle>,
     pub path: ScopeStack,
 }
 
@@ -69,15 +70,18 @@ impl HighlightState {
     /// stack of styles. Most of the time you'll want to pass an empty stack as `initial_stack`
     /// but see the docs for `HighlightState` for discussion of advanced caching use cases.
     pub fn new(highlighter: &Highlighter, initial_stack: ScopeStack) -> HighlightState {
-        let mut initial_styles = vec![highlighter.get_default()];
+        let mut styles = vec![highlighter.get_default()];
+        let mut single_caches = vec![ScoredStyle::from_style(styles[0])];
         for i in 0..initial_stack.len() {
-            let style = initial_styles[i];
-            style.apply(highlighter.get_style(initial_stack.bottom_n(i)));
-            initial_styles.push(style);
+            let prefix = initial_stack.bottom_n(i);
+            let new_cache = highlighter.update_single_cache_for_push(&single_caches[i], prefix);
+            styles.push(highlighter.finalize_style_with_multis(&new_cache, prefix));
+            single_caches.push(new_cache);
         }
 
         HighlightState {
-            styles: initial_styles,
+            styles,
+            single_caches,
             path: initial_stack,
         }
     }
@@ -121,17 +125,23 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
             // closures mess with the borrow checker's ability to see different struct fields
             let m_path = &mut self.state.path;
             let m_styles = &mut self.state.styles;
+            let m_caches = &mut self.state.single_caches;
             let highlighter = &self.highlighter;
             m_path.apply_with_hook(&command, |op, cur_stack| {
                 // println!("{:?} - {:?}", op, cur_stack);
                 match op {
                     BasicScopeStackOp::Push(_) => {
                         // we can push multiple times so this might have changed
-                        let style = *m_styles.last().unwrap();
-                        m_styles.push(style.apply(highlighter.get_new_style(cur_stack)));
+                        let new_cache = {
+                            let prev_cache = m_caches.last().unwrap();
+                            highlighter.update_single_cache_for_push(prev_cache, cur_stack)
+                        };
+                        m_styles.push(highlighter.finalize_style_with_multis(&new_cache, cur_stack));
+                        m_caches.push(new_cache);
                     }
                     BasicScopeStackOp::Pop => {
                         m_styles.pop();
+                        m_caches.pop();
                     }
                 }
             });
@@ -142,6 +152,47 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
             self.next()
         } else {
             Some((style, text))
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScoredStyle {
+    pub foreground: (MatchPower, Color),
+    pub background: (MatchPower, Color),
+    pub font_style: (MatchPower, FontStyle),
+}
+
+#[inline]
+fn update_scored<T: Clone>(scored: &mut (MatchPower, T), update: &Option<T>, score: MatchPower) {
+    if score > scored.0 {
+        if let Some(u) = update {
+            scored.0 = score;
+            scored.1 = u.clone();
+        }
+    }
+}
+
+impl ScoredStyle {
+    fn apply(&mut self, other: &StyleModifier, score: MatchPower) {
+        update_scored(&mut self.foreground, &other.foreground, score);
+        update_scored(&mut self.background, &other.background, score);
+        update_scored(&mut self.font_style, &other.font_style, score);
+    }
+
+    fn to_style(&self) -> Style {
+        Style {
+            foreground: self.foreground.1,
+            background: self.background.1,
+            font_style: self.font_style.1,
+        }
+    }
+
+    fn from_style(style: Style) -> ScoredStyle {
+        ScoredStyle {
+            foreground: (MatchPower(-1.0), style.foreground.clone()),
+            background: (MatchPower(-1.0), style.background.clone()),
+            font_style: (MatchPower(-1.0), style.font_style.clone()),
         }
     }
 }
@@ -179,65 +230,30 @@ impl<'a> Highlighter<'a> {
         }
     }
 
-    /// Figures out which scope selector in the theme best matches this scope stack.
-    /// It only returns any changes to the style that should be applied when the top element
-    /// is pushed on to the stack. These actually aren't guaranteed to be different than the current
-    /// style. Basically what this means is that you have to gradually apply styles starting with the
-    /// default and working your way up the stack in order to get the correct style.
-    ///
-    /// Don't worry if this sounds complex, you shouldn't need to use this method.
-    /// It's only public because I default to making things public for power users unless
-    /// I have a good argument nobody will ever need to use the method.
-    pub fn get_style(&self, path: &[Scope]) -> StyleModifier {
-        let max_item = self.theme
-            .scopes
-            .iter()
-            .filter_map(|item| {
-                item.scope
-                    .does_match(path)
-                    .map(|score| (score, item))
-            })
-            .max_by_key(|&(score, _)| score)
-            .map(|(_, item)| item);
-        StyleModifier {
-            foreground: max_item.and_then(|item| item.style.foreground),
-            background: max_item.and_then(|item| item.style.background),
-            font_style: max_item.and_then(|item| item.style.font_style),
+    fn update_single_cache_for_push(&self, cur: &ScoredStyle, path: &[Scope]) -> ScoredStyle {
+        let mut new_style = cur.clone();
+
+        let last_scope = path[path.len() - 1];
+        for &(scope, ref modif) in self.single_selectors.iter().filter(|a| a.0.is_prefix_of(last_scope)) {
+            let single_score = (scope.len() as f64) *
+                               ((ATOM_LEN_BITS * ((path.len() - 1) as u16)) as f64).exp2();
+            new_style.apply(modif, MatchPower(single_score));
         }
+
+        new_style
     }
 
-    /// Like get_style but only guarantees returning any new style
-    /// if the last element of `path` was just pushed on to the stack.
-    /// Panics if `path` is empty.
-    pub fn get_new_style(&self, path: &[Scope]) -> StyleModifier {
-        let last_scope = path[path.len() - 1];
-        let single_res = self.single_selectors
+    fn finalize_style_with_multis(&self, cur: &ScoredStyle, path: &[Scope]) -> Style {
+        let mut new_style = cur.clone();
+
+        let mult_iter = self.multi_selectors
             .iter()
-            .find(|a| a.0.is_prefix_of(last_scope));
-        let mult_res = self.multi_selectors
-            .iter()
-            .filter_map(|&(ref sel, ref style)| sel.does_match(path).map(|score| (score, style)))
-            .max_by_key(|&(score, _)| score);
-        // println!("{:?}", single_res);
-        if let Some((score, style)) = mult_res {
-            let mut single_score: f64 = -1.0;
-            if let Some(&(scope, _)) = single_res {
-                single_score = (scope.len() as f64) *
-                               ((ATOM_LEN_BITS * ((path.len() - 1) as u16)) as f64).exp2();
-            }
-            // println!("multi at {:?} score {:?} single score {:?}", path, score, single_score);
-            if MatchPower(single_score) < score {
-                return *style;
-            }
+            .filter_map(|&(ref sel, ref style)| sel.does_match(path).map(|score| (score, style)));
+        for (score, ref modif) in mult_iter {
+            new_style.apply(modif, score);
         }
-        if let Some(&(_, ref style)) = single_res {
-            return *style;
-        }
-        StyleModifier {
-            foreground: None,
-            background: None,
-            font_style: None,
-        }
+
+        new_style.to_style()
     }
 
     /// Returns the fully resolved style for the given stack.
@@ -245,12 +261,11 @@ impl<'a> Highlighter<'a> {
     /// This operation is convenient but expensive. For reasonable performance,
     /// the caller should be caching results.
     pub fn style_for_stack(&self, stack: &[Scope]) -> Style {
-        let mut style = self.get_default();
+        let mut single_cache = ScoredStyle::from_style(self.get_default());
         for i in 0..stack.len() {
-            let style_mod = self.get_style(&stack[0..i+1]);
-            style = style.apply(style_mod);
+            single_cache = self.update_single_cache_for_push(&single_cache, &stack[0..i+1]);
         }
-        style
+        self.finalize_style_with_multis(&single_cache, stack)
     }
 
     /// Returns a `StyleModifier` which, if applied to the default style,
@@ -260,14 +275,30 @@ impl<'a> Highlighter<'a> {
     /// in combination with style information from other sources.
     ///
     /// This operation is convenient but expensive. For reasonable performance,
-    /// the caller should be caching results.
-    pub fn style_mod_for_stack(&self, stack: &[Scope]) -> StyleModifier {
-        let mut style_mod = StyleModifier::default();
-        for i in 0..stack.len() {
-            let next_mod = self.get_style(&stack[0..i+1]);
-            style_mod = style_mod.apply(next_mod);
+    /// the caller should be caching results. It's likely slower than style_for_stack.
+    pub fn style_mod_for_stack(&self, path: &[Scope]) -> StyleModifier {
+        let mut matching_items : Vec<(MatchPower, &ThemeItem)> = self.theme
+            .scopes
+            .iter()
+            .filter_map(|item| {
+                item.scope
+                    .does_match(path)
+                    .map(|score| (score, item))
+            })
+            .collect();
+        matching_items.sort_by_key(|&(score, _)| score);
+        let sorted = matching_items.iter()
+            .map(|(_, item)| item);
+
+        let mut modifier = StyleModifier {
+            background: None,
+            foreground: None,
+            font_style: None,
+        };
+        for item in sorted {
+            modifier = modifier.apply(item.style);
         }
-        style_mod
+        return modifier;
     }
 }
 
@@ -311,5 +342,82 @@ mod tests {
                        font_style: FontStyle::empty(),
                    },
                     "5"));
+    }
+
+    // see issues #133 and #203, this test tests the fixes for those issues
+    #[test]
+    fn tricky_cases() {
+        use parsing::ScopeStack;
+        use std::str::FromStr;
+        use highlighting::{ThemeSettings, ScopeSelectors};
+        let c1 = Color { r: 1, g: 1, b: 1, a: 255 };
+        let c2 = Color { r: 2, g: 2, b: 2, a: 255 };
+        let def_bg = Color { r: 255, g: 255, b: 255, a: 255 };
+        let test_color_scheme = Theme {
+            name: None,
+            author: None,
+            settings: ThemeSettings::default(),
+            scopes: vec![
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("comment.line").unwrap(),
+                    style: StyleModifier {
+                        foreground: Some(c1),
+                        background: None,
+                        font_style: None,
+                    },
+                },
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("comment").unwrap(),
+                    style: StyleModifier {
+                        foreground: Some(c2),
+                        background: None,
+                        font_style: Some(FontStyle::ITALIC),
+                    },
+                },
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("comment.line.rs - keyword").unwrap(),
+                    style: StyleModifier {
+                        foreground: None,
+                        background: Some(c1),
+                        font_style: None,
+                    },
+                },
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("no.match").unwrap(),
+                    style: StyleModifier {
+                        foreground: None,
+                        background: Some(c2),
+                        font_style: Some(FontStyle::UNDERLINE),
+                    },
+                },
+            ],
+        };
+        let highlighter = Highlighter::new(&test_color_scheme);
+
+        use parsing::ScopeStackOp::*;
+        let ops = [
+            // three rules apply at once here, two singles and one multi
+            (0, Push(Scope::new("comment.line.rs").unwrap())),
+            // multi un-applies
+            (1, Push(Scope::new("keyword.control.rs").unwrap())),
+            (2, Pop(1)),
+        ];
+
+        let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+        let iter = HighlightIterator::new(&mut highlight_state, &ops[..], "abcdef", &highlighter);
+        let regions: Vec<Style> = iter.map(|(s, _)| s).collect();
+
+        // println!("{:#?}", regions);
+        assert_eq!(regions, vec![
+            Style { foreground: c1, background: c1, font_style: FontStyle::ITALIC },
+            Style { foreground: c1, background: def_bg, font_style: FontStyle::ITALIC },
+            Style { foreground: c1, background: c1, font_style: FontStyle::ITALIC },
+        ]);
+
+        let full_stack = ScopeStack::from_str("comment.line.rs keyword.control.rs").unwrap();
+        let full_style = highlighter.style_for_stack(full_stack.as_slice());
+        assert_eq!(full_style, Style { foreground: c1, background: def_bg, font_style: FontStyle::ITALIC });
+        let full_mod = highlighter.style_mod_for_stack(full_stack.as_slice());
+        assert_eq!(full_mod, StyleModifier { foreground: Some(c1), background: None, font_style: Some(FontStyle::ITALIC) });
     }
 }
