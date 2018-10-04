@@ -559,7 +559,7 @@ impl<'a> RegexRewriter<'a> {
                         // Replacing `\n` with `$` in `\n?` or `\n+` would make parsing later fail
                         // with "target of repeat operator is invalid"
                         let c3 = self.peek();
-                        if c2 == b'n' && c3 != Some(b'?') && c3 != Some(b'+') {
+                        if c2 == b'n' && c3 != Some(b'?') && c3 != Some(b'+') && c3 != Some(b'*') {
                             result.extend_from_slice(b"$");
                         } else {
                             result.push(c);
@@ -950,6 +950,7 @@ mod tests {
         assert_eq!(&rewrite(r"\[\n"), r"\[$");
         assert_eq!(&rewrite(r"a\n?"), r"a\n?");
         assert_eq!(&rewrite(r"a\n+"), r"a\n+");
+        assert_eq!(&rewrite(r"a\n*"), r"a\n*");
         assert_eq!(&rewrite(r"[abc\n]"), r"(?:[abc\n]|$)");
         assert_eq!(&rewrite(r"[^\n]"), r"[^\n]");
         assert_eq!(&rewrite(r"[^]\n]"), r"[^]\n]");
