@@ -57,7 +57,6 @@ fn main() {
     };
 
     if let Some(folder) = matches.opt_str("extra-syntaxes") {
-        // TODO: no way to go back to builder anymore :/
         let mut builder = ss.into_builder();
         builder.add_from_folder(folder, !no_newlines).unwrap();
         ss = builder.build();
