@@ -25,13 +25,6 @@ cache:
 
 script:
   - cargo build
-  - |
-    if [ "$TRAVIS_OS_NAME" == "linux" ]
-    then
-      p=$(cd ./target/debug/build/onig_sys-*/out/lib/ && pwd)
-      echo "adding $p to linker path"
-      export LD_LIBRARY_PATH="${p}:${LD_LIBRARY_PATH}"
-    fi
   - cargo test
   - make assets
   - make syntest
