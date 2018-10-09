@@ -7,26 +7,22 @@
 
 `syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax). It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust. It's used in production by at least two companies, and by [many open source projects](#projects-using-syntect).
 
-If you are writing a text editor (or something else needing highlighting) in Rust and this library doesn't fit your needs, I consider that a bug and you should file an issue or email me.
+If you are writing a text editor (or something else needing highlighting) in Rust and this library doesn't fit your needs, I consider that a bug and you should file an issue or email me. I consider this project mostly complete, I still maintain it and review PRs, but it's not under heavy development.
 
-**Note:** I consider this project "done" in the sense that it works quite well for its intended purpose, accomplishes the major goals I had, and I'm unlikely to make any sweeping changes.
-I won't be committing much anymore because the marginal return on additional work isn't very high. Rest assured if you submit PRs I will review them and likely merge promptly.
-I'll also quite possibly still fix issues and definitely offer advice and knowledge on how the library works. Basically I'll be maintaining the library but not developing it further.
-I've spent months working on, tweaking, optimizing, documenting and testing this library. If you still have any reasons you don't think it fits your needs, file an issue or email me.
+## Important Links
 
-### Rendered docs: <https://docs.rs/syntect>
+- API docs with examples: <https://docs.rs/syntect>
+- [Changelogs and upgrade notes for past releases](https://github.com/trishume/syntect/releases)
 
 ## Getting Started
 
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "2.1"
+syntect = "3.0"
 ```
 
 After that take a look at the [documentation](https://docs.rs/syntect) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
-
-**Note:** with stable Rust on Linux there is a possibility you might have to add `./target/debug/build/onig_sys-*/out/lib/` to your `LD_LIBRARY_PATH` environment variable. I dunno why or even if this happens on other places than Travis, but see `travis.yml` for what it does to make it work. Do this if you see `libonig.so: cannot open shared object file`.
 
 If you've cloned this repository, be sure to run
 
@@ -36,17 +32,10 @@ git submodule update --init
 
 to fetch all the required dependencies for running the tests.
 
-### Feature Flags
-
-Syntect makes heavy use of [cargo features](http://doc.crates.io/manifest.html#the-features-section), to support users who require only a subset of functionality. In particular, it is possible to use the highlighting component of syntect without the parser (for instance when hand-rolling a higher performance parser for a particular language), by adding `default-features = false` to the syntect entry in your `Cargo.toml`.
-
-For more information on available features, see the features section in `Cargo.toml`.
-
 ## Features/Goals
 
 - [x] Work with many languages (accomplished through using existing grammar formats)
-- [x] Highlight super quickly, faster than every editor except Sublime Text 3
-- [x] Load up quickly, currently in around 23ms but could potentially be even faster.
+- [x] Highlight super quickly, faster than nearly all text editors
 - [x] Include easy to use API for basic cases
 - [x] API allows use in fancy text editors with piece tables and incremental re-highlighting and the like.
 - [x] Expose internals of the parsing process so text editors can do things like cache parse states and use semantic info for code intelligence
@@ -55,6 +44,7 @@ For more information on available features, see the features section in `Cargo.t
 - [x] Well documented, I've tried to add a useful documentation comment to everything that isn't utterly self explanatory.
 - [x] Built-in output to coloured HTML `<pre>` tags or 24-bit colour ANSI terminal escape sequences.
 - [x] Nearly complete compatibility with Sublime Text 3, including lots of edge cases. Passes nearly all of Sublime's syntax tests, see [issue 59](https://github.com/trishume/syntect/issues/59).
+- [x] Load up quickly, currently in around 23ms but could potentially be even faster.
 
 ## Screenshots
 
@@ -65,22 +55,29 @@ There's currently an example program called `syncat` that prints one of the sour
 ![Solarized Light](http://i.imgur.com/l3zcO4J.png)
 ![InspiredGithub](http://i.imgur.com/a7U1r2j.png)
 
-## Roadmap
+## Example Code
 
-- [x] Sketch out representation of a Sublime Text syntax
-- [x] Parse `.sublime-syntax` files into the representation.
-- [x] Write an interpreter for the `.sublime-syntax` state machine that highlights an incoming iterator of file lines into an iterator of scope-annotated text.
-- [x] Parse TextMate/Sublime Text theme files
-- [x] Highlight a scope-annotated iterator into a colour-annotated iterator for display.
-- [x] Ability to dump loaded packages as binary file and load them with lazy regex compilation for fast start up times.
-- [x] Bundle dumped default syntaxes into the library binary so library users don't need an assets folder with Sublime Text packages.
-- [x] Add nice API wrappers for simple use cases. The base APIs are designed for deep high performance integration with arbitrary text editor data structures.
-- [x] Document the API better and make things private that don't need to be public
-- [x] Detect file syntax based on first line
-- [x] Make it really fast (mosty two hot-paths need caching, same places Textmate 2 caches)
-- [ ] Make syncat a better demo, and maybe more demo programs
-- [ ] Add sRGB colour correction (not sure if this is necessary, could be the job of the text editor)
-- [ ] Add C bindings so it can be used as a C library from other languages.
+Prints highlighted lines of a string to the terminal. See the [easy](https://docs.rs/syntect/latest/syntect/easy/index.html) and [html](https://docs.rs/syntect/latest/syntect/html/index.html) module docs for more basic use case examples.
+
+```rust
+use syntect::easy::HighlightLines;
+use syntect::parsing::SyntaxSet;
+use syntect::highlighting::{ThemeSet, Style};
+use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
+
+// Load these once at the start of your program
+let ps = SyntaxSet::load_defaults_newlines();
+let ts = ThemeSet::load_defaults();
+
+let syntax = ps.find_syntax_by_extension("rs").unwrap();
+let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}";
+for line in LinesWithEndings::from(s) {
+    let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
+    let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
+    println!("{}", escaped);
+}
+```
 
 ## Performance
 
@@ -110,7 +107,13 @@ All measurements were taken on a mid 2012 15" retina Macbook Pro.
 - ~1.9ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 16,000 lines/second or 422 kilobytes/second.
 - ~250ms end to end for `syncat` to start, load the definitions, highlight the test file and shut down. This is mostly spent loading.
 
-### Caching
+## Feature Flags
+
+Syntect makes heavy use of [cargo features](http://doc.crates.io/manifest.html#the-features-section), to support users who require only a subset of functionality. In particular, it is possible to use the highlighting component of syntect without the parser (for instance when hand-rolling a higher performance parser for a particular language), by adding `default-features = false` to the syntect entry in your `Cargo.toml`.
+
+For more information on available features, see the features section in `Cargo.toml`.
+
+## Caching
 
 Because `syntect`'s API exposes internal cacheable data structures, there is a caching strategy that text editors can use that allows the text on screen to be re-rendered instantaneously regardless of the file size when a change is made after the initial highlight.
 
@@ -120,7 +123,7 @@ This way from the time the edit happens to the time the new colouring gets rende
 
 Any time the file is changed the latest cached state is found, the cache is cleared after that point, and a background job is started. Any already running jobs are stopped because they would be working on old state. This way you can just have one thread dedicated to highlighting that is always doing the most up-to-date work, or sleeping.
 
-### Parallelizing
+## Parallelizing
 
 Since 3.0, `syntect` can be used to do parsing/highlighting in parallel. `SyntaxSet` is both `Send` and `Sync` and so can easily be used from multiple threads. It is also `Clone`, which means you can construct a syntax set and then clone it to use for other threads if you prefer.
 

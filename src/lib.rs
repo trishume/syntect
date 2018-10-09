@@ -1,6 +1,4 @@
 //! Welcome to the syntect docs.
-//! These are still a work in progress but a lot of the important things have
-//! been documented already.
 //!
 //! Much more info about syntect is available on the [Github Page](https://github.com/trishume/syntect).
 //!
@@ -15,7 +13,7 @@
 //! Some docs have example code but a good place to look is the `syncat` example as well as the source code
 //! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
 
-#![doc(html_root_url = "https://docs.rs/syntect/2.1.0")]
+#![doc(html_root_url = "https://docs.rs/syntect/3.0.0")]
 
 #[cfg(feature = "yaml-load")]
 extern crate yaml_rust;
