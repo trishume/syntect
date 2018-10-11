@@ -615,6 +615,8 @@ impl<'a> RegexRewriter<'a> {
                 }
                 b'(' => {
                     self.next();
+                    // add the current lookaround state to the stack so we can just pop at a closing paren
+                    stack.push(in_lookaround.clone());
                     if let Some(c2) = self.peek() {
                         if c2 != b'?' {
                             // simple numbered capture group
@@ -624,8 +626,6 @@ impl<'a> RegexRewriter<'a> {
                             if !in_lookaround {
                                 result.push(cap_num);
                             }
-                            // add the current capture group to the stack with the current lookaround state
-                            stack.push(in_lookaround.clone());
                         } else {
                             self.next();
                             // TODO: what about named capture groups?
@@ -633,26 +633,15 @@ impl<'a> RegexRewriter<'a> {
                                 self.next();
                                 if c3 == b'=' || c3 == b'!' {
                                     // lookahead
-                                    stack.push(in_lookaround.clone());
                                     in_lookaround = true;
                                 } else if c3 == b'<' {
                                     if let Some(c4) = self.peek() {
                                         if c4 == b'=' || c4 == b'!' {
                                             self.next();
                                             // lookbehind
-                                            stack.push(in_lookaround.clone());
                                             in_lookaround = true;
-                                        } else {
-                                            // add the current state to the stack so we can just pop at a closing paren
-                                            stack.push(in_lookaround.clone());
                                         }
-                                    } else {
-                                        // add the current state to the stack so we can just pop at a closing paren
-                                        stack.push(in_lookaround.clone());
                                     }
-                                } else {
-                                    // add the current state to the stack so we can just pop at a closing paren
-                                    stack.push(in_lookaround.clone());
                                 }
                             }
                         }
