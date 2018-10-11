@@ -628,7 +628,6 @@ impl<'a> RegexRewriter<'a> {
                             }
                         } else {
                             self.next();
-                            // TODO: what about named capture groups?
                             if let Some(c3) = self.peek() {
                                 self.next();
                                 if c3 == b'=' || c3 == b'!' {
@@ -640,6 +639,18 @@ impl<'a> RegexRewriter<'a> {
                                             self.next();
                                             // lookbehind
                                             in_lookaround = true;
+                                        }
+                                    }
+                                } else if c3 == b'P' {
+                                    if let Some(c4) = self.peek() {
+                                        if c4 == b'<' {
+                                            // named capture group
+                                            cap_num += 1;
+                                            // if we are not currently in a lookaround,
+                                            // add this capture group number to the valid ones
+                                            if !in_lookaround {
+                                                result.push(cap_num);
+                                            }
                                         }
                                     }
                                 }
@@ -1041,7 +1052,7 @@ mod tests {
 
     #[test]
     fn can_get_valid_captures_from_regex() {
-        let regex = "hello(test)(?=(world))(foo(bar))";
+        let regex = "hello(test)(?=(world))(foo(?P<named>bar))";
         let r = RegexRewriter {
             bytes: regex.as_bytes(),
             index: 0,
@@ -1054,7 +1065,7 @@ mod tests {
 
     #[test]
     fn can_get_valid_captures_from_regex2() {
-        let regex = "hello(test)(foo(bar))";
+        let regex = "hello(test)[(?=tricked](foo(bar))";
         let r = RegexRewriter {
             bytes: regex.as_bytes(),
             index: 0,
