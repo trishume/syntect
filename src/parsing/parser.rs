@@ -1383,6 +1383,27 @@ contexts:
         );
     }
 
+    #[test]
+    fn can_parse_issue176() {
+        let syntax = r#"
+scope: source.dummy
+contexts:
+  main:
+    - match: (test)(?=(foo))(f)
+      captures:
+        1: test
+        2: ignored
+        3: f
+      push:
+        - match: (oo)
+          captures:
+            1: keyword
+"#;
+
+        let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        expect_scope_stacks_with_syntax("testfoo", &["<test>", /*"<ignored>",*/ "<f>", "<keyword>"], syntax);
+    }
+
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");
         let line_with_newline = format!("{}\n", line_without_newline);

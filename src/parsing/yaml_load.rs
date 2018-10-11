@@ -339,13 +339,21 @@ impl SyntaxDefinition {
 
 
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
+            let r = RegexRewriter {
+                bytes: regex_str.as_bytes(),
+                index: 0,
+            };
+            let valid_indexes = r.get_consuming_capture_indexes();
             let mut res_map = Vec::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
-                    res_map.push((key_int as usize,
-                                  str_to_scopes(val_str, state.scope_repo)?));
+                    if valid_indexes.contains(&(key_int as usize)) {
+                        res_map.push((key_int as usize,
+                                      str_to_scopes(val_str, state.scope_repo)?));
+                    }
                 }
             }
+            
             Some(res_map)
         } else {
             None
@@ -586,6 +594,82 @@ impl<'a> RegexRewriter<'a> {
             }
         }
         String::from_utf8(result).unwrap()
+    }
+
+    fn get_consuming_capture_indexes(mut self) -> Vec<usize> {
+        let mut result = Vec::new();
+        let mut stack = Vec::new();
+        let mut cap_num = 0;
+        let mut in_lookaround = false;
+        stack.push(in_lookaround);
+        result.push(cap_num);
+
+        while let Some(c) = self.peek() {
+            match c {
+                b'\\' => {
+                    self.next();
+                    self.next();
+                }
+                b'[' => {
+                    self.parse_character_class();
+                }
+                b'(' => {
+                    self.next();
+                    if let Some(c2) = self.peek() {
+                        if c2 != b'?' {
+                            // simple numbered capture group
+                            cap_num += 1;
+                            // if we are not currently in a lookaround,
+                            // add this capture group number to the valid ones
+                            if !in_lookaround {
+                                result.push(cap_num);
+                            }
+                            // add the current capture group to the stack with the current lookaround state
+                            stack.push(in_lookaround.clone());
+                        } else {
+                            self.next();
+                            // TODO: what about named capture groups?
+                            if let Some(c3) = self.peek() {
+                                self.next();
+                                if c3 == b'=' || c3 == b'!' {
+                                    // lookahead
+                                    stack.push(in_lookaround.clone());
+                                    in_lookaround = true;
+                                } else if c3 == b'<' {
+                                    if let Some(c4) = self.peek() {
+                                        if c4 == b'=' || c4 == b'!' {
+                                            self.next();
+                                            // lookbehind
+                                            stack.push(in_lookaround.clone());
+                                            in_lookaround = true;
+                                        } else {
+                                            // add the current state to the stack so we can just pop at a closing paren
+                                            stack.push(in_lookaround.clone());
+                                        }
+                                    } else {
+                                        // add the current state to the stack so we can just pop at a closing paren
+                                        stack.push(in_lookaround.clone());
+                                    }
+                                } else {
+                                    // add the current state to the stack so we can just pop at a closing paren
+                                    stack.push(in_lookaround.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                b')' => {
+                    if let Some(value) = stack.pop() {
+                        in_lookaround = value;
+                    }
+                    self.next();
+                }
+                _ => {
+                    self.next();
+                }
+            }
+        }
+        result
     }
 
     fn parse_character_class(&mut self) -> (Vec<u8>, bool) {
@@ -964,5 +1048,44 @@ mod tests {
         assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab(?:$|)");
         assert_eq!(&rewrite(r"(?<!\n)ab"), r"(?<!$)ab");
         assert_eq!(&rewrite(r"(?<=\n)ab"), r"(?<=$)ab");
+    }
+
+    #[test]
+    fn can_get_valid_captures_from_regex() {
+        let regex = "hello(test)(?=(world))(foo(bar))";
+        let r = RegexRewriter {
+            bytes: regex.as_bytes(),
+            index: 0,
+        };
+        println!("{:?}", regex);
+        let valid_indexes = r.get_consuming_capture_indexes();
+        println!("{:?}", valid_indexes);
+        assert_eq!(valid_indexes, [0, 1, 3, 4]);
+    }
+
+    #[test]
+    fn can_get_valid_captures_from_regex2() {
+        let regex = "hello(test)(foo(bar))";
+        let r = RegexRewriter {
+            bytes: regex.as_bytes(),
+            index: 0,
+        };
+        println!("{:?}", regex);
+        let valid_indexes = r.get_consuming_capture_indexes();
+        println!("{:?}", valid_indexes);
+        assert_eq!(valid_indexes, [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn can_get_valid_captures_from_nested_regex() {
+        let regex = "hello(test)(?=(world(?!(te(?<=(st))))))(foo(bar))";
+        let r = RegexRewriter {
+            bytes: regex.as_bytes(),
+            index: 0,
+        };
+        println!("{:?}", regex);
+        let valid_indexes = r.get_consuming_capture_indexes();
+        println!("{:?}", valid_indexes);
+        assert_eq!(valid_indexes, [0, 1, 5, 6]);
     }
 }
