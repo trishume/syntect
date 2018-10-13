@@ -127,15 +127,15 @@ impl SyntaxSet {
     /// This and all similar methods below do a linear search of syntaxes, this should be fast
     /// because there aren't many syntaxes, but don't think you can call it a bajillion times per second.
     pub fn find_syntax_by_scope(&self, scope: Scope) -> Option<&SyntaxReference> {
-        self.syntaxes.iter().find(|&s| s.scope == scope)
+        self.syntaxes.iter().rev().find(|&s| s.scope == scope)
     }
 
     pub fn find_syntax_by_name<'a>(&'a self, name: &str) -> Option<&'a SyntaxReference> {
-        self.syntaxes.iter().find(|&s| name == &s.name)
+        self.syntaxes.iter().rev().find(|&s| name == &s.name)
     }
 
     pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxReference> {
-        self.syntaxes.iter().find(|&s| s.file_extensions.iter().any(|e| e == extension))
+        self.syntaxes.iter().rev().find(|&s| s.file_extensions.iter().any(|e| e == extension))
     }
 
     /// Searches for a syntax first by extension and then by case-insensitive name
@@ -148,7 +148,7 @@ impl SyntaxSet {
                 return ext_res;
             }
         }
-        self.syntaxes.iter().find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
+        self.syntaxes.iter().rev().find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
     }
 
     /// Try to find the syntax for a file based on its first line.
@@ -173,7 +173,7 @@ impl SyntaxSet {
     pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxReference> {
         let mut slash_path = "/".to_string();
         slash_path.push_str(&path);
-        return self.path_syntaxes.iter().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i]);
+        return self.path_syntaxes.iter().rev().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i]);
     }
 
     /// Convenience method that tries to find the syntax for a file path,
@@ -572,6 +572,7 @@ impl FirstLineCache {
                 }
             }
         }
+        regexes.reverse();
         FirstLineCache {
             regexes,
         }
