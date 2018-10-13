@@ -596,6 +596,12 @@ impl<'a> RegexRewriter<'a> {
         String::from_utf8(result).unwrap()
     }
 
+    /// find capture groups which are not inside lookarounds.
+    /// If, in a YAML syntax definition, a scope stack is applied
+    /// to a capture group inside a lookaround,
+    /// (i.e. "captures:\n x: scope.stack goes.here", where "x" is
+    /// the number of a capture group in a lookahead/behind), those
+    /// those scopes are not applied, so no need to even parse them.
     fn get_consuming_capture_indexes(mut self) -> Vec<usize> {
         let mut result = Vec::new();
         let mut stack = Vec::new();
