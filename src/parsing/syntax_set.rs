@@ -13,7 +13,7 @@ use std::io::{self, BufRead, BufReader};
 use std::fs::File;
 use std::mem;
 
-use std::sync::Mutex;
+use lazycell::AtomicLazyCell;
 use onig::Regex;
 use parsing::syntax_definition::ContextId;
 
@@ -30,8 +30,8 @@ pub struct SyntaxSet {
     /// Stores the syntax index for every path that was loaded
     path_syntaxes: Vec<(String, usize)>,
 
-    #[serde(skip_serializing, skip_deserializing)]
-    first_line_cache: Mutex<FirstLineCache>,
+    #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
+    first_line_cache: AtomicLazyCell<FirstLineCache>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -83,7 +83,7 @@ impl Clone for SyntaxSet {
             contexts: self.contexts.clone(),
             path_syntaxes: self.path_syntaxes.clone(),
             // Will need to be re-initialized
-            first_line_cache: Mutex::new(FirstLineCache::new()),
+            first_line_cache: AtomicLazyCell::new(),
         }
     }
 }
@@ -94,7 +94,7 @@ impl Default for SyntaxSet {
             syntaxes: Vec::new(),
             contexts: Vec::new(),
             path_syntaxes: Vec::new(),
-            first_line_cache: Mutex::new(FirstLineCache::new()),
+            first_line_cache: AtomicLazyCell::new(),
         }
     }
 }
@@ -155,8 +155,7 @@ impl SyntaxSet {
     /// This uses regexes that come with some sublime syntax grammars
     /// for matching things like shebangs and mode lines like `-*- Mode: C -*-`
     pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
-        let mut cache = self.first_line_cache.lock().unwrap();
-        cache.ensure_filled(self.syntaxes());
+        let cache = self.first_line_cache();
         for &(ref reg, i) in &cache.regexes {
             if reg.find(s).is_some() {
                 return Some(&self.syntaxes[i]);
@@ -288,6 +287,16 @@ impl SyntaxSet {
     #[inline(always)]
     pub(crate) fn get_context(&self, context_id: &ContextId) -> &Context {
         &self.contexts[context_id.index()]
+    }
+
+    fn first_line_cache(&self) -> &FirstLineCache {
+        if let Some(cache) = self.first_line_cache.borrow() {
+            cache
+        } else {
+            let cache = FirstLineCache::new(self.syntaxes());
+            self.first_line_cache.fill(cache).ok();
+            self.first_line_cache.borrow().unwrap()
+        }
     }
 }
 
@@ -435,7 +444,7 @@ impl SyntaxSetBuilder {
             syntaxes,
             contexts: all_contexts,
             path_syntaxes,
-            first_line_cache: Mutex::new(FirstLineCache::new()),
+            first_line_cache: AtomicLazyCell::new(),
         }
     }
 
@@ -550,40 +559,22 @@ impl SyntaxSetBuilder {
 #[derive(Debug)]
 struct FirstLineCache {
     /// (first line regex, syntax index) pairs for all syntaxes with a first line regex
-    /// built lazily on first use of `find_syntax_by_first_line`.
     regexes: Vec<(Regex, usize)>,
-    /// To what extent the first line cache has been built
-    cached_until: usize,
-}
-
-impl Default for FirstLineCache {
-    fn default() -> Self {
-        FirstLineCache {
-            regexes: Vec::new(),
-            cached_until: 0,
-        }
-    }
 }
 
 impl FirstLineCache {
-    fn new() -> FirstLineCache {
-        FirstLineCache::default()
-    }
-
-    fn ensure_filled(&mut self, syntaxes: &[SyntaxReference]) {
-        if self.cached_until >= syntaxes.len() {
-            return;
-        }
-
-        for (i, syntax) in syntaxes[self.cached_until..].iter().enumerate() {
+    fn new(syntaxes: &[SyntaxReference]) -> FirstLineCache {
+        let mut regexes = Vec::new();
+        for (i, syntax) in syntaxes.iter().enumerate() {
             if let Some(ref reg_str) = syntax.first_line_match {
                 if let Ok(reg) = Regex::new(reg_str) {
-                    self.regexes.push((reg, i));
+                    regexes.push((reg, i));
                 }
             }
         }
-
-        self.cached_until = syntaxes.len();
+        FirstLineCache {
+            regexes,
+        }
     }
 }
 
