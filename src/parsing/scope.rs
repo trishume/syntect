@@ -427,7 +427,7 @@ impl ScopeStack {
         for s in &self.scopes {
             print!("{} ", repo.to_string(*s));
         }
-        println!("");
+        println!();
     }
 
     /// Return the bottom n elements of the stack.
@@ -482,7 +482,7 @@ impl ScopeStack {
             if sel_scope.is_prefix_of(*scope) {
                 let len = sel_scope.len();
                 // equivalent to score |= len << (ATOM_LEN_BITS*i) on a large unsigned
-                score += (len as f64) * ((ATOM_LEN_BITS * (i as u16)) as f64).exp2();
+                score += f64::from(len) * f64::from(ATOM_LEN_BITS * (i as u16)).exp2();
                 sel_index += 1;
                 if sel_index >= self.scopes.len() {
                     return Some(MatchPower(score));

@@ -46,11 +46,11 @@ pub struct HighlightLines<'a> {
 impl<'a> HighlightLines<'a> {
     pub fn new(syntax: &SyntaxReference, theme: &'a Theme) -> HighlightLines<'a> {
         let highlighter = Highlighter::new(theme);
-        let hstate = HighlightState::new(&highlighter, ScopeStack::new());
+        let highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         HighlightLines {
-            highlighter: highlighter,
+            highlighter,
             parse_state: ParseState::new(syntax),
-            highlight_state: hstate,
+            highlight_state,
         }
     }
 
@@ -162,8 +162,8 @@ pub struct ScopeRegionIterator<'a> {
 impl<'a> ScopeRegionIterator<'a> {
     pub fn new(ops: &'a [(usize, ScopeStackOp)], line: &'a str) -> ScopeRegionIterator<'a> {
         ScopeRegionIterator {
-            ops: ops,
-            line: line,
+            ops,
+            line,
             index: 0,
             last_str_index: 0,
         }

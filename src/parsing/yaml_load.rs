@@ -76,7 +76,7 @@ fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a Hash,
                                                     f: F)
                                                     -> Result<R, ParseSyntaxError> {
     map.get(&Yaml::String(key.to_owned()))
-        .ok_or(ParseSyntaxError::MissingMandatoryKey(key))
+        .ok_or_else(|| ParseSyntaxError::MissingMandatoryKey(key))
         .and_then(|x| f(x).ok_or(ParseSyntaxError::TypeMismatch))
 }
 
@@ -145,11 +145,11 @@ impl SyntaxDefinition {
         let top_level_scope = scope_repo.build(get_key(h, "scope", |x| x.as_str())?)
             .map_err(ParseSyntaxError::InvalidScope)?;
         let mut state = ParserState {
-            scope_repo: scope_repo,
-            variables: variables,
+            scope_repo,
+            variables,
             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
             backref_regex: Regex::new(r"\\\d").unwrap(),
-            lines_include_newline: lines_include_newline,
+            lines_include_newline,
         };
 
         let mut contexts = SyntaxDefinition::parse_contexts(contexts_hash, &mut state)?;
@@ -164,7 +164,7 @@ impl SyntaxDefinition {
         );
 
         let defn = SyntaxDefinition {
-            name: get_key(h, "name", |x| x.as_str()).unwrap_or(fallback_name.unwrap_or("Unnamed")).to_owned(),
+            name: get_key(h, "name", |x| x.as_str()).unwrap_or_else(|_| fallback_name.unwrap_or("Unnamed")).to_owned(),
             scope: top_level_scope,
             file_extensions: {
                 get_key(h, "file_extensions", |x| x.as_vec())
@@ -212,28 +212,28 @@ impl SyntaxDefinition {
             let map = y.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
             let mut is_special = false;
-            if let Some(x) = get_key(map, "meta_scope", |x| x.as_str()).ok() {
+            if let Ok(x) = get_key(map, "meta_scope", |x| x.as_str()) {
                 context.meta_scope = str_to_scopes(x, state.scope_repo)?;
                 is_special = true;
             }
-            if let Some(x) = get_key(map, "meta_content_scope", |x| x.as_str()).ok() {
+            if let Ok(x) = get_key(map, "meta_content_scope", |x| x.as_str()) {
                 context.meta_content_scope = str_to_scopes(x, state.scope_repo)?;
                 is_special = true;
             }
-            if let Some(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()).ok() {
+            if let Ok(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()) {
                 context.meta_include_prototype = x;
                 is_special = true;
             }
-            if let Some(true) = get_key(map, "clear_scopes", |x| x.as_bool()).ok() {
+            if let Ok(true) = get_key(map, "clear_scopes", |x| x.as_bool()) {
                 context.clear_scopes = Some(ClearAmount::All);
                 is_special = true;
             }
-            if let Some(x) = get_key(map, "clear_scopes", |x| x.as_i64()).ok() {
+            if let Ok(x) = get_key(map, "clear_scopes", |x| x.as_i64()) {
                 context.clear_scopes = Some(ClearAmount::TopN(x as usize));
                 is_special = true;
             }
             if !is_special {
-                if let Some(x) = get_key(map, "include", Some).ok() {
+                if let Ok(x) = get_key(map, "include", Some) {
                     let reference = SyntaxDefinition::parse_reference(
                         x, state, contexts, namer)?;
                     context.patterns.push(Pattern::Include(reference));
@@ -270,7 +270,7 @@ impl SyntaxDefinition {
                     scope: state.scope_repo
                         .build(&parts[0][6..])
                         .map_err(ParseSyntaxError::InvalidScope)?,
-                    sub_context: sub_context,
+                    sub_context,
                 })
             } else if parts[0].ends_with(".sublime-syntax") {
                 let stem = Path::new(parts[0])
@@ -279,7 +279,7 @@ impl SyntaxDefinition {
                     .ok_or(ParseSyntaxError::BadFileRef)?;
                 Ok(ContextReference::File {
                     name: stem.to_owned(),
-                    sub_context: sub_context,
+                    sub_context,
                 })
             } else {
                 Ok(ContextReference::Named(parts[0].to_owned()))
@@ -360,7 +360,7 @@ impl SyntaxDefinition {
         };
 
         let mut has_captures = false;
-        let operation = if let Ok(_) = get_key(map, "pop", Some) {
+        let operation = if get_key(map, "pop", Some).is_ok() {
             // Thanks @wbond for letting me know this is the correct way to check for captures
             has_captures = state.backref_regex.find(&regex_str).is_some();
             MatchOperation::Pop
@@ -521,7 +521,7 @@ impl ContextNamer {
         };
 
         self.anonymous_index = Some(self.anonymous_index.map(|i| i + 1).unwrap_or(0));
-        return name;
+        name
     }
 }
 
@@ -622,7 +622,7 @@ impl<'a> RegexRewriter<'a> {
                 b'(' => {
                     self.next();
                     // add the current lookaround state to the stack so we can just pop at a closing paren
-                    stack.push(in_lookaround.clone());
+                    stack.push(in_lookaround);
                     if let Some(c2) = self.peek() {
                         if c2 != b'?' {
                             // simple numbered capture group
@@ -737,7 +737,7 @@ impl<'a> RegexRewriter<'a> {
     }
 
     fn peek(&self) -> Option<u8> {
-        self.bytes.get(self.index).map(|&b| b)
+        self.bytes.get(self.index).cloned()
     }
 
     fn next(&mut self) {
