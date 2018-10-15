@@ -156,7 +156,7 @@ impl SyntaxSet {
     /// for matching things like shebangs and mode lines like `-*- Mode: C -*-`
     pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
         let cache = self.first_line_cache();
-        for &(ref reg, i) in &cache.regexes {
+        for &(ref reg, i) in cache.regexes.iter().rev() {
             if reg.find(s).is_some() {
                 return Some(&self.syntaxes[i]);
             }
@@ -574,7 +574,6 @@ impl FirstLineCache {
                 }
             }
         }
-        regexes.reverse();
         FirstLineCache {
             regexes,
         }
