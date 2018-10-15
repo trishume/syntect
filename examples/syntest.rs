@@ -14,8 +14,7 @@ extern crate lazy_static;
 extern crate regex;
 extern crate getopts;
 
-//extern crate onig;
-use syntect::parsing::{SyntaxSet};
+use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 use syntect::syntax_tests::{SyntaxTestFileResult, SyntaxTestOutputOptions, process_syntax_test_assertions};
 
 use std::path::Path;
@@ -73,7 +72,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, out_opts: SyntaxTestOutputOptions) -> 
     reader.read_to_string(&mut contents).expect("Unable to read file");
     contents = contents.replace("\r", &"");
 
-    let res = process_syntax_test_assertions(&syntax, &contents, testtoken_start, testtoken_end, &out_opts);
+    let res = process_syntax_test_assertions(&ss, &syntax, &contents, testtoken_start, testtoken_end, &out_opts);
 
     if out_opts.summary {
         if let SyntaxTestFileResult::FailedAssertions(failures, _) = res {
@@ -123,8 +122,9 @@ fn main() {
     };
     if !syntaxes_path.is_empty() {
         println!("loading syntax definitions from {}", syntaxes_path);
-        ss.load_syntaxes(&syntaxes_path, true).unwrap(); // note that we load the version with newlines
-        ss.link_syntaxes();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add_from_folder(&syntaxes_path, true).unwrap(); // note that we load the version with newlines
+        ss = builder.build();
     }
 
     let out_opts = SyntaxTestOutputOptions {

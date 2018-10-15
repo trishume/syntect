@@ -1,7 +1,7 @@
 //! API for running syntax tests.
 //! See http://www.sublimetext.com/docs/3/syntax.html#testing
 
-use parsing::{ScopeStack, ParseState, SyntaxDefinition, Scope};
+use parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, Scope};
 //use std::io::Write;
 use std::str::FromStr;
 use util::debug_print_ops;
@@ -113,7 +113,7 @@ fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: 
 /// `text` is the code containing syntax test assertions to be parsed and checked.
 /// `testtoken_start` is the token (normally a comment in the given syntax) that represents that assertions could be on the line.
 /// `testtoken_end` is an optional token that will be stripped from the line when retrieving the scope selector. Useful for syntaxes when the start token represents a block comment, to make the tests easier to construct.
-pub/*(crate)*/ fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text: &str, testtoken_start: &str, testtoken_end: Option<&str>, out_opts: &SyntaxTestOutputOptions) -> SyntaxTestFileResult {
+pub/*(crate)*/ fn process_syntax_test_assertions(syntax_set: &SyntaxSet, syntax: &SyntaxReference, text: &str, testtoken_start: &str, testtoken_end: Option<&str>, out_opts: &SyntaxTestOutputOptions) -> SyntaxTestFileResult {
     #[derive(Debug)]
     struct ScopedText {
         scope: Vec<Scope>,
@@ -169,7 +169,7 @@ pub/*(crate)*/ fn process_syntax_test_assertions(syntax: &SyntaxDefinition, text
         let eol_offset = offset + line.len();
 
         // parse the line
-        let ops = state.parse_line(&line);
+        let ops = state.parse_line(&line, &syntax_set);
         // find all the assertions that relate to the current line
         relevant_assertions.clear();
         while assertion_index < assertions.len() {

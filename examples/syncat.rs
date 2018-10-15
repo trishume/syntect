@@ -57,8 +57,9 @@ fn main() {
     };
 
     if let Some(folder) = matches.opt_str("extra-syntaxes") {
-        ss.load_syntaxes(folder, !no_newlines).unwrap();
-        ss.link_syntaxes();
+        let mut builder = ss.into_builder();
+        builder.add_from_folder(folder, !no_newlines).unwrap();
+        ss = builder.build();
     }
 
     let ts = ThemeSet::load_defaults();
@@ -98,7 +99,7 @@ fn main() {
 
             // We use read_line instead of `for line in highlighter.reader.lines()` because that
             // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
-            // See the documentation for `SyntaxSet::load_syntaxes`.
+            // See the documentation for `SyntaxSetBuilder::add_from_folder`.
             // It also allows re-using the line buffer, which should be a tiny bit faster.
             let mut line = String::new();
             while highlighter.reader.read_line(&mut line).unwrap() > 0 {
@@ -107,7 +108,7 @@ fn main() {
                 }
 
                 {
-                    let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
+                    let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line, &ss);
                     print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
                 }
                 line.clear();

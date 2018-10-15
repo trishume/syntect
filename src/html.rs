@@ -1,8 +1,9 @@
 //! Rendering highlighted code as HTML+CSS
 use std::fmt::Write;
-use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxDefinition, SyntaxSet, SCOPE_REPO};
+use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxReference, SyntaxSet, SCOPE_REPO};
 use easy::{HighlightLines, HighlightFile};
 use highlighting::{Color, FontStyle, Style, Theme};
+use util::LinesWithEndings;
 use escape::Escape;
 use std::io::{self, BufRead};
 use std::path::Path;
@@ -31,60 +32,44 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
     }
 }
 
-/// Convenience method that combines `start_coloured_html_snippet`, `styles_to_coloured_html`
+/// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
 /// and `HighlightLines` from `syntect::easy` to create a full highlighted HTML snippet for
 /// a string (which can contain many lines).
 ///
-/// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for no newline characters.
-/// This is easy to get with `SyntaxSet::load_defaults_nonewlines()`. If you think this is the wrong
-/// choice of `SyntaxSet` to accept, I'm not sure of it either, email me.
-pub fn highlighted_snippet_for_string(s: &str, syntax: &SyntaxDefinition, theme: &Theme) -> String {
-    let mut output = String::new();
+/// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
+/// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
+pub fn highlighted_html_for_string(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> String {
     let mut highlighter = HighlightLines::new(syntax, theme);
-    let c = theme.settings.background.unwrap_or(Color::WHITE);
-    write!(output,
-           "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
-           c.r,
-           c.g,
-           c.b)
-        .unwrap();
-    for line in s.lines() {
-        let regions = highlighter.highlight(line);
-        let html = styles_to_coloured_html(&regions[..], IncludeBackground::IfDifferent(c));
-        output.push_str(&html);
-        output.push('\n');
+    let (mut output, bg) = start_highlighted_html_snippet(theme);
+
+    for line in LinesWithEndings::from(s) {
+        let regions = highlighter.highlight(line, ss);
+        append_highlighted_html_for_styled_line(&regions[..], IncludeBackground::IfDifferent(bg), &mut output);
     }
     output.push_str("</pre>\n");
     output
 }
 
-/// Convenience method that combines `start_coloured_html_snippet`, `styles_to_coloured_html`
+/// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
 /// and `HighlightFile` from `syntect::easy` to create a full highlighted HTML snippet for
 /// a file.
 ///
-/// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for no newline characters.
-/// This is easy to get with `SyntaxSet::load_defaults_nonewlines()`. If you think this is the wrong
-/// choice of `SyntaxSet` to accept, I'm not sure of it either, email me.
-pub fn highlighted_snippet_for_file<P: AsRef<Path>>(path: P,
-                                                    ss: &SyntaxSet,
-                                                    theme: &Theme)
-                                                    -> io::Result<String> {
-    // TODO reduce code duplication with highlighted_snippet_for_string
-    let mut output = String::new();
+/// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
+/// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
+pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
+                                                 ss: &SyntaxSet,
+                                                 theme: &Theme)
+                                                 -> io::Result<String> {
     let mut highlighter = HighlightFile::new(path, ss, theme)?;
-    let c = theme.settings.background.unwrap_or(Color::WHITE);
-    write!(output,
-           "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
-           c.r,
-           c.g,
-           c.b)
-        .unwrap();
-    for maybe_line in highlighter.reader.lines() {
-        let line = maybe_line?;
-        let regions = highlighter.highlight_lines.highlight(&line);
-        let html = styles_to_coloured_html(&regions[..], IncludeBackground::IfDifferent(c));
-        output.push_str(&html);
-        output.push('\n');
+    let (mut output, bg) = start_highlighted_html_snippet(theme);
+
+    let mut line = String::new();
+    while highlighter.reader.read_line(&mut line)? > 0 {
+        {
+            let regions = highlighter.highlight_lines.highlight(&line, ss);
+            append_highlighted_html_for_styled_line(&regions[..], IncludeBackground::IfDifferent(bg), &mut output);
+        }
+        line.clear();
     }
     output.push_str("</pre>\n");
     Ok(output)
@@ -126,12 +111,12 @@ pub fn tokens_to_classed_html(line: &str,
     s
 }
 
-/// Determines how background colour attributes are generated
+/// Determines how background color attributes are generated
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IncludeBackground {
     /// Don't include `background-color`, for performance or so that you can use your own background.
     No,
-    /// Set background colour attributes on every node
+    /// Set background color attributes on every node
     Yes,
     /// Only set the `background-color` if it is different than the default (presumably set on a parent element)
     IfDifferent(Color),
@@ -157,20 +142,27 @@ fn write_css_color(s: &mut String, c: Color) {
 /// use syntect::easy::HighlightLines;
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::highlighting::{ThemeSet, Style};
-/// use syntect::html::{styles_to_coloured_html, IncludeBackground};
+/// use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
 ///
 /// // Load these once at the start of your program
-/// let ps = SyntaxSet::load_defaults_nonewlines();
+/// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
-/// let regions = h.highlight("5");
-/// let html = styles_to_coloured_html(&regions[..], IncludeBackground::No);
+/// let regions = h.highlight("5", &ps);
+/// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No);
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```
-pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> String {
+pub fn styled_line_to_highlighted_html(v: &[(Style, &str)], bg: IncludeBackground) -> String {
     let mut s: String = String::new();
+    append_highlighted_html_for_styled_line(v, bg, &mut s);
+    s
+}
+
+/// Like `styled_line_to_highlighted_html` but appends to a `String` for increased efficiency.
+/// In fact `styled_line_to_highlighted_html` is just a wrapper around this function.
+pub fn append_highlighted_html_for_styled_line(v: &[(Style, &str)], bg: IncludeBackground, mut s: &mut String) {
     let mut prev_style: Option<&Style> = None;
     for &(ref style, text) in v.iter() {
         let unify_style = if let Some(ps) = prev_style {
@@ -214,38 +206,38 @@ pub fn styles_to_coloured_html(v: &[(Style, &str)], bg: IncludeBackground) -> St
     if prev_style.is_some() {
         write!(s, "</span>").unwrap();
     }
-    s
 }
 
 /// Returns a `<pre style="...">\n` tag with the correct background color for the given theme.
 /// This is for if you want to roll your own HTML output, you probably just want to use
-/// `highlighted_snippet_for_string`.
+/// `highlighted_html_for_string`.
 ///
 /// If you don't care about the background color you can just prefix the lines from
-/// `styles_to_coloured_html` with a `<pre>`. This is meant to be used with `IncludeBackground::IfDifferent`.
+/// `styled_line_to_highlighted_html` with a `<pre>`. This is meant to be used with `IncludeBackground::IfDifferent`.
+/// As of `v3.0` this method also returns the background color to be passed to `IfDifferent`.
 ///
 /// You're responsible for creating the string `</pre>` to close this, I'm not gonna provide a
 /// helper for that :-)
-pub fn start_coloured_html_snippet(t: &Theme) -> String {
+pub fn start_highlighted_html_snippet(t: &Theme) -> (String, Color) {
     let c = t.settings.background.unwrap_or(Color::WHITE);
-    format!("<pre style=\"background-color:#{:02x}{:02x}{:02x}\">\n",
+    (format!("<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
             c.r,
             c.g,
-            c.b)
+            c.b), c)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, ParseState, ScopeStack};
+    use parsing::{SyntaxSet, ParseState, ScopeStack, SyntaxSetBuilder};
     use highlighting::{ThemeSet, Style, Highlighter, HighlightIterator, HighlightState};
     #[test]
     fn tokens() {
-        let ps = SyntaxSet::load_defaults_nonewlines();
-        let syntax = ps.find_syntax_by_name("Markdown").unwrap();
+        let ss = SyntaxSet::load_defaults_newlines();
+        let syntax = ss.find_syntax_by_name("Markdown").unwrap();
         let mut state = ParseState::new(syntax);
         let line = "[w](t.co) *hi* **five**";
-        let ops = state.parse_line(line);
+        let ops = state.parse_line(line, &ss);
 
         // use util::debug_print_ops;
         // debug_print_ops(line, &ops);
@@ -260,27 +252,28 @@ mod tests {
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();
 
-        let html2 = styles_to_coloured_html(&regions[..], IncludeBackground::Yes);
+        let html2 = styled_line_to_highlighted_html(&regions[..], IncludeBackground::Yes);
         println!("{}", html2);
         assert_eq!(html2, include_str!("../testdata/test1.html").trim_right());
     }
 
     #[test]
     fn strings() {
-        let ss = SyntaxSet::load_defaults_nonewlines();
+        let ss = SyntaxSet::load_defaults_newlines();
         let ts = ThemeSet::load_defaults();
         let s = include_str!("../testdata/highlight_test.erb");
         let syntax = ss.find_syntax_by_extension("erb").unwrap();
-        let html = highlighted_snippet_for_string(s, syntax, &ts.themes["base16-ocean.dark"]);
+        let html = highlighted_html_for_string(s, &ss, syntax, &ts.themes["base16-ocean.dark"]);
+        // println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test3.html"));
-        let html2 = highlighted_snippet_for_file("testdata/highlight_test.erb",
+        let html2 = highlighted_html_for_file("testdata/highlight_test.erb",
                                                  &ss,
                                                  &ts.themes["base16-ocean.dark"])
             .unwrap();
         assert_eq!(html2, html);
 
         // YAML is a tricky syntax and InspiredGitHub is a fancy theme, this is basically an integration test
-        let html3 = highlighted_snippet_for_file("testdata/Packages/Rust/Cargo.sublime-syntax",
+        let html3 = highlighted_html_for_file("testdata/Packages/Rust/Cargo.sublime-syntax",
                                                  &ss,
                                                  &ts.themes["InspiredGitHub"])
             .unwrap();
@@ -292,9 +285,11 @@ mod tests {
     fn tricky_test_syntax() {
         // This syntax I wrote tests edge cases of prototypes
         // I verified the output HTML against what ST3 does with the same syntax and file
-        let ss = SyntaxSet::load_from_folder("testdata").unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add_from_folder("testdata", true).unwrap();
+        let ss = builder.build();
         let ts = ThemeSet::load_defaults();
-        let html = highlighted_snippet_for_file("testdata/testing-syntax.testsyntax",
+        let html = highlighted_html_for_file("testdata/testing-syntax.testsyntax",
                                                 &ss,
                                                 &ts.themes["base16-ocean.dark"])
             .unwrap();

@@ -3,7 +3,7 @@ extern crate criterion;
 extern crate syntect;
 
 use criterion::{Bencher, Criterion};
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 use syntect::highlighting::ThemeSet;
 
 
@@ -25,18 +25,18 @@ fn bench_load_theme(b: &mut Bencher) {
     });
 }
 
-fn bench_load_syntaxes(b: &mut Bencher) {
+fn bench_add_from_folder(b: &mut Bencher) {
     b.iter(|| {
-        let mut ps = SyntaxSet::new();
-        ps.load_syntaxes("testdata/Packages", false).unwrap()
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add_from_folder("testdata/Packages", false).unwrap()
     });
 }
 
 fn bench_link_syntaxes(b: &mut Bencher) {
-    let mut ps = SyntaxSet::new();
-    ps.load_syntaxes("testdata/Packages", false).unwrap();
+    let mut builder = SyntaxSetBuilder::new();
+    builder.add_from_folder("testdata/Packages", false).unwrap();
     b.iter(|| {
-        ps.link_syntaxes();
+        builder.clone().build();
     });
 }
 
@@ -44,7 +44,7 @@ fn loading_benchmark(c: &mut Criterion) {
     c.bench_function("load_internal_dump", bench_load_internal_dump);
     c.bench_function("load_internal_themes", bench_load_internal_themes);
     c.bench_function("load_theme", bench_load_theme);
-    c.bench_function("load_syntaxes", bench_load_syntaxes);
+    c.bench_function("add_from_folder", bench_add_from_folder);
     c.bench_function("link_syntaxes", bench_link_syntaxes);
 }
 

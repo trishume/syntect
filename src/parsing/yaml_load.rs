@@ -4,8 +4,6 @@ use yaml_rust::{YamlLoader, Yaml, ScanError};
 use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
 use onig::{self, Regex, Captures, RegexOptions, Syntax};
-use std::rc::Rc;
-use std::cell::RefCell;
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -98,7 +96,7 @@ struct ParserState<'a> {
 
 // `__start` must not include prototypes from the actual syntax definition,
 // otherwise it's possible that a prototype makes us pop out of `__start`.
-static START_CONTEXTS: &'static str = "
+static START_CONTEXT: &'static str = "
 __start:
     - meta_include_prototype: false
     - match: ''
@@ -159,7 +157,11 @@ impl SyntaxDefinition {
             return Err(ParseSyntaxError::MainMissing);
         }
 
-        SyntaxDefinition::add_initial_contexts(&mut contexts, &mut state, top_level_scope);
+        SyntaxDefinition::add_initial_contexts(
+            &mut contexts,
+            &mut state,
+            top_level_scope,
+        );
 
         let defn = SyntaxDefinition {
             name: get_key(h, "name", |x| x.as_str()).unwrap_or(fallback_name.unwrap_or("Unnamed")).to_owned(),
@@ -176,32 +178,35 @@ impl SyntaxDefinition {
             hidden: get_key(h, "hidden", |x| x.as_bool()).unwrap_or(false),
 
             variables: state.variables.clone(),
-            contexts: contexts,
-            prototype: None,
+            contexts,
         };
         Ok(defn)
     }
 
     fn parse_contexts(map: &Hash,
                       state: &mut ParserState)
-                      -> Result<HashMap<String, ContextPtr>, ParseSyntaxError> {
+                      -> Result<HashMap<String, Context>, ParseSyntaxError> {
         let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
                 let is_prototype = name == "prototype";
-                let context_ptr =
-                    SyntaxDefinition::parse_context(val_vec, state, is_prototype)?;
-                contexts.insert(name.to_owned(), context_ptr);
+                let mut namer = ContextNamer::new(name);
+                SyntaxDefinition::parse_context(val_vec, state, &mut contexts, is_prototype, &mut namer)?;
             }
         }
+
         Ok(contexts)
     }
 
     fn parse_context(vec: &[Yaml],
+                     // TODO: Maybe just pass the scope repo if that's all that's needed?
                      state: &mut ParserState,
-                     is_prototype: bool)
-                     -> Result<ContextPtr, ParseSyntaxError> {
+                     contexts: &mut HashMap<String, Context>,
+                     is_prototype: bool,
+                     namer: &mut ContextNamer)
+                     -> Result<String, ParseSyntaxError> {
         let mut context = Context::new(!is_prototype);
+        let name = namer.next();
 
         for y in vec.iter() {
             let map = y.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
@@ -229,10 +234,12 @@ impl SyntaxDefinition {
             }
             if !is_special {
                 if let Some(x) = get_key(map, "include", Some).ok() {
-                    let reference = SyntaxDefinition::parse_reference(x, state)?;
+                    let reference = SyntaxDefinition::parse_reference(
+                        x, state, contexts, namer)?;
                     context.patterns.push(Pattern::Include(reference));
                 } else {
-                    let pattern = SyntaxDefinition::parse_match_pattern(map, state)?;
+                    let pattern = SyntaxDefinition::parse_match_pattern(
+                        map, state, contexts, namer)?;
                     if pattern.has_captures {
                         context.uses_backrefs = true;
                     }
@@ -241,11 +248,15 @@ impl SyntaxDefinition {
             }
 
         }
-        Ok(Rc::new(RefCell::new(context)))
+
+        contexts.insert(name.clone(), context);
+        Ok(name)
     }
 
     fn parse_reference(y: &Yaml,
-                       state: &mut ParserState)
+                       state: &mut ParserState,
+                       contexts: &mut HashMap<String, Context>,
+                       namer: &mut ContextNamer)
                        -> Result<ContextReference, ParseSyntaxError> {
         if let Some(s) = y.as_str() {
             let parts: Vec<&str> = s.split('#').collect();
@@ -274,8 +285,8 @@ impl SyntaxDefinition {
                 Ok(ContextReference::Named(parts[0].to_owned()))
             }
         } else if let Some(v) = y.as_vec() {
-            let context = SyntaxDefinition::parse_context(v, state, false)?;
-            Ok(ContextReference::Inline(context))
+            let subname = SyntaxDefinition::parse_context(v, state, contexts, false, namer)?;
+            Ok(ContextReference::Inline(subname))
         } else {
             Err(ParseSyntaxError::TypeMismatch)
         }
@@ -305,7 +316,9 @@ impl SyntaxDefinition {
     }
 
     fn parse_match_pattern(map: &Hash,
-                           state: &mut ParserState)
+                           state: &mut ParserState,
+                           contexts: &mut HashMap<String, Context>,
+                           namer: &mut ContextNamer)
                            -> Result<MatchPattern, ParseSyntaxError> {
         let raw_regex = get_key(map, "match", |x| x.as_str())?;
         let regex_str_1 = Self::resolve_variables(raw_regex, state);
@@ -326,13 +339,21 @@ impl SyntaxDefinition {
 
 
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
+            let r = RegexRewriter {
+                bytes: regex_str.as_bytes(),
+                index: 0,
+            };
+            let valid_indexes = r.get_consuming_capture_indexes();
             let mut res_map = Vec::new();
             for (key, value) in map.iter() {
                 if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
-                    res_map.push((key_int as usize,
-                                  str_to_scopes(val_str, state.scope_repo)?));
+                    if valid_indexes.contains(&(key_int as usize)) {
+                        res_map.push((key_int as usize,
+                                      str_to_scopes(val_str, state.scope_repo)?));
+                    }
                 }
             }
+            
             Some(res_map)
         } else {
             None
@@ -344,9 +365,9 @@ impl SyntaxDefinition {
             has_captures = state.backref_regex.find(&regex_str).is_some();
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", Some) {
-            MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state)?)
+            MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
         } else if let Ok(y) = get_key(map, "set", Some) {
-            MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state)?)
+            MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
         } else if let Ok(y) = get_key(map, "embed", Some) {
             // Same as push so we translate it to what it would be
             let mut embed_escape_context_yaml = vec!();
@@ -369,9 +390,12 @@ impl SyntaxDefinition {
                 let escape_context = SyntaxDefinition::parse_context(
                     &embed_escape_context_yaml,
                     state,
-                    false
+                    contexts,
+                    false,
+                    namer,
                 )?;
-                MatchOperation::Push(vec![ContextReference::Inline(escape_context), SyntaxDefinition::parse_reference(y, state)?])
+                MatchOperation::Push(vec![ContextReference::Inline(escape_context),
+                                          SyntaxDefinition::parse_reference(y, state, contexts, namer)?])
             } else {
                 return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
             }
@@ -382,38 +406,43 @@ impl SyntaxDefinition {
 
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
             // should a with_prototype include the prototype? I don't think so.
-            Some(Self::parse_context(v, state, true)?)
+            let subname = Self::parse_context(v, state, contexts, true, namer)?;
+            Some(ContextReference::Inline(subname))
         } else if let Ok(v) = get_key(map, "escape", Some) {
+            let subname = namer.next();
+
             let mut context = Context::new(false);
             let mut match_map = Hash::new();
             match_map.insert(Yaml::String("match".to_string()), Yaml::String(format!("(?={})", v.as_str().unwrap())));
             match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
-            let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state)?;
+            let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state, contexts, namer)?;
             if pattern.has_captures {
                 context.uses_backrefs = true;
             }
             context.patterns.push(Pattern::Match(pattern));
 
-            Some(Rc::new(RefCell::new(context)))
+            contexts.insert(subname.clone(), context);
+            Some(ContextReference::Inline(subname))
         } else {
             None
         };
 
-        let pattern = MatchPattern {
-            has_captures: has_captures,
-            regex_str: regex_str,
-            regex: None,
-            scope: scope,
-            captures: captures,
-            operation: operation,
-            with_prototype: with_prototype,
-        };
+        let pattern = MatchPattern::new(
+            has_captures,
+            regex_str,
+            scope,
+            captures,
+            operation,
+            with_prototype,
+        );
 
         Ok(pattern)
     }
 
     fn parse_pushargs(y: &Yaml,
-                      state: &mut ParserState)
+                      state: &mut ParserState,
+                      contexts: &mut HashMap<String, Context>,
+                      namer: &mut ContextNamer)
                       -> Result<Vec<ContextReference>, ParseSyntaxError> {
         // check for a push of multiple items
         if y.as_vec().map_or(false, |v| !v.is_empty() && (v[0].as_str().is_some() || (v[0].as_vec().is_some() && v[0].as_vec().unwrap()[0].as_hash().is_some()))) {
@@ -421,10 +450,11 @@ impl SyntaxDefinition {
             y.as_vec()
                 .unwrap()
                 .iter()
-                .map(|x| SyntaxDefinition::parse_reference(x, state))
+                .map(|x| SyntaxDefinition::parse_reference(x, state, contexts, namer))
                 .collect()
         } else {
-            Ok(vec![try!(SyntaxDefinition::parse_reference(y, state))])
+            let reference = SyntaxDefinition::parse_reference(y, state, contexts, namer)?;
+            Ok(vec![reference])
         }
     }
 
@@ -434,40 +464,67 @@ impl SyntaxDefinition {
     /// scope remains. This behaviour is emulated through some added contexts
     /// that are the actual top level contexts used in parsing.
     /// See https://github.com/trishume/syntect/issues/58 for more.
-    fn add_initial_contexts(contexts: &mut HashMap<String, ContextPtr>,
-                            state: &mut ParserState,
-                            top_level_scope: Scope) {
-        let yaml_docs = YamlLoader::load_from_str(START_CONTEXTS).unwrap();
+    fn add_initial_contexts(
+        contexts: &mut HashMap<String, Context>,
+        state: &mut ParserState,
+        top_level_scope: Scope,
+    ) {
+        let yaml_docs = YamlLoader::load_from_str(START_CONTEXT).unwrap();
         let yaml = &yaml_docs[0];
 
         let start_yaml : &[Yaml] = yaml["__start"].as_vec().unwrap();
-        let start = SyntaxDefinition::parse_context(start_yaml, state, false).unwrap();
-        {
-            let mut start_b = start.borrow_mut();
-            start_b.meta_content_scope = vec![top_level_scope];
+        SyntaxDefinition::parse_context(start_yaml, state, contexts, false, &mut ContextNamer::new("__start")).unwrap();
+        if let Some(start) = contexts.get_mut("__start") {
+            start.meta_content_scope = vec![top_level_scope];
         }
-        contexts.insert("__start".to_owned(), start);
 
         let main_yaml : &[Yaml] = yaml["__main"].as_vec().unwrap();
-        let main = SyntaxDefinition::parse_context(main_yaml, state, false).unwrap();
-        {
-            let real_main = contexts["main"].borrow();
-            let mut main_b = main.borrow_mut();
-            main_b.meta_include_prototype = real_main.meta_include_prototype;
-            main_b.meta_scope = real_main.meta_scope.clone();
-            main_b.meta_content_scope = real_main.meta_content_scope.clone();
+        SyntaxDefinition::parse_context(main_yaml, state, contexts, false, &mut ContextNamer::new("__main")).unwrap();
+
+        let meta_include_prototype = contexts["main"].meta_include_prototype;
+        let meta_scope = contexts["main"].meta_scope.clone();
+        let meta_content_scope = contexts["main"].meta_content_scope.clone();
+
+        if let Some(outer_main) = contexts.get_mut("__main") {
+            outer_main.meta_include_prototype = meta_include_prototype;
+            outer_main.meta_scope = meta_scope;
+            outer_main.meta_content_scope = meta_content_scope;
         }
-        contexts.insert("__main".to_owned(), main);
 
         // add the top_level_scope as a meta_content_scope to main so
         // pushes from other syntaxes add the file scope
         // TODO: this order is not quite correct if main also has a meta_scope
-        {
-            let mut real_main = contexts["main"].borrow_mut();
-            real_main.meta_content_scope.insert(0,top_level_scope);
+        if let Some(main) = contexts.get_mut("main") {
+            main.meta_content_scope.insert(0, top_level_scope);
         }
     }
 }
+
+struct ContextNamer {
+    name: String,
+    anonymous_index: Option<usize>,
+}
+
+impl ContextNamer {
+    fn new(name: &str) -> ContextNamer {
+        ContextNamer {
+            name: name.to_string(),
+            anonymous_index: None,
+        }
+    }
+
+    fn next(&mut self) -> String {
+        let name = if let Some(index) = self.anonymous_index {
+            format!("#anon_{}_{}", self.name, index)
+        } else {
+            self.name.clone()
+        };
+
+        self.anonymous_index = Some(self.anonymous_index.map(|i| i + 1).unwrap_or(0));
+        return name;
+    }
+}
+
 
 /// Rewrite a regex that matches `\n` to one that matches `$` (end of line) instead.
 /// That allows the regex to be used to match lines that don't include a trailing newline character.
@@ -507,9 +564,10 @@ impl<'a> RegexRewriter<'a> {
                     self.next();
                     if let Some(c2) = self.peek() {
                         self.next();
-                        // Replacing `\n?` with `$?` would make parsing later fail with
-                        // "target of repeat operator is invalid"
-                        if c2 == b'n' && self.peek() != Some(b'?') {
+                        // Replacing `\n` with `$` in `\n?` or `\n+` would make parsing later fail
+                        // with "target of repeat operator is invalid"
+                        let c3 = self.peek();
+                        if c2 == b'n' && c3 != Some(b'?') && c3 != Some(b'+') && c3 != Some(b'*') {
                             result.extend_from_slice(b"$");
                         } else {
                             result.push(c);
@@ -536,6 +594,88 @@ impl<'a> RegexRewriter<'a> {
             }
         }
         String::from_utf8(result).unwrap()
+    }
+
+    /// find capture groups which are not inside lookarounds.
+    /// If, in a YAML syntax definition, a scope stack is applied
+    /// to a capture group inside a lookaround,
+    /// (i.e. "captures:\n x: scope.stack goes.here", where "x" is
+    /// the number of a capture group in a lookahead/behind), those
+    /// those scopes are not applied, so no need to even parse them.
+    fn get_consuming_capture_indexes(mut self) -> Vec<usize> {
+        let mut result = Vec::new();
+        let mut stack = Vec::new();
+        let mut cap_num = 0;
+        let mut in_lookaround = false;
+        stack.push(in_lookaround);
+        result.push(cap_num);
+
+        while let Some(c) = self.peek() {
+            match c {
+                b'\\' => {
+                    self.next();
+                    self.next();
+                }
+                b'[' => {
+                    self.parse_character_class();
+                }
+                b'(' => {
+                    self.next();
+                    // add the current lookaround state to the stack so we can just pop at a closing paren
+                    stack.push(in_lookaround.clone());
+                    if let Some(c2) = self.peek() {
+                        if c2 != b'?' {
+                            // simple numbered capture group
+                            cap_num += 1;
+                            // if we are not currently in a lookaround,
+                            // add this capture group number to the valid ones
+                            if !in_lookaround {
+                                result.push(cap_num);
+                            }
+                        } else {
+                            self.next();
+                            if let Some(c3) = self.peek() {
+                                self.next();
+                                if c3 == b'=' || c3 == b'!' {
+                                    // lookahead
+                                    in_lookaround = true;
+                                } else if c3 == b'<' {
+                                    if let Some(c4) = self.peek() {
+                                        if c4 == b'=' || c4 == b'!' {
+                                            self.next();
+                                            // lookbehind
+                                            in_lookaround = true;
+                                        }
+                                    }
+                                } else if c3 == b'P' {
+                                    if let Some(c4) = self.peek() {
+                                        if c4 == b'<' {
+                                            // named capture group
+                                            cap_num += 1;
+                                            // if we are not currently in a lookaround,
+                                            // add this capture group number to the valid ones
+                                            if !in_lookaround {
+                                                result.push(cap_num);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                b')' => {
+                    if let Some(value) = stack.pop() {
+                        in_lookaround = value;
+                    }
+                    self.next();
+                }
+                _ => {
+                    self.next();
+                }
+            }
+        }
+        result
     }
 
     fn parse_character_class(&mut self) -> (Vec<u8>, bool) {
@@ -669,16 +809,17 @@ mod tests {
         let n: Vec<Scope> = Vec::new();
         println!("{:?}", defn2);
         // assert!(false);
-        assert_eq!(defn2.contexts["main"].borrow().meta_content_scope, vec![top_level_scope]);
-        assert_eq!(defn2.contexts["main"].borrow().meta_scope, n);
-        assert_eq!(defn2.contexts["main"].borrow().meta_include_prototype, true);
+        let main = &defn2.contexts["main"];
+        assert_eq!(main.meta_content_scope, vec![top_level_scope]);
+        assert_eq!(main.meta_scope, n);
+        assert_eq!(main.meta_include_prototype, true);
 
-        assert_eq!(defn2.contexts["__main"].borrow().meta_content_scope, n);
-        assert_eq!(defn2.contexts["__start"].borrow().meta_content_scope, vec![top_level_scope]);
+        assert_eq!(defn2.contexts["__main"].meta_content_scope, n);
+        assert_eq!(defn2.contexts["__start"].meta_content_scope, vec![top_level_scope]);
 
-        assert_eq!(defn2.contexts["string"].borrow().meta_scope,
+        assert_eq!(defn2.contexts["string"].meta_scope,
                    vec![Scope::new("string.quoted.double.c").unwrap()]);
-        let first_pattern: &Pattern = &defn2.contexts["main"].borrow().patterns[0];
+        let first_pattern: &Pattern = &main.patterns[0];
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
@@ -819,7 +960,7 @@ mod tests {
         let top_level_scope = Scope::new("text.tex.latex").unwrap();
         assert_eq!(defn.scope, top_level_scope);
 
-        let first_pattern: &Pattern = &defn.contexts["main"].borrow().patterns[0];
+        let first_pattern: &Pattern = &defn.contexts["main"].patterns[0];
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
@@ -834,6 +975,40 @@ mod tests {
             }
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn names_anonymous_contexts() {
+        let def = SyntaxDefinition::load_from_str(
+            r#"
+            scope: source.c
+            contexts:
+              main:
+                - match: a
+                  push: a
+              a:
+                - meta_scope: a
+                - match: x
+                  push:
+                    - meta_scope: anonymous_x
+                    - match: anything
+                      push:
+                        - meta_scope: anonymous_x_2
+                - match: y
+                  push:
+                    - meta_scope: anonymous_y
+                - match: z
+                  escape: 'test'
+            "#,
+            false,
+            None
+        ).unwrap();
+
+        assert_eq!(def.contexts["a"].meta_scope, vec![Scope::new("a").unwrap()]);
+        assert_eq!(def.contexts["#anon_a_0"].meta_scope, vec![Scope::new("anonymous_x").unwrap()]);
+        assert_eq!(def.contexts["#anon_a_1"].meta_scope, vec![Scope::new("anonymous_x_2").unwrap()]);
+        assert_eq!(def.contexts["#anon_a_2"].meta_scope, vec![Scope::new("anonymous_y").unwrap()]);
+        assert_eq!(def.contexts["#anon_a_3"].patterns.len(), 1); // escape
     }
 
     #[test]
@@ -864,6 +1039,8 @@ mod tests {
         assert_eq!(&rewrite(r"\n"), r"$");
         assert_eq!(&rewrite(r"\[\n"), r"\[$");
         assert_eq!(&rewrite(r"a\n?"), r"a\n?");
+        assert_eq!(&rewrite(r"a\n+"), r"a\n+");
+        assert_eq!(&rewrite(r"a\n*"), r"a\n*");
         assert_eq!(&rewrite(r"[abc\n]"), r"(?:[abc\n]|$)");
         assert_eq!(&rewrite(r"[^\n]"), r"[^\n]");
         assert_eq!(&rewrite(r"[^]\n]"), r"[^]\n]");
@@ -877,5 +1054,44 @@ mod tests {
         assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab(?:$|)");
         assert_eq!(&rewrite(r"(?<!\n)ab"), r"(?<!$)ab");
         assert_eq!(&rewrite(r"(?<=\n)ab"), r"(?<=$)ab");
+    }
+
+    #[test]
+    fn can_get_valid_captures_from_regex() {
+        let regex = "hello(test)(?=(world))(foo(?P<named>bar))";
+        let r = RegexRewriter {
+            bytes: regex.as_bytes(),
+            index: 0,
+        };
+        println!("{:?}", regex);
+        let valid_indexes = r.get_consuming_capture_indexes();
+        println!("{:?}", valid_indexes);
+        assert_eq!(valid_indexes, [0, 1, 3, 4]);
+    }
+
+    #[test]
+    fn can_get_valid_captures_from_regex2() {
+        let regex = "hello(test)[(?=tricked](foo(bar))";
+        let r = RegexRewriter {
+            bytes: regex.as_bytes(),
+            index: 0,
+        };
+        println!("{:?}", regex);
+        let valid_indexes = r.get_consuming_capture_indexes();
+        println!("{:?}", valid_indexes);
+        assert_eq!(valid_indexes, [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn can_get_valid_captures_from_nested_regex() {
+        let regex = "hello(test)(?=(world(?!(te(?<=(st))))))(foo(bar))";
+        let r = RegexRewriter {
+            bytes: regex.as_bytes(),
+            index: 0,
+        };
+        println!("{:?}", regex);
+        let valid_indexes = r.get_consuming_capture_indexes();
+        println!("{:?}", valid_indexes);
+        assert_eq!(valid_indexes, [0, 1, 5, 6]);
     }
 }

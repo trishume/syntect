@@ -4,18 +4,19 @@ extern crate syntect;
 
 use criterion::{Bencher, Criterion};
 
-use syntect::parsing::{SyntaxSet, SyntaxDefinition, ScopeStack};
+use syntect::parsing::{SyntaxSet, SyntaxReference, ScopeStack};
 use syntect::highlighting::{ThemeSet, Theme};
 use syntect::easy::HighlightLines;
+use syntect::html::highlighted_html_for_string;
 use std::str::FromStr;
 use std::fs::File;
 use std::io::Read;
 
-fn do_highlight(s: &str, syntax: &SyntaxDefinition, theme: &Theme) -> usize {
+fn do_highlight(s: &str, syntax_set: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> usize {
     let mut h = HighlightLines::new(syntax, theme);
     let mut count = 0;
     for line in s.lines() {
-        let regions = h.highlight(line);
+        let regions = h.highlight(line, syntax_set);
         count += regions.len();
     }
     count
@@ -33,16 +34,16 @@ fn highlight_file(b: &mut Bencher, file: &str) {
     };
 
     // don't load from dump so we don't count lazy regex compilation time
-    let ps = SyntaxSet::load_defaults_nonewlines();
+    let ss = SyntaxSet::load_defaults_nonewlines();
     let ts = ThemeSet::load_defaults();
 
-    let syntax = ps.find_syntax_for_file(path).unwrap().unwrap();
+    let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
     let mut f = File::open(path).unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
     b.iter(|| {
-        do_highlight(&s, syntax, &ts.themes["base16-ocean.dark"])
+        do_highlight(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
     });
 }
 
@@ -56,8 +57,24 @@ fn stack_matching(b: &mut Bencher) {
     });
 }
 
+fn highlight_html(b: &mut Bencher) {
+    let ss = SyntaxSet::load_defaults_newlines();
+    let ts = ThemeSet::load_defaults();
+
+    let path = "testdata/parser.rs";
+    let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
+    let mut f = File::open(path).unwrap();
+    let mut s = String::new();
+    f.read_to_string(&mut s).unwrap();
+
+    b.iter(|| {
+        highlighted_html_for_string(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
+    });
+}
+
 fn highlighting_benchmark(c: &mut Criterion) {
     c.bench_function("stack_matching", stack_matching);
+    c.bench_function("highlight_html", highlight_html);
     c.bench_function_over_inputs(
         "highlight",
         |b, s| highlight_file(b, s),

@@ -21,7 +21,7 @@ pub struct Theme {
 }
 
 /// Various properties meant to be used to style a text editor.
-/// Basically all the styles that aren't directly applied to text like selection colour.
+/// Basically all the styles that aren't directly applied to text like selection color.
 /// Use this to make your editor UI match the highlighted text.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSettings {
@@ -113,7 +113,7 @@ pub struct ThemeSettings {
 
     /// Foreground color for regions added via `sublime.add_regions()`
     /// with the `sublime.DRAW_OUTLINED` flag added.
-    /// 
+    ///
     /// Deprecated!
     /// This setting does not exist in any available documentation.
     /// Use is discouraged, and it may be removed in a future release.

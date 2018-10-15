@@ -23,9 +23,9 @@ pub struct StyleModifier {
     pub font_style: Option<FontStyle>,
 }
 
-/// RGBA colour, these numbers come directly from the theme so
-/// for now you might have to do your own colour space conversion if you are outputting
-/// a different colour space from the theme. This can be a problem because some Sublime
+/// RGBA color, these numbers come directly from the theme so
+/// for now you might have to do your own color space conversion if you are outputting
+/// a different color space from the theme. This can be a problem because some Sublime
 /// themes use sRGB and some don't. This is specified in an attribute syntect doesn't parse yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Color {
@@ -78,6 +78,16 @@ impl Style {
             foreground: modifier.foreground.unwrap_or(self.foreground),
             background: modifier.background.unwrap_or(self.background),
             font_style: modifier.font_style.unwrap_or(self.font_style),
+        }
+    }
+}
+
+impl Default for Style {
+    fn default() -> Style {
+        Style {
+            foreground: Color::BLACK,
+            background: Color::WHITE,
+            font_style: FontStyle::empty(),
         }
     }
 }
