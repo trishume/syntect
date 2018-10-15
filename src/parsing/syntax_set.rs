@@ -521,6 +521,7 @@ impl SyntaxSetBuilder {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 syntaxes
                     .iter()
+                    .rev()
                     .find(|s| s.scope == scope)
                     .and_then(|s| s.contexts.get(context_name))
             }
@@ -528,6 +529,7 @@ impl SyntaxSetBuilder {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 syntaxes
                     .iter()
+                    .rev()
                     .find(|s| &s.name == name)
                     .and_then(|s| s.contexts.get(context_name))
             }
@@ -735,6 +737,59 @@ mod tests {
     #[test]
     fn is_send() {
         check_send::<SyntaxSet>();
+    }
+
+    #[test]
+    fn can_override_syntaxes() {
+        let syntax_set = {
+            let mut builder = SyntaxSetBuilder::new();
+            builder.add(syntax_a());
+            builder.add(syntax_b());
+            
+            let syntax_a2 = SyntaxDefinition::load_from_str(r#"
+                name: A improved
+                scope: source.a
+                file_extensions: [a]
+                first_line_match: syntax\s+a
+                contexts:
+                  main:
+                    - match: a
+                      scope: a2
+                    - match: go_b
+                      push: scope:source.b#main
+                "#, true, None).unwrap();
+
+            builder.add(syntax_a2);
+            
+            let syntax_c = SyntaxDefinition::load_from_str(r#"
+                name: C
+                scope: source.c
+                file_extensions: [c]
+                first_line_match: syntax\s+.*
+                contexts:
+                  main:
+                    - match: c
+                      scope: c
+                    - match: go_a
+                      push: scope:source.a#main
+                "#, true, None).unwrap();
+
+            builder.add(syntax_c);
+            
+            builder.build()
+        };
+
+        let mut syntax = syntax_set.find_syntax_by_extension("a").unwrap();
+        assert_eq!(syntax.name, "A improved");
+        syntax = syntax_set.find_syntax_by_scope(Scope::new(&"source.a").unwrap()).unwrap();
+        assert_eq!(syntax.name, "A improved");
+        syntax = syntax_set.find_syntax_by_first_line(&"syntax a").unwrap();
+        assert_eq!(syntax.name, "C");
+        
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("c go_a a", &syntax_set);
+        let expected = (7, ScopeStackOp::Push(Scope::new("a2").unwrap()));
+        assert_ops_contain(&ops, &expected);
     }
 
     fn assert_ops_contain(
