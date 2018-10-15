@@ -5,7 +5,8 @@ use parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, Scope};
 //use std::io::Write;
 use std::str::FromStr;
 use util::debug_print_ops;
-use easy::{ScopeRegionIterator};
+use easy::ScopeRegionIterator;
+use highlighting::ScopeSelectors;
 
 #[derive(Clone, Copy)]
 pub struct SyntaxTestOutputOptions {
@@ -22,10 +23,8 @@ pub enum SyntaxTestFileResult {
     Success(usize),
 }
 
-use highlighting::ScopeSelectors;
-
 #[derive(Debug)]
-struct SyntaxTestAssertionRange {
+pub struct SyntaxTestAssertionRange {
     test_line_offset: usize,
     line_number: usize,
     begin_char: usize,
@@ -34,7 +33,7 @@ struct SyntaxTestAssertionRange {
     scope_selector_text: String,
 }
 
-fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: &str) -> Vec<SyntaxTestAssertionRange> {
+pub fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: &str) -> Vec<SyntaxTestAssertionRange> {
     let mut assertions = Vec::new();
     let mut test_line_offset = 0;
     let mut test_line_len = 0;
