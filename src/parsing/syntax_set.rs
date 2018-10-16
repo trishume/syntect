@@ -127,15 +127,15 @@ impl SyntaxSet {
     /// This and all similar methods below do a linear search of syntaxes, this should be fast
     /// because there aren't many syntaxes, but don't think you can call it a bajillion times per second.
     pub fn find_syntax_by_scope(&self, scope: Scope) -> Option<&SyntaxReference> {
-        self.syntaxes.iter().find(|&s| s.scope == scope)
+        self.syntaxes.iter().rev().find(|&s| s.scope == scope)
     }
 
     pub fn find_syntax_by_name<'a>(&'a self, name: &str) -> Option<&'a SyntaxReference> {
-        self.syntaxes.iter().find(|&s| name == s.name)
+        self.syntaxes.iter().rev().find(|&s| name == s.name)
     }
 
     pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxReference> {
-        self.syntaxes.iter().find(|&s| s.file_extensions.iter().any(|e| e == extension))
+        self.syntaxes.iter().rev().find(|&s| s.file_extensions.iter().any(|e| e == extension))
     }
 
     /// Searches for a syntax first by extension and then by case-insensitive name
@@ -148,7 +148,7 @@ impl SyntaxSet {
                 return ext_res;
             }
         }
-        self.syntaxes.iter().find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
+        self.syntaxes.iter().rev().find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
     }
 
     /// Try to find the syntax for a file based on its first line.
@@ -156,7 +156,7 @@ impl SyntaxSet {
     /// for matching things like shebangs and mode lines like `-*- Mode: C -*-`
     pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
         let cache = self.first_line_cache();
-        for &(ref reg, i) in &cache.regexes {
+        for &(ref reg, i) in cache.regexes.iter().rev() {
             if reg.find(s).is_some() {
                 return Some(&self.syntaxes[i]);
             }
@@ -173,7 +173,7 @@ impl SyntaxSet {
     pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxReference> {
         let mut slash_path = "/".to_string();
         slash_path.push_str(&path);
-        self.path_syntaxes.iter().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i])
+        self.path_syntaxes.iter().rev().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i])
     }
 
     /// Convenience method that tries to find the syntax for a file path,
@@ -518,6 +518,7 @@ impl SyntaxSetBuilder {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 syntaxes
                     .iter()
+                    .rev()
                     .find(|s| s.scope == scope)
                     .and_then(|s| s.contexts.get(context_name))
             }
@@ -525,6 +526,7 @@ impl SyntaxSetBuilder {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 syntaxes
                     .iter()
+                    .rev()
                     .find(|s| &s.name == name)
                     .and_then(|s| s.contexts.get(context_name))
             }
@@ -731,6 +733,59 @@ mod tests {
     #[test]
     fn is_send() {
         check_send::<SyntaxSet>();
+    }
+
+    #[test]
+    fn can_override_syntaxes() {
+        let syntax_set = {
+            let mut builder = SyntaxSetBuilder::new();
+            builder.add(syntax_a());
+            builder.add(syntax_b());
+            
+            let syntax_a2 = SyntaxDefinition::load_from_str(r#"
+                name: A improved
+                scope: source.a
+                file_extensions: [a]
+                first_line_match: syntax\s+a
+                contexts:
+                  main:
+                    - match: a
+                      scope: a2
+                    - match: go_b
+                      push: scope:source.b#main
+                "#, true, None).unwrap();
+
+            builder.add(syntax_a2);
+            
+            let syntax_c = SyntaxDefinition::load_from_str(r#"
+                name: C
+                scope: source.c
+                file_extensions: [c]
+                first_line_match: syntax\s+.*
+                contexts:
+                  main:
+                    - match: c
+                      scope: c
+                    - match: go_a
+                      push: scope:source.a#main
+                "#, true, None).unwrap();
+
+            builder.add(syntax_c);
+            
+            builder.build()
+        };
+
+        let mut syntax = syntax_set.find_syntax_by_extension("a").unwrap();
+        assert_eq!(syntax.name, "A improved");
+        syntax = syntax_set.find_syntax_by_scope(Scope::new(&"source.a").unwrap()).unwrap();
+        assert_eq!(syntax.name, "A improved");
+        syntax = syntax_set.find_syntax_by_first_line(&"syntax a").unwrap();
+        assert_eq!(syntax.name, "C");
+        
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("c go_a a", &syntax_set);
+        let expected = (7, ScopeStackOp::Push(Scope::new("a2").unwrap()));
+        assert_ops_contain(&ops, &expected);
     }
 
     fn assert_ops_contain(
