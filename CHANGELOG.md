@@ -1,3 +1,8 @@
+# Version 3.0.1
+
+- Fix a bug with syntaxes that used captures in lookarounds (#176 #215)
+- Fix the precedence order of syntaxes to match Sublime (#217 #216)
+
 # Version 3.0
 
 This is a major release with multiple breaking API changes, although upgrading shouldn't be too difficult. It fixes bugs and comes with some nice new features.
