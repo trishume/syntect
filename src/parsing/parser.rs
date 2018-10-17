@@ -1402,7 +1402,7 @@ contexts:
 
     #[test]
     fn can_parse_two_with_prototypes_at_same_stack_level() {
-        let syntax = r#"
+        let syntax_yamlstr = r#"
 %YAML 1.2
 ---
 # See http://www.sublimetext.com/docs/3/syntax.html
@@ -1425,8 +1425,39 @@ contexts:
           scope: '1'
 "#;
 
-        let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
         expect_scope_stacks_with_syntax("abc12", &["<1>", "<2>"], syntax);
+    }
+
+    #[test]
+    fn can_parse_two_with_prototypes_at_same_stack_level_updated_captures() {
+        let syntax_yamlstr = r#"
+%YAML 1.2
+---
+# See http://www.sublimetext.com/docs/3/syntax.html
+scope: source.example-wp
+contexts:
+  main:
+    - match: (a)
+      scope: a
+      push:
+        - match: (b)
+          scope: b
+          set:
+            - match: c
+              scope: c
+          with_prototype:
+            - match: d
+              scope: d
+      with_prototype:
+        - match: \1
+          scope: '1'
+          pop: true
+"#;
+
+        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        expect_scope_stacks_with_syntax("aa", &["<a>", "<1>"], syntax.clone());
+        expect_scope_stacks_with_syntax("abcdb", &["<a>", "<b>", "<c>", "<d>", "<1>"], syntax);
     }
 
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
