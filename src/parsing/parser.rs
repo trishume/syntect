@@ -36,7 +36,7 @@ pub struct ParseState {
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct StateLevel {
     context: ContextId,
-    prototype: Vec<ContextId>,
+    prototypes: Vec<ContextId>,
     captures: Option<(Region, String)>,
 }
 
@@ -150,7 +150,7 @@ impl ParseState {
     pub fn new(syntax: &SyntaxReference) -> ParseState {
         let start_state = StateLevel {
             context: syntax.contexts["__start"].clone(),
-            prototype: Vec::new(),
+            prototypes: Vec::new(),
             captures: None,
         };
         ParseState {
@@ -309,7 +309,7 @@ impl ParseState {
         let context_chain = {
             let proto_start = self.proto_starts.last().cloned().unwrap_or(0);
             // Sublime applies with_prototypes from bottom to top
-            let with_prototypes = self.stack[proto_start..].iter().flat_map(|lvl| lvl.prototype.iter().map(|ctx| (true, ctx, None))); // TODO: replace None with lvl.captures.as_ref()
+            let with_prototypes = self.stack[proto_start..].iter().flat_map(|lvl| lvl.prototypes.iter().map(move |ctx| (true, ctx, lvl.captures.as_ref())));
             let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx, None));
             let cur_context = Some((false, &cur_level.context, cur_level.captures.as_ref())).into_iter();
             with_prototypes.chain(cur_prototype).chain(cur_context)
@@ -610,7 +610,7 @@ impl ParseState {
                 // a `with_prototype` stays active when the context is `set`
                 // until the context layer in the stack (where the `with_prototype`
                 // was initially applied) is popped off.
-                (ctx_refs, self.stack.pop().map(|s| s.prototype))
+                (ctx_refs, self.stack.pop().map(|s| s.prototypes))
             }
             MatchOperation::Pop => {
                 self.stack.pop();
@@ -619,7 +619,7 @@ impl ParseState {
             MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
-            let mut proto_ids = old_proto_ids.clone().unwrap_or(Vec::new());
+            let mut proto_ids = old_proto_ids.clone().unwrap_or_else(|| Vec::new());
             if i == ctx_refs.len() - 1 {
                 // if a with_prototype was specified, and multiple contexts were pushed,
                 // then the with_prototype applies only to the last context pushed, i.e.
@@ -645,7 +645,7 @@ impl ParseState {
             };
             self.stack.push(StateLevel {
                 context: context_id,
-                prototype: proto_ids,
+                prototypes: proto_ids,
                 captures,
             });
         }
@@ -1491,7 +1491,9 @@ contexts:
 
         let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
         expect_scope_stacks_with_syntax("a--", &["<a>", "<2>"], syntax.clone());
-        expect_scope_stacks_with_syntax("a-bcdba-", &["<a>", "<b>"], syntax); // TODO: it seems that when ST encounters a non existing pop backreference, it just pops back to the with_prototype's original parent context - i.e. cdb is unscoped
+        // it seems that when ST encounters a non existing pop backreference, it just pops back to the with_prototype's original parent context - i.e. cdb is unscoped
+        // TODO: it would be useful to have syntest functionality available here for easier testing and clarity
+        expect_scope_stacks_with_syntax("a-bcdba-", &["<a>", "<b>"], syntax);
     }
 
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
