@@ -149,7 +149,7 @@ impl ParseState {
     /// pointer to the main context of the syntax.
     pub fn new(syntax: &SyntaxReference) -> ParseState {
         let start_state = StateLevel {
-            context: syntax.contexts["__start"].clone(),
+            context: syntax.contexts["__start"],
             prototype: None,
             captures: None,
         };
@@ -177,7 +177,7 @@ impl ParseState {
     /// reason for this is that contexts within the `SyntaxSet` are referenced
     /// via indexes.
     pub fn parse_line(&mut self, line: &str, syntax_set: &SyntaxSet) -> Vec<(usize, ScopeStackOp)> {
-        assert!(self.stack.len() > 0,
+        assert!(!self.stack.is_empty(),
                 "Somehow main context was popped from the stack");
         let mut match_start = 0;
         let mut res = Vec::new();
@@ -280,7 +280,7 @@ impl ParseState {
                 let id = &self.stack[self.stack.len() - 1].context;
                 syntax_set.get_context(id)
             };
-            self.exec_pattern(line, reg_match, level_context, syntax_set, ops);
+            self.exec_pattern(line, &reg_match, level_context, syntax_set, ops);
 
             true
         } else {
@@ -438,14 +438,14 @@ impl ParseState {
         } else if can_cache {
             search_cache.insert(match_pat, None);
         }
-        return None;
+        None
     }
 
     /// Returns true if the stack was changed
     fn exec_pattern<'a>(
         &mut self,
         line: &str,
-        reg_match: RegexMatch<'a>,
+        reg_match: &RegexMatch<'a>,
         level_context: &'a Context,
         syntax_set: &'a SyntaxSet,
         ops: &mut Vec<(usize, ScopeStackOp)>,

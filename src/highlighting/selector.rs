@@ -62,7 +62,7 @@ impl FromStr for ScopeSelector {
         }
         Ok(ScopeSelector {
             path: ScopeStack::from_str(path_str)?,
-            excludes: excludes,
+            excludes,
         })
     }
 }
@@ -97,7 +97,7 @@ impl FromStr for ScopeSelectors {
         for selector in s.split(&[',', '|'][..]) {
             selectors.push(ScopeSelector::from_str(selector)?)
         }
-        Ok(ScopeSelectors { selectors: selectors })
+        Ok(ScopeSelectors { selectors })
     }
 }
 

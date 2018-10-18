@@ -141,7 +141,7 @@ pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'
 
     let mut after = Vec::new();
     // If necessary, split the token the split falls inside
-    if rest.len() > 0 && rest_split_i > 0 {
+    if !rest.is_empty() && rest_split_i > 0 {
         let (sa, sb) = rest[0].1.split_at(rest_split_i);
         before.push((rest[0].0.clone(), sa));
         after.push((rest[0].0.clone(), sb));
@@ -150,7 +150,7 @@ pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'
 
     after.extend_from_slice(rest);
 
-    return (before, after);
+    (before, after)
 }
 
 /// Modify part of a highlighted line using a style modifier, useful for highlighting sections of a line.

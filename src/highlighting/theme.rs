@@ -306,9 +306,9 @@ impl ParseSettings for StyleModifier {
         };
 
         Ok(StyleModifier {
-            foreground: foreground,
-            background: background,
-            font_style: font_style,
+            foreground,
+            background,
+            font_style,
         })
     }
 }
@@ -330,8 +330,8 @@ impl ParseSettings for ThemeItem {
             None => return Err(IncorrectSettings),
         };
         Ok(ThemeItem {
-            scope: scope,
-            style: style,
+            scope,
+            style,
         })
     }
 }
@@ -452,10 +452,10 @@ impl ParseSettings for Theme {
             }
         }
         Ok(Theme {
-            name: name,
-            author: author,
-            settings: settings,
-            scopes: scopes,
+            name,
+            author,
+            settings,
+            scopes,
         })
     }
 }

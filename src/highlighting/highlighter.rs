@@ -96,10 +96,10 @@ impl<'a, 'b> HighlightIterator<'a, 'b> {
         HighlightIterator {
             index: 0,
             pos: 0,
-            changes: changes,
-            text: text,
-            highlighter: highlighter,
-            state: state,
+            changes,
+            text,
+            highlighter,
+            state,
         }
     }
 }
@@ -190,9 +190,9 @@ impl ScoredStyle {
 
     fn from_style(style: Style) -> ScoredStyle {
         ScoredStyle {
-            foreground: (MatchPower(-1.0), style.foreground.clone()),
-            background: (MatchPower(-1.0), style.background.clone()),
-            font_style: (MatchPower(-1.0), style.font_style.clone()),
+            foreground: (MatchPower(-1.0), style.foreground),
+            background: (MatchPower(-1.0), style.background),
+            font_style: (MatchPower(-1.0), style.font_style),
         }
     }
 }
@@ -214,9 +214,9 @@ impl<'a> Highlighter<'a> {
         single_selectors.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
         Highlighter {
-            theme: theme,
-            single_selectors: single_selectors,
-            multi_selectors: multi_selectors,
+            theme,
+            single_selectors,
+            multi_selectors,
         }
     }
 
@@ -235,8 +235,8 @@ impl<'a> Highlighter<'a> {
 
         let last_scope = path[path.len() - 1];
         for &(scope, ref modif) in self.single_selectors.iter().filter(|a| a.0.is_prefix_of(last_scope)) {
-            let single_score = (scope.len() as f64) *
-                               ((ATOM_LEN_BITS * ((path.len() - 1) as u16)) as f64).exp2();
+            let single_score = f64::from(scope.len()) *
+                               f64::from(ATOM_LEN_BITS * ((path.len() - 1) as u16)).exp2();
             new_style.apply(modif, MatchPower(single_score));
         }
 
@@ -298,7 +298,7 @@ impl<'a> Highlighter<'a> {
         for item in sorted {
             modifier = modifier.apply(item.style);
         }
-        return modifier;
+        modifier
     }
 }
 

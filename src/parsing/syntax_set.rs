@@ -53,7 +53,7 @@ pub struct SyntaxReference {
 ///
 /// Once all the syntaxes have been added, call `build` to turn the builder into
 /// a `SyntaxSet` that can be used for parsing or highlighting.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SyntaxSetBuilder {
     syntaxes: Vec<SyntaxDefinition>,
     path_syntaxes: Vec<(String, usize)>,
@@ -131,7 +131,7 @@ impl SyntaxSet {
     }
 
     pub fn find_syntax_by_name<'a>(&'a self, name: &str) -> Option<&'a SyntaxReference> {
-        self.syntaxes.iter().rev().find(|&s| name == &s.name)
+        self.syntaxes.iter().rev().find(|&s| name == s.name)
     }
 
     pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxReference> {
@@ -173,7 +173,7 @@ impl SyntaxSet {
     pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxReference> {
         let mut slash_path = "/".to_string();
         slash_path.push_str(&path);
-        return self.path_syntaxes.iter().rev().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i]);
+        self.path_syntaxes.iter().rev().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i])
     }
 
     /// Convenience method that tries to find the syntax for a file path,
@@ -303,10 +303,7 @@ impl SyntaxSet {
 
 impl SyntaxSetBuilder {
     pub fn new() -> SyntaxSetBuilder {
-        SyntaxSetBuilder {
-            syntaxes: Vec::new(),
-            path_syntaxes: Vec::new(),
-        }
+        SyntaxSetBuilder::default()
     }
 
     /// Add a syntax to the set.
@@ -433,7 +430,7 @@ impl SyntaxSetBuilder {
                 let mut context = &mut all_contexts[context_id.index()];
                 if let Some(prototype_id) = prototype {
                     if context.meta_include_prototype && !no_prototype.contains(&context_id.index()) {
-                        context.prototype = Some(prototype_id.clone());
+                        context.prototype = Some(*prototype_id);
                     }
                 }
                 Self::link_context(&mut context, syntax, &syntaxes);
@@ -536,7 +533,7 @@ impl SyntaxSetBuilder {
             Direct(_) => None,
         };
         if let Some(context_id) = linked_context_id {
-            let mut new_ref = Direct(context_id.clone());
+            let mut new_ref = Direct(*context_id);
             mem::swap(context_ref, &mut new_ref);
         }
     }
