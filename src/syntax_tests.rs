@@ -25,14 +25,18 @@ pub enum SyntaxTestFileResult {
 
 #[derive(Debug)]
 pub struct SyntaxTestAssertionRange {
-    test_line_offset: usize,
-    line_number: usize,
-    begin_char: usize,
-    end_char: usize,
-    scope_selector: ScopeSelectors,
-    scope_selector_text: String,
+    pub test_line_offset: usize,
+    pub line_number: usize,
+    pub begin_char: usize,
+    pub end_char: usize,
+    pub scope_selector: ScopeSelectors,
+    pub scope_selector_text: String,
 }
 
+/// Given a start token, option end token and text, parse the syntax tests in the text
+/// that follow the format described at http://www.sublimetext.com/docs/3/syntax.html#testing
+/// and return the scope selector assertions found, so that when the text is parsed,
+/// the assertions can be checked
 pub fn get_syntax_test_assertions(token_start: &str, token_end: Option<&str>, text: &str) -> Vec<SyntaxTestAssertionRange> {
     let mut assertions = Vec::new();
     let mut test_line_offset = 0;
