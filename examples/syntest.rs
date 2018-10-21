@@ -9,13 +9,10 @@
 // cargo run --example syntest testdata/Packages/JavaScript/syntax_test_json.json testdata/Packages/JavaScript/
 extern crate syntect;
 extern crate walkdir;
-#[macro_use]
-extern crate lazy_static;
-extern crate regex;
 extern crate getopts;
 
 use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
-use syntect::syntax_tests::{SyntaxTestFileResult, SyntaxTestOutputOptions, process_syntax_test_assertions};
+use syntect::syntax_tests::{SyntaxTestFileResult, SyntaxTestOutputOptions, process_syntax_test_assertions, parse_syntax_test_header_line, SyntaxTestHeader};
 
 use std::path::Path;
 use std::io::prelude::*;
@@ -24,7 +21,6 @@ use std::fs::File;
 use std::time::Instant;
 
 use getopts::Options;
-use regex::Regex;
 use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,14 +29,6 @@ pub enum SyntaxTestHeaderError {
     SyntaxDefinitionNotFound,
 }
 
-lazy_static! {
-    pub static ref SYNTAX_TEST_HEADER_PATTERN: Regex = Regex::new(r#"(?xm)
-            ^(?P<testtoken_start>\s*\S+)
-            \s+SYNTAX\sTEST\s+
-            "(?P<syntax_file>[^"]+)"
-            \s*(?P<testtoken_end>\S+)?$
-        "#).unwrap();
-}
 
 fn test_file(ss: &SyntaxSet, path: &Path, out_opts: SyntaxTestOutputOptions) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
     let f = File::open(path).unwrap();
@@ -54,12 +42,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, out_opts: SyntaxTestOutputOptions) -> 
     header_line = header_line.replace("\r", &"");
 
     // parse the syntax test header in the first line of the file
-    let search_result = SYNTAX_TEST_HEADER_PATTERN.captures(&header_line);
-    let captures = search_result.ok_or(SyntaxTestHeaderError::MalformedHeader)?;
-
-    let testtoken_start = captures.name("testtoken_start").unwrap().as_str();
-    let testtoken_end = captures.name("testtoken_end").map_or(None, |c|Some(c.as_str()));
-    let syntax_file = captures.name("syntax_file").unwrap().as_str();
+    let SyntaxTestHeader { testtoken_start, testtoken_end, syntax_file } = parse_syntax_test_header_line(&header_line).ok_or(SyntaxTestHeaderError::MalformedHeader)?;
 
     // find the relevant syntax definition to parse the file with - case is important!
     if !out_opts.summary {

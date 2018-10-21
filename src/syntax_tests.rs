@@ -8,6 +8,12 @@ use util::debug_print_ops;
 use easy::ScopeRegionIterator;
 use highlighting::ScopeSelectors;
 
+// #[macro_use]
+// extern crate lazy_static;
+extern crate regex;
+
+use self::regex::Regex;
+
 #[derive(Clone, Copy)]
 pub struct SyntaxTestOutputOptions {
     pub time: bool,
@@ -31,6 +37,32 @@ pub struct SyntaxTestAssertionRange {
     pub end_char: usize,
     pub scope_selector: ScopeSelectors,
     pub scope_selector_text: String,
+}
+
+lazy_static! {
+    static ref SYNTAX_TEST_HEADER_PATTERN: Regex = Regex::new(r#"(?xm)
+            ^(?P<testtoken_start>\s*\S+)
+            \s+SYNTAX\sTEST\s+
+            "(?P<syntax_file>[^"]+)"
+            \s*(?P<testtoken_end>\S+)?\r?$
+        "#).unwrap();
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyntaxTestHeader<'a> {
+    pub testtoken_start: &'a str,
+    pub testtoken_end: Option<&'a str>,
+    pub syntax_file: &'a str,
+}
+
+pub fn parse_syntax_test_header_line(header_line: &str) -> Option<SyntaxTestHeader> {
+    let captures = SYNTAX_TEST_HEADER_PATTERN.captures(&header_line/*.replace("\r", &"")*/)?;
+    
+    Some(SyntaxTestHeader {
+        testtoken_start: captures.name("testtoken_start").unwrap().as_str(),
+        testtoken_end: captures.name("testtoken_end").map_or(None, |c|Some(c.as_str())),
+        syntax_file: captures.name("syntax_file").unwrap().as_str(),
+    })
 }
 
 /// Given a start token, option end token and text, parse the syntax tests in the text
@@ -367,5 +399,37 @@ foobar
         assert_eq!(result[4].end_char, 7);
         assert_eq!(result[5].begin_char, 0);
         assert_eq!(result[5].end_char, 1);
+    }
+
+    #[test]
+    fn can_parse_syntax_test_header_with_end_token() {
+        let header = parse_syntax_test_header_line(&"<!-- SYNTAX TEST \"XML.sublime-syntax\" -->").unwrap();
+        assert_eq!(&header.testtoken_start, &"<!--");
+        assert_eq!(&header.testtoken_end.unwrap(), &"-->");
+        assert_eq!(&header.syntax_file, &"XML.sublime-syntax");
+    }
+
+    #[test]
+    fn can_parse_syntax_test_header_with_end_token_and_carriage_return() {
+        let header = parse_syntax_test_header_line(&"<!-- SYNTAX TEST \"XML.sublime-syntax\" -->\r\n").unwrap();
+        assert_eq!(&header.testtoken_start, &"<!--");
+        assert_eq!(&header.testtoken_end.unwrap(), &"-->");
+        assert_eq!(&header.syntax_file, &"XML.sublime-syntax");
+    }
+
+    #[test]
+    fn can_parse_syntax_test_header_with_no_end_token() {
+        let header = parse_syntax_test_header_line(&"// SYNTAX TEST \"Packages/Example/Example.sublime-syntax\"\n").unwrap();
+        assert_eq!(&header.testtoken_start, &"//");
+        assert!(!header.testtoken_end.is_some());
+        assert_eq!(&header.syntax_file, &"Packages/Example/Example.sublime-syntax");
+    }
+
+    #[test]
+    fn can_parse_syntax_test_header_with_no_end_token_and_carriage_return() {
+        let header = parse_syntax_test_header_line(&"// SYNTAX TEST \"Packages/Example/Example.sublime-syntax\"\r").unwrap();
+        assert_eq!(&header.testtoken_start, &"//");
+        assert!(header.testtoken_end.is_none());
+        assert_eq!(&header.syntax_file, &"Packages/Example/Example.sublime-syntax");
     }
 // }
