@@ -8,12 +8,6 @@ use util::debug_print_ops;
 use easy::ScopeRegionIterator;
 use highlighting::ScopeSelectors;
 
-// #[macro_use]
-// extern crate lazy_static;
-extern crate regex;
-
-use self::regex::Regex;
-
 #[derive(Clone, Copy)]
 pub struct SyntaxTestOutputOptions {
     pub time: bool,
@@ -39,15 +33,6 @@ pub struct SyntaxTestAssertionRange {
     pub scope_selector_text: String,
 }
 
-lazy_static! {
-    static ref SYNTAX_TEST_HEADER_PATTERN: Regex = Regex::new(r#"(?xm)
-            ^(?P<testtoken_start>\s*\S+)
-            \s+SYNTAX\sTEST\s+
-            "(?P<syntax_file>[^"]+)"
-            \s*(?P<testtoken_end>\S+)?\r?$
-        "#).unwrap();
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntaxTestHeader<'a> {
     pub testtoken_start: &'a str,
@@ -55,14 +40,22 @@ pub struct SyntaxTestHeader<'a> {
     pub syntax_file: &'a str,
 }
 
-pub fn parse_syntax_test_header_line(header_line: &str) -> Option<SyntaxTestHeader> {
-    let captures = SYNTAX_TEST_HEADER_PATTERN.captures(&header_line/*.replace("\r", &"")*/)?;
-    
-    Some(SyntaxTestHeader {
-        testtoken_start: captures.name("testtoken_start").unwrap().as_str(),
-        testtoken_end: captures.name("testtoken_end").map_or(None, |c|Some(c.as_str())),
-        syntax_file: captures.name("syntax_file").unwrap().as_str(),
-    })
+pub fn parse_syntax_test_header_line(header_line: &str) -> Option<SyntaxTestHeader> { // TODO: use a "impl<'a> From<&'a str> for SyntaxTestHeader<'a>" instead?
+    if let Some(pos) = &header_line.find(&" SYNTAX TEST \"") {
+        let filename_part = &header_line[*pos + " SYNTAX TEST \"".len()..];
+        if let Some(close_pos) = filename_part.find(&"\"") {
+            let end_token = filename_part[close_pos + 1..].trim();
+            Some(SyntaxTestHeader {
+                testtoken_start: &header_line[0..*pos],
+                testtoken_end: if end_token.len() == 0 { None } else { Some(end_token) },
+                syntax_file: &filename_part[0..close_pos],
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    }
 }
 
 /// Given a start token, option end token and text, parse the syntax tests in the text
