@@ -427,9 +427,10 @@ impl SyntaxSetBuilder {
             }
 
             for context_id in syntax.contexts.values() {
-                let mut context = &mut all_contexts[context_id.index()];
+                let index = context_id.index();
+                let mut context = &mut all_contexts[index];
                 if let Some(prototype_id) = prototype {
-                    if context.meta_include_prototype && !no_prototype.contains(&context_id.index()) {
+                    if context.meta_include_prototype && !no_prototype.contains(&index) {
                         context.prototype = Some(*prototype_id);
                     }
                 }
@@ -476,17 +477,27 @@ impl SyntaxSetBuilder {
                                         Self::recursively_mark_no_prototype(syntax, i.index(), contexts, no_prototype);
                                     }
                                 },
+                                ContextReference::Direct(ref id) => {
+                                    Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
+                                },
                                 _ => (),
                             }
                         }
                     }
                 }
-                Pattern::Include(ContextReference::Named(ref s)) => {
-                    if let Some(i) = syntax.contexts.get(s) {
-                        Self::recursively_mark_no_prototype(syntax, i.index(), contexts, no_prototype);
+                Pattern::Include(ref reference) => {
+                    match reference {
+                        ContextReference::Named(ref s) => {
+                            if let Some(id) = syntax.contexts.get(s) {
+                                Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
+                            }
+                        },
+                        ContextReference::Direct(ref id) => {
+                            Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
+                        },
+                        _ => (),
                     }
                 }
-                _ => (),
             }
         }
     }
@@ -788,12 +799,100 @@ mod tests {
         assert_ops_contain(&ops, &expected);
     }
 
+    #[test]
+    fn can_parse_issue219() {
+        // Go to builder and back after loading so that build() gets Direct references instead of
+        // Named ones. The bug was that Direct references were not handled when marking as
+        // "no prototype", so prototype contexts accidentally had the prototype set, which made
+        // the parser loop forever.
+        let syntax_set = SyntaxSet::load_defaults_newlines().into_builder().build();
+        let syntax = syntax_set.find_syntax_by_extension("yaml").unwrap();
+
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("# test\n", &syntax_set);
+        let expected = (0, ScopeStackOp::Push(Scope::new("comment.line.number-sign.yaml").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn no_prototype_for_contexts_included_from_prototype() {
+        let mut builder = SyntaxSetBuilder::new();
+        let syntax = SyntaxDefinition::load_from_str(r#"
+                name: Test Prototype
+                scope: source.test
+                file_extensions: [test]
+                contexts:
+                  prototype:
+                    - include: included_from_prototype
+                  main:
+                    - match: main
+                    - match: other
+                      push: other
+                  other:
+                    - match: o
+                  included_from_prototype:
+                    - match: p
+                      scope: p
+                "#, true, None).unwrap();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        // "main" and "other" should have context set, "prototype" and "included_from_prototype"
+        // must not have a prototype set.
+        assert_prototype_only_on(&["main", "other"], &ss, &ss.syntaxes()[0]);
+
+        // Building again should have the same result. The difference is that after the first
+        // build(), the references have been replaced with Direct references, so the code needs to
+        // handle that correctly.
+        let rebuilt = ss.into_builder().build();
+        assert_prototype_only_on(&["main", "other"], &rebuilt, &rebuilt.syntaxes()[0]);
+    }
+
+    #[test]
+    fn no_prototype_for_contexts_inline_in_prototype() {
+        let mut builder = SyntaxSetBuilder::new();
+        let syntax = SyntaxDefinition::load_from_str(r#"
+                name: Test Prototype
+                scope: source.test
+                file_extensions: [test]
+                contexts:
+                  prototype:
+                    - match: p
+                      push:
+                        - match: p2
+                  main:
+                    - match: main
+                "#, true, None).unwrap();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        assert_prototype_only_on(&["main"], &ss, &ss.syntaxes()[0]);
+
+        let rebuilt = ss.into_builder().build();
+        assert_prototype_only_on(&["main"], &rebuilt, &rebuilt.syntaxes()[0]);
+    }
+
     fn assert_ops_contain(
         ops: &[(usize, ScopeStackOp)],
         expected: &(usize, ScopeStackOp)
     ) {
         assert!(ops.contains(expected),
                 "expected operations to contain {:?}: {:?}", expected, ops);
+    }
+
+    fn assert_prototype_only_on(expected: &[&str], syntax_set: &SyntaxSet, syntax: &SyntaxReference) {
+        for (name, id) in &syntax.contexts {
+            if name == "__main" || name == "__start" {
+                // Skip special contexts
+                continue;
+            }
+            let context = syntax_set.get_context(id);
+            if expected.contains(&name.as_str()) {
+                assert!(context.prototype.is_some(), "Expected context {} to have prototype", name);
+            } else {
+                assert!(context.prototype.is_none(), "Expected context {} to not have prototype", name);
+            }
+        }
     }
 
     fn check_send<T: Send>() {}
