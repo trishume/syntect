@@ -619,7 +619,13 @@ impl ParseState {
             MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
-            let mut proto_ids = old_proto_ids.clone().unwrap_or_else(|| Vec::new());
+            let mut proto_ids = if i == 0 {
+                // it is only necessary to preserve the old prototypes
+                // at the first stack frame pushed
+                old_proto_ids.clone().unwrap_or_else(|| Vec::new())
+            } else {
+                Vec::new()
+            };
             if i == ctx_refs.len() - 1 {
                 // if a with_prototype was specified, and multiple contexts were pushed,
                 // then the with_prototype applies only to the last context pushed, i.e.
