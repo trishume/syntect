@@ -1436,6 +1436,56 @@ contexts:
     }
 
     #[test]
+    fn can_parse_two_with_prototypes_at_same_stack_level_set_multiple() {
+        let syntax_yamlstr = r#"
+%YAML 1.2
+---
+# See http://www.sublimetext.com/docs/3/syntax.html
+scope: source.example-wp
+contexts:
+  main:
+    - match: a
+      scope: a
+      push:
+        - match: b
+          scope: b
+          set: [context1, context2, context3]
+          with_prototype:
+            - match: '2'
+              scope: '2'
+      with_prototype:
+        - match: '1'
+          scope: '1'
+    - match: '1'
+      scope: digit1
+    - match: '2'
+      scope: digit2
+  context1:
+    - match: e
+      scope: e
+      pop: true
+    - match: '2'
+      scope: digit2
+  context2:
+    - match: d
+      scope: d
+      pop: true
+    - match: '2'
+      scope: digit2
+  context3:
+    - match: c
+      scope: c
+      pop: true
+"#;
+
+        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        expect_scope_stacks_with_syntax("ab12", &["<1>", "<2>"], syntax.clone());
+        expect_scope_stacks_with_syntax("abc12", &["<1>", "<digit2>"], syntax.clone());
+        expect_scope_stacks_with_syntax("abcd12", &["<1>", "<digit2>"], syntax.clone());
+        expect_scope_stacks_with_syntax("abcde12", &["<digit1>", "<digit2>"], syntax.clone());
+    }
+
+    #[test]
     fn can_parse_two_with_prototypes_at_same_stack_level_updated_captures() {
         let syntax_yamlstr = r#"
 %YAML 1.2
