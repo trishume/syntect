@@ -36,7 +36,7 @@ pub struct ParseState {
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct StateLevel {
     context: ContextId,
-    prototype: Option<ContextId>,
+    prototypes: Vec<ContextId>,
     captures: Option<(Region, String)>,
 }
 
@@ -150,7 +150,7 @@ impl ParseState {
     pub fn new(syntax: &SyntaxReference) -> ParseState {
         let start_state = StateLevel {
             context: syntax.contexts["__start"],
-            prototype: None,
+            prototypes: Vec::new(),
             captures: None,
         };
         ParseState {
@@ -309,7 +309,7 @@ impl ParseState {
         let context_chain = {
             let proto_start = self.proto_starts.last().cloned().unwrap_or(0);
             // Sublime applies with_prototypes from bottom to top
-            let with_prototypes = self.stack[proto_start..].iter().filter_map(|lvl| lvl.prototype.as_ref().map(|ctx| (true, ctx, lvl.captures.as_ref())));
+            let with_prototypes = self.stack[proto_start..].iter().flat_map(|lvl| lvl.prototypes.iter().map(move |ctx| (true, ctx, lvl.captures.as_ref())));
             let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx, None));
             let cur_context = Some((false, &cur_level.context, cur_level.captures.as_ref())).into_iter();
             with_prototypes.chain(cur_prototype).chain(cur_context)
@@ -604,11 +604,13 @@ impl ParseState {
         pat: &MatchPattern,
         syntax_set: &SyntaxSet
     ) -> bool {
-        let (ctx_refs, old_proto_id) = match pat.operation {
+        let (ctx_refs, old_proto_ids) = match pat.operation {
             MatchOperation::Push(ref ctx_refs) => (ctx_refs, None),
             MatchOperation::Set(ref ctx_refs) => {
-                let old_proto_id = self.stack.pop().and_then(|s| s.prototype);
-                (ctx_refs, old_proto_id)
+                // a `with_prototype` stays active when the context is `set`
+                // until the context layer in the stack (where the `with_prototype`
+                // was initially applied) is popped off.
+                (ctx_refs, self.stack.pop().map(|s| s.prototypes))
             }
             MatchOperation::Pop => {
                 self.stack.pop();
@@ -617,29 +619,29 @@ impl ParseState {
             MatchOperation::None => return false,
         };
         for (i, r) in ctx_refs.iter().enumerate() {
-            let proto_id = if i == ctx_refs.len() - 1 {
-                // a `with_prototype` stays active when the context is `set`
-                // until the context layer in the stack (where the `with_prototype`
-                // was initially applied) is popped off.
+            let mut proto_ids = if i == 0 {
+                // it is only necessary to preserve the old prototypes
+                // at the first stack frame pushed
+                old_proto_ids.clone().unwrap_or_else(|| Vec::new())
+            } else {
+                Vec::new()
+            };
+            if i == ctx_refs.len() - 1 {
                 // if a with_prototype was specified, and multiple contexts were pushed,
                 // then the with_prototype applies only to the last context pushed, i.e.
                 // top most on the stack after all the contexts are pushed - this is also
                 // referred to as the "target" of the push by sublimehq - see
                 // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
                 if let Some(ref p) = pat.with_prototype {
-                    Some(p.id())
-                } else {
-                    old_proto_id
+                    proto_ids.push(p.id().clone());
                 }
-            } else {
-                None
-            };
+            }
             let context_id = r.id();
             let context = syntax_set.get_context(&context_id);
             let captures = {
                 let mut uses_backrefs = context.uses_backrefs;
-                if let Some(ref proto_id) = proto_id {
-                    uses_backrefs = uses_backrefs || syntax_set.get_context(proto_id).uses_backrefs;
+                if !proto_ids.is_empty() {
+                    uses_backrefs = uses_backrefs || proto_ids.iter().any(|id| syntax_set.get_context(id).uses_backrefs);
                 }
                 if uses_backrefs {
                     Some((regions.clone(), line.to_owned()))
@@ -649,7 +651,7 @@ impl ParseState {
             };
             self.stack.push(StateLevel {
                 context: context_id,
-                prototype: proto_id,
+                prototypes: proto_ids,
                 captures,
             });
         }
@@ -1402,6 +1404,152 @@ contexts:
 
         let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
         expect_scope_stacks_with_syntax("testfoo", &["<test>", /*"<ignored>",*/ "<f>", "<keyword>"], syntax);
+    }
+
+    #[test]
+    fn can_parse_two_with_prototypes_at_same_stack_level() {
+        let syntax_yamlstr = r#"
+%YAML 1.2
+---
+# See http://www.sublimetext.com/docs/3/syntax.html
+scope: source.example-wp
+contexts:
+  main:
+    - match: a
+      scope: a
+      push:
+        - match: b
+          scope: b
+          set:
+            - match: c
+              scope: c
+          with_prototype:
+            - match: '2'
+              scope: '2'
+      with_prototype:
+        - match: '1'
+          scope: '1'
+"#;
+
+        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        expect_scope_stacks_with_syntax("abc12", &["<1>", "<2>"], syntax);
+    }
+
+    #[test]
+    fn can_parse_two_with_prototypes_at_same_stack_level_set_multiple() {
+        let syntax_yamlstr = r#"
+%YAML 1.2
+---
+# See http://www.sublimetext.com/docs/3/syntax.html
+scope: source.example-wp
+contexts:
+  main:
+    - match: a
+      scope: a
+      push:
+        - match: b
+          scope: b
+          set: [context1, context2, context3]
+          with_prototype:
+            - match: '2'
+              scope: '2'
+      with_prototype:
+        - match: '1'
+          scope: '1'
+    - match: '1'
+      scope: digit1
+    - match: '2'
+      scope: digit2
+  context1:
+    - match: e
+      scope: e
+      pop: true
+    - match: '2'
+      scope: digit2
+  context2:
+    - match: d
+      scope: d
+      pop: true
+    - match: '2'
+      scope: digit2
+  context3:
+    - match: c
+      scope: c
+      pop: true
+"#;
+
+        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        expect_scope_stacks_with_syntax("ab12", &["<1>", "<2>"], syntax.clone());
+        expect_scope_stacks_with_syntax("abc12", &["<1>", "<digit2>"], syntax.clone());
+        expect_scope_stacks_with_syntax("abcd12", &["<1>", "<digit2>"], syntax.clone());
+        expect_scope_stacks_with_syntax("abcde12", &["<digit1>", "<digit2>"], syntax.clone());
+    }
+
+    #[test]
+    fn can_parse_two_with_prototypes_at_same_stack_level_updated_captures() {
+        let syntax_yamlstr = r#"
+%YAML 1.2
+---
+# See http://www.sublimetext.com/docs/3/syntax.html
+scope: source.example-wp
+contexts:
+  main:
+    - match: (a)
+      scope: a
+      push:
+        - match: (b)
+          scope: b
+          set:
+            - match: c
+              scope: c
+          with_prototype:
+            - match: d
+              scope: d
+      with_prototype:
+        - match: \1
+          scope: '1'
+          pop: true
+"#;
+
+        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        expect_scope_stacks_with_syntax("aa", &["<a>", "<1>"], syntax.clone());
+        expect_scope_stacks_with_syntax("abcdb", &["<a>", "<b>", "<c>", "<d>", "<1>"], syntax);
+    }
+
+        #[test]
+    fn can_parse_two_with_prototypes_at_same_stack_level_updated_captures_ignore_unexisting() {
+        let syntax_yamlstr = r#"
+%YAML 1.2
+---
+# See http://www.sublimetext.com/docs/3/syntax.html
+scope: source.example-wp
+contexts:
+  main:
+    - match: (a)(-)
+      scope: a
+      push:
+        - match: (b)
+          scope: b
+          set:
+            - match: c
+              scope: c
+          with_prototype:
+            - match: d
+              scope: d
+      with_prototype:
+        - match: \2
+          scope: '2'
+          pop: true
+        - match: \1
+          scope: '1'
+          pop: true
+"#;
+
+        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        expect_scope_stacks_with_syntax("a--", &["<a>", "<2>"], syntax.clone());
+        // it seems that when ST encounters a non existing pop backreference, it just pops back to the with_prototype's original parent context - i.e. cdb is unscoped
+        // TODO: it would be useful to have syntest functionality available here for easier testing and clarity
+        expect_scope_stacks_with_syntax("a-bcdba-", &["<a>", "<b>"], syntax);
     }
 
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
