@@ -94,17 +94,36 @@ impl SyntaxSet {
     /// you can even use the fact that SyntaxDefinitions are serializable with
     /// the bincode crate to cache dumps of additional syntaxes yourself.
     pub fn load_defaults_nonewlines() -> SyntaxSet {
-        let ss: SyntaxSet = from_binary(include_bytes!("../assets/default_nonewlines.\
-                                                             packdump"));
-        ss
+
+        #[cfg(feature = "metadata")]
+        {
+            let mut ps: SyntaxSet = from_binary(include_bytes!("../assets/default_nonewlines.packdump"));
+            let metadata = from_binary(include_bytes!("../assets/default_metadata.packdump"));
+            ps.metadata = metadata;
+            ps
+        }
+        #[cfg(not(feature = "metadata"))]
+        {
+            from_binary(include_bytes!("../assets/default_nonewlines.packdump"))
+        }
     }
 
     /// Same as `load_defaults_nonewlines` but for parsing line strings with newlines at the end.
     /// These are separate methods because thanks to linker garbage collection, only the serialized
     /// dumps for the method(s) you call will be included in the binary (each is ~200kb for now).
     pub fn load_defaults_newlines() -> SyntaxSet {
-        let ss: SyntaxSet = from_binary(include_bytes!("../assets/default_newlines.packdump"));
-        ss
+
+        #[cfg(feature = "metadata")]
+        {
+            let mut ps: SyntaxSet = from_binary(include_bytes!("../assets/default_newlines.packdump"));
+            let metadata = from_binary(include_bytes!("../assets/default_metadata.packdump"));
+            ps.metadata = metadata;
+            ps
+        }
+        #[cfg(not(feature = "metadata"))]
+        {
+            from_binary(include_bytes!("../assets/default_newlines.packdump"))
+        }
     }
 }
 
