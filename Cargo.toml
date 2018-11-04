@@ -11,6 +11,9 @@ version = "3.0.1" # remember to update html_root_url
 authors = ["Tristan Hume <tristan@thume.ca>"]
 exclude = [
     "testdata/*",
+    "/scripts/*",
+    "/Makefile",
+    "/codecov.yml"
 ]
 
 [dependencies]
