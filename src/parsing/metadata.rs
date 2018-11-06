@@ -146,6 +146,24 @@ impl Metadata {
     pub fn metadata_for_scope(&self, scope: &[Scope]) -> ScopedMetadata {
         ScopedMetadata(self.metadata_matching_scope(scope))
     }
+
+    pub(crate) fn merged_with_raw(self, raw: LoadMetadata) -> Metadata {
+        let Metadata { mut scoped_metadata } = self;
+        let mut final_items: BTreeMap<String, MetadataSet> = scoped_metadata
+            .drain(..)
+            .map(|ms| (ms.selector_string.clone(), ms))
+            .collect();
+        let Metadata { scoped_metadata } = raw.into();
+        for item in scoped_metadata {
+            final_items.insert(item.selector_string.clone(), item);
+        }
+
+        let scoped_metadata: Vec<MetadataSet> = final_items.into_iter()
+            .map(|(_k, v)| v)
+            .collect();
+
+        Metadata { scoped_metadata }
+    }
 }
 
 impl MetadataSet {

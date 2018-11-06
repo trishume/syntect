@@ -41,11 +41,6 @@ pub struct SyntaxSet {
     #[cfg(feature = "metadata")]
     #[serde(skip, default)]
     pub(crate) metadata: Metadata,
-    /// Raw metadata. We hold on to this so that if additional metadata is loaded,
-    /// we can merge it appropriately.
-    #[cfg(feature = "metadata")]
-    #[serde(skip, default)]
-    raw_metadata: LoadMetadata,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -73,6 +68,8 @@ pub struct SyntaxSetBuilder {
     path_syntaxes: Vec<(String, usize)>,
     #[cfg(feature = "metadata")]
     raw_metadata: LoadMetadata,
+    #[cfg(feature = "metadata")]
+    existing_metadata: Option<Metadata>,
 
 }
 
@@ -103,9 +100,6 @@ impl Clone for SyntaxSet {
             first_line_cache: AtomicLazyCell::new(),
             #[cfg(feature = "metadata")]
             metadata: self.metadata.clone(),
-            #[cfg(feature = "metadata")]
-            raw_metadata: self.raw_metadata.clone(),
-
         }
     }
 }
@@ -119,8 +113,6 @@ impl Default for SyntaxSet {
             first_line_cache: AtomicLazyCell::new(),
             #[cfg(feature = "metadata")]
             metadata: Metadata::default(),
-            #[cfg(feature = "metadata")]
-            raw_metadata: LoadMetadata::default(),
         }
     }
 }
@@ -272,7 +264,7 @@ impl SyntaxSet {
     /// in the set, but not the other way around.
     pub fn into_builder(self) -> SyntaxSetBuilder {
         #[cfg(feature = "metadata")]
-        let SyntaxSet { syntaxes, contexts, path_syntaxes, raw_metadata, .. } = self;
+        let SyntaxSet { syntaxes, contexts, path_syntaxes, metadata, .. } = self;
         #[cfg(not(feature = "metadata"))]
         let SyntaxSet { syntaxes, contexts, path_syntaxes, .. } = self;
 
@@ -317,7 +309,9 @@ impl SyntaxSet {
             syntaxes: builder_syntaxes,
             path_syntaxes,
             #[cfg(feature = "metadata")]
-            raw_metadata,
+            existing_metadata: Some(metadata),
+            #[cfg(feature = "metadata")]
+            raw_metadata: LoadMetadata::default(),
         }
     }
 
@@ -428,7 +422,12 @@ impl SyntaxSetBuilder {
         #[cfg(not(feature = "metadata"))]
         let SyntaxSetBuilder { syntaxes: syntax_definitions, path_syntaxes } = self;
         #[cfg(feature = "metadata")]
-        let SyntaxSetBuilder { syntaxes: syntax_definitions, path_syntaxes, raw_metadata } = self;
+        let SyntaxSetBuilder {
+            syntaxes: syntax_definitions,
+            path_syntaxes,
+            raw_metadata,
+            existing_metadata,
+        } = self;
 
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
         let mut all_contexts = Vec::new();
@@ -490,15 +489,19 @@ impl SyntaxSetBuilder {
             }
         }
 
+        #[cfg(feature = "metadata")]
+        let metadata = match existing_metadata {
+            Some(mut existing) => existing.merged_with_raw(raw_metadata),
+            None => raw_metadata.into(),
+        };
+
         SyntaxSet {
             syntaxes,
             contexts: all_contexts,
             path_syntaxes,
             first_line_cache: AtomicLazyCell::new(),
             #[cfg(feature = "metadata")]
-            metadata: raw_metadata.clone().into(),
-            #[cfg(feature = "metadata")]
-            raw_metadata,
+            metadata,
         }
     }
 
