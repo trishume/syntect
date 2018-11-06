@@ -2,7 +2,7 @@ use super::syntax_definition::*;
 use super::scope::*;
 
 #[cfg(feature = "metadata")]
-use super::metadata::{LoadMetadata, Metadata, RawMetadataEntry, ScopedMetadata};
+use super::metadata::{LoadMetadata, Metadata, RawMetadataEntry};
 
 #[cfg(feature = "yaml-load")]
 use super::super::LoadingError;
@@ -37,6 +37,7 @@ pub struct SyntaxSet {
     #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
     first_line_cache: AtomicLazyCell<FirstLineCache>,
     /// Metadata, e.g. indent and commenting information.
+    /// NOTE: if serializing, you should serialize metadata manually.
     #[cfg(feature = "metadata")]
     #[serde(skip, default)]
     pub(crate) metadata: Metadata,
@@ -152,12 +153,6 @@ impl SyntaxSet {
     #[cfg(feature = "metadata")]
     pub fn metadata(&self) -> &Metadata {
         &self.metadata
-    }
-
-    /// The metadata items that match the given scope. The result may be empty.
-    #[cfg(feature = "metadata")]
-    pub fn metadata_for_scope(&self, scope: &[Scope]) -> ScopedMetadata {
-        self.metadata.metadata_for_scope(scope)
     }
 
     /// Finds a syntax by its default scope, for example `source.regexp` finds the regex syntax.
@@ -400,14 +395,11 @@ impl SyntaxSetBuilder {
                 if entry.path().extension() == Some("tmPreferences".as_ref()) {
                     match RawMetadataEntry::load(entry.path()) {
                         Ok(meta) => self.raw_metadata.add_raw(meta),
-                        Err(_err) => (), // eprintln!("metadata load error at {:?}:\n\t{:?}", entry.path(), err),
+                        Err(_err) => (),
                     }
                 }
             }
         }
-
-        //#[cfg(feature = "metadata")]
-        //{ self.metadata = self.raw_metadata.clone().into(); }
 
         Ok(())
     }

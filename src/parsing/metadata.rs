@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::PathBuf;
 use std::fs::File;
 use std::io::BufReader;
 use std::str::FromStr;
@@ -22,8 +22,8 @@ type SelectorString = String;
 /// A simple regex pattern, used for checking indentation state.
 #[derive(Debug)]
 pub struct Pattern {
-    regex_str: String,
-    regex: AtomicLazyCell<Regex>,
+    pub regex_str: String,
+    pub regex: AtomicLazyCell<Regex>,
 }
 
 /// A collection of all loaded metadata.
@@ -38,9 +38,9 @@ pub struct MetadataSet {
     /// The raw string representation of this selector. We keep this around
     /// for serialization; it's easier than trying to rebuild it from the
     /// parsed `ScopeSelectors`.
-    selector_string: SelectorString,
+    pub selector_string: SelectorString,
     /// The scope selector to which this metadata applies
-    selector: ScopeSelectors,
+    pub selector: ScopeSelectors,
     /// The actual metadata.
     pub items: MetadataItems,
 }
@@ -62,14 +62,15 @@ pub struct MetadataItems {
 /// Since multiple files can refer to the same scope, we merge them while loading.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RawMetadataEntry {
+    path: PathBuf,
     scope: SelectorString,
-    settings: BTreeMap<String, Settings>,
+    settings: Dict,
 }
 
 /// Convenience type for loading heterogeneous metadata.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct LoadMetadata {
-    loaded: BTreeMap<String, Dict>,
+    loaded: Vec<RawMetadataEntry>,
 }
 
 // all of these are optional, but we don't want to deserialize if
@@ -84,78 +85,11 @@ const KEYS_WE_USE: &[&str] = &[
 ];
 
 impl LoadMetadata {
-    /// Adds the provided `RawMetadataEntry`, merging it with any other
-    /// loaded metadata with which it shares a scope. If duplicate keys exist,
-    /// last writer wins.
-    //TODO: verify that this is A) reasonable and B) deterministic
+    /// Adds the provided `RawMetadataEntry`. When creating the final `Metadata`
+    /// object, all `RawMetadataEntry` items are sorted by path, and items that
+    /// share a scope selector are merged; last writer wins.
     pub fn add_raw(&mut self, raw: RawMetadataEntry) {
-        let RawMetadataEntry { scope, settings } = raw;
-        let scoped_settings = self.loaded.entry(scope.clone())
-            .or_insert_with(|| Dict::new());
-
-        for (key, value) in settings {
-            if !KEYS_WE_USE.contains(&key.as_str()) {
-                continue;
-            }
-            //NOTE: because we can't guarantee the order that files get loaded,
-            // we do a bit of a dance to try and ensure this process is deterministic.
-            // TLDR: higher numerical values are prefered to lower, and strings are chosen
-            // by length, then by lexigraphic order.
-            let should_insert = match scoped_settings.get(&key) {
-                Some(existing) if existing == &value => false,
-                Some(existing) => {
-                    let result = match (existing, &value) {
-                        (Settings::Number(old), Settings::Number(new)) => {
-                            if let (Some(old), Some(new)) = (old.as_u64(), new.as_u64()) {
-                                new > old
-                            } else if let (Some(old), Some(new)) = (old.as_f64(), new.as_f64()) {
-                                new > old
-                            } else {
-                                //eprintln!("unexpected duplicate values for metadata key: \
-                                    //{} in scope {}: {:?}, {:?}", &key, scope, old, new);
-                                false
-                            }
-
-                        }
-                        (Settings::String(old), Settings::String(new)) => {
-                            if new.len() != old.len() {
-                                new.len() > old.len()
-                            } else {
-                                new > old
-                            }
-                        }
-                        (Settings::Array(old), Settings::Array(new)) => new.len() > old.len(),
-                        (_old, _new) => {
-                            //eprintln!("unexpected duplicate values for metadata key: \
-                        //{} in scope {}: {:?}, {:?}", &key, scope, old, new);
-                            false
-                        }
-                    };
-                    //let madlib = if result { "" } else { "not " };
-                    //eprintln!("will {}replace duplicate metadata for {} in {}\n\
-                              //old {:?}\nnew {:?}", madlib, key, scope, &existing, &value);
-                    result
-                }
-                None => true,
-            };
-            if should_insert {
-                scoped_settings.insert(key, value);
-            }
-        }
-    }
-
-    fn from_raw(tuple: (SelectorString, Dict)) -> Result<MetadataSet, String> {
-        let (selector_string, settings) = tuple;
-
-       if !KEYS_WE_USE.iter().any(|key| settings.contains_key(*key)) {
-           return Err(format!("no interesting metadata for {}", &selector_string));
-       }
-
-        let items: MetadataItems = serde_json::from_value(settings.into())
-            .map_err(|e| e.to_string())?;
-        let selector = ScopeSelectors::from_str(&selector_string)
-            .map_err(|e| format!("{:?}", e))?;
-        Ok(MetadataSet { selector_string, selector, items })
+        self.loaded.push(raw);
     }
 
     /// Generates a `MetadataSet` from a single file
@@ -171,8 +105,26 @@ impl LoadMetadata {
 
 impl From<LoadMetadata> for Metadata {
     fn from(src: LoadMetadata) -> Metadata {
-        let scoped_metadata = src.loaded.into_iter()
-            .flat_map(LoadMetadata::from_raw)
+        let LoadMetadata { mut loaded } = src;
+        loaded.sort_unstable_by(|a, b| a.path.cmp(&b.path));
+
+        let mut scoped_metadata: BTreeMap<SelectorString, Dict> = BTreeMap::new();
+
+        for RawMetadataEntry { scope, settings, .. } in loaded {
+            let scoped_settings = scoped_metadata.entry(scope.clone())
+                .or_insert_with(|| Dict::new());
+
+            for (key, value) in settings {
+                if !KEYS_WE_USE.contains(&key.as_str()) {
+                    continue;
+                }
+
+                scoped_settings.insert(key, value);
+            }
+        }
+
+        let scoped_metadata = scoped_metadata.into_iter()
+            .flat_map(MetadataSet::from_raw)
             .collect();
         Metadata { scoped_metadata }
     }
@@ -187,12 +139,28 @@ impl Metadata {
                     .map(|score| (score, meta_set))
             }).collect::<Vec<_>>();
 
-        metadata_matches.sort_by(|one, two| two.0.cmp(&one.0));
+        metadata_matches.sort_by_key(|mtch| mtch.0);
         metadata_matches
     }
 
     pub fn metadata_for_scope(&self, scope: &[Scope]) -> ScopedMetadata {
         ScopedMetadata(self.metadata_matching_scope(scope))
+    }
+}
+
+impl MetadataSet {
+    fn from_raw(tuple: (SelectorString, Dict)) -> Result<MetadataSet, String> {
+        let (selector_string, settings) = tuple;
+
+       if !KEYS_WE_USE.iter().any(|key| settings.contains_key(*key)) {
+           return Err(format!("no interesting metadata for {}", &selector_string));
+       }
+
+        let items: MetadataItems = serde_json::from_value(settings.into())
+            .map_err(|e| e.to_string())?;
+        let selector = ScopeSelectors::from_str(&selector_string)
+            .map_err(|e| format!("{:?}", e))?;
+        Ok(MetadataSet { selector_string, selector, items })
     }
 }
 
@@ -294,10 +262,15 @@ impl<'de> Deserialize<'de> for Pattern {
 
 
 impl RawMetadataEntry {
-    pub fn load<P: AsRef<Path>>(file: P) -> Result<Self, LoadingError> {
-        let file = File::open(file)?;
+    pub fn load<P: Into<PathBuf>>(path: P) -> Result<Self, LoadingError> {
+        let path: PathBuf = path.into();
+        let file = File::open(&path)?;
         let file = BufReader::new(file);
-        let contents = read_plist(file)?;
+        let mut contents = read_plist(file)?;
+        // we stash the path because we use it to determine parse order
+        // when generating the final metadata object; to_string_lossy
+        // is adequate for this purpose.
+        contents.as_object_mut().and_then(|obj| obj.insert("path".into(), path.to_string_lossy().into()));
         Ok(serde_json::from_value(contents)?)
     }
 }
@@ -332,8 +305,10 @@ impl<'de> Deserialize<'de> for MetadataSet {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
     use super::*;
     use parsing::SyntaxSet;
+
     #[test]
     fn load_raw() {
         let comments_file: &str = "testdata/Packages/Go/Comments.tmPreferences";
@@ -365,19 +340,11 @@ mod tests {
         let raw = RawMetadataEntry::load(comment_file).expect("failed to load comment metadata");
         loaded.add_raw(raw);
 
-        // both these have the same scope, and so should end up in one file
-        assert_eq!(loaded.loaded.len(), 1);
-
-        let rust_meta_raw = loaded.loaded.get("source.rust").unwrap().clone();
-        //eprintln!("{}", rust_meta_raw.to_string_pretty());
-        let rust_meta = LoadMetadata::from_raw(("source.rust".into(), rust_meta_raw))
-            .unwrap();
-        //assert!(rust_meta.indentation.is_some());
-        assert!(rust_meta.items.increase_indent_pattern.is_some());
-
         let metadata: Metadata = loaded.into();
         assert_eq!(metadata.scoped_metadata.len(), 1);
+
         let rust_meta = metadata.scoped_metadata.first().unwrap();
+        assert!(rust_meta.selector_string == "source.rust");
         assert!(rust_meta.items.increase_indent_pattern.is_some());
     }
 
