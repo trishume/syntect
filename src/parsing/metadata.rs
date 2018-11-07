@@ -37,7 +37,7 @@ pub struct Metadata {
 }
 
 /// Metadata for a particular `ScopeSelector`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MetadataSet {
     /// The raw string representation of this selector. We keep this around
     /// for serialization; it's easier than trying to rebuild it from the
@@ -51,7 +51,7 @@ pub struct MetadataSet {
 
 /// Items loaded from `.tmPreferences` metadata files, for a particular scope.
 /// For more information, see [Metadata Files](http://docs.sublimetext.info/en/latest/reference/metadata.html)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataItems {
     pub increase_indent_pattern: Option<Pattern>,
@@ -60,6 +60,18 @@ pub struct MetadataItems {
     pub disable_indent_next_line_pattern: Option<Pattern>,
     pub unindented_line_pattern: Option<Pattern>,
     pub indent_parens: Option<bool>,
+    #[serde(default)]
+    pub shell_variables: BTreeMap<String, String>,
+    /// For convenience; this is the first value in `shell_variables`
+    /// with a key beginning: `TM_COMMENT_START` that doesn't have a
+    /// corresponding `TM_COMMENT_END`.
+    pub line_comment: Option<String>,
+    /// The first pair of `TM_COMMENT_START` and `TM_COMMENT_END` items in
+    /// `shell_variables`, if they exist.
+    pub block_comment: Option<(String, String)>,
+
+    #[serde(default)]
+    __allow_adding_fields_without_major_semver_bump: (),
 }
 
 /// A type that can be deserialized from a `.tmPreferences` file.
@@ -86,6 +98,7 @@ const KEYS_WE_USE: &[&str] = &[
     "disableIndentNextLinePattern",
     "unIndentedLinePattern",
     "indentParens",
+    "shellVariables",
 ];
 
 impl LoadMetadata {
@@ -114,23 +127,54 @@ impl From<LoadMetadata> for Metadata {
 
         let mut scoped_metadata: BTreeMap<SelectorString, Dict> = BTreeMap::new();
 
-        for RawMetadataEntry { scope, settings, .. } in loaded {
+        for RawMetadataEntry { scope, settings, path } in loaded {
             let scoped_settings = scoped_metadata.entry(scope.clone())
-                .or_insert_with(|| Dict::new());
+                .or_insert_with(|| {
+                    let mut d = Dict::new();
+                    d.insert("source_file_path".to_string(), path.to_string_lossy().into());
+                    d
+                });
 
             for (key, value) in settings {
                 if !KEYS_WE_USE.contains(&key.as_str()) {
                     continue;
                 }
 
-                scoped_settings.insert(key, value);
+                if key.as_str() == "shellVariables" {
+                    append_vars(scoped_settings, value, &scope);
+                } else {
+                    scoped_settings.insert(key, value);
+                }
             }
         }
 
         let scoped_metadata = scoped_metadata.into_iter()
-            .flat_map(MetadataSet::from_raw)
+            .map(|r|
+                 MetadataSet::from_raw(r)
+                     .map_err(|e| eprintln!("{}", e))
+                 )
+            .flatten()
             .collect();
         Metadata { scoped_metadata }
+    }
+}
+
+fn append_vars(obj: &mut Dict, vars: Settings, scope: &str) {
+    #[derive(Deserialize)]
+    struct KeyPair { name: String, value: Settings }
+    #[derive(Deserialize)]
+    struct ShellVars(Vec<KeyPair>);
+
+    let shell_vars = obj.entry(String::from("shellVariables"))
+        .or_insert_with(|| Dict::new().into())
+        .as_object_mut().unwrap();
+    match serde_json::from_value::<ShellVars>(vars) {
+	Ok(vars) => {
+	    for KeyPair { name, value } in vars.0 {
+		shell_vars.insert(name, value);
+	    }
+	}
+	Err(e) => eprintln!("malformed shell variables for scope {}, {:}", scope, e),
     }
 }
 
@@ -169,19 +213,55 @@ impl Metadata {
 }
 
 impl MetadataSet {
+
+    const COMMENT_KEYS: &'static [(&'static str, &'static str)] = &[
+        ("TM_COMMENT_START", "TM_COMMENT_END"),
+        ("TM_COMMENT_START_2", "TM_COMMENT_END_2"),
+        ("TM_COMMENT_START_3", "TM_COMMENT_END_3"),
+    ];
+
     pub fn from_raw(tuple: (SelectorString, Dict)) -> Result<MetadataSet, String> {
-        let (selector_string, settings) = tuple;
+        let (selector_string, mut settings) = tuple;
+        // we just use this for more useful debug messages
+        let path = settings.remove("source_file_path").map(|v| v.to_string())
+            .unwrap_or_else(|| String::from("(path missing)"));
+
 
        if !KEYS_WE_USE.iter().any(|key| settings.contains_key(*key)) {
-           return Err(format!("no interesting metadata for {}", &selector_string));
+           return Err(format!("skipping {}", path));
        }
 
-        let items: MetadataItems = serde_json::from_value(settings.into())
-            .map_err(|e| e.to_string())?;
+       let line_comment = settings.get("shellVariables").and_then(|v| v.as_object())
+           .and_then(MetadataSet::get_line_comment_marker);
+       let block_comment = settings.get("shellVariables").and_then(|v| v.as_object())
+           .and_then(MetadataSet::get_block_comment_markers);
+
+
+        let mut items: MetadataItems = serde_json::from_value(settings.into())
+            .map_err(|e| format!("{}: {:?}", path, e))?;
+        items.line_comment = line_comment;
+        items.block_comment = block_comment;
+
         let selector = ScopeSelectors::from_str(&selector_string)
-            .map_err(|e| format!("{:?}", e))?;
-    Ok(MetadataSet { selector_string, selector, items })
-}
+            .map_err(|e| format!("{}, {:?}", path, e))?;
+        Ok(MetadataSet { selector_string, selector, items })
+    }
+
+    fn get_line_comment_marker(vars: &Dict) -> Option<String> {
+        MetadataSet::COMMENT_KEYS.iter()
+            .find(|(b, e)| vars.contains_key(*b) && !vars.contains_key(*e))
+            .and_then(|(b, _e)| vars.get(*b).map(|v| v.as_str().unwrap().to_string()))
+    }
+
+    fn get_block_comment_markers(vars: &Dict) -> Option<(String, String)> {
+        MetadataSet::COMMENT_KEYS.iter()
+            .find(|(b, e)| vars.contains_key(*b) && vars.contains_key(*e))
+            .map(|(b, e)| {
+                let b_str = vars.get(*b).unwrap().as_str().unwrap().to_string();
+                let e_str = vars.get(*e).unwrap().as_str().unwrap().to_string();
+                (b_str, e_str)
+            })
+    }
 }
 
 /// A collection of `MetadataSet`s which match a given scope selector,
@@ -258,6 +338,16 @@ impl<'a> ScopedMetadata<'a> {
     pub fn disable_indent_next_line(&self, line: &str) -> bool {
         self.best_match(|ind| ind.disable_indent_next_line_pattern.as_ref().map(|p| p.is_match(line)))
             .unwrap_or(false)
+    }
+
+    pub fn line_comment(&self) -> Option<&str> {
+        let idx = self.items.iter().position(|m| m.1.items.line_comment.is_some())?;
+        self.items[idx].1.items.line_comment.as_ref().map(|s| s.as_str())
+    }
+
+    pub fn block_comment(&self) -> Option<(&str, &str)> {
+        let idx = self.items.iter().position(|m| m.1.items.block_comment.is_some())?;
+        self.items[idx].1.items.block_comment.as_ref().map(|(a, b)| (a.as_str(), b.as_str()))
     }
 
     fn best_match<T, F>(&self, f: F) -> Option<T>
@@ -409,6 +499,7 @@ mod tests {
         let rust_meta = metadata.scoped_metadata.first().unwrap();
         assert!(rust_meta.selector_string == "source.rust");
         assert!(rust_meta.items.increase_indent_pattern.is_some());
+        assert!(rust_meta.items.line_comment.is_some());
     }
 
     #[test]
@@ -418,6 +509,21 @@ mod tests {
         assert!(metaset.items.increase_indent_pattern.is_some());
         assert!(metaset.items.decrease_indent_pattern.is_some());
         assert!(metaset.items.bracket_indent_next_line_pattern.is_none());
+    }
+
+    #[test]
+    fn load_shell_vars() {
+        let path = "testdata/Packages/AppleScript/Comments.tmPreferences";
+        let metadata = LoadMetadata::quick_load(path).unwrap();
+        assert!(metadata.items.shell_variables.get("TM_COMMENT_START").is_some());
+        assert!(metadata.items.shell_variables.get("TM_COMMENT_END").is_none());
+        assert!(metadata.items.shell_variables.get("TM_COMMENT_START_2").is_some());
+        assert!(metadata.items.shell_variables.get("TM_COMMENT_START_3").is_some());
+        assert!(metadata.items.shell_variables.get("TM_COMMENT_END_3").is_some());
+        assert!(metadata.items.shell_variables.get("TM_COMMENT_DISABLE_INDENT_3").is_some());
+        assert!(metadata.items.line_comment.is_some());
+        assert!(metadata.items.block_comment.is_some());
+        assert!(metadata.items.increase_indent_pattern.is_none());
     }
 
     #[test]
