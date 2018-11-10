@@ -1,3 +1,7 @@
+//! Support for loading `.tmPreferences` metadata files. These files contain
+//! information related to indentation rules, comment markers,
+//! and other syntax-specific things.
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::fs::File;
@@ -94,7 +98,7 @@ impl LoadMetadata {
 
     /// Generates a `MetadataSet` from a single file
     #[cfg(test)]
-    pub fn quick_load(path: &str) -> Result<MetadataSet, LoadingError> {
+    pub(crate) fn quick_load(path: &str) -> Result<MetadataSet, LoadingError> {
         let mut loaded = Self::default();
         let raw = RawMetadataEntry::load(path)?;
         loaded.add_raw(raw);
@@ -131,20 +135,18 @@ impl From<LoadMetadata> for Metadata {
 }
 
 impl Metadata {
-    fn metadata_matching_scope(&self, scope_path: &[Scope]) -> Vec<(MatchPower, &MetadataSet)> {
+    /// For a given stack of scopes, returns a [`ScopedMetadata`] object
+    /// which provides convenient access to metadata items which match the stack.
+    pub fn metadata_for_scope(&self, scope: &[Scope]) -> ScopedMetadata {
         let mut metadata_matches = self.scoped_metadata
             .iter()
             .filter_map(|meta_set| {
-                meta_set.selector.does_match(scope_path)
+                meta_set.selector.does_match(scope)
                     .map(|score| (score, meta_set))
             }).collect::<Vec<_>>();
 
-        metadata_matches.sort_by_key(|mtch| mtch.0);
-        metadata_matches
-    }
-
-    pub fn metadata_for_scope(&self, scope: &[Scope]) -> ScopedMetadata {
-        ScopedMetadata(self.metadata_matching_scope(scope))
+        metadata_matches.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        ScopedMetadata { items: metadata_matches }
     }
 
     pub(crate) fn merged_with_raw(self, raw: LoadMetadata) -> Metadata {
@@ -167,7 +169,7 @@ impl Metadata {
 }
 
 impl MetadataSet {
-    fn from_raw(tuple: (SelectorString, Dict)) -> Result<MetadataSet, String> {
+    pub fn from_raw(tuple: (SelectorString, Dict)) -> Result<MetadataSet, String> {
         let (selector_string, settings) = tuple;
 
        if !KEYS_WE_USE.iter().any(|key| settings.contains_key(*key)) {
@@ -178,13 +180,58 @@ impl MetadataSet {
             .map_err(|e| e.to_string())?;
         let selector = ScopeSelectors::from_str(&selector_string)
             .map_err(|e| format!("{:?}", e))?;
-        Ok(MetadataSet { selector_string, selector, items })
-    }
+    Ok(MetadataSet { selector_string, selector, items })
+}
 }
 
-/// A cleaner interface for the pattern of finding the first match in a stack.
+/// A collection of `MetadataSet`s which match a given scope selector,
+/// sorted in order of the strength of the match.
+///
+/// # Examples
+///
+/// ```
+/// # #[macro_use] extern crate serde_json;
+/// # extern crate syntect;
+/// # use syntect::parsing::*;
+/// # use syntect::highlighting::ScopeSelectors;
+/// # use std::str::FromStr;
+/// #
+/// // given the following two scoped metadata collections:
+///
+/// let one_selector = "source.my_lang";
+/// let one_items = json!({
+///     "increaseIndentPattern": "one increase",
+///     "decreaseIndentPattern": "one decrease",
+/// });
+/// # let one_items = one_items.as_object().cloned().unwrap();
+///
+/// let two_selector = "other.thing";
+/// let two_items = json!({
+///     "increaseIndentPattern": "two increase",
+/// });
+/// # let two_items = two_items.as_object().cloned().unwrap();
+/// #
+/// # let one = MetadataSet::from_raw((one_selector.into(), one_items)).unwrap();
+/// # let two = MetadataSet::from_raw((two_selector.into(), two_items)).unwrap();
+/// #
+/// # let scoped_metadata = vec![one, two];
+/// # let metadata = Metadata { scoped_metadata };
+///
+/// // both of which match this scope stack:
+///
+/// let query_scope = ScopeStack::from_str("source.my_lang other.thing").unwrap();
+/// let scoped = metadata.metadata_for_scope(query_scope.as_slice());
+///
+/// // the better match is used when it has a field,
+/// assert!(scoped.increase_indent("two increase"));
+///
+/// // and the other match is used when it does not.
+/// assert!(scoped.decrease_indent("one decrease"));
+/// ```
 #[derive(Debug, Clone)]
-pub struct ScopedMetadata<'a>(Vec<(MatchPower, &'a MetadataSet)>);
+pub struct ScopedMetadata<'a> {
+    pub items: Vec<(MatchPower, &'a MetadataSet)>,
+}
 
 impl<'a> ScopedMetadata<'a> {
 
@@ -216,17 +263,30 @@ impl<'a> ScopedMetadata<'a> {
     fn best_match<T, F>(&self, f: F) -> Option<T>
         where F: FnMut(&MetadataItems) -> Option<T>
     {
-        self.0.iter()
+        self.items.iter()
             .map(|(_, meta_set)| &meta_set.items)
             .flat_map(f)
             .next()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.items.is_empty()
     }
 }
 
+impl RawMetadataEntry {
+    pub fn load<P: Into<PathBuf>>(path: P) -> Result<Self, LoadingError> {
+        let path: PathBuf = path.into();
+        let file = File::open(&path)?;
+        let file = BufReader::new(file);
+        let mut contents = read_plist(file)?;
+        // we stash the path because we use it to determine parse order
+        // when generating the final metadata object; to_string_lossy
+        // is adequate for this purpose.
+        contents.as_object_mut().and_then(|obj| obj.insert("path".into(), path.to_string_lossy().into()));
+        Ok(serde_json::from_value(contents)?)
+    }
+}
 
 impl Pattern {
     pub fn is_match<S: AsRef<str>>(&self, string: S) -> bool {
@@ -275,21 +335,6 @@ impl<'de> Deserialize<'de> for Pattern {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
         let regex_str = String::deserialize(deserializer)?;
         Ok(Pattern { regex_str, regex: AtomicLazyCell::new() })
-    }
-}
-
-
-impl RawMetadataEntry {
-    pub fn load<P: Into<PathBuf>>(path: P) -> Result<Self, LoadingError> {
-        let path: PathBuf = path.into();
-        let file = File::open(&path)?;
-        let file = BufReader::new(file);
-        let mut contents = read_plist(file)?;
-        // we stash the path because we use it to determine parse order
-        // when generating the final metadata object; to_string_lossy
-        // is adequate for this purpose.
-        contents.as_object_mut().and_then(|obj| obj.insert("path".into(), path.to_string_lossy().into()));
-        Ok(serde_json::from_value(contents)?)
     }
 }
 
@@ -388,10 +433,9 @@ mod tests {
         let ps = SyntaxSet::load_from_folder("testdata/Packages/Rust").unwrap();
 
         let rust_scopes = [Scope::new("source.rust").unwrap()];
-        let indent_ctx = ScopedMetadata(
-            ps.metadata.metadata_matching_scope(&rust_scopes));
+        let indent_ctx = ps.metadata.metadata_for_scope(&rust_scopes);
 
-        assert_eq!(indent_ctx.0.len(), 1, "failed to load rust metadata");
+        assert_eq!(indent_ctx.items.len(), 1, "failed to load rust metadata");
         assert_eq!(indent_ctx.increase_indent("struct This {"), true);
         assert_eq!(indent_ctx.increase_indent("struct This }"), false);
         assert_eq!(indent_ctx.decrease_indent("     }"), true);

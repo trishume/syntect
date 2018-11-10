@@ -37,7 +37,9 @@ pub struct SyntaxSet {
     #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
     first_line_cache: AtomicLazyCell<FirstLineCache>,
     /// Metadata, e.g. indent and commenting information.
-    /// NOTE: if serializing, you should serialize metadata manually.
+    /// NOTE: if serializing, you should handle metadata manually; that is,
+    /// you should serialize and deserialize it separately. See
+    /// `examples/gendata.rs` for an example.
     #[cfg(feature = "metadata")]
     #[serde(skip, default)]
     pub(crate) metadata: Metadata,
@@ -52,7 +54,6 @@ pub struct SyntaxReference {
     pub hidden: bool,
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
-
     #[serde(serialize_with = "ordered_map")]
     pub(crate) contexts: HashMap<String, ContextId>,
 }
@@ -68,9 +69,11 @@ pub struct SyntaxSetBuilder {
     path_syntaxes: Vec<(String, usize)>,
     #[cfg(feature = "metadata")]
     raw_metadata: LoadMetadata,
+    /// If this `SyntaxSetBuilder` is created with `SyntaxSet::into_builder`
+    /// from a `SyntaxSet` that already had metadata, we keep that metadata,
+    /// merging it with newly loaded metadata.
     #[cfg(feature = "metadata")]
     existing_metadata: Option<Metadata>,
-
 }
 
 #[cfg(feature = "yaml-load")]
