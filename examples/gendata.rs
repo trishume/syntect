@@ -3,14 +3,8 @@
 //! Although it is a valid example for serializing syntaxes, you probably won't need
 //! to do this yourself unless you want to cache your own compiled grammars.
 //!
-//! The standard command to generate the syntax dumps (including metadata) is:
-//!
-//! ```sh
-//! cargo run --features="metadata" --example=gendata -- \
-//! synpack testdata/Packages \
-//! assets/default_newlines.packdump assets/default_nonewlines.packdump
-//! assets/default_metadata.packdump testdata/DefaultPackage
-//! ```
+//! An example of how this script is used to generate the pack files included
+//! with syntect can be found under `make packs` in the Makefile.
 extern crate syntect;
 use syntect::parsing::SyntaxSetBuilder;
 use syntect::highlighting::ThemeSet;
