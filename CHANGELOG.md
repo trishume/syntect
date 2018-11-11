@@ -1,3 +1,8 @@
+# Version 3.0.2
+
+- Fix application of multiple `with_prototype`s (#220, fixes #160, #178, ASP highlighting)
+- Fix prototype marking logic (#221, fixes #219)
+
 # Version 3.0.1
 
 - Fix a bug with syntaxes that used captures in lookarounds (#176 #215)
