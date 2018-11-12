@@ -16,7 +16,7 @@ $(SUBMODULES):
 assets: packs themes
 
 packs: $(SUBMODULES)
-	cargo run --example gendata -- synpack testdata/Packages assets/default_newlines.packdump assets/default_nonewlines.packdump
+	cargo run --features=metadata --example gendata -- synpack testdata/Packages assets/default_newlines.packdump assets/default_nonewlines.packdump assets/default_metadata.packdump testdata/DefaultPackage
 
 themes: $(SUBMODULES)
 	cargo run --example gendata -- themepack testdata assets/default.themedump

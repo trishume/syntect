@@ -55,6 +55,8 @@ dump-create = ["flate2/default", "bincode"]
 dump-create-rs = ["flate2/rust_backend", "bincode"]
 
 parsing = ["onig", "regex-syntax", "fnv"]
+# Support for .tmPreferenes metadata files (indentation, comment syntax, etc)
+metadata = ["parsing"]
 # The `assets` feature enables inclusion of the default theme and syntax packages.
 # For `assets` to do anything, it requires one of `dump-load-rs` or `dump-load` to be set.
 assets = []

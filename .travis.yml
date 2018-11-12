@@ -25,7 +25,7 @@ cache:
 
 script:
   - cargo build
-  - cargo test
+  - cargo test --features metadata
   - make assets
   - make syntest
   - rm -Rf examples

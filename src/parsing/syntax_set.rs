@@ -1,5 +1,9 @@
 use super::syntax_definition::*;
 use super::scope::*;
+
+#[cfg(feature = "metadata")]
+use super::metadata::{LoadMetadata, Metadata, RawMetadataEntry};
+
 #[cfg(feature = "yaml-load")]
 use super::super::LoadingError;
 
@@ -32,6 +36,13 @@ pub struct SyntaxSet {
 
     #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
     first_line_cache: AtomicLazyCell<FirstLineCache>,
+    /// Metadata, e.g. indent and commenting information.
+    /// NOTE: if serializing, you should handle metadata manually; that is,
+    /// you should serialize and deserialize it separately. See
+    /// `examples/gendata.rs` for an example.
+    #[cfg(feature = "metadata")]
+    #[serde(skip, default)]
+    pub(crate) metadata: Metadata,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -43,7 +54,6 @@ pub struct SyntaxReference {
     pub hidden: bool,
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
-
     #[serde(serialize_with = "ordered_map")]
     pub(crate) contexts: HashMap<String, ContextId>,
 }
@@ -57,6 +67,13 @@ pub struct SyntaxReference {
 pub struct SyntaxSetBuilder {
     syntaxes: Vec<SyntaxDefinition>,
     path_syntaxes: Vec<(String, usize)>,
+    #[cfg(feature = "metadata")]
+    raw_metadata: LoadMetadata,
+    /// If this `SyntaxSetBuilder` is created with `SyntaxSet::into_builder`
+    /// from a `SyntaxSet` that already had metadata, we keep that metadata,
+    /// merging it with newly loaded metadata.
+    #[cfg(feature = "metadata")]
+    existing_metadata: Option<Metadata>,
 }
 
 #[cfg(feature = "yaml-load")]
@@ -84,6 +101,8 @@ impl Clone for SyntaxSet {
             path_syntaxes: self.path_syntaxes.clone(),
             // Will need to be re-initialized
             first_line_cache: AtomicLazyCell::new(),
+            #[cfg(feature = "metadata")]
+            metadata: self.metadata.clone(),
         }
     }
 }
@@ -95,6 +114,8 @@ impl Default for SyntaxSet {
             contexts: Vec::new(),
             path_syntaxes: Vec::new(),
             first_line_cache: AtomicLazyCell::new(),
+            #[cfg(feature = "metadata")]
+            metadata: Metadata::default(),
         }
     }
 }
@@ -121,6 +142,12 @@ impl SyntaxSet {
     /// The list of syntaxes in the set
     pub fn syntaxes(&self) -> &[SyntaxReference] {
         &self.syntaxes[..]
+    }
+
+    /// The loaded metadata for this set.
+    #[cfg(feature = "metadata")]
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
     }
 
     /// Finds a syntax by its default scope, for example `source.regexp` finds the regex syntax.
@@ -239,6 +266,9 @@ impl SyntaxSet {
     /// Note that newly added syntaxes can have references to existing syntaxes
     /// in the set, but not the other way around.
     pub fn into_builder(self) -> SyntaxSetBuilder {
+        #[cfg(feature = "metadata")]
+        let SyntaxSet { syntaxes, contexts, path_syntaxes, metadata, .. } = self;
+        #[cfg(not(feature = "metadata"))]
         let SyntaxSet { syntaxes, contexts, path_syntaxes, .. } = self;
 
         let mut context_map = HashMap::with_capacity(contexts.len());
@@ -281,6 +311,10 @@ impl SyntaxSet {
         SyntaxSetBuilder {
             syntaxes: builder_syntaxes,
             path_syntaxes,
+            #[cfg(feature = "metadata")]
+            existing_metadata: Some(metadata),
+            #[cfg(feature = "metadata")]
+            raw_metadata: LoadMetadata::default(),
         }
     }
 
@@ -352,7 +386,18 @@ impl SyntaxSetBuilder {
                 }
                 self.syntaxes.push(syntax);
             }
+
+            #[cfg(feature = "metadata")]
+            {
+                if entry.path().extension() == Some("tmPreferences".as_ref()) {
+                    match RawMetadataEntry::load(entry.path()) {
+                        Ok(meta) => self.raw_metadata.add_raw(meta),
+                        Err(_err) => (),
+                    }
+                }
+            }
         }
+
         Ok(())
     }
 
@@ -376,7 +421,16 @@ impl SyntaxSetBuilder {
     /// serialize a `SyntaxSet` for your program and when you run the program,
     /// directly load the `SyntaxSet`.
     pub fn build(self) -> SyntaxSet {
+
+        #[cfg(not(feature = "metadata"))]
         let SyntaxSetBuilder { syntaxes: syntax_definitions, path_syntaxes } = self;
+        #[cfg(feature = "metadata")]
+        let SyntaxSetBuilder {
+            syntaxes: syntax_definitions,
+            path_syntaxes,
+            raw_metadata,
+            existing_metadata,
+        } = self;
 
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
         let mut all_contexts = Vec::new();
@@ -438,11 +492,19 @@ impl SyntaxSetBuilder {
             }
         }
 
+        #[cfg(feature = "metadata")]
+        let metadata = match existing_metadata {
+            Some(mut existing) => existing.merged_with_raw(raw_metadata),
+            None => raw_metadata.into(),
+        };
+
         SyntaxSet {
             syntaxes,
             contexts: all_contexts,
             path_syntaxes,
             first_line_cache: AtomicLazyCell::new(),
+            #[cfg(feature = "metadata")]
+            metadata,
         }
     }
 

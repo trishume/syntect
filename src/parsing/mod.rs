@@ -8,6 +8,8 @@ mod yaml_load;
 mod syntax_set;
 #[cfg(feature = "parsing")]
 mod parser;
+#[cfg(feature = "metadata")]
+pub mod metadata;
 
 mod scope;
 
@@ -19,5 +21,7 @@ pub use self::yaml_load::*;
 pub use self::syntax_set::*;
 #[cfg(feature = "parsing")]
 pub use self::parser::*;
+#[cfg(feature = "metadata")]
+pub use self::metadata::*;
 
 pub use self::scope::*;
