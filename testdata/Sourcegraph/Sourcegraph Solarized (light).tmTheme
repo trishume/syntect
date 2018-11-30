@@ -891,8 +891,10 @@
 			<string>markup.deleted</string>
 			<key>settings</key>
 			<dict>
+				<key>background</key>
+				<string>#f5dbdd</string>
 				<key>foreground</key>
-				<string>#dc322f</string>
+				<string>#2b3750</string>
 			</dict>
 		</dict>
 		<dict>
@@ -913,8 +915,10 @@
 			<string>markup.inserted</string>
 			<key>settings</key>
 			<dict>
+				<key>background</key>
+				<string>#deeade</string>
 				<key>foreground</key>
-				<string>#859900</string>
+				<string>#2b3750</string>
 			</dict>
 		</dict>
 
