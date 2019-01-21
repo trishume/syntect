@@ -144,7 +144,7 @@ impl SyntaxSet {
         &self.syntaxes[..]
     }
 
-    pub fn set_metadata(&self, metadata: Metadata) {
+    pub fn set_metadata(&mut self, metadata: Metadata) {
         self.metadata = metadata;
     }
     
