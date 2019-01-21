@@ -144,6 +144,11 @@ impl SyntaxSet {
         &self.syntaxes[..]
     }
 
+    #[cfg(feature = "metadata")]
+    pub fn set_metadata(&mut self, metadata: Metadata) {
+        self.metadata = metadata;
+    }
+    
     /// The loaded metadata for this set.
     #[cfg(feature = "metadata")]
     pub fn metadata(&self) -> &Metadata {
