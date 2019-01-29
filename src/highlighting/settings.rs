@@ -3,7 +3,6 @@
 
 use std::io::{Read, Seek};
 use plist::{Error as PlistError};
-use plist::serde::deserialize;
 
 pub use serde_json::Value as Settings;
 pub use serde_json::Value::Array as SettingsArray;
@@ -33,6 +32,6 @@ impl From<PlistError> for SettingsError {
 }
 
 pub fn read_plist<R: Read + Seek>(reader: R) -> Result<Settings, SettingsError> {
-    let settings = deserialize(reader)?;
+    let settings = plist::from_reader(reader)?;
     Ok(settings)
 }
