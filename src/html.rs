@@ -38,7 +38,7 @@ use std::path::Path;
 /// ```
 pub struct ClassedHTMLGenerator<'a> {
     syntax_set: &'a SyntaxSet,
-    open_spans: usize,
+    open_spans: isize,
     parse_state: ParseState,
     html: String
 }
@@ -59,10 +59,11 @@ impl<'a> ClassedHTMLGenerator<'a> {
     /// Parse the line of code and update the internal HTML buffer with tagged HTML
     pub fn parse_html_for_line(&mut self, line: &str) {
         let parsed_line = self.parse_state.parse_line(line, &self.syntax_set);
-        let formatted_line = self.tokens_to_classed_html(
+        let (formatted_line, delta) = tokens_to_classed_spans(
             line,
             parsed_line.as_slice(),
             ClassStyle::Spaced);
+        self.open_spans += delta;
         self.html.push_str(formatted_line.as_str());
     }
 
@@ -72,37 +73,6 @@ impl<'a> ClassedHTMLGenerator<'a> {
             self.html.push_str("</span>");
         }
         self.html
-    }
-
-    fn tokens_to_classed_html(&mut self, line: &str,
-                                  ops: &[(usize, ScopeStackOp)],
-                                  style: ClassStyle)
-                                  -> String {
-        let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
-        let mut cur_index = 0;
-        let mut stack = ScopeStack::new();
-        for &(i, ref op) in ops {
-            if i > cur_index {
-                write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
-                cur_index = i
-            }
-            stack.apply_with_hook(op, |basic_op, _| {
-                match basic_op {
-                    BasicScopeStackOp::Push(scope) => {
-                        s.push_str("<span class=\"");
-                        scope_to_classes(&mut s, scope, style);
-                        s.push_str("\">");
-                        self.open_spans += 1;
-                    }
-                    BasicScopeStackOp::Pop => {
-                        s.push_str("</span>");
-                        self.open_spans -= 1;
-                    }
-                }
-            });
-        }
-        write!(s, "{}", Escape(&line[cur_index..line.len()])).unwrap();
-        s
     }
 }
 
@@ -178,16 +148,24 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
 /// like the scope stack and the scopes are mapped to classes based
 /// on the `ClassStyle` (see it's docs).
 ///
+/// See `ClassedHTMLGenerator` for a more convenient wrapper, this is the advanced
+/// version of the function that gives more control over the parsing flow.
+///
 /// For this to work correctly you must concatenate all the lines in a `<pre>`
 /// tag since some span tags opened on a line may not be closed on that line
 /// and later lines may close tags from previous lines.
-pub fn tokens_to_classed_html(line: &str,
-                              ops: &[(usize, ScopeStackOp)],
-                              style: ClassStyle)
-                              -> String {
+///
+/// Returns the HTML string and the number of `<span>` tags opened
+/// (negative for closed). So that you can emit the correct number of closing
+/// tags at the end.
+fn tokens_to_classed_spans(line: &str,
+                           ops: &[(usize, ScopeStackOp)],
+                           style: ClassStyle)
+                           -> (String, isize) {
     let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
     let mut cur_index = 0;
     let mut stack = ScopeStack::new();
+    let mut span_delta = 0;
     for &(i, ref op) in ops {
         if i > cur_index {
             write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
@@ -199,15 +177,25 @@ pub fn tokens_to_classed_html(line: &str,
                     s.push_str("<span class=\"");
                     scope_to_classes(&mut s, scope, style);
                     s.push_str("\">");
+                    span_delta += 1;
                 }
                 BasicScopeStackOp::Pop => {
                     s.push_str("</span>");
+                    span_delta -= 1;
                 }
             }
         });
     }
     write!(s, "{}", Escape(&line[cur_index..line.len()])).unwrap();
-    s
+    (s, span_delta)
+}
+
+#[deprecated(since="3.1.0", note="please use `tokens_to_classed_spans` instead")]
+pub fn tokens_to_classed_html(line: &str,
+                              ops: &[(usize, ScopeStackOp)],
+                              style: ClassStyle)
+                              -> String {
+    tokens_to_classed_spans(line, ops, style).0
 }
 
 /// Determines how background color attributes are generated
