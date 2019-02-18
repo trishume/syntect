@@ -1,12 +1,80 @@
 //! Rendering highlighted code as HTML+CSS
 use std::fmt::Write;
-use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxReference, SyntaxSet, SCOPE_REPO};
+use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxReference, ParseState, SyntaxSet, SCOPE_REPO};
 use easy::{HighlightLines, HighlightFile};
 use highlighting::{Color, FontStyle, Style, Theme};
 use util::LinesWithEndings;
 use escape::Escape;
 use std::io::{self, BufRead};
 use std::path::Path;
+
+/// Output HTML for a line of code with `<span>` elements using class names
+/// As this has to keep track of open and closed `<span>` tags, it is a `struct`
+/// with additional state.
+///
+/// There is a `finalize()` function that has to be called in the end in order
+/// to close all open `<span>` tags.
+///
+/// The lines returned don't include a newline at the end.
+/// # Example
+///
+/// ```
+/// use syntect::html::ClassedHTMLGenerator;
+/// use syntect::parsing::SyntaxSet;
+///
+/// let current_code = r#"
+/// x <- 5
+/// y <- 6
+/// x + y
+/// "#.to_string();
+///
+/// let syntax_set = SyntaxSet::load_defaults_newlines();
+/// let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+/// let mut html_generator = ClassedHTMLGenerator::new(&syntax, &syntax_set);
+/// for line in current_code.lines() {
+///     html_generator.parse_html_for_line(&line);
+/// }
+/// let output_html = html_generator.finalize();
+/// ```
+pub struct ClassedHTMLGenerator<'a> {
+    syntax_set: &'a SyntaxSet,
+    open_spans: isize,
+    parse_state: ParseState,
+    html: String
+}
+
+impl<'a> ClassedHTMLGenerator<'a> {
+    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet) -> ClassedHTMLGenerator<'a> {
+        let parse_state = ParseState::new(syntax_reference);
+        let open_spans = 0;
+        let html = String::new();
+        ClassedHTMLGenerator {
+            syntax_set,
+            open_spans,
+            parse_state,
+            html
+        }
+    }
+
+    /// Parse the line of code and update the internal HTML buffer with tagged HTML
+    pub fn parse_html_for_line(&mut self, line: &str) {
+        let parsed_line = self.parse_state.parse_line(line, &self.syntax_set);
+        let (formatted_line, delta) = tokens_to_classed_spans(
+            line,
+            parsed_line.as_slice(),
+            ClassStyle::Spaced);
+        self.open_spans += delta;
+        self.html.push_str(formatted_line.as_str());
+    }
+
+    /// Close all open `<span>` tags and return the finished HTML string
+    pub fn finalize(mut self) -> String {
+        for _ in 0..self.open_spans {
+            self.html.push_str("</span>");
+        }
+        self.html
+    }
+}
 
 /// Only one style for now, I may add more class styles later.
 /// Just here so I don't have to change the API
@@ -80,16 +148,24 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
 /// like the scope stack and the scopes are mapped to classes based
 /// on the `ClassStyle` (see it's docs).
 ///
+/// See `ClassedHTMLGenerator` for a more convenient wrapper, this is the advanced
+/// version of the function that gives more control over the parsing flow.
+///
 /// For this to work correctly you must concatenate all the lines in a `<pre>`
 /// tag since some span tags opened on a line may not be closed on that line
 /// and later lines may close tags from previous lines.
-pub fn tokens_to_classed_html(line: &str,
-                              ops: &[(usize, ScopeStackOp)],
-                              style: ClassStyle)
-                              -> String {
+///
+/// Returns the HTML string and the number of `<span>` tags opened
+/// (negative for closed). So that you can emit the correct number of closing
+/// tags at the end.
+fn tokens_to_classed_spans(line: &str,
+                           ops: &[(usize, ScopeStackOp)],
+                           style: ClassStyle)
+                           -> (String, isize) {
     let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
     let mut cur_index = 0;
     let mut stack = ScopeStack::new();
+    let mut span_delta = 0;
     for &(i, ref op) in ops {
         if i > cur_index {
             write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
@@ -101,14 +177,25 @@ pub fn tokens_to_classed_html(line: &str,
                     s.push_str("<span class=\"");
                     scope_to_classes(&mut s, scope, style);
                     s.push_str("\">");
+                    span_delta += 1;
                 }
                 BasicScopeStackOp::Pop => {
                     s.push_str("</span>");
+                    span_delta -= 1;
                 }
             }
         });
     }
-    s
+    write!(s, "{}", Escape(&line[cur_index..line.len()])).unwrap();
+    (s, span_delta)
+}
+
+#[deprecated(since="3.1.0", note="please use `tokens_to_classed_spans` instead")]
+pub fn tokens_to_classed_html(line: &str,
+                              ops: &[(usize, ScopeStackOp)],
+                              style: ClassStyle)
+                              -> String {
+    tokens_to_classed_spans(line, ops, style).0
 }
 
 /// Determines how background color attributes are generated
@@ -295,5 +382,18 @@ mod tests {
             .unwrap();
         println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test5.html"));
+    }
+
+    #[test]
+    fn test_classed_html_generator() {
+        let current_code = "x + y".to_string();
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let mut html_generator = ClassedHTMLGenerator::new(&syntax, &syntax_set);
+        for line in current_code.lines() {
+            html_generator.parse_html_for_line(&line);
+        }
+        let html = html_generator.finalize();
+        assert_eq!(html, r#"<span class="source r">x <span class="keyword operator arithmetic r">+</span> y</span>"#);
     }
 }
