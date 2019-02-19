@@ -24,7 +24,7 @@ regex-syntax = { version = "0.6", optional = true }
 lazy_static = "1.0"
 lazycell = "1.0"
 bitflags = "1.0"
-plist = "0.3"
+plist = "0.4"
 bincode = { version = "1.0", optional = true }
 flate2 = { version = "1.0", optional = true, default-features = false }
 fnv = { version = "1.0", optional = true }
