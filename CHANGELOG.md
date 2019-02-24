@@ -1,3 +1,9 @@
+# Version 3.1.0
+
+- Add support for loading metadata (#223 #225 #230)
+- Improve support for generating classed HTML and fix a bug, old function is deprecated because it's impossible to use correctly (#235)
+- Update plist to v0.4 and pretty_assertions to v0.6 (#232 #236)
+
 # Version 3.0.2
 
 - Fix application of multiple `with_prototype`s (#220, fixes #160, #178, ASP highlighting)
