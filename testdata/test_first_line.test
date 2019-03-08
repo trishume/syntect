@@ -1,6 +1,6 @@
-// -*- Mode: Go -*-
+#!/usr/bin/ruby
 
-func blah() error {
-  test := "wow"
-  return ioutil.WriteFile(test, hi, 0700)
-}
+def blah
+  test = "wow"
+  puts test
+end
