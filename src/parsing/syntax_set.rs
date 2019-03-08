@@ -695,10 +695,10 @@ mod tests {
         assert_eq!(&ps.find_syntax_for_file("testdata/parser.rs").unwrap().unwrap().name,
                    "Rust");
         assert_eq!(&ps.find_syntax_for_file("testdata/test_first_line.test")
-                       .unwrap()
-                       .unwrap()
+                       .expect("Error finding syntax for file")
+                       .expect("No syntax found for file")
                        .name,
-                   "Go");
+                   "Ruby");
         assert_eq!(&ps.find_syntax_for_file(".bashrc").unwrap().unwrap().name,
                    "Bourne Again Shell (bash)");
         assert_eq!(&ps.find_syntax_for_file("CMakeLists.txt").unwrap().unwrap().name,
