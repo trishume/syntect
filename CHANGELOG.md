@@ -1,3 +1,7 @@
+# Version 3.2.0
+
+- Actually make `tokens_to_classed_spans` public like intended
+
 # Version 3.1.0
 
 - Add support for loading metadata (#223 #225 #230)
