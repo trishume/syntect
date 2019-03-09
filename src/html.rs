@@ -158,7 +158,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
 /// Returns the HTML string and the number of `<span>` tags opened
 /// (negative for closed). So that you can emit the correct number of closing
 /// tags at the end.
-fn tokens_to_classed_spans(line: &str,
+pub fn tokens_to_classed_spans(line: &str,
                            ops: &[(usize, ScopeStackOp)],
                            style: ClassStyle)
                            -> (String, isize) {
