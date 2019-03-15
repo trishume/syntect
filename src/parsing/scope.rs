@@ -125,7 +125,7 @@ fn pack_as_u16s(atoms: &[usize]) -> Result<Scope, ParseScopeError> {
 }
 
 impl ScopeRepository {
-    fn new() -> ScopeRepository {
+    pub fn new() -> ScopeRepository {
         ScopeRepository {
             atoms: Vec::new(),
             atom_index_map: HashMap::new(),
@@ -390,7 +390,7 @@ impl ScopeStack {
             ScopeStackOp::Clear(amount) => {
                 let cleared = match amount {
                     ClearAmount::TopN(n) => {
-                        // don't try to clear more scopes than are on the stack 
+                        // don't try to clear more scopes than are on the stack
                         let to_leave = self.scopes.len() - min(n, self.scopes.len());
                         self.scopes.split_off(to_leave)
                     }
