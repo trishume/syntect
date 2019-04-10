@@ -44,7 +44,7 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
 #[cfg(feature = "parsing")]
 pub fn debug_print_ops(line: &str, ops: &[(usize, ScopeStackOp)]) {
     for &(i, ref op) in ops.iter() {
-        println!("{}", line.trim_right());
+        println!("{}", line.trim_end());
         print!("{: <1$}", "", i);
         match *op {
             ScopeStackOp::Push(s) => {
