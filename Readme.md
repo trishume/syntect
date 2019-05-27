@@ -177,6 +177,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [syntect_server](https://github.com/sourcegraph/syntect_server), an HTTP server for syntax highlighting.
 - [mdcat](https://github.com/lunaryorn/mdcat), a console markdown printer, uses `syntect` for code blocks.
 - [bat](https://github.com/sharkdp/bat), a `cat(1)` clone, uses `syntect` for syntax highlighting.
+- [hors](https://github.com/WindSoilder/hors), instant coding answers via command line, uses `syntect` for highlighting code blocks.
 
 ## License and Acknowledgements
 
