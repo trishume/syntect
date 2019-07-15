@@ -167,7 +167,7 @@ Characters of comment:                 41099
 
 Below is a list of projects using Syntect, in approximate order by how long they've been using `syntect` (feel free to send PRs to add to this list):
 
-- [Gutenberg](https://github.com/Keats/gutenberg), a static site generator that uses `syntect` for highlighting code snippets.
+- [Zola](https://github.com/getzola/zola), a static site generator that uses `syntect` for highlighting code snippets.
 - [xi-editor](https://github.com/google/xi-editor), a text editor in Rust which uses `syntect` for highlighting.
 - [Scribe](https://github.com/jmacdonald/scribe), a Rust text editor framework which uses `syntect` for highlighting.
 - [tokio-cassandra](https://github.com/nhellwig/tokio-cassandra), CQL shell in Rust, uses `syntect` for shell colouring.
