@@ -292,69 +292,22 @@ impl SyntaxDefinition {
         }
     }
 
-    fn resolve_variables(raw_regex: &str, state: &ParserState) -> String {
-        state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
-            let var_regex_raw =
-                state.variables.get(caps.at(1).unwrap_or("")).map_or("", |x| &**x);
-            Self::resolve_variables(var_regex_raw, state)
-        })
-    }
-
-    fn try_compile_regex(regex_str: &str) -> Result<(), ParseSyntaxError> {
-        // Replace backreferences with a placeholder value that will also appear in errors
-        let regex_str = substitute_backrefs_in_regex(regex_str, |i| Some(format!("<placeholder_{}>", i)));
-
-        let result = Regex::with_options(&regex_str,
-                                         RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
-                                         Syntax::default());
-        match result {
-            Err(onig_error) => {
-                Err(ParseSyntaxError::RegexCompileError(regex_str, onig_error))
-            },
-            _ => Ok(())
-        }
-    }
-
     fn parse_match_pattern(map: &Hash,
                            state: &mut ParserState,
                            contexts: &mut HashMap<String, Context>,
                            namer: &mut ContextNamer)
                            -> Result<MatchPattern, ParseSyntaxError> {
         let raw_regex = get_key(map, "match", |x| x.as_str())?;
-        let regex_str_1 = Self::resolve_variables(raw_regex, state);
-        // if the passed in strings don't include newlines (unlike Sublime) we can't match on them
-        let regex_str = if state.lines_include_newline {
-            regex_str_1
-        } else {
-            rewrite_regex(regex_str_1)
-        };
+        let regex_str = Self::parse_regex(raw_regex, state)?;
         // println!("{:?}", regex_str);
-
-        Self::try_compile_regex(&regex_str)?;
 
         let scope = get_key(map, "scope", |x| x.as_str())
             .ok()
             .map(|s| str_to_scopes(s, state.scope_repo))
             .unwrap_or_else(|| Ok(vec![]))?;
 
-
         let captures = if let Ok(map) = get_key(map, "captures", |x| x.as_hash()) {
-            let r = RegexRewriter {
-                bytes: regex_str.as_bytes(),
-                index: 0,
-            };
-            let valid_indexes = r.get_consuming_capture_indexes();
-            let mut res_map = Vec::new();
-            for (key, value) in map.iter() {
-                if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
-                    if valid_indexes.contains(&(key_int as usize)) {
-                        res_map.push((key_int as usize,
-                                      str_to_scopes(val_str, state.scope_repo)?));
-                    }
-                }
-            }
-            
-            Some(res_map)
+            Some(Self::parse_captures(map, &regex_str, state)?)
         } else {
             None
         };
@@ -456,6 +409,62 @@ impl SyntaxDefinition {
             let reference = SyntaxDefinition::parse_reference(y, state, contexts, namer)?;
             Ok(vec![reference])
         }
+    }
+
+    fn parse_regex(raw_regex: &str, state: &ParserState) -> Result<String, ParseSyntaxError> {
+        let mut regex = Self::resolve_variables(raw_regex, state);
+        if !state.lines_include_newline {
+            // If the passed in strings don't include newlines (unlike Sublime) we can't match on
+            // them using the original regex. So this tries to rewrite the regex in a way that
+            // allows matching against lines without newlines (essentially replacing `\n` with `$`).
+            regex = rewrite_regex(regex);
+        };
+        Self::try_compile_regex(&regex)?;
+        Ok(regex)
+    }
+
+    fn resolve_variables(raw_regex: &str, state: &ParserState) -> String {
+        state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
+            let var_regex_raw =
+                state.variables.get(caps.at(1).unwrap_or("")).map_or("", |x| &**x);
+            Self::resolve_variables(var_regex_raw, state)
+        })
+    }
+
+    fn try_compile_regex(regex_str: &str) -> Result<(), ParseSyntaxError> {
+        // Replace backreferences with a placeholder value that will also appear in errors
+        let regex_str = substitute_backrefs_in_regex(regex_str, |i| Some(format!("<placeholder_{}>", i)));
+
+        let result = Regex::with_options(&regex_str,
+                                         RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
+                                         Syntax::default());
+        match result {
+            Err(onig_error) => {
+                Err(ParseSyntaxError::RegexCompileError(regex_str, onig_error))
+            },
+            _ => Ok(())
+        }
+    }
+
+    fn parse_captures(
+        map: &Hash,
+        regex_str: &str,
+        state: &mut ParserState,
+    ) -> Result<CaptureMapping, ParseSyntaxError> {
+        let r = RegexRewriter {
+            bytes: regex_str.as_bytes(),
+            index: 0,
+        };
+        let valid_indexes = r.get_consuming_capture_indexes();
+        let mut captures = Vec::new();
+        for (key, value) in map.iter() {
+            if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
+                if valid_indexes.contains(&(key_int as usize)) {
+                    captures.push((key_int as usize, str_to_scopes(val_str, state.scope_repo)?));
+                }
+            }
+        }
+        Ok(captures)
     }
 
     /// Sublime treats the top level context slightly differently from
