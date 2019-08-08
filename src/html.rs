@@ -331,7 +331,7 @@ mod tests {
 
         let html = tokens_to_classed_html(line, &ops[..], ClassStyle::Spaced);
         println!("{}", html);
-        assert_eq!(html, include_str!("../testdata/test2.html").trim_right());
+        assert_eq!(html, include_str!("../testdata/test2.html").trim_end());
 
         let ts = ThemeSet::load_defaults();
         let highlighter = Highlighter::new(&ts.themes["InspiredGitHub"]);
@@ -341,7 +341,7 @@ mod tests {
 
         let html2 = styled_line_to_highlighted_html(&regions[..], IncludeBackground::Yes);
         println!("{}", html2);
-        assert_eq!(html2, include_str!("../testdata/test1.html").trim_right());
+        assert_eq!(html2, include_str!("../testdata/test1.html").trim_end());
     }
 
     #[test]
