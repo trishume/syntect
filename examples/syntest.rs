@@ -96,14 +96,14 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
                 if let Some(end_token_pos) = sst.find(token) { // and there is an end token in the line
                     let (ss, after_token_end) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
                     sst = &ss;
-                    only_whitespace_after_token_end = after_token_end.trim_right().is_empty();
+                    only_whitespace_after_token_end = after_token_end.trim_end().is_empty();
                 }
             }
             return Some(AssertionRange {
                 begin_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().start() } else { 0 },
                 end_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().end() } else { 1 },
                 scope_selector_text: sst,
-                is_pure_assertion_line: before_token_start.trim_left().is_empty() && only_whitespace_after_token_end, // if only whitespace surrounds the test tokens on the line, then it is a pure assertion line
+                is_pure_assertion_line: before_token_start.trim_start().is_empty() && only_whitespace_after_token_end, // if only whitespace surrounds the test tokens on the line, then it is a pure assertion line
             });
         }
     }
