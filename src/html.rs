@@ -1,10 +1,10 @@
 //! Rendering highlighted code as HTML+CSS
 use std::fmt::Write;
-use parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxReference, ParseState, SyntaxSet, SCOPE_REPO};
-use easy::{HighlightLines, HighlightFile};
-use highlighting::{Color, FontStyle, Style, Theme};
-use util::LinesWithEndings;
-use escape::Escape;
+use crate::parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxReference, ParseState, SyntaxSet, SCOPE_REPO};
+use crate::easy::{HighlightLines, HighlightFile};
+use crate::highlighting::{Color, FontStyle, Style, Theme};
+use crate::util::LinesWithEndings;
+use crate::escape::Escape;
 use std::io::{self, BufRead};
 use std::path::Path;
 
@@ -316,8 +316,8 @@ pub fn start_highlighted_html_snippet(t: &Theme) -> (String, Color) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, ParseState, ScopeStack, SyntaxSetBuilder};
-    use highlighting::{ThemeSet, Style, Highlighter, HighlightIterator, HighlightState};
+    use crate::parsing::{SyntaxSet, ParseState, ScopeStack, SyntaxSetBuilder};
+    use crate::highlighting::{ThemeSet, Style, Highlighter, HighlightIterator, HighlightState};
     #[test]
     fn tokens() {
         let ss = SyntaxSet::load_defaults_newlines();

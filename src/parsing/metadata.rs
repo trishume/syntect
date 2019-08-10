@@ -181,7 +181,7 @@ fn append_vars(obj: &mut Dict, vars: Settings, scope: &str) {
 impl Metadata {
     /// For a given stack of scopes, returns a [`ScopedMetadata`] object
     /// which provides convenient access to metadata items which match the stack.
-    pub fn metadata_for_scope(&self, scope: &[Scope]) -> ScopedMetadata {
+    pub fn metadata_for_scope(&self, scope: &[Scope]) -> ScopedMetadata<'_> {
         let mut metadata_matches = self.scoped_metadata
             .iter()
             .filter_map(|meta_set| {
@@ -271,7 +271,6 @@ impl MetadataSet {
 ///
 /// ```
 /// # #[macro_use] extern crate serde_json;
-/// # extern crate syntect;
 /// # use syntect::parsing::*;
 /// # use syntect::highlighting::ScopeSelectors;
 /// # use std::str::FromStr;
@@ -460,7 +459,7 @@ impl<'de> Deserialize<'de> for MetadataSet {
 mod tests {
     use std::path::Path;
     use super::*;
-    use parsing::SyntaxSet;
+    use crate::parsing::SyntaxSet;
 
     #[test]
     fn load_raw() {

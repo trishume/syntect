@@ -2,8 +2,8 @@
 //! files without caring about intermediate semantic representation
 //! and caching.
 
-use parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, ScopeStackOp};
-use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
+use crate::parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, ScopeStackOp};
+use crate::highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
 use std::io::{self, BufReader};
 use std::fs::File;
 use std::path::Path;
@@ -204,8 +204,8 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, ParseState, ScopeStack};
-    use highlighting::ThemeSet;
+    use crate::parsing::{SyntaxSet, ParseState, ScopeStack};
+    use crate::highlighting::ThemeSet;
     use std::str::FromStr;
 
     #[test]

@@ -5,7 +5,6 @@
 //!
 //! An example of how this script is used to generate the pack files included
 //! with syntect can be found under `make packs` in the Makefile.
-extern crate syntect;
 use syntect::parsing::SyntaxSetBuilder;
 use syntect::highlighting::ThemeSet;
 use syntect::dumps::*;
@@ -20,7 +19,6 @@ fn usage_and_exit() -> ! {
 }
 
 fn main() {
-
     let mut a = env::args().skip(1);
     match (a.next(), a.next(), a.next(), a.next(), a.next(), a.next()) {
         (Some(ref cmd),

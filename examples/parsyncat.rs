@@ -1,9 +1,6 @@
 //! Highlights the files given on the command line, in parallel.
 //! Prints the highlighted output to stdout.
 
-extern crate rayon;
-extern crate syntect;
-
 use syntect::parsing::SyntaxSet;
 use syntect::highlighting::{ThemeSet, Style};
 use syntect::easy::HighlightFile;
@@ -11,7 +8,6 @@ use rayon::prelude::*;
 
 use std::fs::File;
 use std::io::{BufReader, BufRead};
-
 
 fn main() {
     let files: Vec<String> = std::env::args().skip(1).collect();

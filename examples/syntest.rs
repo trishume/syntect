@@ -7,12 +7,8 @@
 // you can tell it where to parse them from - the following will execute only 1 syntax test after
 // parsing the sublime-syntax files in the JavaScript folder:
 // cargo run --example syntest testdata/Packages/JavaScript/syntax_test_json.json testdata/Packages/JavaScript/
-extern crate syntect;
-extern crate walkdir;
 #[macro_use]
 extern crate lazy_static;
-extern crate regex;
-extern crate getopts;
 
 use syntect::parsing::{SyntaxSet, SyntaxSetBuilder, ParseState, ScopeStack, Scope};
 use syntect::highlighting::ScopeSelectors;
@@ -110,7 +106,7 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
     None
 }
 
-fn process_assertions(assertion: &AssertionRange, test_against_line_scopes: &Vec<ScopedText>) -> Vec<RangeTestResult> {
+fn process_assertions(assertion: &AssertionRange<'_>, test_against_line_scopes: &Vec<ScopedText>) -> Vec<RangeTestResult> {
     // format the scope selector to include a space at the beginning, because, currently, ScopeSelector expects excludes to begin with " -"
     // and they are sometimes in the syntax test as ^^^-comment, for example
     let selector = ScopeSelectors::from_str(&format!(" {}", &assertion.scope_selector_text)).unwrap();

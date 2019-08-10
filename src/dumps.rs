@@ -18,9 +18,9 @@ use std::io::{BufRead, BufReader};
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use std::io::{BufWriter, Write};
 #[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
-use parsing::SyntaxSet;
+use crate::parsing::SyntaxSet;
 #[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
-use highlighting::ThemeSet;
+use crate::highlighting::ThemeSet;
 use std::path::Path;
 #[cfg(feature = "dump-create")]
 use flate2::write::ZlibEncoder;
@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn can_dump_and_load() {
         use super::*;
-        use parsing::SyntaxSetBuilder;
+        use crate::parsing::SyntaxSetBuilder;
         let mut builder = SyntaxSetBuilder::new();
         builder.add_from_folder("testdata/Packages", false).unwrap();
         let ss = builder.build();
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn dump_is_deterministic() {
         use super::*;
-        use parsing::SyntaxSetBuilder;
+        use crate::parsing::SyntaxSetBuilder;
 
         let mut builder1 = SyntaxSetBuilder::new();
         builder1.add_from_folder("testdata/Packages", false).unwrap();
@@ -181,7 +181,7 @@ mod tests {
     #[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
     #[test]
     fn has_default_themes() {
-        use highlighting::ThemeSet;
+        use crate::highlighting::ThemeSet;
         let themes = ThemeSet::load_defaults();
         assert!(themes.themes.len() > 4);
     }

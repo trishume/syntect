@@ -1,6 +1,5 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/settings.rs
 /// released under the MIT license by @defuz
-
 use std::io::{Read, Seek};
 use plist::{Error as PlistError};
 
@@ -16,7 +15,6 @@ pub trait ParseSettings: Sized {
     type Error;
     fn parse_settings(settings: Settings) -> Result<Self, Self::Error>;
 }
-
 
 /// An error parsing a settings file
 #[derive(Debug)]

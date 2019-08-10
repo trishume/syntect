@@ -10,10 +10,9 @@ use onig::{Regex, RegexOptions, Region, Syntax};
 use super::scope::*;
 use regex_syntax::escape;
 use serde::{Serialize, Serializer};
-use parsing::syntax_set::SyntaxSet;
+use crate::parsing::syntax_set::SyntaxSet;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
-
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ContextId {

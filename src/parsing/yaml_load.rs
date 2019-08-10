@@ -32,8 +32,8 @@ pub enum ParseSyntaxError {
 }
 
 impl fmt::Display for ParseSyntaxError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use ParseSyntaxError::*;
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::ParseSyntaxError::*;
 
         match *self {
             RegexCompileError(ref regex, ref error) =>
@@ -46,7 +46,7 @@ impl fmt::Display for ParseSyntaxError {
 
 impl Error for ParseSyntaxError {
     fn description(&self) -> &str {
-        use ParseSyntaxError::*;
+        use crate::ParseSyntaxError::*;
 
         match *self {
             InvalidYaml(_) => "Invalid YAML file syntax",
@@ -60,8 +60,8 @@ impl Error for ParseSyntaxError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
-        use ParseSyntaxError::*;
+    fn cause(&self) -> Option<&dyn Error> {
+        use crate::ParseSyntaxError::*;
 
         match *self {
             InvalidYaml(ref error) => Some(error),
@@ -184,7 +184,7 @@ impl SyntaxDefinition {
     }
 
     fn parse_contexts(map: &Hash,
-                      state: &mut ParserState)
+                      state: &mut ParserState<'_>)
                       -> Result<HashMap<String, Context>, ParseSyntaxError> {
         let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
@@ -200,7 +200,7 @@ impl SyntaxDefinition {
 
     fn parse_context(vec: &[Yaml],
                      // TODO: Maybe just pass the scope repo if that's all that's needed?
-                     state: &mut ParserState,
+                     state: &mut ParserState<'_>,
                      contexts: &mut HashMap<String, Context>,
                      is_prototype: bool,
                      namer: &mut ContextNamer)
@@ -254,7 +254,7 @@ impl SyntaxDefinition {
     }
 
     fn parse_reference(y: &Yaml,
-                       state: &mut ParserState,
+                       state: &mut ParserState<'_>,
                        contexts: &mut HashMap<String, Context>,
                        namer: &mut ContextNamer)
                        -> Result<ContextReference, ParseSyntaxError> {
@@ -293,7 +293,7 @@ impl SyntaxDefinition {
     }
 
     fn parse_match_pattern(map: &Hash,
-                           state: &mut ParserState,
+                           state: &mut ParserState<'_>,
                            contexts: &mut HashMap<String, Context>,
                            namer: &mut ContextNamer)
                            -> Result<MatchPattern, ParseSyntaxError> {
@@ -393,7 +393,7 @@ impl SyntaxDefinition {
     }
 
     fn parse_pushargs(y: &Yaml,
-                      state: &mut ParserState,
+                      state: &mut ParserState<'_>,
                       contexts: &mut HashMap<String, Context>,
                       namer: &mut ContextNamer)
                       -> Result<Vec<ContextReference>, ParseSyntaxError> {
@@ -411,7 +411,7 @@ impl SyntaxDefinition {
         }
     }
 
-    fn parse_regex(raw_regex: &str, state: &ParserState) -> Result<String, ParseSyntaxError> {
+    fn parse_regex(raw_regex: &str, state: &ParserState<'_>) -> Result<String, ParseSyntaxError> {
         let mut regex = Self::resolve_variables(raw_regex, state);
         if !state.lines_include_newline {
             // If the passed in strings don't include newlines (unlike Sublime) we can't match on
@@ -423,8 +423,8 @@ impl SyntaxDefinition {
         Ok(regex)
     }
 
-    fn resolve_variables(raw_regex: &str, state: &ParserState) -> String {
-        state.variable_regex.replace_all(raw_regex, |caps: &Captures| {
+    fn resolve_variables(raw_regex: &str, state: &ParserState<'_>) -> String {
+        state.variable_regex.replace_all(raw_regex, |caps: &Captures<'_>| {
             let var_regex_raw =
                 state.variables.get(caps.at(1).unwrap_or("")).map_or("", |x| &**x);
             Self::resolve_variables(var_regex_raw, state)
@@ -449,7 +449,7 @@ impl SyntaxDefinition {
     fn parse_captures(
         map: &Hash,
         regex_str: &str,
-        state: &mut ParserState,
+        state: &mut ParserState<'_>,
     ) -> Result<CaptureMapping, ParseSyntaxError> {
         let r = RegexRewriter {
             bytes: regex_str.as_bytes(),
@@ -475,7 +475,7 @@ impl SyntaxDefinition {
     /// See https://github.com/trishume/syntect/issues/58 for more.
     fn add_initial_contexts(
         contexts: &mut HashMap<String, Context>,
-        state: &mut ParserState,
+        state: &mut ParserState<'_>,
         top_level_scope: Scope,
     ) {
         let yaml_docs = YamlLoader::load_from_str(START_CONTEXT).unwrap();
@@ -757,8 +757,8 @@ impl<'a> RegexRewriter<'a> {
 
 #[cfg(test)]
 mod tests {
-    use parsing::syntax_definition::*;
-    use parsing::Scope;
+    use crate::parsing::syntax_definition::*;
+    use crate::parsing::Scope;
     use super::*;
 
     #[test]
@@ -833,7 +833,7 @@ mod tests {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
                 assert_eq!(&m[0], &(1,vec![Scope::new("meta.preprocessor.c++").unwrap()]));
-                use parsing::syntax_definition::ContextReference::*;
+                use crate::parsing::syntax_definition::ContextReference::*;
 
                 // this is sadly necessary because Context is not Eq because of the Regex
                 let expected = MatchOperation::Push(vec![

@@ -1,5 +1,6 @@
 // Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/style.rs
 // released under the MIT license by @defuz
+use bitflags::bitflags;
 
 /// The foreground, background and font style
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

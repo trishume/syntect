@@ -5,7 +5,7 @@
 
 use std::iter::Iterator;
 
-use parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
+use crate::parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
 use super::selector::ScopeSelector;
 use super::theme::{Theme, ThemeItem};
 use super::style::{Color, FontStyle, Style, StyleModifier};
@@ -69,7 +69,7 @@ impl HighlightState {
     /// Note that the `Highlighter` is not stored, it is used to construct the initial
     /// stack of styles. Most of the time you'll want to pass an empty stack as `initial_stack`
     /// but see the docs for `HighlightState` for discussion of advanced caching use cases.
-    pub fn new(highlighter: &Highlighter, initial_stack: ScopeStack) -> HighlightState {
+    pub fn new(highlighter: &Highlighter<'_>, initial_stack: ScopeStack) -> HighlightState {
         let mut styles = vec![highlighter.get_default()];
         let mut single_caches = vec![ScoredStyle::from_style(styles[0])];
         for i in 0..initial_stack.len() {
@@ -91,7 +91,7 @@ impl<'a, 'b> HighlightIterator<'a, 'b> {
     pub fn new(state: &'a mut HighlightState,
                changes: &'a [(usize, ScopeStackOp)],
                text: &'b str,
-               highlighter: &'a Highlighter)
+               highlighter: &'a Highlighter<'_>)
                -> HighlightIterator<'a, 'b> {
         HighlightIterator {
             index: 0,
@@ -306,8 +306,8 @@ impl<'a> Highlighter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use highlighting::{ThemeSet, Style, Color, FontStyle};
-    use parsing::{ SyntaxSet, ScopeStack, ParseState};
+    use crate::highlighting::{ThemeSet, Style, Color, FontStyle};
+    use crate::parsing::{ SyntaxSet, ScopeStack, ParseState};
 
     #[test]
     fn can_parse() {
@@ -347,9 +347,9 @@ mod tests {
     // see issues #133 and #203, this test tests the fixes for those issues
     #[test]
     fn tricky_cases() {
-        use parsing::ScopeStack;
+        use crate::parsing::ScopeStack;
         use std::str::FromStr;
-        use highlighting::{ThemeSettings, ScopeSelectors};
+        use crate::highlighting::{ThemeSettings, ScopeSelectors};
         let c1 = Color { r: 1, g: 1, b: 1, a: 255 };
         let c2 = Color { r: 2, g: 2, b: 2, a: 255 };
         let def_bg = Color { r: 255, g: 255, b: 255, a: 255 };
@@ -394,7 +394,7 @@ mod tests {
         };
         let highlighter = Highlighter::new(&test_color_scheme);
 
-        use parsing::ScopeStackOp::*;
+        use crate::parsing::ScopeStackOp::*;
         let ops = [
             // three rules apply at once here, two singles and one multi
             (0, Push(Scope::new("comment.line.rs").unwrap())),
