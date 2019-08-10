@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::i32;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
-use parsing::syntax_set::{SyntaxSet, SyntaxReference};
+use crate::parsing::syntax_set::{SyntaxSet, SyntaxReference};
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
 /// If you are parsing an entire file you create one of these at the start and use it
@@ -319,7 +319,7 @@ impl ParseState {
         // println!("token at {} on {}", start, line.trim_right());
 
         let mut min_start = usize::MAX;
-        let mut best_match: Option<RegexMatch> = None;
+        let mut best_match: Option<RegexMatch<'_>> = None;
         let mut pop_would_loop = false;
 
         for (from_with_proto, ctx, captures) in context_chain {
@@ -663,9 +663,9 @@ impl ParseState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, SyntaxSetBuilder, Scope, ScopeStack};
-    use parsing::ScopeStackOp::{Push, Pop, Clear, Restore};
-    use util::debug_print_ops;
+    use crate::parsing::{SyntaxSet, SyntaxSetBuilder, Scope, ScopeStack};
+    use crate::parsing::ScopeStackOp::{Push, Pop, Clear, Restore};
+    use crate::util::debug_print_ops;
 
     const TEST_SYNTAX: &str = include_str!("../../testdata/parser_tests.sublime-syntax");
 

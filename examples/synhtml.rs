@@ -1,6 +1,5 @@
 //! Prints highlighted HTML for a file to stdout.
 //! Basically just wraps a body around `highlighted_html_for_file`
-extern crate syntect;
 use syntect::parsing::SyntaxSet;
 use syntect::highlighting::{Color, ThemeSet};
 use syntect::html::highlighted_html_for_file;

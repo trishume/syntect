@@ -1,8 +1,4 @@
-#[macro_use]
-extern crate criterion;
-extern crate syntect;
-
-use criterion::{Bencher, Criterion};
+use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use std::fs::File;
 use std::io::Read;
 use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};

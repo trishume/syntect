@@ -283,14 +283,14 @@ impl FromStr for Scope {
 }
 
 impl fmt::Display for Scope {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = self.build_string();
         write!(f, "{}", s)
     }
 }
 
 impl fmt::Debug for Scope {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = self.build_string();
         write!(f, "<{}>", s)
     }
@@ -311,7 +311,7 @@ impl<'de> Deserialize<'de> for Scope {
         impl<'de> Visitor<'de> for ScopeVisitor {
             type Value = Scope;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 formatter.write_str("a string")
             }
 
@@ -507,7 +507,7 @@ impl FromStr for ScopeStack {
 }
 
 impl fmt::Display for ScopeStack {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for s in &self.scopes {
             write!(f, "{} ", s)?;
         }

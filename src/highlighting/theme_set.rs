@@ -67,7 +67,7 @@ impl ThemeSet {
 
 #[cfg(test)]
 mod tests {
-    use highlighting::{ThemeSet, Color};
+    use crate::highlighting::{ThemeSet, Color};
     #[test]
     fn can_parse_common_themes() {
         let themes = ThemeSet::load_from_folder("testdata").unwrap();

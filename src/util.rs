@@ -1,10 +1,10 @@
 //! Convenient helper functions for common use cases:
 //! printing to terminal, iterating lines with `\n`s, modifying ranges of highlighted output
-use highlighting::{Style, StyleModifier};
+use crate::highlighting::{Style, StyleModifier};
 use std::fmt::Write;
 use std::ops::Range;
 #[cfg(feature = "parsing")]
-use parsing::ScopeStackOp;
+use crate::parsing::ScopeStackOp;
 
 /// Formats the styled fragments using 24-bit color
 /// terminal escape codes. Meant for debugging and testing.

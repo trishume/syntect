@@ -15,46 +15,25 @@
 
 #![doc(html_root_url = "https://docs.rs/syntect/3.2.1")]
 
-#[cfg(feature = "yaml-load")]
-extern crate yaml_rust;
-#[cfg(feature = "parsing")]
-extern crate onig;
-extern crate walkdir;
-#[cfg(feature = "parsing")]
-extern crate regex_syntax;
 #[macro_use]
 extern crate lazy_static;
-extern crate lazycell;
-extern crate plist;
-#[cfg(any(feature = "dump-load-rs", feature = "dump-load", feature = "dump-create"))]
-extern crate bincode;
-#[macro_use]
-extern crate bitflags;
-#[cfg(any(feature = "dump-load", feature = "dump-create", feature = "dump-load-rs", feature = "dump-create-rs"))]
-extern crate flate2;
-#[cfg(feature = "parsing")]
-extern crate fnv;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_json;
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;
-#[cfg(test)]
-extern crate rayon;
 
-pub mod highlighting;
-pub mod parsing;
-pub mod util;
 #[cfg(any(feature = "dump-load-rs", feature = "dump-load", feature = "dump-create", feature = "dump-create-rs"))]
 pub mod dumps;
 #[cfg(feature = "parsing")]
 pub mod easy;
 #[cfg(feature = "html")]
-pub mod html;
-#[cfg(feature = "html")]
 mod escape;
+pub mod highlighting;
+#[cfg(feature = "html")]
+pub mod html;
+pub mod parsing;
+pub mod util;
 
 use std::io::Error as IoError;
 use std::error::Error;
@@ -63,8 +42,8 @@ use std::fmt;
 #[cfg(feature = "metadata")]
 use serde_json::Error as JsonError;
 #[cfg(all(feature = "yaml-load", feature = "parsing"))]
-use parsing::ParseSyntaxError;
-use highlighting::{ParseThemeError, SettingsError};
+use crate::parsing::ParseSyntaxError;
+use crate::highlighting::{ParseThemeError, SettingsError};
 
 /// Common error type used by syntax and theme loading
 #[derive(Debug)]
@@ -121,8 +100,8 @@ impl From<ParseSyntaxError> for LoadingError {
 }
 
 impl fmt::Display for LoadingError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use LoadingError::*;
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::LoadingError::*;
 
         match *self {
             WalkDir(ref error) => error.fmt(f),
@@ -142,7 +121,7 @@ impl fmt::Display for LoadingError {
 
 impl Error for LoadingError {
     fn description(&self) -> &str {
-        use LoadingError::*;
+        use crate::LoadingError::*;
 
         match *self {
             WalkDir(ref error) => error.description(),
@@ -157,8 +136,8 @@ impl Error for LoadingError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
-        use LoadingError::*;
+    fn cause(&self) -> Option<&dyn Error> {
+        use crate::LoadingError::*;
 
         match *self {
             WalkDir(ref error) => Some(error),

@@ -1,12 +1,11 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/theme.rs
 /// released under the MIT license by @defuz
-
 use std::str::FromStr;
 
 use super::settings::{ParseSettings, Settings};
 use super::style::*;
 use super::selector::*;
-use parsing::ParseScopeError;
+use crate::parsing::ParseScopeError;
 
 use self::ParseThemeError::*;
 
@@ -100,7 +99,6 @@ pub struct ThemeSettings {
     /// A color that will override the scope-based text color of the selection
     /// in a view that is not currently focused.
     pub inactive_selection_foreground: Option<Color>,
-
 
     /// Color of the guides displayed to indicate nesting levels.
     pub guide: Option<Color>,

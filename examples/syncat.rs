@@ -1,6 +1,3 @@
-extern crate syntect;
-extern crate getopts;
-
 use getopts::Options;
 use std::borrow::Cow;
 use std::io::BufRead;
@@ -10,7 +7,6 @@ use syntect::highlighting::{Theme, ThemeSet, Style};
 use syntect::util::as_24_bit_terminal_escaped;
 use syntect::easy::HighlightFile;
 use syntect::dumps::{from_dump_file, dump_to_file};
-
 
 fn load_theme(tm_file: &String, enable_caching: bool) -> Theme {
     let tm_path = Path::new(tm_file);
@@ -31,7 +27,6 @@ fn load_theme(tm_file: &String, enable_caching: bool) -> Theme {
 }
 
 fn main() {
-
     let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
     opts.optflag("l", "list-file-types", "Lists supported file types");

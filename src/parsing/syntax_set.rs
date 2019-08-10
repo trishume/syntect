@@ -19,7 +19,7 @@ use std::mem;
 
 use lazycell::AtomicLazyCell;
 use onig::Regex;
-use parsing::syntax_definition::ContextId;
+use crate::parsing::syntax_definition::ContextId;
 
 /// A syntax set holds multiple syntaxes that have been linked together.
 ///
@@ -499,7 +499,7 @@ impl SyntaxSetBuilder {
 
         #[cfg(feature = "metadata")]
         let metadata = match existing_metadata {
-            Some(mut existing) => existing.merged_with_raw(raw_metadata),
+            Some(existing) => existing.merged_with_raw(raw_metadata),
             None => raw_metadata.into(),
         };
 
@@ -660,7 +660,7 @@ impl FirstLineCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{ParseState, Scope, syntax_definition};
+    use crate::parsing::{ParseState, Scope, syntax_definition};
     use std::collections::HashMap;
 
     #[test]

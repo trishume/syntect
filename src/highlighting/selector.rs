@@ -1,7 +1,6 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs
 /// released under the MIT license by @defuz
-
-use parsing::{Scope, ScopeStack, MatchPower, ParseScopeError};
+use crate::parsing::{Scope, ScopeStack, MatchPower, ParseScopeError};
 use std::str::FromStr;
 
 /// A single selector consisting of a stack to match and a possible stack to exclude from being matched.
@@ -159,7 +158,7 @@ mod tests {
     }
     #[test]
     fn matching_works() {
-        use parsing::{ScopeStack, MatchPower};
+        use crate::parsing::{ScopeStack, MatchPower};
         use std::str::FromStr;
         assert_eq!(ScopeSelectors::from_str("a.b, a e, e.f")
                        .unwrap()
@@ -189,7 +188,7 @@ mod tests {
     
     #[test]
     fn empty_stack_matching_works() {
-        use parsing::{ScopeStack, MatchPower};
+        use crate::parsing::{ScopeStack, MatchPower};
         use std::str::FromStr;
         assert_eq!(ScopeSelector::from_str(" - a.b")
                        .unwrap()
@@ -264,7 +263,7 @@ mod tests {
     
     #[test]
     fn multiple_excludes_matching_works() {
-        use parsing::{ScopeStack, MatchPower};
+        use crate::parsing::{ScopeStack, MatchPower};
         use std::str::FromStr;
         assert_eq!(ScopeSelector::from_str(" - a.b - c.d")
                        .unwrap()
