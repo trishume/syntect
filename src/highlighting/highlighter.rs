@@ -4,6 +4,7 @@
 // released under the MIT license by @defuz
 
 use std::iter::Iterator;
+use std::ops::Range;
 
 use crate::parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
 use super::selector::ScopeSelector;
@@ -53,16 +54,28 @@ pub struct HighlightState {
 
 /// Highlights a line of parsed code given a `HighlightState`
 /// and line of changes from the parser.
+/// Yields the `Style`, the `text` as well as the `Range` of the text in the source string.
 ///
 /// It splits a line of text into different pieces each with a `Style`
 #[derive(Debug)]
-pub struct HighlightIterator<'a, 'b> {
+pub struct RangedHighlightIterator<'a, 'b> {
     index: usize,
     pos: usize,
     changes: &'a [(usize, ScopeStackOp)],
     text: &'b str,
     highlighter: &'a Highlighter<'a>,
     state: &'a mut HighlightState,
+}
+
+/// Highlights a line of parsed code given a `HighlightState`
+/// and line of changes from the parser.
+/// This is a backwards compatible shim on top of the `RangedHighlightIterator` which only
+/// yields the `Style` and the `Text` of the token, not the range.
+///
+/// It splits a line of text into different pieces each with a `Style`
+#[derive(Debug)]
+pub struct HighlightIterator<'a, 'b> {
+    ranged_iterator: RangedHighlightIterator<'a, 'b>
 }
 
 impl HighlightState {
@@ -87,13 +100,13 @@ impl HighlightState {
     }
 }
 
-impl<'a, 'b> HighlightIterator<'a, 'b> {
+impl<'a, 'b> RangedHighlightIterator<'a, 'b> {
     pub fn new(state: &'a mut HighlightState,
                changes: &'a [(usize, ScopeStackOp)],
                text: &'b str,
                highlighter: &'a Highlighter<'_>)
-               -> HighlightIterator<'a, 'b> {
-        HighlightIterator {
+               -> RangedHighlightIterator<'a, 'b> {
+        RangedHighlightIterator {
             index: 0,
             pos: 0,
             changes,
@@ -104,12 +117,12 @@ impl<'a, 'b> HighlightIterator<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
-    type Item = (Style, &'b str);
+impl<'a, 'b> Iterator for RangedHighlightIterator<'a, 'b> {
+    type Item = (Style, &'b str, Range<usize>);
 
     /// Yields the next token of text and the associated `Style` to render that text with.
     /// the concatenation of the strings in each token will make the original string.
-    fn next(&mut self) -> Option<(Style, &'b str)> {
+    fn next(&mut self) -> Option<(Style, &'b str, Range<usize>)> {
         if self.pos == self.text.len() && self.index >= self.changes.len() {
             return None;
         }
@@ -121,6 +134,7 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
         // println!("{} - {:?}   {}:{}", self.index, self.pos, self.state.path.len(), self.state.styles.len());
         let style = *self.state.styles.last().unwrap();
         let text = &self.text[self.pos..end];
+        let range = Range { start: self.pos, end: end };
         {
             // closures mess with the borrow checker's ability to see different struct fields
             let m_path = &mut self.state.path;
@@ -151,8 +165,36 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
         if text.is_empty() {
             self.next()
         } else {
-            Some((style, text))
+            Some((style, text, range))
         }
+    }
+}
+impl<'a, 'b> HighlightIterator<'a, 'b> {
+    pub fn new(state: &'a mut HighlightState,
+               changes: &'a [(usize, ScopeStackOp)],
+               text: &'b str,
+               highlighter: &'a Highlighter<'_>)
+        -> HighlightIterator<'a, 'b> {
+            HighlightIterator {
+                ranged_iterator: RangedHighlightIterator {
+                    index: 0,
+                    pos: 0,
+                    changes,
+                    text,
+                    highlighter,
+                    state
+                }
+            }
+    }
+}
+
+impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
+    type Item = (Style, &'b str);
+
+    /// Yields the next token of text and the associated `Style` to render that text with.
+    /// the concatenation of the strings in each token will make the original string.
+    fn next(&mut self) -> Option<(Style, &'b str)> {
+        self.ranged_iterator.next().map(|e| (e.0, e.1))
     }
 }
 
@@ -419,5 +461,40 @@ mod tests {
         assert_eq!(full_style, Style { foreground: c1, background: def_bg, font_style: FontStyle::ITALIC });
         let full_mod = highlighter.style_mod_for_stack(full_stack.as_slice());
         assert_eq!(full_mod, StyleModifier { foreground: Some(c1), background: None, font_style: Some(FontStyle::ITALIC) });
+    }
+
+    #[test]
+    fn test_ranges() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+            ParseState::new(syntax)
+        };
+        let ts = ThemeSet::load_defaults();
+        let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
+
+        let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+        let line = "module Bob::Wow::Troll::Five; 5; end";
+        let ops = state.parse_line(line, &ps);
+        let iter = RangedHighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
+        let regions: Vec<(Style, &str, Range<usize>)> = iter.collect();
+        // println!("{:#?}", regions);
+        assert_eq!(regions[11],
+                   (Style {
+                       foreground: Color {
+                           r: 208,
+                           g: 135,
+                           b: 112,
+                           a: 0xFF,
+                       },
+                       background: Color {
+                           r: 43,
+                           g: 48,
+                           b: 59,
+                           a: 0xFF,
+                       },
+                       font_style: FontStyle::empty(),
+                   },
+                    "5", Range { start: 30, end: 31 }));
     }
 }
