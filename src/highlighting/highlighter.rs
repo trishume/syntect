@@ -132,7 +132,7 @@ impl<'a, 'b> Iterator for RangedHighlightIterator<'a, 'b> {
             (self.text.len(), ScopeStackOp::Noop)
         };
         // println!("{} - {:?}   {}:{}", self.index, self.pos, self.state.path.len(), self.state.styles.len());
-        let style = *self.state.styles.last().unwrap();
+        let style = *self.state.styles.last().unwrap_or(&Style::default());
         let text = &self.text[self.pos..end];
         let range = Range { start: self.pos, end: end };
         {
@@ -147,8 +147,11 @@ impl<'a, 'b> Iterator for RangedHighlightIterator<'a, 'b> {
                     BasicScopeStackOp::Push(_) => {
                         // we can push multiple times so this might have changed
                         let new_cache = {
-                            let prev_cache = m_caches.last().unwrap();
-                            highlighter.update_single_cache_for_push(prev_cache, cur_stack)
+                            if let Some(prev_cache) = m_caches.last() {
+                                highlighter.update_single_cache_for_push(prev_cache, cur_stack)
+                            } else {
+                                highlighter.update_single_cache_for_push(&ScoredStyle::from_style(highlighter.get_default()), cur_stack)
+                            }
                         };
                         m_styles.push(highlighter.finalize_style_with_multis(&new_cache, cur_stack));
                         m_caches.push(new_cache);
