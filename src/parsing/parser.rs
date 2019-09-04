@@ -534,6 +534,10 @@ impl ParseState {
                 };
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
+                    if is_set && cur_context.clear_scopes != None {
+                        // cleared scopes from the old context are restored immediately
+                        ops.push((index, ScopeStackOp::Restore));
+                    }
                     // add each context's meta scope
                     for r in context_refs.iter() {
                         let ctx = r.resolve(syntax_set);
