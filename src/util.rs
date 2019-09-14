@@ -39,6 +39,12 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
     s
 }
 
+const LATEX_REPLACE: [(&'static str, &'static str); 3] = [
+    ("\\", "\\\\"),
+    ("{", "\\{"),
+    ("}", "\\}"),
+];
+
 /// Formats the styled fragments using LaTeX textcolor directive.
 ///
 /// Usage is similar to the `as_24_bit_terminal_escaped` function:
@@ -85,11 +91,6 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
 pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
     let mut s: String = String::new();
     let mut prev_style: Option<Style> = None;
-    let replacements = vec![
-        ("\\", "\\\\"),
-        ("{", "\\{"),
-        ("}", "\\}"),
-    ];
     let mut content: String;
     fn textcolor(style: &Style, first: bool) -> String {
         format!("{}\\textcolor[RGB]{{{},{},{}}}{{",
@@ -115,11 +116,11 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
             write!(s, "{}", textcolor(&style, true)).unwrap();
         }
         content = text.to_string();
-        for &(old, new) in replacements.iter() {
+        for &(old, new) in LATEX_REPLACE.iter() {
             content = content.replace(&old, &new);
         }
         write!(s, "{}", &content).unwrap();
-        prev_style = Some(style.clone());
+        prev_style = Some(style);
     }
     s.push('}');
     s
