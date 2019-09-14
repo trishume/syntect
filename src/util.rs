@@ -56,7 +56,7 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
 /// let syntax = ps.find_syntax_by_extension("rs").unwrap();
 /// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 ///
-/// let mut h = HighlightLines::new(syntax, &ts.themes["InspiredGithub"]);
+/// let mut h = HighlightLines::new(syntax, &ts.themes["InspiredGitHub"]);
 /// for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
 ///     let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
 ///     let escaped = as_latex_escaped(&ranges[..]);
