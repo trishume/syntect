@@ -7,7 +7,7 @@ fn main() {
     // Load these once at the start of your program
     let ps = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
-    
+
     let syntax = ps.find_syntax_by_extension("rs").unwrap();
     let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 
