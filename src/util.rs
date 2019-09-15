@@ -39,6 +39,93 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
     s
 }
 
+const LATEX_REPLACE: [(&'static str, &'static str); 3] = [
+    ("\\", "\\\\"),
+    ("{", "\\{"),
+    ("}", "\\}"),
+];
+
+/// Formats the styled fragments using LaTeX textcolor directive.
+///
+/// Usage is similar to the `as_24_bit_terminal_escaped` function:
+///
+/// ```
+/// use syntect::easy::HighlightLines;
+/// use syntect::parsing::SyntaxSet;
+/// use syntect::highlighting::{ThemeSet,Style};
+/// use syntect::util::{as_latex_escaped,LinesWithEndings};
+///
+/// // Load these once at the start of your program
+/// let ps = SyntaxSet::load_defaults_newlines();
+/// let ts = ThemeSet::load_defaults();
+///
+/// let syntax = ps.find_syntax_by_extension("rs").unwrap();
+/// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
+///
+/// let mut h = HighlightLines::new(syntax, &ts.themes["InspiredGitHub"]);
+/// for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
+///     let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
+///     let escaped = as_latex_escaped(&ranges[..]);
+///     println!("{}", escaped);
+/// }
+/// ```
+///
+/// Returned content is intended to be placed inside a fancyvrb
+/// Verbatim environment:
+///
+/// ```latex
+/// \usepackage{fancyvrb}
+/// \usepackage{xcolor}
+/// % ...
+/// % enable comma-separated arguments inside \textcolor
+/// \makeatletter
+/// \def\verbatim@nolig@list{\do\`\do\<\do\>\do\'\do\-}
+/// \makeatother
+/// % ...
+/// \begin{Verbatim}[commandchars=\\\{\}]
+/// % content goes here
+/// \end{Verbatim}
+/// ```
+///
+/// Background color is ignored.
+pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
+    let mut s: String = String::new();
+    let mut prev_style: Option<Style> = None;
+    let mut content: String;
+    fn textcolor(style: &Style, first: bool) -> String {
+        format!("{}\\textcolor[RGB]{{{},{},{}}}{{",
+            if first { "" } else { "}" },
+            style.foreground.r,
+            style.foreground.b,
+            style.foreground.g)
+    }
+    for &(style, text) in v.iter() {
+        if let Some(ps) = prev_style {
+            match text {
+                " " => {
+                    s.push(' ');
+                    continue;
+                },
+                "\n" => continue,
+                _ => (),
+            }
+            if style != ps {
+                write!(s, "{}", textcolor(&style, false)).unwrap();
+            }
+        } else {
+            write!(s, "{}", textcolor(&style, true)).unwrap();
+        }
+        content = text.to_string();
+        for &(old, new) in LATEX_REPLACE.iter() {
+            content = content.replace(&old, &new);
+        }
+        write!(s, "{}", &content).unwrap();
+        prev_style = Some(style);
+    }
+    s.push('}');
+    s
+}
+
 /// Print out the various push and pop operations in a vector
 /// with visual alignment to the line. Obviously for debugging.
 #[cfg(feature = "parsing")]
