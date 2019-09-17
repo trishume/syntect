@@ -86,7 +86,7 @@ impl HighlightState {
         let mut styles = vec![highlighter.get_default()];
         let mut single_caches = vec![ScoredStyle::from_style(styles[0])];
         for i in 0..initial_stack.len() {
-            let prefix = initial_stack.bottom_n(i);
+            let prefix = initial_stack.bottom_n(i + 1);
             let new_cache = highlighter.update_single_cache_for_push(&single_caches[i], prefix);
             styles.push(highlighter.finalize_style_with_multis(&new_cache, prefix));
             single_caches.push(new_cache);
@@ -387,6 +387,53 @@ mod tests {
                        font_style: FontStyle::empty(),
                    },
                     "5"));
+    }
+
+    #[test]
+    fn can_parse_with_highlight_state_from_cache() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_scope(
+                Scope::new("source.python").unwrap()).unwrap();
+            ParseState::new(syntax)
+        };
+        let ts = ThemeSet::load_defaults();
+        let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
+
+        // We start by parsing a python multiline-comment: """
+        let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+        let line = r#"""""#;
+        let ops = state.parse_line(line, &ps);
+        let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
+        let regions: Vec<(Style, &str)> = iter.collect();
+        let path = highlight_state.path;
+
+        // We then parse the next line with a highlight state built from the previous state
+        let mut highlight_state = HighlightState::new(&highlighter, path);
+        let line = "multiline comment";
+        let ops = state.parse_line(line, &ps);
+        let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
+        let regions: Vec<(Style, &str)> = iter.collect();
+
+        // We expect the line to be styled as a comment.
+        assert_eq!(regions[0],
+                   (Style {
+                       foreground: Color {
+                           // (Comment: #65737E)
+                           r: 101,
+                           g: 115,
+                           b: 126,
+                           a: 0xFF,
+                       },
+                       background: Color {
+                           r: 43,
+                           g: 48,
+                           b: 59,
+                           a: 0xFF,
+                       },
+                       font_style: FontStyle::empty(),
+                   },
+                    "multiline comment"));
     }
 
     // see issues #133 and #203, this test tests the fixes for those issues
