@@ -1,3 +1,13 @@
+# Version 3.3.0
+
+- Fixes multiple bugs
+- Add RangedHighlightIterator
+- Add `as_latex_escaped` util
+
+# Version 3.2.1
+
+- Bump onig dependency
+
 # Version 3.2.0
 
 - Actually make `tokens_to_classed_spans` public like intended
