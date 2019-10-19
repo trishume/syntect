@@ -19,7 +19,7 @@ If you are writing a text editor (or something else needing highlighting) in Rus
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "3.2"
+syntect = "3.3"
 ```
 
 After that take a look at the [documentation](https://docs.rs/syntect) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
