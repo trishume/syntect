@@ -171,6 +171,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [catmark](https://github.com/bestouff/catmark), a console markdown printer, uses `syntect` for code blocks.
 - [Cobalt](https://github.com/cobalt-org/cobalt.rs), a static site generator that uses `syntect` for highlighting code snippets.
 - [crowbook](https://github.com/lise-henry/crowbook), a Markdown book generator, uses `syntect` for code blocks.
+- [delta](https://github.com/dandavison/delta), a syntax-highlighting pager for Git.
 - [hors](https://github.com/WindSoilder/hors), instant coding answers via command line, uses `syntect` for highlighting code blocks.
 - [mdcat](https://github.com/lunaryorn/mdcat), a console markdown printer, uses `syntect` for code blocks.
 - [Scribe](https://github.com/jmacdonald/scribe), a Rust text editor framework which uses `syntect` for highlighting.
