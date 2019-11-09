@@ -405,7 +405,7 @@ mod tests {
         let line = r#"""""#;
         let ops = state.parse_line(line, &ps);
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
-        let regions: Vec<(Style, &str)> = iter.collect();
+        assert_eq!(1, iter.count());
         let path = highlight_state.path;
 
         // We then parse the next line with a highlight state built from the previous state

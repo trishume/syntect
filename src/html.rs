@@ -329,7 +329,7 @@ mod tests {
         // use util::debug_print_ops;
         // debug_print_ops(line, &ops);
 
-        let html = tokens_to_classed_html(line, &ops[..], ClassStyle::Spaced);
+        let (html, _) = tokens_to_classed_spans(line, &ops[..], ClassStyle::Spaced);
         println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test2.html").trim_end());
 
