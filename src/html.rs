@@ -40,11 +40,16 @@ pub struct ClassedHTMLGenerator<'a> {
     syntax_set: &'a SyntaxSet,
     open_spans: isize,
     parse_state: ParseState,
-    html: String
+    html: String,
+    style: ClassStyle,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
     pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet) -> ClassedHTMLGenerator<'a> {
+        ClassedHTMLGenerator::new_with_style(syntax_reference, syntax_set, ClassStyle::Spaced)
+    }
+
+    pub fn new_with_style(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet, style: ClassStyle) -> ClassedHTMLGenerator<'a> {
         let parse_state = ParseState::new(syntax_reference);
         let open_spans = 0;
         let html = String::new();
@@ -52,7 +57,8 @@ impl<'a> ClassedHTMLGenerator<'a> {
             syntax_set,
             open_spans,
             parse_state,
-            html
+            html,
+            style,
         }
     }
 
@@ -62,7 +68,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         let (formatted_line, delta) = tokens_to_classed_spans(
             line,
             parsed_line.as_slice(),
-            ClassStyle::Spaced);
+            self.style);
         self.open_spans += delta;
         self.html.push_str(formatted_line.as_str());
     }
@@ -76,25 +82,29 @@ impl<'a> ClassedHTMLGenerator<'a> {
     }
 }
 
-/// Only one style for now, I may add more class styles later.
-/// Just here so I don't have to change the API
+/// How the class names inside the css/html are generated.
+/// This isn't that fast since it has to use the scope repository
+/// to look up scope names.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ClassStyle {
     /// The classes are the atoms of the scope separated by spaces
     /// (e.g `source.php` becomes `source php`).
-    /// This isn't that fast since it has to use the scope repository
-    /// to look up scope names.
     Spaced,
+    /// The classes are the atoms of the scope separated by dashes
+    /// (e.g `source.php` becomes `source-php`).
+    Dashed,
 }
 
 fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
-    assert!(style == ClassStyle::Spaced); // TODO more styles
     let repo = SCOPE_REPO.lock().unwrap();
     for i in 0..(scope.len()) {
         let atom = scope.atom_at(i as usize);
         let atom_s = repo.atom_str(atom);
         if i != 0 {
-            s.push_str(" ")
+            match style {
+                ClassStyle::Spaced => s.push_str(" "),
+                ClassStyle::Dashed => s.push_str("-")
+            }
         }
         s.push_str(atom_s);
     }
@@ -395,5 +405,17 @@ mod tests {
         }
         let html = html_generator.finalize();
         assert_eq!(html, r#"<span class="source r">x <span class="keyword operator arithmetic r">+</span> y</span>"#);
+    }
+    #[test]
+    fn test_classed_html_generator_with_style() {
+        let current_code = "x + y".to_string();
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let mut html_generator = ClassedHTMLGenerator::new_with_style(&syntax, &syntax_set, ClassStyle::Dashed);
+        for line in current_code.lines() {
+            html_generator.parse_html_for_line(&line);
+        }
+        let html = html_generator.finalize();
+        assert_eq!(html, r#"<span class="source-r">x <span class="keyword-operator-arithmetic-r">+</span> y</span>"#);
     }
 }
