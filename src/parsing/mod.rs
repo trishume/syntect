@@ -12,6 +12,7 @@ mod syntax_set;
 mod yaml_load;
 
 mod scope;
+mod regex;
 
 #[cfg(feature = "parsing")]
 pub use self::syntax_definition::SyntaxDefinition;
@@ -23,5 +24,7 @@ pub use self::syntax_set::*;
 pub use self::parser::*;
 #[cfg(feature = "metadata")]
 pub use self::metadata::*;
+
+pub use self::regex::*;
 
 pub use self::scope::*;
