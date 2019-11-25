@@ -8,11 +8,10 @@ use std::fs::File;
 use std::io::BufReader;
 use std::str::FromStr;
 
-use lazycell::AtomicLazyCell;
-use onig::{Regex, SearchOptions};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json;
 
+use super::regex::Regex;
 use super::scope::{MatchPower, Scope};
 use super::super::LoadingError;
 use super::super::highlighting::settings::*;
@@ -22,13 +21,6 @@ type Dict = serde_json::Map<String, Settings>;
 
 /// A String representation of a `ScopeSelectors` instance.
 type SelectorString = String;
-
-/// A simple regex pattern, used for checking indentation state.
-#[derive(Debug)]
-pub struct Pattern {
-    pub regex_str: String,
-    pub regex: AtomicLazyCell<Regex>,
-}
 
 /// A collection of all loaded metadata.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -54,11 +46,11 @@ pub struct MetadataSet {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataItems {
-    pub increase_indent_pattern: Option<Pattern>,
-    pub decrease_indent_pattern: Option<Pattern>,
-    pub bracket_indent_next_line_pattern: Option<Pattern>,
-    pub disable_indent_next_line_pattern: Option<Pattern>,
-    pub unindented_line_pattern: Option<Pattern>,
+    pub increase_indent_pattern: Option<Regex>,
+    pub decrease_indent_pattern: Option<Regex>,
+    pub bracket_indent_next_line_pattern: Option<Regex>,
+    pub disable_indent_next_line_pattern: Option<Regex>,
+    pub unindented_line_pattern: Option<Regex>,
     pub indent_parens: Option<bool>,
     #[serde(default)]
     pub shell_variables: BTreeMap<String, String>,
@@ -377,56 +369,6 @@ impl RawMetadataEntry {
     }
 }
 
-impl Pattern {
-    pub fn is_match<S: AsRef<str>>(&self, string: S) -> bool {
-        self.regex()
-            .match_with_options(
-                string.as_ref(),
-                0,
-                SearchOptions::SEARCH_OPTION_NONE,
-                None)
-            .is_some()
-    }
-
-    pub fn regex(&self) -> &Regex {
-        if let Some(regex) = self.regex.borrow() {
-            regex
-        } else {
-            let regex = Regex::new(&self.regex_str)
-                .expect("regex string should be pre-tested");
-            self.regex.fill(regex).ok();
-            self.regex.borrow().unwrap()
-        }
-    }
-}
-
-impl Clone for Pattern {
-    fn clone(&self) -> Self {
-        Pattern { regex_str: self.regex_str.clone(), regex: AtomicLazyCell::new() }
-    }
-}
-
-impl PartialEq for Pattern {
-    fn eq(&self, other: &Pattern) -> bool {
-        self.regex_str == other.regex_str
-    }
-}
-
-impl Eq for Pattern {}
-
-impl Serialize for Pattern {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serializer.serialize_str(&self.regex_str)
-    }
-}
-
-impl<'de> Deserialize<'de> for Pattern {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
-        let regex_str = String::deserialize(deserializer)?;
-        Ok(Pattern { regex_str, regex: AtomicLazyCell::new() })
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 struct MetaSetSerializable {
     selector_string: String,
@@ -523,14 +465,6 @@ mod tests {
         assert!(metadata.items.line_comment.is_some());
         assert!(metadata.items.block_comment.is_some());
         assert!(metadata.items.increase_indent_pattern.is_none());
-    }
-
-    #[test]
-    fn serde_pattern() {
-        let pattern: Pattern = serde_json::from_str("\"just a string\"").unwrap();
-        assert_eq!(pattern.regex_str, "just a string");
-        let back_to_str = serde_json::to_string(&pattern).unwrap();
-        assert_eq!(back_to_str, "\"just a string\"");
     }
 
     #[test]

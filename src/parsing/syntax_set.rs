@@ -18,7 +18,7 @@ use std::fs::File;
 use std::mem;
 
 use lazycell::AtomicLazyCell;
-use onig::Regex;
+use super::regex::Regex;
 use crate::parsing::syntax_definition::ContextId;
 
 /// A syntax set holds multiple syntaxes that have been linked together.
@@ -189,7 +189,7 @@ impl SyntaxSet {
     pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
         let cache = self.first_line_cache();
         for &(ref reg, i) in cache.regexes.iter().rev() {
-            if reg.find(s).is_some() {
+            if reg.search(s, 0, s.len()).is_some() {
                 return Some(&self.syntaxes[i]);
             }
         }
@@ -644,9 +644,8 @@ impl FirstLineCache {
         let mut regexes = Vec::new();
         for (i, syntax) in syntaxes.iter().enumerate() {
             if let Some(ref reg_str) = syntax.first_line_match {
-                if let Ok(reg) = Regex::new(reg_str) {
-                    regexes.push((reg, i));
-                }
+                let reg = Regex::new(reg_str.into());
+                regexes.push((reg, i));
             }
         }
         FirstLineCache {

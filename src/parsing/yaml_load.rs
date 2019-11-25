@@ -1,9 +1,9 @@
+use super::regex::Regex;
 use super::scope::*;
 use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
-use onig::{self, Regex, Captures, RegexOptions, Syntax};
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -18,7 +18,7 @@ pub enum ParseSyntaxError {
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
     /// Invalid regex
-    RegexCompileError(String, onig::Error),
+    RegexCompileError(String, Box<dyn Error>),
     /// A scope that syntect's scope implementation can't handle
     InvalidScope(ParseScopeError),
     /// A reference to another file that is invalid
@@ -38,7 +38,7 @@ impl fmt::Display for ParseSyntaxError {
         match *self {
             RegexCompileError(ref regex, ref error) =>
                 write!(f, "Error while compiling regex '{}': {}",
-                       regex, error.description()),
+                       regex, error),
             _ => write!(f, "{}", self.description())
         }
     }
@@ -48,11 +48,11 @@ impl Error for ParseSyntaxError {
     fn description(&self) -> &str {
         use crate::ParseSyntaxError::*;
 
-        match *self {
+        match self {
             InvalidYaml(_) => "Invalid YAML file syntax",
             EmptyFile => "Empty file",
             MissingMandatoryKey(_) => "Missing mandatory key in YAML file",
-            RegexCompileError(_, ref error) => error.description(),
+            RegexCompileError(_, error) => error.description(),
             InvalidScope(_) => "Invalid scope",
             BadFileRef => "Invalid file reference",
             MainMissing => "Context 'main' is missing",
@@ -63,9 +63,9 @@ impl Error for ParseSyntaxError {
     fn cause(&self) -> Option<&dyn Error> {
         use crate::ParseSyntaxError::*;
 
-        match *self {
+        match self {
             InvalidYaml(ref error) => Some(error),
-            RegexCompileError(_, ref error) => Some(error),
+            RegexCompileError(_, error) => Some(error.as_ref()),
             _ => None,
         }
     }
@@ -147,8 +147,8 @@ impl SyntaxDefinition {
         let mut state = ParserState {
             scope_repo,
             variables,
-            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
-            backref_regex: Regex::new(r"\\\d").unwrap(),
+            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into()),
+            backref_regex: Regex::new(r"\\\d".into()),
             lines_include_newline,
         };
 
@@ -315,7 +315,7 @@ impl SyntaxDefinition {
         let mut has_captures = false;
         let operation = if get_key(map, "pop", Some).is_ok() {
             // Thanks @wbond for letting me know this is the correct way to check for captures
-            has_captures = state.backref_regex.find(&regex_str).is_some();
+            has_captures = state.backref_regex.search(&regex_str, 0, regex_str.len()).is_some();
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", Some) {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
@@ -424,25 +424,35 @@ impl SyntaxDefinition {
     }
 
     fn resolve_variables(raw_regex: &str, state: &ParserState<'_>) -> String {
-        state.variable_regex.replace_all(raw_regex, |caps: &Captures<'_>| {
-            let var_regex_raw =
-                state.variables.get(caps.at(1).unwrap_or("")).map_or("", |x| &**x);
-            Self::resolve_variables(var_regex_raw, state)
-        })
+        let mut result = String::new();
+        let mut index = 0;
+        while let Some(region) = state.variable_regex.search(raw_regex, index, raw_regex.len()) {
+            let (begin, end) = region.pos(0).unwrap();
+
+            result.push_str(&raw_regex[index..begin]);
+
+            let var_pos = region.pos(1).unwrap();
+            let var_name = &raw_regex[var_pos.0..var_pos.1];
+            let var_raw = state.variables.get(var_name).map(String::as_ref).unwrap_or("");
+            let var_resolved = Self::resolve_variables(var_raw, state);
+            result.push_str(&var_resolved);
+
+            index = end;
+        }
+        if index < raw_regex.len() {
+            result.push_str(&raw_regex[index..]);
+        }
+        result
     }
 
     fn try_compile_regex(regex_str: &str) -> Result<(), ParseSyntaxError> {
         // Replace backreferences with a placeholder value that will also appear in errors
         let regex_str = substitute_backrefs_in_regex(regex_str, |i| Some(format!("<placeholder_{}>", i)));
 
-        let result = Regex::with_options(&regex_str,
-                                         RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
-                                         Syntax::default());
-        match result {
-            Err(onig_error) => {
-                Err(ParseSyntaxError::RegexCompileError(regex_str, onig_error))
-            },
-            _ => Ok(())
+        if let Some(error) = Regex::try_compile(&regex_str) {
+            Err(ParseSyntaxError::RegexCompileError(regex_str, error))
+        } else {
+            Ok(())
         }
     }
 
