@@ -1,4 +1,4 @@
-use super::regex::Regex;
+use super::regex::{Regex, Region};
 use super::scope::*;
 use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
@@ -315,7 +315,7 @@ impl SyntaxDefinition {
         let mut has_captures = false;
         let operation = if get_key(map, "pop", Some).is_ok() {
             // Thanks @wbond for letting me know this is the correct way to check for captures
-            has_captures = state.backref_regex.search(&regex_str, 0, regex_str.len()).is_some();
+            has_captures = state.backref_regex.search(&regex_str, 0, regex_str.len(), None);
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", Some) {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
@@ -426,7 +426,8 @@ impl SyntaxDefinition {
     fn resolve_variables(raw_regex: &str, state: &ParserState<'_>) -> String {
         let mut result = String::new();
         let mut index = 0;
-        while let Some(region) = state.variable_regex.search(raw_regex, index, raw_regex.len()) {
+        let mut region = Region::new();
+        while state.variable_regex.search(raw_regex, index, raw_regex.len(), Some(&mut region)) {
             let (begin, end) = region.pos(0).unwrap();
 
             result.push_str(&raw_regex[index..begin]);

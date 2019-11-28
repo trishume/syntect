@@ -189,7 +189,7 @@ impl SyntaxSet {
     pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
         let cache = self.first_line_cache();
         for &(ref reg, i) in cache.regexes.iter().rev() {
-            if reg.search(s, 0, s.len()).is_some() {
+            if reg.search(s, 0, s.len(), None) {
                 return Some(&self.syntaxes[i]);
             }
         }
