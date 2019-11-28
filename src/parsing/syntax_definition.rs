@@ -294,9 +294,9 @@ mod tests {
         };
         let r = Regex::new(r"(\\\[\]\(\))(b)(c)(d)(e)".into());
         let s = r"\[]()bcde";
-        let result = r.search(s, 0, s.len());
-        assert!(result.is_some());
-        let region = result.unwrap();
+        let mut region = Region::new();
+        let matched = r.search(s, 0, s.len(), Some(&mut region));
+        assert!(matched);
 
         let regex_with_refs = pat.regex_with_refs(&region, s);
         assert_eq!(regex_with_refs.regex_str(), r"lol \\ b \\\[\]\(\) '' \wz");
