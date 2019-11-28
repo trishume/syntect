@@ -191,6 +191,7 @@ impl ParseState {
             self.first_line = false;
         }
 
+        let mut regions = Region::new();
         let fnv = BuildHasherDefault::<FnvHasher>::default();
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
         // Used for detecting loops with push/pop, see long comment above.
@@ -201,6 +202,7 @@ impl ParseState {
             syntax_set,
             &mut match_start,
             &mut search_cache,
+            &mut regions,
             &mut non_consuming_push_at,
             &mut res
         ) {}
@@ -214,6 +216,7 @@ impl ParseState {
         syntax_set: &SyntaxSet,
         start: &mut usize,
         search_cache: &mut SearchCache,
+        regions: &mut Region,
         non_consuming_push_at: &mut (usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
     ) -> bool {
@@ -227,7 +230,7 @@ impl ParseState {
             self.proto_starts.pop();
         }
 
-        let best_match = self.find_best_match(line, *start, syntax_set, search_cache, check_pop_loop);
+        let best_match = self.find_best_match(line, *start, syntax_set, search_cache, regions, check_pop_loop);
 
         if let Some(reg_match) = best_match {
             if reg_match.would_loop {
@@ -291,6 +294,7 @@ impl ParseState {
         start: usize,
         syntax_set: &'a SyntaxSet,
         search_cache: &mut SearchCache,
+        regions: &mut Region,
         check_pop_loop: bool,
     ) -> Option<RegexMatch<'a>> {
         let cur_level = &self.stack[self.stack.len() - 1];
@@ -323,7 +327,7 @@ impl ParseState {
                 let match_pat = pat_context.match_at(pat_index);
 
                 if let Some(match_region) = self.search(
-                    line, start, match_pat, captures, search_cache
+                    line, start, match_pat, captures, search_cache, regions
                 ) {
                     let (match_start, match_end) = match_region.pos(0).unwrap();
 
@@ -369,8 +373,9 @@ impl ParseState {
               start: usize,
               match_pat: &MatchPattern,
               captures: Option<&(Region, String)>,
-              search_cache: &mut SearchCache)
-              -> Option<Region> {
+              search_cache: &mut SearchCache,
+              regions: &mut Region,
+    ) -> Option<Region> {
         // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
         let match_ptr = match_pat as *const MatchPattern;
 
@@ -391,27 +396,27 @@ impl ParseState {
         let (matched, can_cache) = if match_pat.has_captures && captures.is_some() {
             let &(ref region, ref s) = captures.unwrap();
             let regex = match_pat.regex_with_refs(region, s);
-            let matched = regex.search(line, start, line.len());
+            let matched = regex.search(line, start, line.len(), Some(regions));
             (matched, false)
         } else {
             let regex = match_pat.regex();
-            let matched = regex.search(line, start, line.len());
+            let matched = regex.search(line, start, line.len(), Some(regions));
             (matched, true)
         };
 
-        if let Some(region) = matched {
-            let (match_start, match_end) = region.pos(0).unwrap();
+        if matched {
+            let (match_start, match_end) = regions.pos(0).unwrap();
             // this is necessary to avoid infinite looping on dumb patterns
             let does_something = match match_pat.operation {
                 MatchOperation::None => match_start != match_end,
                 _ => true,
             };
             if can_cache && does_something {
-                search_cache.insert(match_pat, Some(region.clone()));
+                search_cache.insert(match_pat, Some(regions.clone()));
             }
             if does_something {
                 // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
-                return Some(region.clone());
+                return Some(regions.clone());
             }
         } else if can_cache {
             search_cache.insert(match_pat, None);

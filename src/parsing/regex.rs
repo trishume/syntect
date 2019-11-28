@@ -47,10 +47,19 @@ impl Regex {
     }
 
     /// Search for the pattern in the given text from begin/end positions.
-    pub fn search(&self, text: &str, begin: usize, end: usize) -> Option<Region> {
+    ///
+    /// If a region is passed, it is used for storing match group positions. The argument allows
+    /// the `Region` to be reused between searches, which makes a significant performance
+    /// difference.
+    pub fn search(
+        &self,
+        text: &str,
+        begin: usize,
+        end: usize,
+        region: Option<&mut Region>,
+    ) -> bool {
         self.regex()
-            .search(text, begin, end)
-            .map(|r| Region::new(r))
+            .search(text, begin, end, region.map(|r| &mut r.region))
     }
 
     fn regex(&self) -> &regex_impl::Regex {
@@ -102,8 +111,10 @@ impl<'de> Deserialize<'de> for Regex {
 }
 
 impl Region {
-    fn new(region: regex_impl::Region) -> Self {
-        Self { region }
+    pub fn new() -> Self {
+        Self {
+            region: regex_impl::new_region(),
+        }
     }
 
     /// Get the start/end positions of the capture group with given index.
@@ -126,6 +137,10 @@ mod regex_impl {
         regex: onig::Regex,
     }
 
+    pub fn new_region() -> Region {
+        Region::with_capacity(8)
+    }
+
     impl Regex {
         pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error>> {
             let result = onig::Regex::with_options(
@@ -145,14 +160,19 @@ mod regex_impl {
                 .is_some()
         }
 
-        pub fn search(&self, text: &str, begin: usize, end: usize) -> Option<Region> {
-            let mut region = Region::new();
+        pub fn search(
+            &self,
+            text: &str,
+            begin: usize,
+            end: usize,
+            region: Option<&mut Region>,
+        ) -> bool {
             let matched = self.regex.search_with_param(
                 text,
                 begin,
                 end,
                 SearchOptions::SEARCH_OPTION_NONE,
-                Some(&mut region),
+                region,
                 MatchParam::default(),
             );
 
@@ -160,9 +180,9 @@ mod regex_impl {
             // For example, in case of catastrophic backtracking, onig should
             // fail with a "retry-limit-in-match over" error eventually.
             if let Ok(Some(_)) = matched {
-                Some(region)
+                true
             } else {
-                None
+                false
             }
         }
     }
@@ -182,6 +202,12 @@ mod regex_impl {
         positions: Vec<Option<(usize, usize)>>,
     }
 
+    pub fn new_region() -> Region {
+        Region {
+            positions: Vec::with_capacity(8),
+        }
+    }
+
     impl Regex {
         pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error>> {
             let result = fancy_regex::Regex::new(regex_str);
@@ -196,29 +222,34 @@ mod regex_impl {
             self.regex.is_match(text).unwrap_or(false)
         }
 
-        pub fn search(&self, text: &str, begin: usize, end: usize) -> Option<Region> {
-            self.regex
-                .captures_from_pos(&text[..end], begin)
-                // Errors are treated as non-matches
-                .unwrap_or(None)
-                .map(|captures| Region::from_captures(&captures))
+        pub fn search(
+            &self,
+            text: &str,
+            begin: usize,
+            end: usize,
+            region: Option<&mut Region>,
+        ) -> bool {
+            // If there's an error during search, treat it as non-matching.
+            // For example, in case of catastrophic backtracking, fancy-regex should
+            // fail with an error eventually.
+            if let Ok(Some(captures)) = self.regex.captures_from_pos(&text[..end], begin) {
+                if let Some(region) = region {
+                    region.init_from_captures(&captures);
+                }
+                true
+            } else {
+                false
+            }
         }
     }
 
     impl Region {
-        fn new() -> Region {
-            Region {
-                positions: Vec::new(),
-            }
-        }
-
-        fn from_captures(captures: &fancy_regex::Captures) -> Region {
-            let mut region = Region::new();
+        fn init_from_captures(&mut self, captures: &fancy_regex::Captures) {
+            self.positions.clear();
             for i in 0..captures.len() {
                 let pos = captures.get(i).map(|m| (m.start(), m.end()));
-                region.positions.push(pos);
+                self.positions.push(pos);
             }
-            region
         }
 
         pub fn pos(&self, i: usize) -> Option<(usize, usize)> {
