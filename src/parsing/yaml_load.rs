@@ -583,12 +583,10 @@ struct RegexRewriterForNewlines<'a> {
 impl<'a> RegexRewriterForNewlines<'a> {
     fn rewrite(mut self) -> String {
         let mut result = Vec::new();
-        let mut stack = Vec::new();
-        let mut in_lookbehind = false;
 
         while let Some(c) = self.parser.peek() {
             match c {
-                b'$' if !in_lookbehind => {
+                b'$' => {
                     self.parser.next();
                     result.extend_from_slice(br"(?m:$)");
                 }
@@ -599,24 +597,6 @@ impl<'a> RegexRewriterForNewlines<'a> {
                         self.parser.next();
                         result.push(c2);
                     }
-                }
-                b'(' => {
-                    // Save current look-behind state so that we can restore it on `)`
-                    stack.push(in_lookbehind);
-                    let next = &self.parser.bytes[self.parser.index..];
-                    if next.starts_with(b"(?<=") || next.starts_with(b"(?<!") {
-                        // positive or negative look-behind
-                        in_lookbehind = true;
-                    }
-                    self.parser.next();
-                    result.push(c);
-                }
-                b')' => {
-                    if let Some(value) = stack.pop() {
-                        in_lookbehind = value;
-                    }
-                    self.parser.next();
-                    result.push(c);
                 }
                 b'[' => {
                     let (mut content, _) = self.parser.parse_character_class();
@@ -1173,13 +1153,6 @@ mod tests {
 
         // Do not rewrite this `$` because it's in a char class and doesn't mean end of line
         assert_eq!(&rewrite(r"[a$]"), r"[a$]");
-
-        // Do *not* rewrite these `$` because `(?m)$(?-m)` in a look-behind fails to compile with
-        // "invalid pattern in look-behind"
-        assert_eq!(&rewrite(r"(?<=$|.)"), r"(?<=$|.)");
-        assert_eq!(&rewrite(r"(?<!$|.)"), r"(?<!$|.)");
-        // But do rewrite the one after the look-behind
-        assert_eq!(&rewrite(r"(?<=$)ab$"), r"(?<=$)ab(?m:$)");
     }
 
     #[test]
