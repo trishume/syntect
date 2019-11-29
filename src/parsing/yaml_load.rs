@@ -465,11 +465,7 @@ impl SyntaxDefinition {
         regex_str: &str,
         state: &mut ParserState<'_>,
     ) -> Result<CaptureMapping, ParseSyntaxError> {
-        let r = RegexRewriter {
-            bytes: regex_str.as_bytes(),
-            index: 0,
-        };
-        let valid_indexes = r.get_consuming_capture_indexes();
+        let valid_indexes = get_consuming_capture_indexes(regex_str);
         let mut captures = Vec::new();
         for (key, value) in map.iter() {
             if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
@@ -560,11 +556,60 @@ fn replace_posix_char_classes(regex: String) -> String {
 }
 
 
-/// Some of the regexes include `$` and expect it to match end of line. In fancy-regex, `$` means
-/// end of text by default. Adding `(?m)` activates multi-line mode which changes `$` to match
-/// end of line.
+/// Some of the regexes include `$` and expect it to match end of line.
+/// In fancy-regex, `$` means end of text by default. Adding `(?m)` activates
+/// multi-line mode which changes `$` to match end of line.
+///
+/// But it also changes `^` to match beginning of line, which with fancy-regex
+/// also matches at the end of e.g. `"test\n"`.
+///
+/// So, we rewrite `^` to `\A` to always mean beginning of text, and add `(?m)`
+/// to change the meaning of `$`.
 fn regex_for_newlines(regex: String) -> String {
-    format!("(?m){}", regex)
+    if !regex.contains(|c| c == '^' || c == '$') {
+        return regex;
+    }
+
+    let rewriter = RegexRewriterForNewlines {
+        parser: Parser::new(regex.as_bytes()),
+    };
+    rewriter.rewrite()
+}
+
+struct RegexRewriterForNewlines<'a> {
+    parser: Parser<'a>,
+}
+
+impl<'a> RegexRewriterForNewlines<'a> {
+    fn rewrite(mut self) -> String {
+        let mut result = Vec::new();
+        result.extend_from_slice(br"(?m)");
+        while let Some(c) = self.parser.peek() {
+            match c {
+                b'^' => {
+                    self.parser.next();
+                    result.extend_from_slice(br"\A");
+                }
+                b'\\' => {
+                    self.parser.next();
+                    result.push(c);
+                    if let Some(c2) = self.parser.peek() {
+                        self.parser.next();
+                        result.push(c2);
+                    }
+                }
+                b'[' => {
+                    let (mut content, _) = self.parser.parse_character_class();
+                    result.append(&mut content);
+                }
+                _ => {
+                    self.parser.next();
+                    result.push(c);
+                }
+            }
+        }
+        String::from_utf8(result).unwrap()
+    }
 }
 
 /// Rewrite a regex that matches `\n` to one that matches `$` (end of line) instead.
@@ -584,30 +629,28 @@ fn regex_for_no_newlines(regex: String) -> String {
     // handle properly.
     let regex = regex.replace("(?:\\n)?", "(?:$|)");
 
-    let rewriter = RegexRewriter {
-        bytes: regex.as_bytes(),
-        index: 0,
+    let rewriter = RegexRewriterForNoNewlines {
+        parser: Parser::new(regex.as_bytes()),
     };
     rewriter.rewrite()
 }
 
-struct RegexRewriter<'a> {
-    bytes: &'a [u8],
-    index: usize,
+struct RegexRewriterForNoNewlines<'a> {
+    parser: Parser<'a>,
 }
 
-impl<'a> RegexRewriter<'a> {
+impl<'a> RegexRewriterForNoNewlines<'a> {
     fn rewrite(mut self) -> String {
         let mut result = Vec::new();
-        while let Some(c) = self.peek() {
+        while let Some(c) = self.parser.peek() {
             match c {
                 b'\\' => {
-                    self.next();
-                    if let Some(c2) = self.peek() {
-                        self.next();
+                    self.parser.next();
+                    if let Some(c2) = self.parser.peek() {
+                        self.parser.next();
                         // Replacing `\n` with `$` in `\n?` or `\n+` would make parsing later fail
                         // with "target of repeat operator is invalid"
-                        let c3 = self.peek();
+                        let c3 = self.parser.peek();
                         if c2 == b'n' && c3 != Some(b'?') && c3 != Some(b'+') && c3 != Some(b'*') {
                             result.extend_from_slice(b"$");
                         } else {
@@ -619,8 +662,8 @@ impl<'a> RegexRewriter<'a> {
                     }
                 }
                 b'[' => {
-                    let (mut content, matches_newline) = self.parse_character_class();
-                    if matches_newline && self.peek() != Some(b'?') {
+                    let (mut content, matches_newline) = self.parser.parse_character_class();
+                    if matches_newline && self.parser.peek() != Some(b'?') {
                         result.extend_from_slice(b"(?:");
                         result.append(&mut content);
                         result.extend_from_slice(br"|$)");
@@ -629,14 +672,27 @@ impl<'a> RegexRewriter<'a> {
                     }
                 }
                 _ => {
-                    self.next();
+                    self.parser.next();
                     result.push(c);
                 }
             }
         }
         String::from_utf8(result).unwrap()
     }
+}
 
+fn get_consuming_capture_indexes(regex: &str) -> Vec<usize> {
+    let parser = ConsumingCaptureIndexParser {
+        parser: Parser::new(regex.as_bytes()),
+    };
+    parser.get_consuming_capture_indexes()
+}
+
+struct ConsumingCaptureIndexParser<'a> {
+    parser: Parser<'a>,
+}
+
+impl<'a> ConsumingCaptureIndexParser<'a> {
     /// find capture groups which are not inside lookarounds.
     /// If, in a YAML syntax definition, a scope stack is applied
     /// to a capture group inside a lookaround,
@@ -651,20 +707,20 @@ impl<'a> RegexRewriter<'a> {
         stack.push(in_lookaround);
         result.push(cap_num);
 
-        while let Some(c) = self.peek() {
+        while let Some(c) = self.parser.peek() {
             match c {
                 b'\\' => {
-                    self.next();
-                    self.next();
+                    self.parser.next();
+                    self.parser.next();
                 }
                 b'[' => {
-                    self.parse_character_class();
+                    self.parser.parse_character_class();
                 }
                 b'(' => {
-                    self.next();
+                    self.parser.next();
                     // add the current lookaround state to the stack so we can just pop at a closing paren
                     stack.push(in_lookaround);
-                    if let Some(c2) = self.peek() {
+                    if let Some(c2) = self.parser.peek() {
                         if c2 != b'?' {
                             // simple numbered capture group
                             cap_num += 1;
@@ -674,22 +730,22 @@ impl<'a> RegexRewriter<'a> {
                                 result.push(cap_num);
                             }
                         } else {
-                            self.next();
-                            if let Some(c3) = self.peek() {
-                                self.next();
+                            self.parser.next();
+                            if let Some(c3) = self.parser.peek() {
+                                self.parser.next();
                                 if c3 == b'=' || c3 == b'!' {
                                     // lookahead
                                     in_lookaround = true;
                                 } else if c3 == b'<' {
-                                    if let Some(c4) = self.peek() {
+                                    if let Some(c4) = self.parser.peek() {
                                         if c4 == b'=' || c4 == b'!' {
-                                            self.next();
+                                            self.parser.next();
                                             // lookbehind
                                             in_lookaround = true;
                                         }
                                     }
                                 } else if c3 == b'P' {
-                                    if let Some(c4) = self.peek() {
+                                    if let Some(c4) = self.parser.peek() {
                                         if c4 == b'<' {
                                             // named capture group
                                             cap_num += 1;
@@ -709,14 +765,36 @@ impl<'a> RegexRewriter<'a> {
                     if let Some(value) = stack.pop() {
                         in_lookaround = value;
                     }
-                    self.next();
+                    self.parser.next();
                 }
                 _ => {
-                    self.next();
+                    self.parser.next();
                 }
             }
         }
         result
+    }
+}
+
+struct Parser<'a> {
+    bytes: &'a [u8],
+    index: usize,
+}
+
+impl<'a> Parser<'a> {
+    fn new(bytes: &[u8]) -> Parser {
+        Parser {
+            bytes,
+            index: 0,
+        }
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.index).map(|&b| b)
+    }
+
+    fn next(&mut self) {
+        self.index += 1;
     }
 
     fn parse_character_class(&mut self) -> (Vec<u8>, bool) {
@@ -743,15 +821,13 @@ impl<'a> RegexRewriter<'a> {
             match c {
                 b'\\' => {
                     self.next();
+                    content.push(c);
                     if let Some(c2) = self.peek() {
                         self.next();
                         if c2 == b'n' && !negated && nesting == 0 {
                             matches_newline = true;
                         }
-                        content.push(c);
                         content.push(c2);
-                    } else {
-                        content.push(c);
                     }
                 }
                 b'[' => {
@@ -775,14 +851,6 @@ impl<'a> RegexRewriter<'a> {
         }
 
         (content, matches_newline)
-    }
-
-    fn peek(&self) -> Option<u8> {
-        self.bytes.get(self.index).cloned()
-    }
-
-    fn next(&mut self) {
-        self.index += 1;
     }
 }
 
@@ -1064,6 +1132,26 @@ mod tests {
     }
 
     #[test]
+    fn can_rewrite_regex_for_newlines() {
+        fn rewrite(s: &str) -> String {
+            regex_for_newlines(s.to_string())
+        }
+
+        assert_eq!(&rewrite(r"a"), r"a");
+        assert_eq!(&rewrite(r"\b"), r"\b");
+        assert_eq!(&rewrite(r"(a)"), r"(a)");
+        assert_eq!(&rewrite(r"[a]"), r"[a]");
+        assert_eq!(&rewrite(r"[^a]"), r"(?m)[^a]");
+        assert_eq!(&rewrite(r"[]a]"), r"[]a]");
+        assert_eq!(&rewrite(r"[[a]]"), r"[[a]]");
+
+        assert_eq!(&rewrite(r"^"), r"(?m)\A");
+        assert_eq!(&rewrite(r"$"), r"(?m)$");
+        assert_eq!(&rewrite(r"^ab$"), r"(?m)\Aab$");
+        assert_eq!(&rewrite(r"\^ab\$"), r"(?m)\^ab\$");
+    }
+
+    #[test]
     fn can_rewrite_regex_for_no_newlines() {
         fn rewrite(s: &str) -> String {
             regex_for_no_newlines(s.to_string())
@@ -1100,12 +1188,8 @@ mod tests {
     #[test]
     fn can_get_valid_captures_from_regex() {
         let regex = "hello(test)(?=(world))(foo(?P<named>bar))";
-        let r = RegexRewriter {
-            bytes: regex.as_bytes(),
-            index: 0,
-        };
         println!("{:?}", regex);
-        let valid_indexes = r.get_consuming_capture_indexes();
+        let valid_indexes = get_consuming_capture_indexes(regex);
         println!("{:?}", valid_indexes);
         assert_eq!(valid_indexes, [0, 1, 3, 4]);
     }
@@ -1113,12 +1197,8 @@ mod tests {
     #[test]
     fn can_get_valid_captures_from_regex2() {
         let regex = "hello(test)[(?=tricked](foo(bar))";
-        let r = RegexRewriter {
-            bytes: regex.as_bytes(),
-            index: 0,
-        };
         println!("{:?}", regex);
-        let valid_indexes = r.get_consuming_capture_indexes();
+        let valid_indexes = get_consuming_capture_indexes(regex);
         println!("{:?}", valid_indexes);
         assert_eq!(valid_indexes, [0, 1, 2, 3]);
     }
@@ -1126,12 +1206,8 @@ mod tests {
     #[test]
     fn can_get_valid_captures_from_nested_regex() {
         let regex = "hello(test)(?=(world(?!(te(?<=(st))))))(foo(bar))";
-        let r = RegexRewriter {
-            bytes: regex.as_bytes(),
-            index: 0,
-        };
         println!("{:?}", regex);
-        let valid_indexes = r.get_consuming_capture_indexes();
+        let valid_indexes = get_consuming_capture_indexes(regex);
         println!("{:?}", valid_indexes);
         assert_eq!(valid_indexes, [0, 1, 5, 6]);
     }
