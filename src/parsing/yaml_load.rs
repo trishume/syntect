@@ -413,6 +413,7 @@ impl SyntaxDefinition {
 
     fn parse_regex(raw_regex: &str, state: &ParserState<'_>) -> Result<String, ParseSyntaxError> {
         let regex = Self::resolve_variables(raw_regex, state);
+        let regex = replace_posix_char_classes(regex);
         let regex = if state.lines_include_newline {
             regex_for_newlines(regex)
         } else {
@@ -546,6 +547,18 @@ impl ContextNamer {
         name
     }
 }
+
+/// In fancy-regex, POSIX character classes only match ASCII characters.
+/// Sublime's syntaxes expect them to match Unicode characters as well, so transform them to
+/// corresponding Unicode character classes.
+fn replace_posix_char_classes(regex: String) -> String {
+    regex.replace("[:alpha:]", r"\p{L}")
+        .replace("[:alnum:]", r"\p{L}\p{N}")
+        .replace("[:lower:]", r"\p{Ll}")
+        .replace("[:upper:]", r"\p{Lu}")
+        .replace("[:digit:]", r"\p{Nd}")
+}
+
 
 /// Some of the regexes include `$` and expect it to match end of line. In fancy-regex, `$` means
 /// end of text by default. Adding `(?m)` activates multi-line mode which changes `$` to match
