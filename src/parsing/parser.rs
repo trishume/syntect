@@ -1523,7 +1523,7 @@ contexts:
         expect_scope_stacks_with_syntax("abcdb", &["<a>", "<b>", "<c>", "<d>", "<1>"], syntax);
     }
 
-        #[test]
+    #[test]
     fn can_parse_two_with_prototypes_at_same_stack_level_updated_captures_ignore_unexisting() {
         let syntax_yamlstr = r#"
 %YAML 1.2
@@ -1557,6 +1557,22 @@ contexts:
         // it seems that when ST encounters a non existing pop backreference, it just pops back to the with_prototype's original parent context - i.e. cdb is unscoped
         // TODO: it would be useful to have syntest functionality available here for easier testing and clarity
         expect_scope_stacks_with_syntax("a-bcdba-", &["<a>", "<b>"], syntax);
+    }
+
+    #[test]
+    fn can_parse_syntax_with_eol_and_newline() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: foo$\n
+      scope: foo.newline
+"#;
+
+        let line = "foo";
+        let expect = ["<source.test>, <foo.newline>"];
+        expect_scope_stacks(&line, &expect, syntax);
     }
 
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
