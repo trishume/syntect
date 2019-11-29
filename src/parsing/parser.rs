@@ -1643,6 +1643,31 @@ contexts:
     }
 
     #[test]
+    fn can_parse_syntax_with_comment_and_eol() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: (//).*$
+      scope: comment.line.double-slash
+"#;
+
+        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax_set = link(syntax_newlines);
+
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        assert_eq!(ops(&mut state, "// foo\n", &syntax_set), vec![
+            (0, Push(Scope::new("source.test").unwrap())),
+            (0, Push(Scope::new("comment.line.double-slash").unwrap())),
+            // 6 is important here, should not be 7. The pattern should *not* consume the newline,
+            // but instead match before it. This is important for whitespace-sensitive syntaxes
+            // where newlines terminate statements such as Scala.
+            (6, Pop(1))
+        ]);
+    }
+
+    #[test]
     fn can_parse_text_with_unicode_to_skip() {
         let syntax = r#"
 name: test
