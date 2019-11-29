@@ -556,17 +556,17 @@ fn replace_posix_char_classes(regex: String) -> String {
 }
 
 
-/// Some of the regexes include `$` and expect it to match end of line.
-/// In fancy-regex, `$` means end of text by default. Adding `(?m)` activates
-/// multi-line mode which changes `$` to match end of line.
+/// Some of the regexes include `$` and expect it to match end of line,
+/// e.g. *before* the `\n` in `test\n`.
+/// In fancy-regex, `$` means end of text by default, so that would
+/// match *after* `\n`. Using `(?m:$)` instead means it matches end of line.
 ///
-/// But it also changes `^` to match beginning of line, which with fancy-regex
-/// also matches at the end of e.g. `"test\n"`.
-///
-/// So, we rewrite `^` to `\A` to always mean beginning of text, and add `(?m)`
-/// to change the meaning of `$`.
+/// Note that we don't want to add a `(?m)` in the beginning to change the
+/// whole regex because that would also change the meaning of `^`. In
+/// fancy-regex, that also matches at the end of e.g. `test\n` which is
+/// different from onig. It would also change `.` to match more.
 fn regex_for_newlines(regex: String) -> String {
-    if !regex.contains(|c| c == '^' || c == '$') {
+    if !regex.contains('$') {
         return regex;
     }
 
@@ -583,12 +583,14 @@ struct RegexRewriterForNewlines<'a> {
 impl<'a> RegexRewriterForNewlines<'a> {
     fn rewrite(mut self) -> String {
         let mut result = Vec::new();
-        result.extend_from_slice(br"(?m)");
+        let mut stack = Vec::new();
+        let mut in_lookbehind = false;
+
         while let Some(c) = self.parser.peek() {
             match c {
-                b'^' => {
+                b'$' if !in_lookbehind => {
                     self.parser.next();
-                    result.extend_from_slice(br"\A");
+                    result.extend_from_slice(br"(?m:$)");
                 }
                 b'\\' => {
                     self.parser.next();
@@ -597,6 +599,24 @@ impl<'a> RegexRewriterForNewlines<'a> {
                         self.parser.next();
                         result.push(c2);
                     }
+                }
+                b'(' => {
+                    // Save current look-behind state so that we can restore it on `)`
+                    stack.push(in_lookbehind);
+                    let next = &self.parser.bytes[self.parser.index..];
+                    if next.starts_with(b"(?<=") || next.starts_with(b"(?<!") {
+                        // positive or negative look-behind
+                        in_lookbehind = true;
+                    }
+                    self.parser.next();
+                    result.push(c);
+                }
+                b')' => {
+                    if let Some(value) = stack.pop() {
+                        in_lookbehind = value;
+                    }
+                    self.parser.next();
+                    result.push(c);
                 }
                 b'[' => {
                     let (mut content, _) = self.parser.parse_character_class();
@@ -1141,14 +1161,25 @@ mod tests {
         assert_eq!(&rewrite(r"\b"), r"\b");
         assert_eq!(&rewrite(r"(a)"), r"(a)");
         assert_eq!(&rewrite(r"[a]"), r"[a]");
-        assert_eq!(&rewrite(r"[^a]"), r"(?m)[^a]");
+        assert_eq!(&rewrite(r"[^a]"), r"[^a]");
         assert_eq!(&rewrite(r"[]a]"), r"[]a]");
         assert_eq!(&rewrite(r"[[a]]"), r"[[a]]");
 
-        assert_eq!(&rewrite(r"^"), r"(?m)\A");
-        assert_eq!(&rewrite(r"$"), r"(?m)$");
-        assert_eq!(&rewrite(r"^ab$"), r"(?m)\Aab$");
-        assert_eq!(&rewrite(r"\^ab\$"), r"(?m)\^ab\$");
+        assert_eq!(&rewrite(r"^"), r"^");
+        assert_eq!(&rewrite(r"$"), r"(?m:$)");
+        assert_eq!(&rewrite(r"^ab$"), r"^ab(?m:$)");
+        assert_eq!(&rewrite(r"\^ab\$"), r"\^ab\$");
+        assert_eq!(&rewrite(r"(//).*$"), r"(//).*(?m:$)");
+
+        // Do not rewrite this `$` because it's in a char class and doesn't mean end of line
+        assert_eq!(&rewrite(r"[a$]"), r"[a$]");
+
+        // Do *not* rewrite these `$` because `(?m)$(?-m)` in a look-behind fails to compile with
+        // "invalid pattern in look-behind"
+        assert_eq!(&rewrite(r"(?<=$|.)"), r"(?<=$|.)");
+        assert_eq!(&rewrite(r"(?<!$|.)"), r"(?<!$|.)");
+        // But do rewrite the one after the look-behind
+        assert_eq!(&rewrite(r"(?<=$)ab$"), r"(?<=$)ab(?m:$)");
     }
 
     #[test]
