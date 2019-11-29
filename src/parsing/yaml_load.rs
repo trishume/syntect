@@ -412,12 +412,14 @@ impl SyntaxDefinition {
     }
 
     fn parse_regex(raw_regex: &str, state: &ParserState<'_>) -> Result<String, ParseSyntaxError> {
-        let mut regex = Self::resolve_variables(raw_regex, state);
-        if !state.lines_include_newline {
+        let regex = Self::resolve_variables(raw_regex, state);
+        let regex = if state.lines_include_newline {
+            regex_for_newlines(regex)
+        } else {
             // If the passed in strings don't include newlines (unlike Sublime) we can't match on
             // them using the original regex. So this tries to rewrite the regex in a way that
             // allows matching against lines without newlines (essentially replacing `\n` with `$`).
-            regex = rewrite_regex(regex);
+            regex_for_no_newlines(regex)
         };
         Self::try_compile_regex(&regex)?;
         Ok(regex)
@@ -545,6 +547,12 @@ impl ContextNamer {
     }
 }
 
+/// Some of the regexes include `$` and expect it to match end of line. In fancy-regex, `$` means
+/// end of text by default. Adding `(?m)` activates multi-line mode which changes `$` to match
+/// end of line.
+fn regex_for_newlines(regex: String) -> String {
+    format!("(?m){}", regex)
+}
 
 /// Rewrite a regex that matches `\n` to one that matches `$` (end of line) instead.
 /// That allows the regex to be used to match lines that don't include a trailing newline character.
@@ -554,7 +562,7 @@ impl ContextNamer {
 ///
 /// Note that the rewrite is just an approximation and there's a couple of cases it can not handle,
 /// due to `$` being an anchor whereas `\n` matches a character.
-fn rewrite_regex(regex: String) -> String {
+fn regex_for_no_newlines(regex: String) -> String {
     if !regex.contains(r"\n") {
         return regex;
     }
@@ -1043,9 +1051,9 @@ mod tests {
     }
 
     #[test]
-    fn can_rewrite_regex() {
+    fn can_rewrite_regex_for_no_newlines() {
         fn rewrite(s: &str) -> String {
-            rewrite_regex(s.to_string())
+            regex_for_no_newlines(s.to_string())
         }
 
         assert_eq!(&rewrite(r"a"), r"a");
