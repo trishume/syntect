@@ -74,7 +74,7 @@ pub struct ScopeRepository {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScopeStack {
     clear_stack: Vec<Vec<Scope>>,
-    scopes: Vec<Scope>,
+    pub scopes: Vec<Scope>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -390,7 +390,7 @@ impl ScopeStack {
             ScopeStackOp::Clear(amount) => {
                 let cleared = match amount {
                     ClearAmount::TopN(n) => {
-                        // don't try to clear more scopes than are on the stack 
+                        // don't try to clear more scopes than are on the stack
                         let to_leave = self.scopes.len() - min(n, self.scopes.len());
                         self.scopes.split_off(to_leave)
                     }
