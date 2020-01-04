@@ -71,11 +71,11 @@ impl<'a> ClassedHTMLGenerator<'a> {
     }
 
     /// Close all open `<span>` tags and return the finished HTML string
-    pub fn finalize(&mut self) -> String {
+    pub fn finalize(mut self) -> String {
         for _ in 0..self.open_spans {
             self.html.push_str("</span>");
         }
-        self.html.to_string()
+        self.html
     }
 }
 
