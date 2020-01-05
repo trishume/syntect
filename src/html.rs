@@ -5,6 +5,7 @@ use crate::easy::{HighlightLines, HighlightFile};
 use crate::highlighting::{Color, FontStyle, Style, Theme};
 use crate::util::LinesWithEndings;
 use crate::escape::Escape;
+
 use std::io::{self, BufRead};
 use std::path::Path;
 
@@ -40,7 +41,7 @@ pub struct ClassedHTMLGenerator<'a> {
     syntax_set: &'a SyntaxSet,
     open_spans: isize,
     parse_state: ParseState,
-    html: String
+    html: String,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
@@ -52,7 +53,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
             syntax_set,
             open_spans,
             parse_state,
-            html
+            html,
         }
     }
 
@@ -221,22 +222,36 @@ pub fn tokens_to_classed_spans(line: &str,
     let mut cur_index = 0;
     let mut stack = ScopeStack::new();
     let mut span_delta = 0;
+
+    // check and skip emty inner <span> tags
+    let mut span_empty = false;
+    let mut span_start = 0;
+
     for &(i, ref op) in ops {
         if i > cur_index {
+            span_empty = false;
             write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
             cur_index = i
         }
         stack.apply_with_hook(op, |basic_op, _| {
             match basic_op {
                 BasicScopeStackOp::Push(scope) => {
+                    span_start = s.len();
+                    span_empty = true;
                     s.push_str("<span class=\"");
                     scope_to_classes(&mut s, scope, style);
                     s.push_str("\">");
                     span_delta += 1;
                 }
                 BasicScopeStackOp::Pop => {
-                    s.push_str("</span>");
+                    if span_empty == false {
+                        s.push_str("</span>");
+                    }
+                    else {
+                        s.truncate(span_start);
+                    }
                     span_delta -= 1;
+                    span_empty = false;
                 }
             }
         });
@@ -450,5 +465,21 @@ mod tests {
         }
         let html = html_generator.finalize();
         assert_eq!(html, "<span class=\"source r\">x <span class=\"keyword operator arithmetic r\">+</span> y\n</span>");
+    }
+
+    #[test]
+    fn test_classed_html_generator_no_empty_span() {
+        let code = "// Rust source
+fn main() {
+    println!(\"Hello World!\");
+}";
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_extension("rs").unwrap();
+        let mut html_generator = ClassedHTMLGenerator::new(&syntax, &syntax_set);
+        for line in code.lines() {
+            html_generator.parse_html_for_line(&line);
+        }
+        let html = html_generator.finalize();
+        assert_eq!(html, "<span class=\"source rust\"><span class=\"comment line double-slash rust\"><span class=\"punctuation definition comment rust\">//</span> Rust source</span>\n<span class=\"meta function rust\"><span class=\"meta function rust\"><span class=\"storage type function rust\">fn</span> </span><span class=\"entity name function rust\">main</span></span><span class=\"meta function rust\"><span class=\"meta function parameters rust\"><span class=\"punctuation section parameters begin rust\">(</span></span><span class=\"meta function rust\"><span class=\"meta function parameters rust\"><span class=\"punctuation section parameters end rust\">)</span></span></span></span><span class=\"meta function rust\"> </span><span class=\"meta function rust\"><span class=\"meta block rust\"><span class=\"punctuation section block begin rust\">{</span>\n    <span class=\"support macro rust\">println!</span><span class=\"meta group rust\"><span class=\"punctuation section group begin rust\">(</span></span><span class=\"meta group rust\"><span class=\"string quoted double rust\"><span class=\"punctuation definition string begin rust\">&quot;</span>Hello World!<span class=\"punctuation definition string end rust\">&quot;</span></span></span><span class=\"meta group rust\"><span class=\"punctuation section group end rust\">)</span></span><span class=\"punctuation terminator rust\">;</span>\n</span><span class=\"meta block rust\"><span class=\"punctuation section block end rust\">}</span></span></span>\n</span>");
     }
 }
