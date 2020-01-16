@@ -25,7 +25,7 @@ regex-syntax = { version = "0.6", optional = true }
 lazy_static = "1.0"
 lazycell = "1.0"
 bitflags = "1.0"
-plist = "0.4"
+plist = "0.5"
 bincode = { version = "1.0", optional = true }
 flate2 = { version = "1.0", optional = true, default-features = false }
 fnv = { version = "1.0", optional = true }
@@ -34,7 +34,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 
 [dev-dependencies]
-criterion = "0.2"
+criterion = "0.3"
 rayon = "1.0.0"
 regex = "1.0"
 getopts = "0.2"
