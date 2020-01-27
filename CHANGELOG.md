@@ -1,38 +1,51 @@
-# Version 3.3.0
+# Changelog
+
+## [Version 3.3.0](https://github.com/trishume/syntect/compare/v3.2.1...v3.3.0) (2019-09-22)
+
+> Bug fixes and new utilities
 
 - Fixes multiple bugs
 - Add RangedHighlightIterator
 - Add `as_latex_escaped` util
 
-# Version 3.2.1
+## [Version 3.2.1](https://github.com/trishume/syntect/compare/v3.2.0...v3.2.1) (2019-08-10)
 
 - Bump onig dependency
+- inconsequential patches
 
-# Version 3.2.0
+## [Version 3.2.0](https://github.com/trishume/syntect/compare/v3.1.0...v3.2.0) (2019-03-09)
 
 - Actually make `tokens_to_classed_spans` public like intended
 
-# Version 3.1.0
+## [Version 3.1.0](https://github.com/trishume/syntect/compare/v3.0.2...v3.1.0) (2019-02-24)
 
-- Add support for loading metadata (#223 #225 #230)
-- Improve support for generating classed HTML and fix a bug, old function is deprecated because it's impossible to use correctly (#235)
-- Update plist to v0.4 and pretty_assertions to v0.6 (#232 #236)
+> Metadata and new classed HTML generation
 
-# Version 3.0.2
+- Add support for loading metadata ([#223](https://github.com/trishume/syntect/pull/223) [#225](https://github.com/trishume/syntect/pull/225) [#230](https://github.com/trishume/syntect/pull/230))
+- Improve support for generating classed HTML and fix a bug, old function is deprecated because it's impossible to use correctly ([#235](https://github.com/trishume/syntect/pull/235))
+- Update `plist` to `v0.4` and `pretty_assertions` to `v0.6` ([#232](https://github.com/trishume/syntect/pull/232) [#236](https://github.com/trishume/syntect/pull/236))
 
-- Fix application of multiple `with_prototype`s (#220, fixes #160, #178, ASP highlighting)
-- Fix prototype marking logic (#221, fixes #219)
+## [Version 3.0.2](https://github.com/trishume/syntect/compare/v3.0.1...v3.0.2) (2018-11-11)
 
-# Version 3.0.1
+> Bug fixes
 
-- Fix a bug with syntaxes that used captures in lookarounds (#176 #215)
-- Fix the precedence order of syntaxes to match Sublime (#217 #216)
+- Fix application of multiple `with_prototype`s ([#220](https://github.com/trishume/syntect/pull/220), fixes [#160](https://github.com/trishume/syntect/issues/160), [#178](https://github.com/trishume/syntect/issues/178), ASP highlighting)
+- Fix prototype marking logic ([#221](https://github.com/trishume/syntect/pull/221), fixes [#219](https://github.com/trishume/syntect/issues/219))
 
-# Version 3.0
+## [Version 3.0.1](https://github.com/trishume/syntect/compare/v3.0.0...v3.0.1) (2018-10-16)
+
+> Minor bug fixes
+
+- Fix a bug with syntaxes that used captures in lookarounds ([#176](https://github.com/trishume/syntect/issues/176) [#215](https://github.com/trishume/syntect/pull/215))
+- Fix the precedence order of syntaxes to match Sublime ([#217](https://github.com/trishume/syntect/pull/217) [#216](https://github.com/trishume/syntect/pull/216))
+
+## [Version 3.0.0](https://github.com/trishume/syntect/compare/v2.1.0...v3.0.0) (2018-10-09)
+
+> Breaking changes and major new features
 
 This is a major release with multiple breaking API changes, although upgrading shouldn't be too difficult. It fixes bugs and comes with some nice new features.
 
-## Breaking changes and upgrading
+### Breaking changes and upgrading
 
 - The `SyntaxSet` API has been revamped to use a builder and an arena of contexts. See [example usage](https://github.com/trishume/syntect/blob/51208d35a6d98c07468fbe044d5c6f37eb129205/examples/gendata.rs#L25-L28).
 - Many functions now need to be passed the `SyntaxSet` that goes with the rest of their arguments because of this new arena.
@@ -51,34 +64,126 @@ This is a major release with multiple breaking API changes, although upgrading s
 - `html::styles_to_coloured_html -> html::styled_line_to_highlighted_html`: also change to `newlines` `SyntaxSet`
 - `html::start_coloured_html_snippet -> html::start_highlighted_html_snippet`: return type also changed
 
-## Major changes and new features
+### Major changes and new features
 
-- Use arena for contexts (#182 #186 #187 #190 #195): This makes the code cleaner, enables use of syntaxes from multiple threads, and prevents accidental misuse.
+- Use arena for contexts ([#182](https://github.com/trishume/syntect/pull/182) [#186](https://github.com/trishume/syntect/pull/186) [#187](https://github.com/trishume/syntect/pull/187) [#190](https://github.com/trishume/syntect/pull/190) [#195](https://github.com/trishume/syntect/pull/195)): This makes the code cleaner, enables use of syntaxes from multiple threads, and prevents accidental misuse.
   - This involves a new `SyntaxSetBuilder` API for constructing new `SyntaxSet`s
   - See the revamped [parsyncat example](https://github.com/trishume/syntect/blob/51208d35a6d98c07468fbe044d5c6f37eb129205/examples/parsyncat.rs).
-- Encourage use of newlines (#197 #207 #196): The `nonewlines` mode is often buggy so we made it easier to use the `newlines` mode.
+- Encourage use of newlines ([#197](https://github.com/trishume/syntect/pull/197) [#207](https://github.com/trishume/syntect/pull/207) [#196](https://github.com/trishume/syntect/issues/196)): The `nonewlines` mode is often buggy so we made it easier to use the `newlines` mode.
   - Added a `LinesWithEndings` utility for iterating over the lines of a string with `\n` characters.
   - Reengineer the `html` module to use `newlines` syntaxes.
-- Add helpers for modifying highlighted lines (#198): For use cases like highlighting a piece of text in a blog code snippet or debugger. This allows you to reach into the highlighted spans and add styles.
+- Add helpers for modifying highlighted lines ([#198](https://github.com/trishume/syntect/pull/198)): For use cases like highlighting a piece of text in a blog code snippet or debugger. This allows you to reach into the highlighted spans and add styles.
   - Check out `split_at` and `modify_range` in the `util` module.
-- New `ThemeSet::add_from_folder` function (#200): For modifying existing theme sets.
+- New `ThemeSet::add_from_folder` function ([#200](https://github.com/trishume/syntect/pull/200)): For modifying existing theme sets.
 
-## Bug Fixes
+### Bug Fixes
 
-- Improve nonewlines regex rewriting: #212 #211
-- Reengineer theme application to match Sublime: #209
-- Also mark contexts referenced by name as "no prototype" (same as ST): #180
-- keep with_prototype when switching contexts with `set`: #177 #166
-- Fix unused import warning: #174
-- Ignore trailing dots in selectors: #173
-- Fix `embed` to not include prototypes: #172 #160
+- Improve nonewlines regex rewriting: [#212](https://github.com/trishume/syntect/pull/212) [#211](https://github.com/trishume/syntect/issues/211)
+- Reengineer theme application to match Sublime: [#209](https://github.com/trishume/syntect/pull/209)
+- Also mark contexts referenced by name as "no prototype" (same as ST): [#180](https://github.com/trishume/syntect/pull/180)
+- keep with_prototype when switching contexts with `set`: [#177](https://github.com/trishume/syntect/pull/177) [#166](https://github.com/trishume/syntect/pull/166)
+- Fix unused import warning: [#174](https://github.com/trishume/syntect/pull/174)
+- Ignore trailing dots in selectors: [#173](https://github.com/trishume/syntect/pull/173)
+- Fix `embed` to not include prototypes: [#172](https://github.com/trishume/syntect/pull/172) [#160](https://github.com/trishume/syntect/issues/160)
 
-## Upgraded dependencies
+### Upgraded dependencies
 
 - plist: `0.2 -> 0.3`
 - regex: `0.2 -> 1.0`
 - onig: `3.2.1 -> 4.1`
 
-# Prior versions
+## [Version 2.1.0](https://github.com/trishume/syntect/compare/v2.0.1...v2.1.0) (2018-05-31)
 
-See the Github release notes: <https://github.com/trishume/syntect/releases>
+> Regex checking and plain file names
+
+* Check regexes compile upon loading from YAML (There's technically a small breaking change here if you match on the previously unused regex error, but I don't think anyone does)
+* Can detect the correct syntax on full file names like `CMakeLists.txt`
+* Make `nonewlines` mode marginally less buggy (still prefer using `newlines` mode)
+* Better error types
+* Better examples and tests
+
+## [Version 2.0.1](https://github.com/trishume/syntect/compare/v2.0.0...v2.0.1) (2018-04-28)
+
+> More robust parsing
+
+* Parsing now abandons a regex after reaching a recursion depth limit instead of taking forever
+* Loop detection better matches Sublime Text
+* Parsing is faster!
+* Dependency upgrades
+* Other minor tweaks
+
+Thanks to [@robinst](https://github.com/ronbinst) for the headline features of this release!
+
+## [Version 2.0.0](https://github.com/trishume/syntect/compare/v1.8.2...v2.0.0) (2018-01-02)
+
+> Breaking Changes and New Stuff
+
+### Breaking changes
+
+* The `static-onig` feature was removed, static linking is now the default
+* Font styles and color constants now use associated consts because of bitflags upgrade
+* `SyntaxDefinition::load_from_str` now has an extra parameter
+
+### Other notable changes
+
+* Support for new `embed` syntax, see [#124](https://github.com/trishume/syntect/issues/124)
+* Updates to many dependencies
+* Updated dumps
+* More compact HTML output
+
+## [Version 1.8.2](https://github.com/trishume/syntect/compare/v1.8.0...v1.8.2) (2017-11-11)
+
+> New Inspired GitHub and libonig
+
+## [Version 1.8.0](https://github.com/trishume/syntect/compare/v1.7.3...v1.8.0) (2017-10-14)
+
+> Update bitflags & packages
+
+This release changes how the constants for `FontStyle` and `Color`, relying on the new associated consts feature in `Rust 1.20`. The old constants are still available but are deprecated and will be removed in `v2.0`.
+
+Packages were also updated to newer versions.
+
+## [Version 1.7.3](https://github.com/trishume/syntect/compare/v1.7.2...v1.7.3) (2017-09-15)
+
+> Enable comparison of parse states
+
+Fixes comparisons of parse states so they are fast and don't recurse infinitely. Thanks [@raphlinus](https://github.com/raphlinus)
+
+## [Version 1.7.2](https://github.com/trishume/syntect/compare/v1.7.0...v1.7.2) (2017-09-05)
+
+> Bug fixes and package updates
+
+* Fixes [#101](https://github.com/trishume/syntect/issues/101), which caused some syntaxes like PHP to behave incorrectly.
+* Updates Packages with new syntax versions
+* Adds new handy flags to the `syncat` example
+
+## [Version 1.7.0](https://github.com/trishume/syntect/compare/v1.6.0...v1.7.0) (2017-06-30)
+
+> Pure Rust dump loading / creation features
+
+## [Version 1.6.0](https://github.com/trishume/syntect/compare/v1.5.0...v1.6.0) (2017-06-21)
+
+> Helper methods and more theme attributes
+
+## [Version 1.5.0](https://github.com/trishume/syntect/compare/v1.4.0...v1.5.0) (2017-05-31)
+
+> Highlighting stacks
+
+Small release, adds a convenience method for highlighting an entire stack, and derives some more things on `Scope`.
+
+## [Version 1.4.0](https://github.com/trishume/syntect/compare/v1.3.0...v1.4.0) (2017-05-25)
+
+> Serde and optional parsing
+
+This release switches the dump format from `rustc-serialize` to `Serde`, anyone using custom dumps will have to update them.
+
+It also makes the parsing part of the library optional behind a feature flag, anyone not using the default feature flags probably will want to add the `parsing` flag.
+
+## [Version 1.3.0](https://github.com/trishume/syntect/tree/v1.3.0) (2017-04-05)
+
+> Bug fixes, tests, updates and feature flags
+
+* Syntax tests: there is a new `syntest` example for running Sublime Text syntax tests
+* Bug fixes: there's a ton of bugs fixed in this release, mostly found via the syntax tests. These mostly affected certain syntaxes which pushed/set multiple contexts at once.
+* Updated packages: The Sublime packages have been updated to the latest version
+* Feature flags: there's now Cargo feature flags for disabling some parts of syntect if you don't want unnecessary binary and dependency bloat.
