@@ -1,1 +1,32 @@
-testdata/* linguist-vendored
+# Sublime Text
+
+#                                       tabs indentation,         no trailing
+*.stTheme                     eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
+#                                       spaces indentation,      no trailing
+*.sublime-color-scheme        eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4          # JSONC
+*.hidden-color-scheme         eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4          # JSONC
+*.sublime-settings            eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4          # JSONC
+*.sublime-syntax              eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=2          # YAML
+*.sublime-theme               eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4          # JSONC
+
+# TextMate
+
+#                                       tabs indentation,         no trailing
+*.tmLanguage                  eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
+*.hidden-tmLanguage           eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
+*.tmPreferences               eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
+*.tmTheme                     eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
+*.hidden-tmTheme              eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
+
+# syntect
+
+testdata/*                              linguist-vendored
+
+# General
+
+#                                       spaces indentation,      no trailing
+*.md                          eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4
+#                             binary
+*.png                         binary
+*.tex                                   diff=tex
+*.pdf                         binary    diff=astextplain
