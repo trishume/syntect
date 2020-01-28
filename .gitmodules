@@ -1,4 +1,5 @@
 [submodule "testdata/Packages"]
+	branch = st3 # TODO: this line should be removed once st4 functionality has been implemented
 	path = testdata/Packages
 	url = https://github.com/sublimehq/Packages
 [submodule "testdata/InspiredGitHub.tmtheme"]
