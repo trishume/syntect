@@ -148,7 +148,7 @@ impl SyntaxSet {
     pub fn set_metadata(&mut self, metadata: Metadata) {
         self.metadata = metadata;
     }
-    
+
     /// The loaded metadata for this set.
     #[cfg(feature = "metadata")]
     pub fn metadata(&self) -> &Metadata {
@@ -819,7 +819,7 @@ mod tests {
             let mut builder = SyntaxSetBuilder::new();
             builder.add(syntax_a());
             builder.add(syntax_b());
-            
+
             let syntax_a2 = SyntaxDefinition::load_from_str(r#"
                 name: A improved
                 scope: source.a
@@ -834,7 +834,7 @@ mod tests {
                 "#, true, None).unwrap();
 
             builder.add(syntax_a2);
-            
+
             let syntax_c = SyntaxDefinition::load_from_str(r#"
                 name: C
                 scope: source.c
@@ -849,7 +849,7 @@ mod tests {
                 "#, true, None).unwrap();
 
             builder.add(syntax_c);
-            
+
             builder.build()
         };
 
@@ -859,7 +859,7 @@ mod tests {
         assert_eq!(syntax.name, "A improved");
         syntax = syntax_set.find_syntax_by_first_line(&"syntax a").unwrap();
         assert_eq!(syntax.name, "C");
-        
+
         let mut parse_state = ParseState::new(syntax);
         let ops = parse_state.parse_line("c go_a a", &syntax_set);
         let expected = (7, ScopeStackOp::Push(Scope::new("a2").unwrap()));

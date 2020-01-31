@@ -1,13 +1,17 @@
 # syntect
+
 [![Crates.io](https://img.shields.io/crates/v/syntect.svg?maxAge=2591000)](https://crates.io/crates/syntect)
 [![Documentation](https://docs.rs/syntect/badge.svg)](https://docs.rs/syntect)
 [![Crates.io](https://img.shields.io/crates/l/syntect.svg?maxAge=2591000)]()
 [![Build Status](https://travis-ci.org/trishume/syntect.svg?branch=master)](https://travis-ci.org/trishume/syntect)
 [![codecov](https://codecov.io/gh/trishume/syntect/branch/master/graph/badge.svg)](https://codecov.io/gh/trishume/syntect)
 
-`syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax). It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust. It's used in production by at least two companies, and by [many open source projects](#projects-using-syntect).
+`syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax).
+It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust.
+It's used in production by at least two companies, and by [many open source projects](#projects-using-syntect).
 
-If you are writing a text editor (or something else needing highlighting) in Rust and this library doesn't fit your needs, I consider that a bug and you should file an issue or email me. I consider this project mostly complete, I still maintain it and review PRs, but it's not under heavy development.
+If you are writing a text editor (or something else needing highlighting) in Rust and this library doesn't fit your needs, I consider that a bug and you should file an issue or email me.
+I consider this project mostly complete, I still maintain it and review PRs, but it's not under heavy development.
 
 ## Important Links
 
@@ -26,7 +30,7 @@ After that take a look at the [documentation](https://docs.rs/syntect) and the [
 
 If you've cloned this repository, be sure to run
 
-```
+```bash
 git submodule update --init
 ```
 
@@ -48,7 +52,9 @@ to fetch all the required dependencies for running the tests.
 
 ## Screenshots
 
-There's currently an example program called `syncat` that prints one of the source files using hard-coded themes and syntaxes using 24-bit terminal escape sequences supported by many newer terminals. These screenshots don't look as good as they could for two reasons: first the sRGB colours aren't corrected properly, and second the Rust syntax definition uses some fancy labels that these themes don't have highlighting for.
+There's currently an example program called `syncat` that prints one of the source files using hard-coded themes and syntaxes using 24-bit terminal escape sequences supported by many newer terminals.
+These screenshots don't look as good as they could for two reasons:
+first the sRGB colours aren't corrected properly, and second the Rust syntax definition uses some fancy labels that these themes don't have highlighting for.
 
 ![Nested languages](http://i.imgur.com/bByxb1E.png)
 ![Base 16 Ocean Dark](http://i.imgur.com/CwiPOwZ.png)
@@ -57,7 +63,8 @@ There's currently an example program called `syncat` that prints one of the sour
 
 ## Example Code
 
-Prints highlighted lines of a string to the terminal. See the [easy](https://docs.rs/syntect/latest/syntect/easy/index.html) and [html](https://docs.rs/syntect/latest/syntect/html/index.html) module docs for more basic use case examples.
+Prints highlighted lines of a string to the terminal.
+See the [easy](https://docs.rs/syntect/latest/syntect/easy/index.html) and [html](https://docs.rs/syntect/latest/syntect/html/index.html) module docs for more basic use case examples.
 
 ```rust
 use syntect::easy::HighlightLines;
@@ -92,24 +99,29 @@ Currently `syntect` is one of the faster syntax highlighting engines, but not th
 - [ ] Use a better regex engine, perhaps the in progress fancy-regex crate
 - [ ] Parallelize the highlighting. Is this even possible? Would it help? To be determined.
 
-The current perf numbers are below. These numbers may get better if more of the things above are implemented, but they're better than many other text editors.
+The current perf numbers are below.
+These numbers may get better if more of the things above are implemented, but they're better than many other text editors.
 All measurements were taken on a mid 2012 15" retina Macbook Pro.
 
 - Highlighting 9200 lines/247kb of jQuery 2.1 takes 600ms. For comparison:
     - Textmate 2, Spacemacs and Visual Studio Code all take around 2ish seconds (measured by hand with a stopwatch, hence approximate).
     - Atom takes 6 seconds
-    - Sublime Text 3 dev build takes 98ms (highlighting only, takes ~200ms click to pixels), despite having a super fancy javascript syntax definition.
-    - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors (Compare [vim's grammar](https://github.com/vim/vim/blob/master/runtime/syntax/javascript.vim) to [Sublime's](https://github.com/sublimehq/Packages/blob/master/JavaScript/JavaScript.sublime-syntax)).
+    - Sublime Text 3 dev build takes `98ms` (highlighting only, takes `~200ms` click to pixels), despite having a super fancy javascript syntax definition.
+    - Vim is instantaneous but that isn't a fair comparison since vim's highlighting is far more basic than the other editors.
+      Compare [vim's grammar](https://github.com/vim/vim/blob/master/runtime/syntax/javascript.vim) to [Sublime's](https://github.com/sublimehq/Packages/blob/master/JavaScript/JavaScript.sublime-syntax).
     - These comparisons aren't totally fair, except the one to Sublime Text since that is using the same theme and the same complex definition for ES6 syntax.
-- Simple syntaxes are faster, JS is one of the most complex. It only takes 34ms to highlight a 1700 line 62kb XML file or 50,000 lines/sec.
-- ~138ms to load and link all the syntax definitions in the default Sublime package set.
-    - but only ~23ms to load and link all the syntax definitions from an internal pre-made binary dump with lazy regex compilation.
-- ~1.9ms to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 16,000 lines/second or 422 kilobytes/second.
-- ~250ms end to end for `syncat` to start, load the definitions, highlight the test file and shut down. This is mostly spent loading.
+- Simple syntaxes are faster, JS is one of the most complex.
+  It only takes 34ms to highlight a 1700 line 62kb XML file or 50,000 lines/sec.
+- `~138ms` to load and link all the syntax definitions in the default Sublime package set.
+    - but only `~23ms` to load and link all the syntax definitions from an internal pre-made binary dump with lazy regex compilation.
+- `~1.9ms` to parse and highlight the 30 line 791 character `testdata/highlight_test.erb` file. This works out to around 16,000 lines/second or 422 kilobytes/second.
+- `~250ms` end to end for `syncat` to start, load the definitions, highlight the test file and shut down.
+  This is mostly spent loading.
 
 ## Feature Flags
 
-Syntect makes heavy use of [cargo features](http://doc.crates.io/manifest.html#the-features-section), to support users who require only a subset of functionality. In particular, it is possible to use the highlighting component of syntect without the parser (for instance when hand-rolling a higher performance parser for a particular language), by adding `default-features = false` to the syntect entry in your `Cargo.toml`.
+Syntect makes heavy use of [cargo features](http://doc.crates.io/manifest.html#the-features-section), to support users who require only a subset of functionality.
+In particular, it is possible to use the highlighting component of syntect without the parser (for instance when hand-rolling a higher performance parser for a particular language), by adding `default-features = false` to the syntect entry in your `Cargo.toml`.
 
 For more information on available features, see the features section in `Cargo.toml`.
 
@@ -117,34 +129,57 @@ For more information on available features, see the features section in `Cargo.t
 
 Because `syntect`'s API exposes internal cacheable data structures, there is a caching strategy that text editors can use that allows the text on screen to be re-rendered instantaneously regardless of the file size when a change is made after the initial highlight.
 
-Basically, on the initial parse every 1000 lines or so copy the parse state into a side-buffer for that line. When a change is made to the text, because of the way Sublime Text grammars work (and languages in general), only the highlighting after that change can be affected. Thus when a change is made to the text, search backwards in the parse state cache for the last state before the edit, then kick off a background task to start re-highlighting from there. Once the background task highlights past the end of the current editor viewport, render the new changes and continue re-highlighting the rest of the file in the background.
+Basically, on the initial parse every 1000 lines or so copy the parse state into a side-buffer for that line.
+When a change is made to the text, because of the way Sublime Text grammars work (and languages in general), only the highlighting after that change can be affected.
+Thus when a change is made to the text, search backwards in the parse state cache for the last state before the edit, then kick off a background task to start re-highlighting from there.
+Once the background task highlights past the end of the current editor viewport, render the new changes and continue re-highlighting the rest of the file in the background.
 
-This way from the time the edit happens to the time the new colouring gets rendered in the worst case only `999+length of viewport` lines must be re-highlighted. Given the speed of `syntect` even with a long file and the most complicated syntax and theme this should take less than 100ms. This is enough to re-highlight on every key-stroke of the world's fastest typist *in the worst possible case*. And you can reduce this asymptotically to the length of the viewport by caching parse states more often, at the cost of more memory.
+This way from the time the edit happens to the time the new colouring gets rendered in the worst case only `999+length of viewport` lines must be re-highlighted.
+Given the speed of `syntect` even with a long file and the most complicated syntax and theme this should take less than 100ms.
+This is enough to re-highlight on every key-stroke of the world's fastest typist *in the worst possible case*.
+And you can reduce this asymptotically to the length of the viewport by caching parse states more often, at the cost of more memory.
 
-Any time the file is changed the latest cached state is found, the cache is cleared after that point, and a background job is started. Any already running jobs are stopped because they would be working on old state. This way you can just have one thread dedicated to highlighting that is always doing the most up-to-date work, or sleeping.
+Any time the file is changed the latest cached state is found, the cache is cleared after that point, and a background job is started.
+Any already running jobs are stopped because they would be working on old state. This way you can just have one thread dedicated to highlighting that is always doing the most up-to-date work, or sleeping.
 
 ## Parallelizing
 
-Since 3.0, `syntect` can be used to do parsing/highlighting in parallel. `SyntaxSet` is both `Send` and `Sync` and so can easily be used from multiple threads. It is also `Clone`, which means you can construct a syntax set and then clone it to use for other threads if you prefer.
+Since 3.0, `syntect` can be used to do parsing/highlighting in parallel.
+`SyntaxSet` is both `Send` and `Sync` and so can easily be used from multiple threads.
+It is also `Clone`, which means you can construct a syntax set and then clone it to use for other threads if you prefer.
 
-Compared to older versions, there's nothing preventing the serialization of a `SyntaxSet` either. So you can directly deserialize a fully linked `SyntaxSet` and start using it for parsing/highlighting. Before, it was always necessary to do linking first.
+Compared to older versions, there's nothing preventing the serialization of a `SyntaxSet` either.
+So you can directly deserialize a fully linked `SyntaxSet` and start using it for parsing/highlighting.
+Before, it was always necessary to do linking first.
 
-It is worth mentioning that regex compilation is done lazily only when the regexes are actually needed. Once a regex has been compiled, the compiled version is used for all threads after that. Note that this is done using interior mutability, so if multiple threads happen to encounter the same uncompiled regex at the same time, compiling might happen multiple times. After that, one of the compiled regexes will be used. When a `SyntaxSet` is cloned, the regexes in the cloned set will need to be recompiled currently.
+It is worth mentioning that regex compilation is done lazily only when the regexes are actually needed.
+Once a regex has been compiled, the compiled version is used for all threads after that.
+Note that this is done using interior mutability, so if multiple threads happen to encounter the same uncompiled regex at the same time, compiling might happen multiple times.
+After that, one of the compiled regexes will be used.
+When a `SyntaxSet` is cloned, the regexes in the cloned set will need to be recompiled currently.
 
-For adding parallelism to a previously single-threaded program, the recommended thread pooling is [`rayon`](https://github.com/nikomatsakis/rayon). However, if you're working in an already-threaded context where there might be more threads than you want (such as writing a handler for an Iron request), the recommendation is to force all highlighting to be done within a fixed-size thread pool using [`rust-scoped-pool`](https://github.com/reem/rust-scoped-pool). An example of the former is in `examples/parsyncat.rs`.
+For adding parallelism to a previously single-threaded program, the recommended thread pooling is [`rayon`](https://github.com/nikomatsakis/rayon).
+However, if you're working in an already-threaded context where there might be more threads than you want (such as writing a handler for an Iron request), the recommendation is to force all highlighting to be done within a fixed-size thread pool using [`rust-scoped-pool`](https://github.com/reem/rust-scoped-pool).
+An example of the former is in `examples/parsyncat.rs`.
 
 ## Examples Available
 
 There's a number of examples of programs that use `syntect` in the `examples` folder and some code outside the repo:
 
-- `syncat` prints a highlighted file to the terminal using 24-bit colour ANSI escape codes. It demonstrates a simple file highlighting workflow.
-- `synhtml` prints an HTML file that will display the highlighted code. Demonstrates how syntect could be used by web servers and static site generators.
-- `synstats` collects a bunch of statistics about the code in a folder. Includes basic things like line count but also fancier things like number of functions. Demonstrates how `syntect` can be used for code analysis as well as highlighting, as well as how to use the APIs to parse out the semantic tokenization.
+- `syncat` prints a highlighted file to the terminal using 24-bit colour ANSI escape codes.
+  It demonstrates a simple file highlighting workflow.
+- `synhtml` prints an HTML file that will display the highlighted code.
+  Demonstrates how syntect could be used by web servers and static site generators.
+- `synstats` collects a bunch of statistics about the code in a folder.
+  Includes basic things like line count but also fancier things like number of functions.
+  Demonstrates how `syntect` can be used for code analysis as well as highlighting, as well as how to use the APIs to parse out the semantic tokenization.
 - [`faiyels`](https://github.com/trishume/faiyels) is a little code minimap visualizer I wrote that uses `syntect` for highlighting.
-- `parsyncat` is like `syncat`, but accepts multiple files and highlights them in parallel. It demonstrates how to use `syntect` from multiple threads.
+- `parsyncat` is like `syncat`, but accepts multiple files and highlights them in parallel.
+  It demonstrates how to use `syntect` from multiple threads.
 
 Here's that stats that `synstats` extracts from `syntect`'s codebase (not including examples and test data) as of [this commit](https://github.com/trishume/syntect/commit/10baa6888f84ea4ae35c746526302a8ff4956eb1):
-```
+
+```text
 ################## Stats ###################
 File count:                               19
 Total characters:                     155504
@@ -183,6 +218,8 @@ Below is a list of projects using Syntect, in approximate order by how long they
 
 ## License and Acknowledgements
 
-Thanks to [Robin Stocker](https://github.com/robinst) and also [Keith Hall](https://github.com/keith-hall) for making awesome substantial contributions of the most important impressive improvements `syntect` has had post-`v1.0`! They deserve lots of credit for where `syntect` is today.
+Thanks to [Robin Stocker](https://github.com/robinst) and also [Keith Hall](https://github.com/keith-hall) for making awesome substantial contributions of the most important impressive improvements `syntect` has had post-`v1.0`!
+They deserve lots of credit for where `syntect` is today.
 
-Thanks to [Textmate 2](https://github.com/textmate/textmate) and @defuz's [sublimate](https://github.com/defuz/sublimate) for the existing open source code I used as inspiration and in the case of sublimate's `tmTheme` loader, copy-pasted. All code (including defuz's sublimate code) is released under the MIT license.
+Thanks to [Textmate 2](https://github.com/textmate/textmate) and @defuz's [sublimate](https://github.com/defuz/sublimate) for the existing open source code I used as inspiration and in the case of sublimate's `tmTheme` loader, copy-pasted.
+All code (including defuz's sublimate code) is released under the MIT license.
