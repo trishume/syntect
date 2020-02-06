@@ -1,22 +1,22 @@
 # Sublime Text
 
 #                                       tabs indentation,         no trailing
-*.stTheme                     eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
+*.stTheme                     eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4
 #                                       spaces indentation,      no trailing
-*.sublime-color-scheme        eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4          # JSONC
-*.hidden-color-scheme         eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4          # JSONC
-*.sublime-settings            eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4          # JSONC
-*.sublime-syntax              eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=2          # YAML
-*.sublime-theme               eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4          # JSONC
+*.sublime-color-scheme        eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4
+*.hidden-color-scheme         eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4
+*.sublime-settings            eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4
+*.sublime-syntax              eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=2
+*.sublime-theme               eol=lf    whitespace=tab-in-indent,trailing-space,tabwidth=4
 
 # TextMate
 
 #                                       tabs indentation,         no trailing
-*.tmLanguage                  eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
-*.hidden-tmLanguage           eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
-*.tmPreferences               eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
-*.tmTheme                     eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
-*.hidden-tmTheme              eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4         # XML / PLIST
+*.tmLanguage                  eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4
+*.hidden-tmLanguage           eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4
+*.tmPreferences               eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4
+*.tmTheme                     eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4
+*.hidden-tmTheme              eol=lf    whitespace=-tab-in-indent,trailing-space,tabwidth=4
 
 # syntect
 
