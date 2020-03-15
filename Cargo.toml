@@ -68,6 +68,9 @@ default = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create"]
 # [profile.release]
 # debug = true
 
+[lib]
+bench = false
+
 [[bench]]
 name = "highlighting"
 harness = false
