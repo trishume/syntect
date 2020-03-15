@@ -126,7 +126,7 @@ impl Region {
     }
 }
 
-#[cfg(feature = "regex-onig")]
+#[cfg(all(not(windows), not(feature = "regex-fancy")))]
 mod regex_impl {
     pub use onig::Region;
     use onig::{MatchParam, RegexOptions, SearchOptions, Syntax};
@@ -188,8 +188,7 @@ mod regex_impl {
     }
 }
 
-// If both regex-fancy and regex-onig are requested, this condition makes regex-onig win.
-#[cfg(all(feature = "regex-fancy", not(feature = "regex-onig")))]
+#[cfg(any(windows, feature = "regex-fancy"))]
 mod regex_impl {
     use std::error::Error;
 

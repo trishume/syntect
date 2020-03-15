@@ -19,8 +19,6 @@ exclude = [
 
 [dependencies]
 yaml-rust = { version = "0.4", optional = true }
-onig = { version = "5.0", optional = true }
-fancy-regex = { version = "0.3.2", optional = true }
 walkdir = "2.0"
 regex-syntax = { version = "0.6", optional = true }
 lazy_static = "1.0"
@@ -33,6 +31,13 @@ fnv = { version = "1.0", optional = true }
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+fancy-regex = "0.3.2"
+
+[target.'cfg(not(windows))'.dependencies]
+onig = "5.0"
+fancy-regex = { version = "0.3.2", optional = true }
 
 [dev-dependencies]
 criterion = "0.3"
@@ -57,7 +62,6 @@ dump-create = ["flate2/default", "bincode"]
 dump-create-rs = ["flate2/rust_backend", "bincode"]
 
 regex-fancy = ["fancy-regex"]
-regex-onig = ["onig"]
 parsing = ["regex-syntax", "fnv"]
 # Support for .tmPreferenes metadata files (indentation, comment syntax, etc)
 metadata = ["parsing"]
@@ -66,9 +70,8 @@ metadata = ["parsing"]
 assets = []
 html = ["parsing", "assets"]
 yaml-load = ["yaml-rust", "parsing"]
-default-onig = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create", "regex-onig"]
-default-fancy = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create", "regex-fancy"]
-default = ["default-onig"]
+
+default = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create"]
 
 # [profile.release]
 # debug = true
