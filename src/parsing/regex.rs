@@ -27,7 +27,7 @@ impl Regex {
     pub fn new(regex_str: String) -> Self {
         Self {
             regex_str,
-            regex: AtomicLazyCell::new(),
+            regex: AtomicLazyCell::<regex_impl::Regex>::new(),
         }
     }
 
@@ -78,7 +78,7 @@ impl Clone for Regex {
     fn clone(&self) -> Self {
         Regex {
             regex_str: self.regex_str.clone(),
-            regex: AtomicLazyCell::new(),
+            regex: AtomicLazyCell::<regex_impl::Regex>::new(),
         }
     }
 }
