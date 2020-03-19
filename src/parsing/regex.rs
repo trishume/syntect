@@ -189,7 +189,7 @@ mod regex_impl {
 }
 
 // If both regex-fancy and regex-onig are requested, this condition makes regex-onig win.
-#[cfg(all(feature = "regex-fancy", not(feature = "regex-onig")))]
+#[cfg(not(feature = "regex-onig"))]
 mod regex_impl {
     use std::error::Error;
 
