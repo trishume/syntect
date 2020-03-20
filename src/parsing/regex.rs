@@ -312,6 +312,7 @@ mod regex_impl {
     }
 }
 
+#[cfg(any(feature = "regex-onig", feature = "regex-fancy"))]
 #[cfg(test)]
 mod tests {
     use super::*;
