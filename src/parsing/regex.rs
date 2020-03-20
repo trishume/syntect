@@ -189,7 +189,7 @@ mod regex_impl {
 }
 
 // If both regex-fancy and regex-onig are requested, this condition makes regex-onig win.
-#[cfg(not(feature = "regex-onig"))]
+#[cfg(all(feature = "regex-fancy", not(feature = "regex-onig")))]
 mod regex_impl {
     use std::error::Error;
 
@@ -259,6 +259,55 @@ mod regex_impl {
             } else {
                 None
             }
+        }
+    }
+}
+
+#[cfg(all(not(feature = "regex-onig"), not(feature = "regex-fancy")))]
+mod regex_impl {
+    use std::error::Error;
+
+    #[derive(Debug)]
+    pub struct Regex {
+        regex: (),
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub struct Region {
+        positions: Vec<Option<(usize, usize)>>,
+    }
+
+    pub fn new_region() -> Region {
+        Region {
+            positions: Vec::with_capacity(0),
+        }
+    }
+
+    impl Regex {
+        pub fn new(_regex_str: &str) -> Result<Regex, Box<dyn Error>> {
+            unimplemented!()
+        }
+
+        pub fn is_match(&self, _text: &str) -> bool {
+            false
+        }
+
+        pub fn search(
+            &self,
+            _text: &str,
+            _begin: usize,
+            _end: usize,
+            _region: Option<&mut Region>,
+        ) -> bool {
+            false
+        }
+    }
+
+    impl Region {
+        //        fn init_from_captures(&mut self, captures: &fancy_regex::Captures) {}
+
+        pub fn pos(&self, _i: usize) -> Option<(usize, usize)> {
+            None
         }
     }
 }
