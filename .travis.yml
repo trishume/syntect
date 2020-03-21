@@ -26,8 +26,11 @@ cache:
 script:
   - cargo build
   - cargo test --features metadata
+  # Run these tests in release mode since they're slow as heck otherwise
+  - cargo test --features default-fancy --no-default-features --release
   - make assets
   - make syntest
+  - make syntest-fancy
   - rm -Rf examples
   # Only run doc build on stable until this is fixed: https://github.com/rust-lang/rust/issues/51661
   - |
