@@ -1,9 +1,9 @@
+use super::regex::{Regex, Region};
 use super::scope::*;
 use super::syntax_definition::*;
 use yaml_rust::{YamlLoader, Yaml, ScanError};
 use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
-use onig::{self, Regex, Captures, RegexOptions, Syntax};
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -18,7 +18,7 @@ pub enum ParseSyntaxError {
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
     /// Invalid regex
-    RegexCompileError(String, onig::Error),
+    RegexCompileError(String, Box<dyn Error>),
     /// A scope that syntect's scope implementation can't handle
     InvalidScope(ParseScopeError),
     /// A reference to another file that is invalid
@@ -38,7 +38,7 @@ impl fmt::Display for ParseSyntaxError {
         match *self {
             RegexCompileError(ref regex, ref error) =>
                 write!(f, "Error while compiling regex '{}': {}",
-                       regex, error.description()),
+                       regex, error),
             _ => write!(f, "{}", self.description())
         }
     }
@@ -48,11 +48,11 @@ impl Error for ParseSyntaxError {
     fn description(&self) -> &str {
         use crate::ParseSyntaxError::*;
 
-        match *self {
+        match self {
             InvalidYaml(_) => "Invalid YAML file syntax",
             EmptyFile => "Empty file",
             MissingMandatoryKey(_) => "Missing mandatory key in YAML file",
-            RegexCompileError(_, ref error) => error.description(),
+            RegexCompileError(_, error) => error.description(),
             InvalidScope(_) => "Invalid scope",
             BadFileRef => "Invalid file reference",
             MainMissing => "Context 'main' is missing",
@@ -63,9 +63,9 @@ impl Error for ParseSyntaxError {
     fn cause(&self) -> Option<&dyn Error> {
         use crate::ParseSyntaxError::*;
 
-        match *self {
+        match self {
             InvalidYaml(ref error) => Some(error),
-            RegexCompileError(_, ref error) => Some(error),
+            RegexCompileError(_, error) => Some(error.as_ref()),
             _ => None,
         }
     }
@@ -147,8 +147,8 @@ impl SyntaxDefinition {
         let mut state = ParserState {
             scope_repo,
             variables,
-            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}").unwrap(),
-            backref_regex: Regex::new(r"\\\d").unwrap(),
+            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into()),
+            backref_regex: Regex::new(r"\\\d".into()),
             lines_include_newline,
         };
 
@@ -315,7 +315,7 @@ impl SyntaxDefinition {
         let mut has_captures = false;
         let operation = if get_key(map, "pop", Some).is_ok() {
             // Thanks @wbond for letting me know this is the correct way to check for captures
-            has_captures = state.backref_regex.find(&regex_str).is_some();
+            has_captures = state.backref_regex.search(&regex_str, 0, regex_str.len(), None);
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", Some) {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
@@ -412,37 +412,51 @@ impl SyntaxDefinition {
     }
 
     fn parse_regex(raw_regex: &str, state: &ParserState<'_>) -> Result<String, ParseSyntaxError> {
-        let mut regex = Self::resolve_variables(raw_regex, state);
-        if !state.lines_include_newline {
+        let regex = Self::resolve_variables(raw_regex, state);
+        let regex = replace_posix_char_classes(regex);
+        let regex = if state.lines_include_newline {
+            regex_for_newlines(regex)
+        } else {
             // If the passed in strings don't include newlines (unlike Sublime) we can't match on
             // them using the original regex. So this tries to rewrite the regex in a way that
             // allows matching against lines without newlines (essentially replacing `\n` with `$`).
-            regex = rewrite_regex(regex);
+            regex_for_no_newlines(regex)
         };
         Self::try_compile_regex(&regex)?;
         Ok(regex)
     }
 
     fn resolve_variables(raw_regex: &str, state: &ParserState<'_>) -> String {
-        state.variable_regex.replace_all(raw_regex, |caps: &Captures<'_>| {
-            let var_regex_raw =
-                state.variables.get(caps.at(1).unwrap_or("")).map_or("", |x| &**x);
-            Self::resolve_variables(var_regex_raw, state)
-        })
+        let mut result = String::new();
+        let mut index = 0;
+        let mut region = Region::new();
+        while state.variable_regex.search(raw_regex, index, raw_regex.len(), Some(&mut region)) {
+            let (begin, end) = region.pos(0).unwrap();
+
+            result.push_str(&raw_regex[index..begin]);
+
+            let var_pos = region.pos(1).unwrap();
+            let var_name = &raw_regex[var_pos.0..var_pos.1];
+            let var_raw = state.variables.get(var_name).map(String::as_ref).unwrap_or("");
+            let var_resolved = Self::resolve_variables(var_raw, state);
+            result.push_str(&var_resolved);
+
+            index = end;
+        }
+        if index < raw_regex.len() {
+            result.push_str(&raw_regex[index..]);
+        }
+        result
     }
 
     fn try_compile_regex(regex_str: &str) -> Result<(), ParseSyntaxError> {
         // Replace backreferences with a placeholder value that will also appear in errors
         let regex_str = substitute_backrefs_in_regex(regex_str, |i| Some(format!("<placeholder_{}>", i)));
 
-        let result = Regex::with_options(&regex_str,
-                                         RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
-                                         Syntax::default());
-        match result {
-            Err(onig_error) => {
-                Err(ParseSyntaxError::RegexCompileError(regex_str, onig_error))
-            },
-            _ => Ok(())
+        if let Some(error) = Regex::try_compile(&regex_str) {
+            Err(ParseSyntaxError::RegexCompileError(regex_str, error))
+        } else {
+            Ok(())
         }
     }
 
@@ -451,11 +465,7 @@ impl SyntaxDefinition {
         regex_str: &str,
         state: &mut ParserState<'_>,
     ) -> Result<CaptureMapping, ParseSyntaxError> {
-        let r = RegexRewriter {
-            bytes: regex_str.as_bytes(),
-            index: 0,
-        };
-        let valid_indexes = r.get_consuming_capture_indexes();
+        let valid_indexes = get_consuming_capture_indexes(regex_str);
         let mut captures = Vec::new();
         for (key, value) in map.iter() {
             if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
@@ -534,6 +544,73 @@ impl ContextNamer {
     }
 }
 
+/// In fancy-regex, POSIX character classes only match ASCII characters.
+/// Sublime's syntaxes expect them to match Unicode characters as well, so transform them to
+/// corresponding Unicode character classes.
+fn replace_posix_char_classes(regex: String) -> String {
+    regex.replace("[:alpha:]", r"\p{L}")
+        .replace("[:alnum:]", r"\p{L}\p{N}")
+        .replace("[:lower:]", r"\p{Ll}")
+        .replace("[:upper:]", r"\p{Lu}")
+        .replace("[:digit:]", r"\p{Nd}")
+}
+
+
+/// Some of the regexes include `$` and expect it to match end of line,
+/// e.g. *before* the `\n` in `test\n`.
+/// In fancy-regex, `$` means end of text by default, so that would
+/// match *after* `\n`. Using `(?m:$)` instead means it matches end of line.
+///
+/// Note that we don't want to add a `(?m)` in the beginning to change the
+/// whole regex because that would also change the meaning of `^`. In
+/// fancy-regex, that also matches at the end of e.g. `test\n` which is
+/// different from onig. It would also change `.` to match more.
+fn regex_for_newlines(regex: String) -> String {
+    if !regex.contains('$') {
+        return regex;
+    }
+
+    let rewriter = RegexRewriterForNewlines {
+        parser: Parser::new(regex.as_bytes()),
+    };
+    rewriter.rewrite()
+}
+
+struct RegexRewriterForNewlines<'a> {
+    parser: Parser<'a>,
+}
+
+impl<'a> RegexRewriterForNewlines<'a> {
+    fn rewrite(mut self) -> String {
+        let mut result = Vec::new();
+
+        while let Some(c) = self.parser.peek() {
+            match c {
+                b'$' => {
+                    self.parser.next();
+                    result.extend_from_slice(br"(?m:$)");
+                }
+                b'\\' => {
+                    self.parser.next();
+                    result.push(c);
+                    if let Some(c2) = self.parser.peek() {
+                        self.parser.next();
+                        result.push(c2);
+                    }
+                }
+                b'[' => {
+                    let (mut content, _) = self.parser.parse_character_class();
+                    result.append(&mut content);
+                }
+                _ => {
+                    self.parser.next();
+                    result.push(c);
+                }
+            }
+        }
+        String::from_utf8(result).unwrap()
+    }
+}
 
 /// Rewrite a regex that matches `\n` to one that matches `$` (end of line) instead.
 /// That allows the regex to be used to match lines that don't include a trailing newline character.
@@ -543,7 +620,7 @@ impl ContextNamer {
 ///
 /// Note that the rewrite is just an approximation and there's a couple of cases it can not handle,
 /// due to `$` being an anchor whereas `\n` matches a character.
-fn rewrite_regex(regex: String) -> String {
+fn regex_for_no_newlines(regex: String) -> String {
     if !regex.contains(r"\n") {
         return regex;
     }
@@ -552,30 +629,28 @@ fn rewrite_regex(regex: String) -> String {
     // handle properly.
     let regex = regex.replace("(?:\\n)?", "(?:$|)");
 
-    let rewriter = RegexRewriter {
-        bytes: regex.as_bytes(),
-        index: 0,
+    let rewriter = RegexRewriterForNoNewlines {
+        parser: Parser::new(regex.as_bytes()),
     };
     rewriter.rewrite()
 }
 
-struct RegexRewriter<'a> {
-    bytes: &'a [u8],
-    index: usize,
+struct RegexRewriterForNoNewlines<'a> {
+    parser: Parser<'a>,
 }
 
-impl<'a> RegexRewriter<'a> {
+impl<'a> RegexRewriterForNoNewlines<'a> {
     fn rewrite(mut self) -> String {
         let mut result = Vec::new();
-        while let Some(c) = self.peek() {
+        while let Some(c) = self.parser.peek() {
             match c {
                 b'\\' => {
-                    self.next();
-                    if let Some(c2) = self.peek() {
-                        self.next();
+                    self.parser.next();
+                    if let Some(c2) = self.parser.peek() {
+                        self.parser.next();
                         // Replacing `\n` with `$` in `\n?` or `\n+` would make parsing later fail
                         // with "target of repeat operator is invalid"
-                        let c3 = self.peek();
+                        let c3 = self.parser.peek();
                         if c2 == b'n' && c3 != Some(b'?') && c3 != Some(b'+') && c3 != Some(b'*') {
                             result.extend_from_slice(b"$");
                         } else {
@@ -587,8 +662,8 @@ impl<'a> RegexRewriter<'a> {
                     }
                 }
                 b'[' => {
-                    let (mut content, matches_newline) = self.parse_character_class();
-                    if matches_newline && self.peek() != Some(b'?') {
+                    let (mut content, matches_newline) = self.parser.parse_character_class();
+                    if matches_newline && self.parser.peek() != Some(b'?') {
                         result.extend_from_slice(b"(?:");
                         result.append(&mut content);
                         result.extend_from_slice(br"|$)");
@@ -597,14 +672,27 @@ impl<'a> RegexRewriter<'a> {
                     }
                 }
                 _ => {
-                    self.next();
+                    self.parser.next();
                     result.push(c);
                 }
             }
         }
         String::from_utf8(result).unwrap()
     }
+}
 
+fn get_consuming_capture_indexes(regex: &str) -> Vec<usize> {
+    let parser = ConsumingCaptureIndexParser {
+        parser: Parser::new(regex.as_bytes()),
+    };
+    parser.get_consuming_capture_indexes()
+}
+
+struct ConsumingCaptureIndexParser<'a> {
+    parser: Parser<'a>,
+}
+
+impl<'a> ConsumingCaptureIndexParser<'a> {
     /// find capture groups which are not inside lookarounds.
     /// If, in a YAML syntax definition, a scope stack is applied
     /// to a capture group inside a lookaround,
@@ -619,20 +707,20 @@ impl<'a> RegexRewriter<'a> {
         stack.push(in_lookaround);
         result.push(cap_num);
 
-        while let Some(c) = self.peek() {
+        while let Some(c) = self.parser.peek() {
             match c {
                 b'\\' => {
-                    self.next();
-                    self.next();
+                    self.parser.next();
+                    self.parser.next();
                 }
                 b'[' => {
-                    self.parse_character_class();
+                    self.parser.parse_character_class();
                 }
                 b'(' => {
-                    self.next();
+                    self.parser.next();
                     // add the current lookaround state to the stack so we can just pop at a closing paren
                     stack.push(in_lookaround);
-                    if let Some(c2) = self.peek() {
+                    if let Some(c2) = self.parser.peek() {
                         if c2 != b'?' {
                             // simple numbered capture group
                             cap_num += 1;
@@ -642,22 +730,22 @@ impl<'a> RegexRewriter<'a> {
                                 result.push(cap_num);
                             }
                         } else {
-                            self.next();
-                            if let Some(c3) = self.peek() {
-                                self.next();
+                            self.parser.next();
+                            if let Some(c3) = self.parser.peek() {
+                                self.parser.next();
                                 if c3 == b'=' || c3 == b'!' {
                                     // lookahead
                                     in_lookaround = true;
                                 } else if c3 == b'<' {
-                                    if let Some(c4) = self.peek() {
+                                    if let Some(c4) = self.parser.peek() {
                                         if c4 == b'=' || c4 == b'!' {
-                                            self.next();
+                                            self.parser.next();
                                             // lookbehind
                                             in_lookaround = true;
                                         }
                                     }
                                 } else if c3 == b'P' {
-                                    if let Some(c4) = self.peek() {
+                                    if let Some(c4) = self.parser.peek() {
                                         if c4 == b'<' {
                                             // named capture group
                                             cap_num += 1;
@@ -677,14 +765,36 @@ impl<'a> RegexRewriter<'a> {
                     if let Some(value) = stack.pop() {
                         in_lookaround = value;
                     }
-                    self.next();
+                    self.parser.next();
                 }
                 _ => {
-                    self.next();
+                    self.parser.next();
                 }
             }
         }
         result
+    }
+}
+
+struct Parser<'a> {
+    bytes: &'a [u8],
+    index: usize,
+}
+
+impl<'a> Parser<'a> {
+    fn new(bytes: &[u8]) -> Parser {
+        Parser {
+            bytes,
+            index: 0,
+        }
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.index).map(|&b| b)
+    }
+
+    fn next(&mut self) {
+        self.index += 1;
     }
 
     fn parse_character_class(&mut self) -> (Vec<u8>, bool) {
@@ -711,15 +821,13 @@ impl<'a> RegexRewriter<'a> {
             match c {
                 b'\\' => {
                     self.next();
+                    content.push(c);
                     if let Some(c2) = self.peek() {
                         self.next();
                         if c2 == b'n' && !negated && nesting == 0 {
                             matches_newline = true;
                         }
-                        content.push(c);
                         content.push(c2);
-                    } else {
-                        content.push(c);
                     }
                 }
                 b'[' => {
@@ -743,14 +851,6 @@ impl<'a> RegexRewriter<'a> {
         }
 
         (content, matches_newline)
-    }
-
-    fn peek(&self) -> Option<u8> {
-        self.bytes.get(self.index).cloned()
-    }
-
-    fn next(&mut self) {
-        self.index += 1;
     }
 }
 
@@ -1032,9 +1132,33 @@ mod tests {
     }
 
     #[test]
-    fn can_rewrite_regex() {
+    fn can_rewrite_regex_for_newlines() {
         fn rewrite(s: &str) -> String {
-            rewrite_regex(s.to_string())
+            regex_for_newlines(s.to_string())
+        }
+
+        assert_eq!(&rewrite(r"a"), r"a");
+        assert_eq!(&rewrite(r"\b"), r"\b");
+        assert_eq!(&rewrite(r"(a)"), r"(a)");
+        assert_eq!(&rewrite(r"[a]"), r"[a]");
+        assert_eq!(&rewrite(r"[^a]"), r"[^a]");
+        assert_eq!(&rewrite(r"[]a]"), r"[]a]");
+        assert_eq!(&rewrite(r"[[a]]"), r"[[a]]");
+
+        assert_eq!(&rewrite(r"^"), r"^");
+        assert_eq!(&rewrite(r"$"), r"(?m:$)");
+        assert_eq!(&rewrite(r"^ab$"), r"^ab(?m:$)");
+        assert_eq!(&rewrite(r"\^ab\$"), r"\^ab\$");
+        assert_eq!(&rewrite(r"(//).*$"), r"(//).*(?m:$)");
+
+        // Do not rewrite this `$` because it's in a char class and doesn't mean end of line
+        assert_eq!(&rewrite(r"[a$]"), r"[a$]");
+    }
+
+    #[test]
+    fn can_rewrite_regex_for_no_newlines() {
+        fn rewrite(s: &str) -> String {
+            regex_for_no_newlines(s.to_string())
         }
 
         assert_eq!(&rewrite(r"a"), r"a");
@@ -1068,12 +1192,8 @@ mod tests {
     #[test]
     fn can_get_valid_captures_from_regex() {
         let regex = "hello(test)(?=(world))(foo(?P<named>bar))";
-        let r = RegexRewriter {
-            bytes: regex.as_bytes(),
-            index: 0,
-        };
         println!("{:?}", regex);
-        let valid_indexes = r.get_consuming_capture_indexes();
+        let valid_indexes = get_consuming_capture_indexes(regex);
         println!("{:?}", valid_indexes);
         assert_eq!(valid_indexes, [0, 1, 3, 4]);
     }
@@ -1081,12 +1201,8 @@ mod tests {
     #[test]
     fn can_get_valid_captures_from_regex2() {
         let regex = "hello(test)[(?=tricked](foo(bar))";
-        let r = RegexRewriter {
-            bytes: regex.as_bytes(),
-            index: 0,
-        };
         println!("{:?}", regex);
-        let valid_indexes = r.get_consuming_capture_indexes();
+        let valid_indexes = get_consuming_capture_indexes(regex);
         println!("{:?}", valid_indexes);
         assert_eq!(valid_indexes, [0, 1, 2, 3]);
     }
@@ -1094,12 +1210,8 @@ mod tests {
     #[test]
     fn can_get_valid_captures_from_nested_regex() {
         let regex = "hello(test)(?=(world(?!(te(?<=(st))))))(foo(bar))";
-        let r = RegexRewriter {
-            bytes: regex.as_bytes(),
-            index: 0,
-        };
         println!("{:?}", regex);
-        let valid_indexes = r.get_consuming_capture_indexes();
+        let valid_indexes = get_consuming_capture_indexes(regex);
         println!("{:?}", valid_indexes);
         assert_eq!(valid_indexes, [0, 1, 5, 6]);
     }

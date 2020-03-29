@@ -12,6 +12,8 @@ mod syntax_set;
 mod yaml_load;
 
 mod scope;
+#[cfg(any(feature = "parsing", feature = "yaml-load", feature = "metadata"))]
+mod regex;
 
 #[cfg(feature = "parsing")]
 pub use self::syntax_definition::SyntaxDefinition;
@@ -23,5 +25,8 @@ pub use self::syntax_set::*;
 pub use self::parser::*;
 #[cfg(feature = "metadata")]
 pub use self::metadata::*;
+
+#[cfg(any(feature = "parsing", feature = "yaml-load", feature = "metadata"))]
+pub use self::regex::*;
 
 pub use self::scope::*;

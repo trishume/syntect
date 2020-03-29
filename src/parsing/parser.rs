@@ -1,6 +1,6 @@
 use super::syntax_definition::*;
 use super::scope::*;
-use onig::{MatchParam, Region, SearchOptions};
+use super::regex::Region;
 use std::usize;
 use std::collections::HashMap;
 use std::i32;
@@ -191,7 +191,7 @@ impl ParseState {
             self.first_line = false;
         }
 
-        let mut regions = Region::with_capacity(8);
+        let mut regions = Region::new();
         let fnv = BuildHasherDefault::<FnvHasher>::default();
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
         // Used for detecting loops with push/pop, see long comment above.
@@ -244,13 +244,17 @@ impl ParseState {
 
                 // println!("pop_would_loop for match {:?}, start {}", reg_match, *start);
 
-                if *start == line.len() {
+                // nth(1) gets the next character if there is one. Need to do
+                // this instead of just += 1 because we have byte indices and
+                // unicode characters can be more than 1 byte.
+                if let Some((i, _)) = line[*start..].char_indices().nth(1) {
+                    *start += i;
+                    return true;
+                } else {
                     // End of line, no character to advance and no point trying
                     // any more patterns.
                     return false;
                 }
-                *start += 1;
-                return true;
             }
 
             let match_end = reg_match.regions.pos(0).unwrap().1;
@@ -374,8 +378,8 @@ impl ParseState {
               match_pat: &MatchPattern,
               captures: Option<&(Region, String)>,
               search_cache: &mut SearchCache,
-              regions: &mut Region)
-              -> Option<Region> {
+              regions: &mut Region,
+    ) -> Option<Region> {
         // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
         let match_ptr = match_pat as *const MatchPattern;
 
@@ -396,33 +400,16 @@ impl ParseState {
         let (matched, can_cache) = if match_pat.has_captures && captures.is_some() {
             let &(ref region, ref s) = captures.unwrap();
             let regex = match_pat.regex_with_refs(region, s);
-            let matched = regex.search_with_param(
-                line,
-                start,
-                line.len(),
-                SearchOptions::SEARCH_OPTION_NONE,
-                Some(regions),
-                MatchParam::default(),
-            );
+            let matched = regex.search(line, start, line.len(), Some(regions));
             (matched, false)
         } else {
             let regex = match_pat.regex();
-            let matched = regex.search_with_param(
-                line,
-                start,
-                line.len(),
-                SearchOptions::SEARCH_OPTION_NONE,
-                Some(regions),
-                MatchParam::default()
-            );
+            let matched = regex.search(line, start, line.len(), Some(regions));
             (matched, true)
         };
 
-        // If there's an error during search, treat it as non-matching.
-        // For example, in case of catastrophic backtracking, onig should
-        // fail with a "retry-limit-in-match over" error eventually.
-        if let Ok(Some(match_start)) = matched {
-            let match_end = regions.pos(0).unwrap().1;
+        if matched {
+            let (match_start, match_end) = regions.pos(0).unwrap();
             // this is necessary to avoid infinite looping on dumb patterns
             let does_something = match match_pat.operation {
                 MatchOperation::None => match_start != match_end,
@@ -707,6 +694,26 @@ mod tests {
             (7, Pop(1))
         ];
         assert_eq!(&ops2[0..test_ops2.len()], &test_ops2[..]);
+    }
+
+    #[test]
+    fn can_parse_yaml() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_name("YAML").unwrap();
+            ParseState::new(syntax)
+        };
+
+        assert_eq!(ops(&mut state, "key: value\n", &ps), vec![
+            (0, Push(Scope::new("source.yaml").unwrap())),
+            (0, Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())),
+            (0, Push(Scope::new("entity.name.tag.yaml").unwrap())),
+            (3, Pop(2)),
+            (3, Push(Scope::new("punctuation.separator.key-value.mapping.yaml").unwrap())),
+            (4, Pop(1)),
+            (5, Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())),
+            (10, Pop(1)),
+        ]);
     }
 
     #[test]
@@ -1520,7 +1527,7 @@ contexts:
         expect_scope_stacks_with_syntax("abcdb", &["<a>", "<b>", "<c>", "<d>", "<1>"], syntax);
     }
 
-        #[test]
+    #[test]
     fn can_parse_two_with_prototypes_at_same_stack_level_updated_captures_ignore_unexisting() {
         let syntax_yamlstr = r#"
 %YAML 1.2
@@ -1556,6 +1563,134 @@ contexts:
         expect_scope_stacks_with_syntax("a-bcdba-", &["<a>", "<b>"], syntax);
     }
 
+    #[test]
+    fn can_parse_syntax_with_eol_and_newline() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: foo$\n
+      scope: foo.newline
+"#;
+
+        let line = "foo";
+        let expect = ["<source.test>, <foo.newline>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_syntax_with_eol_only() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: foo$
+      scope: foo.newline
+"#;
+
+        let line = "foo";
+        let expect = ["<source.test>, <foo.newline>"];
+        expect_scope_stacks(&line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_syntax_with_beginning_of_line() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: \w+
+      scope: word
+      push:
+        # this should not match at the end of the line
+        - match: ^\s*$
+          pop: true
+        - match: =+
+          scope: heading
+          pop: true
+    - match: .*
+      scope: other
+"#;
+
+        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax_set = link(syntax_newlines);
+
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        assert_eq!(ops(&mut state, "foo\n", &syntax_set), vec![
+            (0, Push(Scope::new("source.test").unwrap())),
+            (0, Push(Scope::new("word").unwrap())),
+            (3, Pop(1))
+        ]);
+        assert_eq!(ops(&mut state, "===\n", &syntax_set), vec![
+            (0, Push(Scope::new("heading").unwrap())),
+            (3, Pop(1))
+        ]);
+
+        assert_eq!(ops(&mut state, "bar\n", &syntax_set), vec![
+            (0, Push(Scope::new("word").unwrap())),
+            (3, Pop(1))
+        ]);
+        // This should result in popping out of the context
+        assert_eq!(ops(&mut state, "\n", &syntax_set), vec![]);
+        // So now this matches other
+        assert_eq!(ops(&mut state, "====\n", &syntax_set), vec![
+            (0, Push(Scope::new("other").unwrap())),
+            (4, Pop(1))
+        ]);
+    }
+
+    #[test]
+    fn can_parse_syntax_with_comment_and_eol() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: (//).*$
+      scope: comment.line.double-slash
+"#;
+
+        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax_set = link(syntax_newlines);
+
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        assert_eq!(ops(&mut state, "// foo\n", &syntax_set), vec![
+            (0, Push(Scope::new("source.test").unwrap())),
+            (0, Push(Scope::new("comment.line.double-slash").unwrap())),
+            // 6 is important here, should not be 7. The pattern should *not* consume the newline,
+            // but instead match before it. This is important for whitespace-sensitive syntaxes
+            // where newlines terminate statements such as Scala.
+            (6, Pop(1))
+        ]);
+    }
+
+    #[test]
+    fn can_parse_text_with_unicode_to_skip() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: (?=.)
+      push: test
+  test:
+    - match: (?=.)
+      pop: true
+    - match: x
+      scope: test.good
+"#;
+
+        // U+03C0 GREEK SMALL LETTER PI, 2 bytes in UTF-8
+        expect_scope_stacks("\u{03C0}x", &["<source.test>, <test.good>"], syntax);
+        // U+0800 SAMARITAN LETTER ALAF, 3 bytes in UTF-8
+        expect_scope_stacks("\u{0800}x", &["<source.test>, <test.good>"], syntax);
+        // U+1F600 GRINNING FACE, 4 bytes in UTF-8
+        expect_scope_stacks("\u{1F600}x", &["<source.test>, <test.good>"], syntax);
+    }
+
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");
         let line_with_newline = format!("{}\n", line_without_newline);
@@ -1570,10 +1705,7 @@ contexts:
     fn expect_scope_stacks_with_syntax(line: &str, expect: &[&str], syntax: SyntaxDefinition) {
         // check that each expected scope stack appears at least once while parsing the given test line
 
-        let mut builder = SyntaxSetBuilder::new();
-        builder.add(syntax);
-        let syntax_set = builder.build();
-
+        let syntax_set = link(syntax);
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
         let ops = ops(&mut state, line, &syntax_set);
         expect_scope_stacks_for_ops(ops, expect);
@@ -1596,12 +1728,16 @@ contexts:
 
     fn parse(line: &str, syntax: &str) -> Vec<(usize, ScopeStackOp)> {
         let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
-        let mut builder = SyntaxSetBuilder::new();
-        builder.add(syntax);
-        let syntax_set = builder.build();
+        let syntax_set = link(syntax);
 
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
         ops(&mut state, line, &syntax_set)
+    }
+
+    fn link(syntax: SyntaxDefinition) -> SyntaxSet {
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        builder.build()
     }
 
     fn ops(state: &mut ParseState, line: &str, syntax_set: &SyntaxSet) -> Vec<(usize, ScopeStackOp)> {

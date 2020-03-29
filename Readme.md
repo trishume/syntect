@@ -88,20 +88,19 @@ for line in LinesWithEndings::from(s) {
 
 ## Performance
 
-Currently `syntect` is one of the faster syntax highlighting engines, but not the fastest. The following perf features are done and to-be-done:
+Currently `syntect` is one of the faster syntax highlighting engines, but not the fastest. The following perf features are done:
 
 - [x] Pre-link references between languages (e.g `<script>` tags) so there are no tree traversal string lookups in the hot-path
 - [x] Compact binary representation of scopes to allow quickly passing and copying them around
 - [x] Determine if a scope is a prefix of another scope using bit manipulation in only a few instructions
 - [x] Cache regex matches to reduce number of times oniguruma is asked to search a line
 - [x] Accelerate scope lookups to reduce how much selector matching has to be done to highlight a list of scope operations
-- [x] Lazily compile regexes so startup time isn't taken compiling a thousand regexs for Actionscript that nobody will use
-- [ ] Use a better regex engine, perhaps the in progress fancy-regex crate
-- [ ] Parallelize the highlighting. Is this even possible? Would it help? To be determined.
+- [x] Lazily compile regexes so startup time isn't taken compiling a thousand regexes for Actionscript that nobody will use
+- [ ] Optionally use the fancy-regex crate. Unfortunately this isn't yet faster than oniguruma on our benchmarks but it might be in the future.
 
 The current perf numbers are below.
 These numbers may get better if more of the things above are implemented, but they're better than many other text editors.
-All measurements were taken on a mid 2012 15" retina Macbook Pro.
+All measurements were taken on a mid 2012 15" retina Macbook Pro, my new 2019 Macbook takes about 70% of these times.
 
 - Highlighting 9200 lines/247kb of jQuery 2.1 takes 600ms. For comparison:
     - Textmate 2, Spacemacs and Visual Studio Code all take around 2ish seconds (measured by hand with a stopwatch, hence approximate).
@@ -124,6 +123,30 @@ Syntect makes heavy use of [cargo features](http://doc.crates.io/manifest.html#t
 In particular, it is possible to use the highlighting component of syntect without the parser (for instance when hand-rolling a higher performance parser for a particular language), by adding `default-features = false` to the syntect entry in your `Cargo.toml`.
 
 For more information on available features, see the features section in `Cargo.toml`.
+
+## Pure Rust `fancy-regex` mode, without `onig`
+
+Since 4.0 `syntect` offers an alternative pure-rust regex engine based on the [fancy-regex](https://github.com/fancy-regex/fancy-regex) engine which extends the awesome [regex crate](https://github.com/rust-lang/regex) with support for fancier regex features that Sublime syntaxes need like lookaheads.
+
+The advantage of `fancy-regex` is that it does not require the [onig crate](https://github.com/rust-onig/rust-onig) which requires building and linking the Oniguruma C library. Many users experience difficulty building the `onig` crate, especially on Windows and Webassembly. The `onig` crate also recently added a requirement on `bindgen` which needs Clang/LLVM and thus makes it even harder to build. The `bindgen` dependency [may eventually be removed](https://github.com/rust-onig/rust-onig/pull/126) but even if it is, a pure-Rust build still makes things better for Webassembly and systems without a C compiler.
+
+As far as our tests can tell this new engine is just as correct, but it hasn't been tested as extensively in production. It also currently seems to be about **half the speed** of the default Oniguruma engine, although further testing and optimization (perhaps by you!) may eventually see it surpass Oniguruma's speed and become the default.
+
+To use the fancy-regex engine with syntect, add it to your `Cargo.toml` like so:
+
+```toml
+syntect = { version = "4.0", default-features = false, features = ["default-fancy"]}
+```
+
+If you want to run examples with the fancy-regex engine you can use a command line like the following:
+
+```bash
+cargo run --features default-fancy --no-default-features --release --example syncat testdata/highlight_test.erb
+```
+
+Due to the way Cargo features work, if any crate you depend on depends on `syntect` without enabling `fancy-regex` then you'll get the default `onig` mode.
+
+**Note:** The `fancy-regex` engine is *absurdly* slow in debug mode, because the regex engine (the main hot spot of highlighting) is now in Rust instead of C that's always built with optimizations. Consider using release mode or `onig` when testing.
 
 ## Caching
 
@@ -219,7 +242,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 ## License and Acknowledgements
 
 Thanks to [Robin Stocker](https://github.com/robinst) and also [Keith Hall](https://github.com/keith-hall) for making awesome substantial contributions of the most important impressive improvements `syntect` has had post-`v1.0`!
-They deserve lots of credit for where `syntect` is today.
+They deserve lots of credit for where `syntect` is today. For example @robinst implemented [fancy-regex support](https://github.com/trishume/syntect/pull/270) and [a massive refactor](https://github.com/trishume/syntect/pull/182) to enable parallel highlighting using an arena. @keith-hall found and fixed many bugs and [implemented Sublime syntax test support](https://github.com/trishume/syntect/pull/44).
 
 Thanks to [Textmate 2](https://github.com/textmate/textmate) and @defuz's [sublimate](https://github.com/defuz/sublimate) for the existing open source code I used as inspiration and in the case of sublimate's `tmTheme` loader, copy-pasted.
 All code (including defuz's sublimate code) is released under the MIT license.

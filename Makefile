@@ -26,6 +26,13 @@ syntest: $(SUBMODULES)
 	cargo run --release --example syntest -- testdata/Packages testdata/Packages --summary | diff -U 1000000 testdata/known_syntest_failures.txt -
 	@echo No new failures!
 
+syntest-fancy: $(SUBMODULES)
+	@echo Tip: Run make update-known-failures to update the known failures file.
+	cargo run --features default-fancy --no-default-features --release --example syntest -- testdata/Packages testdata/Packages --summary | diff -U 1000000 testdata/known_syntest_failures_fancy.txt -
+	@echo No new failures!
+
 update-known-failures: $(SUBMODULES)
 	cargo run --release --example syntest -- testdata/Packages testdata/Packages --summary | tee testdata/known_syntest_failures.txt
 
+update-known-failures-fancy: $(SUBMODULES)
+	cargo run --features default-fancy --no-default-features --release --example syntest -- testdata/Packages testdata/Packages --summary | tee testdata/known_syntest_failures_fancy.txt
