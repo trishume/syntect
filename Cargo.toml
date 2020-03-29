@@ -67,6 +67,7 @@ assets = []
 html = ["parsing", "assets"]
 yaml-load = ["yaml-rust", "parsing"]
 default-onig = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create", "regex-onig"]
+# In order to switch to the fancy-regex engine, disable default features then add the default-fancy feature
 default-fancy = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create", "regex-fancy"]
 default = ["default-onig"]
 
