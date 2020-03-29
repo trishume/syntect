@@ -9,7 +9,7 @@ compilation easier in general. People experiencing difficulty compiling for
 Windows and Wasm should try switching to `fancy-regex`. Note this currently
 approximately halves highlighting speed.
 
-See the Readme and (#270)[https://github.com/trishume/syntect/pull/270] for details.
+See the Readme and [#270](https://github.com/trishume/syntect/pull/270) for details.
 Thanks to @robinst for implementing this!
 
 ### Other changes
@@ -19,6 +19,8 @@ Thanks to @robinst for implementing this!
 - Miscellaneous dependency bumps and cleanup
 
 ### Breaking changes and upgrading
+
+Upgrading should cause no errors for nearly all users. Users using more unusual APIs may have a small amount of tweaking to do.
 
 - If you use `default-features = false` you may need to update your features to choose a regex engine
 - A bunch of technically public APIs that I don't know if anyone uses changed due to the regex engine refactor, common uses shouldn't break
