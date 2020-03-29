@@ -1,5 +1,28 @@
 # Changelog
 
+## [Version 4.0.0](https://github.com/trishume/syntect/compare/v3.3.0...v4.0.0) (2020-03-29)
+
+### Headline feature: pure-Rust `fancy-regex` engine option
+
+Users can now opt in to a pure-Rust regex engine using Cargo features, making
+compilation easier in general. People experiencing difficulty compiling for
+Windows and Wasm should try switching to `fancy-regex`. Note this currently
+approximately halves highlighting speed.
+
+See the Readme and (#270)[https://github.com/trishume/syntect/pull/270] for details.
+Thanks to @robinst for implementing this!
+
+### Other changes
+
+- Ability to generate CSS for a theme for use with classed HTML generation (won't always be correct) [#274](https://github.com/trishume/syntect/pull/274/files)
+- Don't generate empty spans in classed HTML [#276](https://github.com/trishume/syntect/pull/276)
+- Miscellaneous dependency bumps and cleanup
+
+### Breaking changes and upgrading
+
+- If you use `default-features = false` you may need to update your features to choose a regex engine
+- A bunch of technically public APIs that I don't know if anyone uses changed due to the regex engine refactor, common uses shouldn't break
+
 ## [Version 3.3.0](https://github.com/trishume/syntect/compare/v3.2.1...v3.3.0) (2019-09-22)
 
 > Bug fixes and new utilities
