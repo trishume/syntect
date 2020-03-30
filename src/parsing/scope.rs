@@ -191,9 +191,9 @@ impl Scope {
     /// It is used internally for turning a scope back into a string.
     pub fn atom_at(self, index: usize) -> u16 {
         let shifted = if index < 4 {
-            (self.a >> ((3 - index) * 16))
+            self.a >> ((3 - index) * 16)
         } else if index < 8 {
-            (self.b >> ((7 - index) * 16))
+            self.b >> ((7 - index) * 16)
         } else {
             panic!("atom index out of bounds {:?}", index);
         };
