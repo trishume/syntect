@@ -32,7 +32,7 @@ impl Regex {
     }
 
     /// Check whether the pattern compiles as a valid regex or not.
-    pub fn try_compile(regex_str: &str) -> Option<Box<dyn Error>> {
+    pub fn try_compile(regex_str: &str) -> Option<Box<dyn Error + Send>> {
         regex_impl::Regex::new(regex_str).err()
     }
 
@@ -142,7 +142,7 @@ mod regex_impl {
     }
 
     impl Regex {
-        pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error>> {
+        pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error + Send>> {
             let result = onig::Regex::with_options(
                 regex_str,
                 RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
@@ -210,7 +210,7 @@ mod regex_impl {
     }
 
     impl Regex {
-        pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error>> {
+        pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error + Send>> {
             let result = fancy_regex::Regex::new(regex_str);
             match result {
                 Ok(regex) => Ok(Regex { regex }),
