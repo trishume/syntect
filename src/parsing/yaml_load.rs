@@ -36,30 +36,21 @@ impl fmt::Display for ParseSyntaxError {
         use crate::ParseSyntaxError::*;
 
         match *self {
+            InvalidYaml(_) => write!(f, "Invalid YAML file syntax"),
+            EmptyFile => write!(f, "Empty file"),
+            MissingMandatoryKey(_) => write!(f, "Missing mandatory key in YAML file"),
             RegexCompileError(ref regex, ref error) =>
                 write!(f, "Error while compiling regex '{}': {}",
                        regex, error),
-            _ => write!(f, "{}", self.description())
+            InvalidScope(_) => write!(f, "Invalid scope"),
+            BadFileRef => write!(f, "Invalid file reference"),
+            MainMissing => write!(f, "Context 'main' is missing"),
+            TypeMismatch => write!(f, "Type mismatch"),
         }
     }
 }
 
 impl Error for ParseSyntaxError {
-    fn description(&self) -> &str {
-        use crate::ParseSyntaxError::*;
-
-        match self {
-            InvalidYaml(_) => "Invalid YAML file syntax",
-            EmptyFile => "Empty file",
-            MissingMandatoryKey(_) => "Missing mandatory key in YAML file",
-            RegexCompileError(_, error) => error.description(),
-            InvalidScope(_) => "Invalid scope",
-            BadFileRef => "Invalid file reference",
-            MainMissing => "Context 'main' is missing",
-            TypeMismatch => "Type mismatch",
-        }
-    }
-
     fn cause(&self) -> Option<&dyn Error> {
         use crate::ParseSyntaxError::*;
 

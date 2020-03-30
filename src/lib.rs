@@ -109,33 +109,21 @@ impl fmt::Display for LoadingError {
             #[cfg(feature = "yaml-load")]
             ParseSyntax(ref error, ref filename) => {
                 if let Some(ref file) = filename {
-                    write!(f, "{}: {}", file, error.description())
+                    write!(f, "{}: {}", file, error)
                 } else {
                     error.fmt(f)
                 }
             },
-            _ => write!(f, "{}", self.description()),
+            #[cfg(feature = "metadata")]
+            ParseMetadata(_) => write!(f, "Failed to parse JSON"),
+            ParseTheme(_) => write!(f, "Invalid syntax theme"),
+            ReadSettings(_) => write!(f, "Invalid syntax theme settings"),
+            BadPath => write!(f, "Invalid path"),
         }
     }
 }
 
 impl Error for LoadingError {
-    fn description(&self) -> &str {
-        use crate::LoadingError::*;
-
-        match *self {
-            WalkDir(ref error) => error.description(),
-            Io(ref error) => error.description(),
-            #[cfg(feature = "yaml-load")]
-            ParseSyntax(ref error, ..) => error.description(),
-            #[cfg(feature = "metadata")]
-            ParseMetadata(_) => "Failed to parse JSON",
-            ParseTheme(_) => "Invalid syntax theme",
-            ReadSettings(_) => "Invalid syntax theme settings",
-            BadPath => "Invalid path",
-        }
-    }
-
     fn cause(&self) -> Option<&dyn Error> {
         use crate::LoadingError::*;
 
