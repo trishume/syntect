@@ -13,7 +13,7 @@
 //! Some docs have example code but a good place to look is the `syncat` example as well as the source code
 //! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
 
-#![doc(html_root_url = "https://docs.rs/syntect/4.0.0")]
+#![doc(html_root_url = "https://docs.rs/syntect/4.1.0")]
 
 #[macro_use]
 extern crate lazy_static;

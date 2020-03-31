@@ -23,7 +23,7 @@ I consider this project mostly complete, I still maintain it and review PRs, but
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "4.0"
+syntect = "4.1"
 ```
 
 After that take a look at the [documentation](https://docs.rs/syntect) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
@@ -135,7 +135,7 @@ As far as our tests can tell this new engine is just as correct, but it hasn't b
 To use the fancy-regex engine with syntect, add it to your `Cargo.toml` like so:
 
 ```toml
-syntect = { version = "4.0", default-features = false, features = ["default-fancy"]}
+syntect = { version = "4.1", default-features = false, features = ["default-fancy"]}
 ```
 
 If you want to run examples with the fancy-regex engine you can use a command line like the following:

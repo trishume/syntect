@@ -1,5 +1,12 @@
 # Changelog
 
+## [Version 4.1.0](https://github.com/trishume/syntect/compare/v4.0.0...v4.1.0) (2020-03-30)
+
+- Make sure errors implement `Send` [#285](https://github.com/trishume/syntect/pull/285)
+- Fix errors to not use the deprecated `description()` [#286](https://github.com/trishume/syntect/pull/286)
+
+Thanks @sharkdp for the bug fixes! Bumping second part of semver since `Send` is adding functionality (back).
+
 ## [Version 4.0.0](https://github.com/trishume/syntect/compare/v3.3.0...v4.0.0) (2020-03-29)
 
 ### Headline feature: pure-Rust `fancy-regex` engine option
