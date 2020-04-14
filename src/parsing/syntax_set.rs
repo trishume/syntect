@@ -1,5 +1,9 @@
 use super::syntax_definition::*;
 use super::scope::*;
+
+#[cfg(feature = "metadata")]
+use super::metadata::{LoadMetadata, Metadata, RawMetadataEntry};
+
 #[cfg(feature = "yaml-load")]
 use super::super::LoadingError;
 
@@ -14,8 +18,8 @@ use std::fs::File;
 use std::mem;
 
 use lazycell::AtomicLazyCell;
-use onig::Regex;
-use parsing::syntax_definition::ContextId;
+use super::regex::Regex;
+use crate::parsing::syntax_definition::ContextId;
 
 /// A syntax set holds multiple syntaxes that have been linked together.
 ///
@@ -32,6 +36,13 @@ pub struct SyntaxSet {
 
     #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
     first_line_cache: AtomicLazyCell<FirstLineCache>,
+    /// Metadata, e.g. indent and commenting information.
+    /// NOTE: if serializing, you should handle metadata manually; that is,
+    /// you should serialize and deserialize it separately. See
+    /// `examples/gendata.rs` for an example.
+    #[cfg(feature = "metadata")]
+    #[serde(skip, default)]
+    pub(crate) metadata: Metadata,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -43,7 +54,6 @@ pub struct SyntaxReference {
     pub hidden: bool,
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
-
     #[serde(serialize_with = "ordered_map")]
     pub(crate) contexts: HashMap<String, ContextId>,
 }
@@ -53,10 +63,17 @@ pub struct SyntaxReference {
 ///
 /// Once all the syntaxes have been added, call `build` to turn the builder into
 /// a `SyntaxSet` that can be used for parsing or highlighting.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SyntaxSetBuilder {
     syntaxes: Vec<SyntaxDefinition>,
     path_syntaxes: Vec<(String, usize)>,
+    #[cfg(feature = "metadata")]
+    raw_metadata: LoadMetadata,
+    /// If this `SyntaxSetBuilder` is created with `SyntaxSet::into_builder`
+    /// from a `SyntaxSet` that already had metadata, we keep that metadata,
+    /// merging it with newly loaded metadata.
+    #[cfg(feature = "metadata")]
+    existing_metadata: Option<Metadata>,
 }
 
 #[cfg(feature = "yaml-load")]
@@ -84,6 +101,8 @@ impl Clone for SyntaxSet {
             path_syntaxes: self.path_syntaxes.clone(),
             // Will need to be re-initialized
             first_line_cache: AtomicLazyCell::new(),
+            #[cfg(feature = "metadata")]
+            metadata: self.metadata.clone(),
         }
     }
 }
@@ -95,6 +114,8 @@ impl Default for SyntaxSet {
             contexts: Vec::new(),
             path_syntaxes: Vec::new(),
             first_line_cache: AtomicLazyCell::new(),
+            #[cfg(feature = "metadata")]
+            metadata: Metadata::default(),
         }
     }
 }
@@ -123,19 +144,30 @@ impl SyntaxSet {
         &self.syntaxes[..]
     }
 
+    #[cfg(feature = "metadata")]
+    pub fn set_metadata(&mut self, metadata: Metadata) {
+        self.metadata = metadata;
+    }
+
+    /// The loaded metadata for this set.
+    #[cfg(feature = "metadata")]
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+
     /// Finds a syntax by its default scope, for example `source.regexp` finds the regex syntax.
     /// This and all similar methods below do a linear search of syntaxes, this should be fast
     /// because there aren't many syntaxes, but don't think you can call it a bajillion times per second.
     pub fn find_syntax_by_scope(&self, scope: Scope) -> Option<&SyntaxReference> {
-        self.syntaxes.iter().find(|&s| s.scope == scope)
+        self.syntaxes.iter().rev().find(|&s| s.scope == scope)
     }
 
     pub fn find_syntax_by_name<'a>(&'a self, name: &str) -> Option<&'a SyntaxReference> {
-        self.syntaxes.iter().find(|&s| name == &s.name)
+        self.syntaxes.iter().rev().find(|&s| name == s.name)
     }
 
     pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxReference> {
-        self.syntaxes.iter().find(|&s| s.file_extensions.iter().any(|e| e == extension))
+        self.syntaxes.iter().rev().find(|&s| s.file_extensions.iter().any(|e| e == extension))
     }
 
     /// Searches for a syntax first by extension and then by case-insensitive name
@@ -148,7 +180,7 @@ impl SyntaxSet {
                 return ext_res;
             }
         }
-        self.syntaxes.iter().find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
+        self.syntaxes.iter().rev().find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
     }
 
     /// Try to find the syntax for a file based on its first line.
@@ -156,8 +188,8 @@ impl SyntaxSet {
     /// for matching things like shebangs and mode lines like `-*- Mode: C -*-`
     pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
         let cache = self.first_line_cache();
-        for &(ref reg, i) in &cache.regexes {
-            if reg.find(s).is_some() {
+        for &(ref reg, i) in cache.regexes.iter().rev() {
+            if reg.search(s, 0, s.len(), None) {
                 return Some(&self.syntaxes[i]);
             }
         }
@@ -173,7 +205,7 @@ impl SyntaxSet {
     pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxReference> {
         let mut slash_path = "/".to_string();
         slash_path.push_str(&path);
-        return self.path_syntaxes.iter().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i]);
+        self.path_syntaxes.iter().rev().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i])
     }
 
     /// Convenience method that tries to find the syntax for a file path,
@@ -239,6 +271,9 @@ impl SyntaxSet {
     /// Note that newly added syntaxes can have references to existing syntaxes
     /// in the set, but not the other way around.
     pub fn into_builder(self) -> SyntaxSetBuilder {
+        #[cfg(feature = "metadata")]
+        let SyntaxSet { syntaxes, contexts, path_syntaxes, metadata, .. } = self;
+        #[cfg(not(feature = "metadata"))]
         let SyntaxSet { syntaxes, contexts, path_syntaxes, .. } = self;
 
         let mut context_map = HashMap::with_capacity(contexts.len());
@@ -281,6 +316,10 @@ impl SyntaxSet {
         SyntaxSetBuilder {
             syntaxes: builder_syntaxes,
             path_syntaxes,
+            #[cfg(feature = "metadata")]
+            existing_metadata: Some(metadata),
+            #[cfg(feature = "metadata")]
+            raw_metadata: LoadMetadata::default(),
         }
     }
 
@@ -303,10 +342,7 @@ impl SyntaxSet {
 
 impl SyntaxSetBuilder {
     pub fn new() -> SyntaxSetBuilder {
-        SyntaxSetBuilder {
-            syntaxes: Vec::new(),
-            path_syntaxes: Vec::new(),
-        }
+        SyntaxSetBuilder::default()
     }
 
     /// Add a syntax to the set.
@@ -355,7 +391,18 @@ impl SyntaxSetBuilder {
                 }
                 self.syntaxes.push(syntax);
             }
+
+            #[cfg(feature = "metadata")]
+            {
+                if entry.path().extension() == Some("tmPreferences".as_ref()) {
+                    match RawMetadataEntry::load(entry.path()) {
+                        Ok(meta) => self.raw_metadata.add_raw(meta),
+                        Err(_err) => (),
+                    }
+                }
+            }
         }
+
         Ok(())
     }
 
@@ -379,7 +426,16 @@ impl SyntaxSetBuilder {
     /// serialize a `SyntaxSet` for your program and when you run the program,
     /// directly load the `SyntaxSet`.
     pub fn build(self) -> SyntaxSet {
+
+        #[cfg(not(feature = "metadata"))]
         let SyntaxSetBuilder { syntaxes: syntax_definitions, path_syntaxes } = self;
+        #[cfg(feature = "metadata")]
+        let SyntaxSetBuilder {
+            syntaxes: syntax_definitions,
+            path_syntaxes,
+            raw_metadata,
+            existing_metadata,
+        } = self;
 
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
         let mut all_contexts = Vec::new();
@@ -430,21 +486,30 @@ impl SyntaxSetBuilder {
             }
 
             for context_id in syntax.contexts.values() {
-                let mut context = &mut all_contexts[context_id.index()];
+                let index = context_id.index();
+                let mut context = &mut all_contexts[index];
                 if let Some(prototype_id) = prototype {
-                    if context.meta_include_prototype && !no_prototype.contains(&context_id.index()) {
-                        context.prototype = Some(prototype_id.clone());
+                    if context.meta_include_prototype && !no_prototype.contains(&index) {
+                        context.prototype = Some(*prototype_id);
                     }
                 }
                 Self::link_context(&mut context, syntax, &syntaxes);
             }
         }
 
+        #[cfg(feature = "metadata")]
+        let metadata = match existing_metadata {
+            Some(existing) => existing.merged_with_raw(raw_metadata),
+            None => raw_metadata.into(),
+        };
+
         SyntaxSet {
             syntaxes,
             contexts: all_contexts,
             path_syntaxes,
             first_line_cache: AtomicLazyCell::new(),
+            #[cfg(feature = "metadata")]
+            metadata,
         }
     }
 
@@ -479,17 +544,27 @@ impl SyntaxSetBuilder {
                                         Self::recursively_mark_no_prototype(syntax, i.index(), contexts, no_prototype);
                                     }
                                 },
+                                ContextReference::Direct(ref id) => {
+                                    Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
+                                },
                                 _ => (),
                             }
                         }
                     }
                 }
-                Pattern::Include(ContextReference::Named(ref s)) => {
-                    if let Some(i) = syntax.contexts.get(s) {
-                        Self::recursively_mark_no_prototype(syntax, i.index(), contexts, no_prototype);
+                Pattern::Include(ref reference) => {
+                    match reference {
+                        ContextReference::Named(ref s) => {
+                            if let Some(id) = syntax.contexts.get(s) {
+                                Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
+                            }
+                        },
+                        ContextReference::Direct(ref id) => {
+                            Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
+                        },
+                        _ => (),
                     }
                 }
-                _ => (),
             }
         }
     }
@@ -521,6 +596,7 @@ impl SyntaxSetBuilder {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 syntaxes
                     .iter()
+                    .rev()
                     .find(|s| s.scope == scope)
                     .and_then(|s| s.contexts.get(context_name))
             }
@@ -528,13 +604,14 @@ impl SyntaxSetBuilder {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 syntaxes
                     .iter()
+                    .rev()
                     .find(|s| &s.name == name)
                     .and_then(|s| s.contexts.get(context_name))
             }
             Direct(_) => None,
         };
         if let Some(context_id) = linked_context_id {
-            let mut new_ref = Direct(context_id.clone());
+            let mut new_ref = Direct(*context_id);
             mem::swap(context_ref, &mut new_ref);
         }
     }
@@ -567,9 +644,8 @@ impl FirstLineCache {
         let mut regexes = Vec::new();
         for (i, syntax) in syntaxes.iter().enumerate() {
             if let Some(ref reg_str) = syntax.first_line_match {
-                if let Ok(reg) = Regex::new(reg_str) {
-                    regexes.push((reg, i));
-                }
+                let reg = Regex::new(reg_str.into());
+                regexes.push((reg, i));
             }
         }
         FirstLineCache {
@@ -583,7 +659,7 @@ impl FirstLineCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{ParseState, Scope, syntax_definition};
+    use crate::parsing::{ParseState, Scope, syntax_definition};
     use std::collections::HashMap;
 
     #[test]
@@ -618,10 +694,10 @@ mod tests {
         assert_eq!(&ps.find_syntax_for_file("testdata/parser.rs").unwrap().unwrap().name,
                    "Rust");
         assert_eq!(&ps.find_syntax_for_file("testdata/test_first_line.test")
-                       .unwrap()
-                       .unwrap()
+                       .expect("Error finding syntax for file")
+                       .expect("No syntax found for file")
                        .name,
-                   "Go");
+                   "Ruby");
         assert_eq!(&ps.find_syntax_for_file(".bashrc").unwrap().unwrap().name,
                    "Bourne Again Shell (bash)");
         assert_eq!(&ps.find_syntax_for_file("CMakeLists.txt").unwrap().unwrap().name,
@@ -736,12 +812,153 @@ mod tests {
         check_send::<SyntaxSet>();
     }
 
+    #[test]
+    fn can_override_syntaxes() {
+        let syntax_set = {
+            let mut builder = SyntaxSetBuilder::new();
+            builder.add(syntax_a());
+            builder.add(syntax_b());
+
+            let syntax_a2 = SyntaxDefinition::load_from_str(r#"
+                name: A improved
+                scope: source.a
+                file_extensions: [a]
+                first_line_match: syntax\s+a
+                contexts:
+                  main:
+                    - match: a
+                      scope: a2
+                    - match: go_b
+                      push: scope:source.b#main
+                "#, true, None).unwrap();
+
+            builder.add(syntax_a2);
+
+            let syntax_c = SyntaxDefinition::load_from_str(r#"
+                name: C
+                scope: source.c
+                file_extensions: [c]
+                first_line_match: syntax\s+.*
+                contexts:
+                  main:
+                    - match: c
+                      scope: c
+                    - match: go_a
+                      push: scope:source.a#main
+                "#, true, None).unwrap();
+
+            builder.add(syntax_c);
+
+            builder.build()
+        };
+
+        let mut syntax = syntax_set.find_syntax_by_extension("a").unwrap();
+        assert_eq!(syntax.name, "A improved");
+        syntax = syntax_set.find_syntax_by_scope(Scope::new(&"source.a").unwrap()).unwrap();
+        assert_eq!(syntax.name, "A improved");
+        syntax = syntax_set.find_syntax_by_first_line(&"syntax a").unwrap();
+        assert_eq!(syntax.name, "C");
+
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("c go_a a", &syntax_set);
+        let expected = (7, ScopeStackOp::Push(Scope::new("a2").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn can_parse_issue219() {
+        // Go to builder and back after loading so that build() gets Direct references instead of
+        // Named ones. The bug was that Direct references were not handled when marking as
+        // "no prototype", so prototype contexts accidentally had the prototype set, which made
+        // the parser loop forever.
+        let syntax_set = SyntaxSet::load_defaults_newlines().into_builder().build();
+        let syntax = syntax_set.find_syntax_by_extension("yaml").unwrap();
+
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("# test\n", &syntax_set);
+        let expected = (0, ScopeStackOp::Push(Scope::new("comment.line.number-sign.yaml").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn no_prototype_for_contexts_included_from_prototype() {
+        let mut builder = SyntaxSetBuilder::new();
+        let syntax = SyntaxDefinition::load_from_str(r#"
+                name: Test Prototype
+                scope: source.test
+                file_extensions: [test]
+                contexts:
+                  prototype:
+                    - include: included_from_prototype
+                  main:
+                    - match: main
+                    - match: other
+                      push: other
+                  other:
+                    - match: o
+                  included_from_prototype:
+                    - match: p
+                      scope: p
+                "#, true, None).unwrap();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        // "main" and "other" should have context set, "prototype" and "included_from_prototype"
+        // must not have a prototype set.
+        assert_prototype_only_on(&["main", "other"], &ss, &ss.syntaxes()[0]);
+
+        // Building again should have the same result. The difference is that after the first
+        // build(), the references have been replaced with Direct references, so the code needs to
+        // handle that correctly.
+        let rebuilt = ss.into_builder().build();
+        assert_prototype_only_on(&["main", "other"], &rebuilt, &rebuilt.syntaxes()[0]);
+    }
+
+    #[test]
+    fn no_prototype_for_contexts_inline_in_prototype() {
+        let mut builder = SyntaxSetBuilder::new();
+        let syntax = SyntaxDefinition::load_from_str(r#"
+                name: Test Prototype
+                scope: source.test
+                file_extensions: [test]
+                contexts:
+                  prototype:
+                    - match: p
+                      push:
+                        - match: p2
+                  main:
+                    - match: main
+                "#, true, None).unwrap();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        assert_prototype_only_on(&["main"], &ss, &ss.syntaxes()[0]);
+
+        let rebuilt = ss.into_builder().build();
+        assert_prototype_only_on(&["main"], &rebuilt, &rebuilt.syntaxes()[0]);
+    }
+
     fn assert_ops_contain(
         ops: &[(usize, ScopeStackOp)],
         expected: &(usize, ScopeStackOp)
     ) {
         assert!(ops.contains(expected),
                 "expected operations to contain {:?}: {:?}", expected, ops);
+    }
+
+    fn assert_prototype_only_on(expected: &[&str], syntax_set: &SyntaxSet, syntax: &SyntaxReference) {
+        for (name, id) in &syntax.contexts {
+            if name == "__main" || name == "__start" {
+                // Skip special contexts
+                continue;
+            }
+            let context = syntax_set.get_context(id);
+            if expected.contains(&name.as_str()) {
+                assert!(context.prototype.is_some(), "Expected context {} to have prototype", name);
+            } else {
+                assert!(context.prototype.is_none(), "Expected context {} to not have prototype", name);
+            }
+        }
     }
 
     fn check_send<T: Send>() {}

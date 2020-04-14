@@ -1,12 +1,12 @@
 //! API for running syntax tests.
 //! See http://www.sublimetext.com/docs/3/syntax.html#testing
 
-use parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, Scope};
 //use std::io::Write;
 use std::str::FromStr;
-use util::debug_print_ops;
-use easy::ScopeRegionIterator;
-use highlighting::ScopeSelectors;
+use crate::parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, Scope};
+use crate::util::debug_print_ops;
+use crate::easy::ScopeRegionIterator;
+use crate::highlighting::ScopeSelectors;
 
 #[derive(Clone, Copy)]
 pub struct SyntaxTestOutputOptions {

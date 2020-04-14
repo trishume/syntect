@@ -4,8 +4,9 @@
 // released under the MIT license by @defuz
 
 use std::iter::Iterator;
+use std::ops::Range;
 
-use parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
+use crate::parsing::{Scope, ScopeStack, BasicScopeStackOp, ScopeStackOp, MatchPower, ATOM_LEN_BITS};
 use super::selector::ScopeSelector;
 use super::theme::{Theme, ThemeItem};
 use super::style::{Color, FontStyle, Style, StyleModifier};
@@ -53,10 +54,11 @@ pub struct HighlightState {
 
 /// Highlights a line of parsed code given a `HighlightState`
 /// and line of changes from the parser.
+/// Yields the `Style`, the `text` as well as the `Range` of the text in the source string.
 ///
 /// It splits a line of text into different pieces each with a `Style`
 #[derive(Debug)]
-pub struct HighlightIterator<'a, 'b> {
+pub struct RangedHighlightIterator<'a, 'b> {
     index: usize,
     pos: usize,
     changes: &'a [(usize, ScopeStackOp)],
@@ -65,15 +67,26 @@ pub struct HighlightIterator<'a, 'b> {
     state: &'a mut HighlightState,
 }
 
+/// Highlights a line of parsed code given a `HighlightState`
+/// and line of changes from the parser.
+/// This is a backwards compatible shim on top of the `RangedHighlightIterator` which only
+/// yields the `Style` and the `Text` of the token, not the range.
+///
+/// It splits a line of text into different pieces each with a `Style`
+#[derive(Debug)]
+pub struct HighlightIterator<'a, 'b> {
+    ranged_iterator: RangedHighlightIterator<'a, 'b>
+}
+
 impl HighlightState {
     /// Note that the `Highlighter` is not stored, it is used to construct the initial
     /// stack of styles. Most of the time you'll want to pass an empty stack as `initial_stack`
     /// but see the docs for `HighlightState` for discussion of advanced caching use cases.
-    pub fn new(highlighter: &Highlighter, initial_stack: ScopeStack) -> HighlightState {
+    pub fn new(highlighter: &Highlighter<'_>, initial_stack: ScopeStack) -> HighlightState {
         let mut styles = vec![highlighter.get_default()];
         let mut single_caches = vec![ScoredStyle::from_style(styles[0])];
         for i in 0..initial_stack.len() {
-            let prefix = initial_stack.bottom_n(i);
+            let prefix = initial_stack.bottom_n(i + 1);
             let new_cache = highlighter.update_single_cache_for_push(&single_caches[i], prefix);
             styles.push(highlighter.finalize_style_with_multis(&new_cache, prefix));
             single_caches.push(new_cache);
@@ -87,29 +100,29 @@ impl HighlightState {
     }
 }
 
-impl<'a, 'b> HighlightIterator<'a, 'b> {
+impl<'a, 'b> RangedHighlightIterator<'a, 'b> {
     pub fn new(state: &'a mut HighlightState,
                changes: &'a [(usize, ScopeStackOp)],
                text: &'b str,
-               highlighter: &'a Highlighter)
-               -> HighlightIterator<'a, 'b> {
-        HighlightIterator {
+               highlighter: &'a Highlighter<'_>)
+               -> RangedHighlightIterator<'a, 'b> {
+        RangedHighlightIterator {
             index: 0,
             pos: 0,
-            changes: changes,
-            text: text,
-            highlighter: highlighter,
-            state: state,
+            changes,
+            text,
+            highlighter,
+            state,
         }
     }
 }
 
-impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
-    type Item = (Style, &'b str);
+impl<'a, 'b> Iterator for RangedHighlightIterator<'a, 'b> {
+    type Item = (Style, &'b str, Range<usize>);
 
     /// Yields the next token of text and the associated `Style` to render that text with.
     /// the concatenation of the strings in each token will make the original string.
-    fn next(&mut self) -> Option<(Style, &'b str)> {
+    fn next(&mut self) -> Option<(Style, &'b str, Range<usize>)> {
         if self.pos == self.text.len() && self.index >= self.changes.len() {
             return None;
         }
@@ -119,8 +132,9 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
             (self.text.len(), ScopeStackOp::Noop)
         };
         // println!("{} - {:?}   {}:{}", self.index, self.pos, self.state.path.len(), self.state.styles.len());
-        let style = *self.state.styles.last().unwrap();
+        let style = *self.state.styles.last().unwrap_or(&Style::default());
         let text = &self.text[self.pos..end];
+        let range = Range { start: self.pos, end: end };
         {
             // closures mess with the borrow checker's ability to see different struct fields
             let m_path = &mut self.state.path;
@@ -133,8 +147,11 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
                     BasicScopeStackOp::Push(_) => {
                         // we can push multiple times so this might have changed
                         let new_cache = {
-                            let prev_cache = m_caches.last().unwrap();
-                            highlighter.update_single_cache_for_push(prev_cache, cur_stack)
+                            if let Some(prev_cache) = m_caches.last() {
+                                highlighter.update_single_cache_for_push(prev_cache, cur_stack)
+                            } else {
+                                highlighter.update_single_cache_for_push(&ScoredStyle::from_style(highlighter.get_default()), cur_stack)
+                            }
                         };
                         m_styles.push(highlighter.finalize_style_with_multis(&new_cache, cur_stack));
                         m_caches.push(new_cache);
@@ -151,8 +168,36 @@ impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
         if text.is_empty() {
             self.next()
         } else {
-            Some((style, text))
+            Some((style, text, range))
         }
+    }
+}
+impl<'a, 'b> HighlightIterator<'a, 'b> {
+    pub fn new(state: &'a mut HighlightState,
+               changes: &'a [(usize, ScopeStackOp)],
+               text: &'b str,
+               highlighter: &'a Highlighter<'_>)
+        -> HighlightIterator<'a, 'b> {
+            HighlightIterator {
+                ranged_iterator: RangedHighlightIterator {
+                    index: 0,
+                    pos: 0,
+                    changes,
+                    text,
+                    highlighter,
+                    state
+                }
+            }
+    }
+}
+
+impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
+    type Item = (Style, &'b str);
+
+    /// Yields the next token of text and the associated `Style` to render that text with.
+    /// the concatenation of the strings in each token will make the original string.
+    fn next(&mut self) -> Option<(Style, &'b str)> {
+        self.ranged_iterator.next().map(|e| (e.0, e.1))
     }
 }
 
@@ -190,9 +235,9 @@ impl ScoredStyle {
 
     fn from_style(style: Style) -> ScoredStyle {
         ScoredStyle {
-            foreground: (MatchPower(-1.0), style.foreground.clone()),
-            background: (MatchPower(-1.0), style.background.clone()),
-            font_style: (MatchPower(-1.0), style.font_style.clone()),
+            foreground: (MatchPower(-1.0), style.foreground),
+            background: (MatchPower(-1.0), style.background),
+            font_style: (MatchPower(-1.0), style.font_style),
         }
     }
 }
@@ -214,9 +259,9 @@ impl<'a> Highlighter<'a> {
         single_selectors.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
         Highlighter {
-            theme: theme,
-            single_selectors: single_selectors,
-            multi_selectors: multi_selectors,
+            theme,
+            single_selectors,
+            multi_selectors,
         }
     }
 
@@ -235,8 +280,8 @@ impl<'a> Highlighter<'a> {
 
         let last_scope = path[path.len() - 1];
         for &(scope, ref modif) in self.single_selectors.iter().filter(|a| a.0.is_prefix_of(last_scope)) {
-            let single_score = (scope.len() as f64) *
-                               ((ATOM_LEN_BITS * ((path.len() - 1) as u16)) as f64).exp2();
+            let single_score = f64::from(scope.len()) *
+                               f64::from(ATOM_LEN_BITS * ((path.len() - 1) as u16)).exp2();
             new_style.apply(modif, MatchPower(single_score));
         }
 
@@ -298,7 +343,7 @@ impl<'a> Highlighter<'a> {
         for item in sorted {
             modifier = modifier.apply(item.style);
         }
-        return modifier;
+        modifier
     }
 }
 
@@ -306,8 +351,8 @@ impl<'a> Highlighter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use highlighting::{ThemeSet, Style, Color, FontStyle};
-    use parsing::{ SyntaxSet, ScopeStack, ParseState};
+    use crate::highlighting::{ThemeSet, Style, Color, FontStyle};
+    use crate::parsing::{ SyntaxSet, ScopeStack, ParseState};
 
     #[test]
     fn can_parse() {
@@ -344,12 +389,59 @@ mod tests {
                     "5"));
     }
 
+    #[test]
+    fn can_parse_with_highlight_state_from_cache() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_scope(
+                Scope::new("source.python").unwrap()).unwrap();
+            ParseState::new(syntax)
+        };
+        let ts = ThemeSet::load_defaults();
+        let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
+
+        // We start by parsing a python multiline-comment: """
+        let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+        let line = r#"""""#;
+        let ops = state.parse_line(line, &ps);
+        let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
+        assert_eq!(1, iter.count());
+        let path = highlight_state.path;
+
+        // We then parse the next line with a highlight state built from the previous state
+        let mut highlight_state = HighlightState::new(&highlighter, path);
+        let line = "multiline comment";
+        let ops = state.parse_line(line, &ps);
+        let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
+        let regions: Vec<(Style, &str)> = iter.collect();
+
+        // We expect the line to be styled as a comment.
+        assert_eq!(regions[0],
+                   (Style {
+                       foreground: Color {
+                           // (Comment: #65737E)
+                           r: 101,
+                           g: 115,
+                           b: 126,
+                           a: 0xFF,
+                       },
+                       background: Color {
+                           r: 43,
+                           g: 48,
+                           b: 59,
+                           a: 0xFF,
+                       },
+                       font_style: FontStyle::empty(),
+                   },
+                    "multiline comment"));
+    }
+
     // see issues #133 and #203, this test tests the fixes for those issues
     #[test]
     fn tricky_cases() {
-        use parsing::ScopeStack;
+        use crate::parsing::ScopeStack;
         use std::str::FromStr;
-        use highlighting::{ThemeSettings, ScopeSelectors};
+        use crate::highlighting::{ThemeSettings, ScopeSelectors};
         let c1 = Color { r: 1, g: 1, b: 1, a: 255 };
         let c2 = Color { r: 2, g: 2, b: 2, a: 255 };
         let def_bg = Color { r: 255, g: 255, b: 255, a: 255 };
@@ -394,7 +486,7 @@ mod tests {
         };
         let highlighter = Highlighter::new(&test_color_scheme);
 
-        use parsing::ScopeStackOp::*;
+        use crate::parsing::ScopeStackOp::*;
         let ops = [
             // three rules apply at once here, two singles and one multi
             (0, Push(Scope::new("comment.line.rs").unwrap())),
@@ -419,5 +511,40 @@ mod tests {
         assert_eq!(full_style, Style { foreground: c1, background: def_bg, font_style: FontStyle::ITALIC });
         let full_mod = highlighter.style_mod_for_stack(full_stack.as_slice());
         assert_eq!(full_mod, StyleModifier { foreground: Some(c1), background: None, font_style: Some(FontStyle::ITALIC) });
+    }
+
+    #[test]
+    fn test_ranges() {
+        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let mut state = {
+            let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+            ParseState::new(syntax)
+        };
+        let ts = ThemeSet::load_defaults();
+        let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
+
+        let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+        let line = "module Bob::Wow::Troll::Five; 5; end";
+        let ops = state.parse_line(line, &ps);
+        let iter = RangedHighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
+        let regions: Vec<(Style, &str, Range<usize>)> = iter.collect();
+        // println!("{:#?}", regions);
+        assert_eq!(regions[11],
+                   (Style {
+                       foreground: Color {
+                           r: 208,
+                           g: 135,
+                           b: 112,
+                           a: 0xFF,
+                       },
+                       background: Color {
+                           r: 43,
+                           g: 48,
+                           b: 59,
+                           a: 0xFF,
+                       },
+                       font_style: FontStyle::empty(),
+                   },
+                    "5", Range { start: 30, end: 31 }));
     }
 }

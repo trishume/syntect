@@ -2,8 +2,8 @@
 //! files without caring about intermediate semantic representation
 //! and caching.
 
-use parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, ScopeStackOp};
-use highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
+use crate::parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, ScopeStackOp};
+use crate::highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
 use std::io::{self, BufReader};
 use std::fs::File;
 use std::path::Path;
@@ -46,11 +46,11 @@ pub struct HighlightLines<'a> {
 impl<'a> HighlightLines<'a> {
     pub fn new(syntax: &SyntaxReference, theme: &'a Theme) -> HighlightLines<'a> {
         let highlighter = Highlighter::new(theme);
-        let hstate = HighlightState::new(&highlighter, ScopeStack::new());
+        let highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         HighlightLines {
-            highlighter: highlighter,
+            highlighter,
             parse_state: ParseState::new(syntax),
-            highlight_state: hstate,
+            highlight_state,
         }
     }
 
@@ -162,8 +162,8 @@ pub struct ScopeRegionIterator<'a> {
 impl<'a> ScopeRegionIterator<'a> {
     pub fn new(ops: &'a [(usize, ScopeStackOp)], line: &'a str) -> ScopeRegionIterator<'a> {
         ScopeRegionIterator {
-            ops: ops,
-            line: line,
+            ops,
+            line,
             index: 0,
             last_str_index: 0,
         }
@@ -204,8 +204,8 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parsing::{SyntaxSet, ParseState, ScopeStack};
-    use highlighting::ThemeSet;
+    use crate::parsing::{SyntaxSet, ParseState, ScopeStack};
+    use crate::highlighting::ThemeSet;
     use std::str::FromStr;
 
     #[test]

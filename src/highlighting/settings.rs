@@ -1,9 +1,7 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/settings.rs
 /// released under the MIT license by @defuz
-
 use std::io::{Read, Seek};
 use plist::{Error as PlistError};
-use plist::serde::deserialize;
 
 pub use serde_json::Value as Settings;
 pub use serde_json::Value::Array as SettingsArray;
@@ -17,7 +15,6 @@ pub trait ParseSettings: Sized {
     type Error;
     fn parse_settings(settings: Settings) -> Result<Self, Self::Error>;
 }
-
 
 /// An error parsing a settings file
 #[derive(Debug)]
@@ -33,6 +30,6 @@ impl From<PlistError> for SettingsError {
 }
 
 pub fn read_plist<R: Read + Seek>(reader: R) -> Result<Settings, SettingsError> {
-    let settings = deserialize(reader)?;
+    let settings = plist::from_reader(reader)?;
     Ok(settings)
 }

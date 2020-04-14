@@ -5,15 +5,13 @@
 //! into this data structure?
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
-use lazycell::AtomicLazyCell;
-use onig::{Regex, RegexOptions, Region, Syntax};
 use super::scope::*;
+use super::regex::{Regex, Region};
 use regex_syntax::escape;
 use serde::{Serialize, Serializer};
-use parsing::syntax_set::SyntaxSet;
+use crate::parsing::syntax_set::SyntaxSet;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
-
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ContextId {
@@ -87,17 +85,14 @@ pub struct MatchIter<'a> {
     index_stack: Vec<usize>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MatchPattern {
     pub has_captures: bool,
-    pub regex_str: String,
+    pub regex: Regex,
     pub scope: Vec<Scope>,
     pub captures: Option<CaptureMapping>,
     pub operation: MatchOperation,
     pub with_prototype: Option<ContextReference>,
-
-    #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
-    regex: AtomicLazyCell<Regex>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -197,7 +192,7 @@ impl ContextReference {
     /// get the context ID this reference points to, panics if ref is not linked
     pub fn id(&self) -> ContextId {
         match *self {
-            ContextReference::Direct(ref context_id) => context_id.clone(),
+            ContextReference::Direct(ref context_id) => *context_id,
             _ => panic!("Can only get ContextId of linked references: {:?}", self),
         }
     }
@@ -233,7 +228,7 @@ impl ContextId {
     }
 
     #[inline(always)]
-    pub(crate) fn index(&self) -> usize {
+    pub(crate) fn index(self) -> usize {
         self.index
     }
 }
@@ -250,81 +245,28 @@ impl MatchPattern {
     ) -> MatchPattern {
         MatchPattern {
             has_captures,
-            regex_str,
+            regex: Regex::new(regex_str),
             scope,
             captures,
             operation,
             with_prototype,
-            regex: AtomicLazyCell::new(),
         }
-    }
-
-    /// substitutes back-refs in Regex with regions from s
-    /// used for match patterns which refer to captures from the pattern
-    /// that pushed them.
-    pub fn regex_with_substitutes(&self, region: &Region, s: &str) -> String {
-        substitute_backrefs_in_regex(&self.regex_str, |i| {
-            region.pos(i).map(|(start, end)| escape(&s[start..end]))
-        })
     }
 
     /// Used by the parser to compile a regex which needs to reference
     /// regions from another matched pattern.
-    pub fn regex_with_refs(&self, region: &Region, s: &str) -> Regex {
-        // TODO don't panic on invalid regex
-        Regex::with_options(&self.regex_with_substitutes(region, s),
-                            RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
-                            Syntax::default())
-            .unwrap()
+    pub fn regex_with_refs(&self, region: &Region, text: &str) -> Regex {
+        let new_regex = substitute_backrefs_in_regex(self.regex.regex_str(), |i| {
+            region.pos(i).map(|(start, end)| escape(&text[start..end]))
+        });
+
+        return Regex::new(new_regex);
     }
 
     pub fn regex(&self) -> &Regex {
-        if let Some(regex) = self.regex.borrow() {
-            regex
-        } else {
-            // TODO don't panic on invalid regex
-            let regex = Regex::with_options(
-                &self.regex_str,
-                RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
-                Syntax::default(),
-            ).unwrap();
-            // Fill returns an error if it has already been filled. This might
-            // happen if two threads race here. In that case, just use the value
-            // that won and is now in the cell.
-            self.regex.fill(regex).ok();
-            self.regex.borrow().unwrap()
-        }
+        &self.regex
     }
 }
-
-impl Clone for MatchPattern {
-    fn clone(&self) -> MatchPattern {
-        MatchPattern {
-            has_captures: self.has_captures,
-            regex_str: self.regex_str.clone(),
-            scope: self.scope.clone(),
-            captures: self.captures.clone(),
-            operation: self.operation.clone(),
-            with_prototype: self.with_prototype.clone(),
-            // Can't clone Regex, will have to be recompiled when needed
-            regex: AtomicLazyCell::new(),
-        }
-    }
-}
-
-impl Eq for MatchPattern {}
-
-impl PartialEq for MatchPattern {
-    fn eq(&self, other: &MatchPattern) -> bool {
-        self.has_captures == other.has_captures &&
-            self.regex_str == other.regex_str &&
-            self.scope == other.scope &&
-            self.captures == other.captures &&
-            self.operation == other.operation &&
-            self.with_prototype == other.with_prototype
-    }
-}
-
 
 
 /// Serialize the provided map in natural key order, so that it's deterministic when dumping.
@@ -342,39 +284,21 @@ mod tests {
 
     #[test]
     fn can_compile_refs() {
-        use onig::{SearchOptions, Regex, Region};
         let pat = MatchPattern {
             has_captures: true,
-            regex_str: String::from(r"lol \\ \2 \1 '\9' \wz"),
+            regex: Regex::new(r"lol \\ \2 \1 '\9' \wz".into()),
             scope: vec![],
             captures: None,
             operation: MatchOperation::None,
             with_prototype: None,
-            regex: AtomicLazyCell::new(),
         };
-        let r = Regex::new(r"(\\\[\]\(\))(b)(c)(d)(e)").unwrap();
-        let mut region = Region::new();
+        let r = Regex::new(r"(\\\[\]\(\))(b)(c)(d)(e)".into());
         let s = r"\[]()bcde";
-        assert!(r.match_with_options(s, 0, SearchOptions::SEARCH_OPTION_NONE, Some(&mut region)).is_some());
+        let mut region = Region::new();
+        let matched = r.search(s, 0, s.len(), Some(&mut region));
+        assert!(matched);
 
-        let regex_res = pat.regex_with_substitutes(&region, s);
-        assert_eq!(regex_res, r"lol \\ b \\\[\]\(\) '' \wz");
-        pat.regex_with_refs(&region, s);
-    }
-
-    #[test]
-    fn caches_compiled_regex() {
-        let pat = MatchPattern {
-            has_captures: false,
-            regex_str: String::from(r"\w+"),
-            scope: vec![],
-            captures: None,
-            operation: MatchOperation::None,
-            with_prototype: None,
-            regex: AtomicLazyCell::new(),
-        };
-
-        assert!(pat.regex().is_match("test"));
-        assert!(pat.regex.filled());
+        let regex_with_refs = pat.regex_with_refs(&region, s);
+        assert_eq!(regex_with_refs.regex_str(), r"lol \\ b \\\[\]\(\) '' \wz");
     }
 }

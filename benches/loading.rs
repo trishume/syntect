@@ -1,8 +1,4 @@
-#[macro_use]
-extern crate criterion;
-extern crate syntect;
-
-use criterion::{Bencher, Criterion};
+use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 use syntect::highlighting::ThemeSet;
 

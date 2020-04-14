@@ -7,7 +7,7 @@ use std::io::{BufReader, BufRead, Seek};
 use walkdir::WalkDir;
 use std::fs::File;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSet {
     pub themes: BTreeMap<String, Theme>,
 }
@@ -16,7 +16,7 @@ pub struct ThemeSet {
 impl ThemeSet {
     /// Creates an empty set
     pub fn new() -> ThemeSet {
-        ThemeSet { themes: BTreeMap::new() }
+        ThemeSet::default()
     }
 
     /// Returns all the themes found in a folder, good for enumerating before loading one with get_theme
@@ -67,7 +67,7 @@ impl ThemeSet {
 
 #[cfg(test)]
 mod tests {
-    use highlighting::{ThemeSet, Color};
+    use crate::highlighting::{ThemeSet, Color};
     #[test]
     fn can_parse_common_themes() {
         let themes = ThemeSet::load_from_folder("testdata").unwrap();

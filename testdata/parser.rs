@@ -60,7 +60,7 @@ use util::parser::{AssocOp, Fixity};
 use print::pprust;
 use ptr::P;
 use parse::PResult;
-
+use bitflags::bitflags;
 use std::collections::HashSet;
 use std::io::prelude::*;
 use std::mem;

@@ -1,10 +1,7 @@
-#[macro_use]
-extern crate criterion;
-extern crate syntect;
-
-use criterion::{Bencher, Criterion};
+use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use std::fs::File;
 use std::io::Read;
+use std::time::Duration;
 use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 
 fn do_parse(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference) -> usize {
@@ -56,7 +53,7 @@ fn parsing_benchmark(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(20);
+    config = Criterion::default().sample_size(50).warm_up_time(Duration::from_secs(30));
     targets = parsing_benchmark
 }
 criterion_main!(benches);
