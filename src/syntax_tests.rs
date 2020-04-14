@@ -38,24 +38,27 @@ pub struct SyntaxTestHeader<'a> {
     pub testtoken_start: &'a str,
     pub testtoken_end: Option<&'a str>,
     pub syntax_file: &'a str,
+    pub reindent_text: Option<&'a str>,
 }
 
 pub fn parse_syntax_test_header_line(header_line: &str) -> Option<SyntaxTestHeader> { // TODO: use a "impl<'a> From<&'a str> for SyntaxTestHeader<'a>" instead?
-    if let Some(pos) = &header_line.find(&" SYNTAX TEST \"") {
-        let filename_part = &header_line[*pos + " SYNTAX TEST \"".len()..];
-        if let Some(close_pos) = filename_part.find(&"\"") {
-            let end_token = filename_part[close_pos + 1..].trim();
-            Some(SyntaxTestHeader {
-                testtoken_start: &header_line[0..*pos],
-                testtoken_end: if end_token.len() == 0 { None } else { Some(end_token) },
-                syntax_file: &filename_part[0..close_pos],
-            })
-        } else {
-            None
+    if let Some(pos) = &header_line.find(&" SYNTAX TEST ") {
+        let after_text_pos = *pos + &" SYNTAX TEST ".len();
+        if let Some(quote_start_pos) = &header_line[after_text_pos..].find("\"") {
+            let reindent_text = if *quote_start_pos == 0 { None } else { Some(header_line[after_text_pos..after_text_pos + *quote_start_pos].trim()) };
+            let filename_part = &header_line[after_text_pos + *quote_start_pos + 1..];
+            if let Some(close_pos) = filename_part.find(&"\"") {
+                let end_token = filename_part[close_pos + 1..].trim();
+                return Some(SyntaxTestHeader {
+                    testtoken_start: &header_line[0..*pos],
+                    testtoken_end: if end_token.len() == 0 { None } else { Some(end_token) },
+                    syntax_file: &filename_part[0..close_pos],
+                    reindent_text: reindent_text,
+                });
+            }
         }
-    } else {
-        None
     }
+    None
 }
 
 /// Given a start token, option end token and text, parse the syntax tests in the text
@@ -400,6 +403,7 @@ foobar
         assert_eq!(&header.testtoken_start, &"<!--");
         assert_eq!(&header.testtoken_end.unwrap(), &"-->");
         assert_eq!(&header.syntax_file, &"XML.sublime-syntax");
+        assert!(&header.reindent_text.is_none());
     }
 
     #[test]
@@ -408,6 +412,7 @@ foobar
         assert_eq!(&header.testtoken_start, &"<!--");
         assert_eq!(&header.testtoken_end.unwrap(), &"-->");
         assert_eq!(&header.syntax_file, &"XML.sublime-syntax");
+        assert!(&header.reindent_text.is_none());
     }
 
     #[test]
@@ -416,6 +421,7 @@ foobar
         assert_eq!(&header.testtoken_start, &"//");
         assert!(!header.testtoken_end.is_some());
         assert_eq!(&header.syntax_file, &"Packages/Example/Example.sublime-syntax");
+        assert!(&header.reindent_text.is_none());
     }
 
     #[test]
@@ -424,5 +430,15 @@ foobar
         assert_eq!(&header.testtoken_start, &"//");
         assert!(header.testtoken_end.is_none());
         assert_eq!(&header.syntax_file, &"Packages/Example/Example.sublime-syntax");
+        assert!(&header.reindent_text.is_none());
+    }
+    
+    #[test]
+    fn can_parse_syntax_test_reindentation_header() {
+        let header = parse_syntax_test_header_line(&"// SYNTAX TEST reindent-unchanged reindent-unindented \"Packages/PHP/PHP.sublime-syntax\"").unwrap();
+        assert_eq!(&header.testtoken_start, &"//");
+        assert!(header.testtoken_end.is_none());
+        assert_eq!(&header.syntax_file, &"Packages/PHP/PHP.sublime-syntax");
+        assert_eq!(&header.reindent_text.unwrap(), &"reindent-unchanged reindent-unindented");
     }
 // }

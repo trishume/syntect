@@ -42,7 +42,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, out_opts: SyntaxTestOutputOptions) -> 
     header_line = header_line.replace("\r", &"");
 
     // parse the syntax test header in the first line of the file
-    let SyntaxTestHeader { testtoken_start, testtoken_end, syntax_file } = parse_syntax_test_header_line(&header_line).ok_or(SyntaxTestHeaderError::MalformedHeader)?;
+    let SyntaxTestHeader { testtoken_start, testtoken_end, syntax_file, reindent_text: _ } = parse_syntax_test_header_line(&header_line).ok_or(SyntaxTestHeaderError::MalformedHeader)?;
 
     // find the relevant syntax definition to parse the file with - case is important!
     if !out_opts.summary {
