@@ -495,6 +495,32 @@ impl SyntaxSetBuilder {
                 }
                 Self::link_context(&mut context, syntax, &syntaxes);
             }
+            
+            for context_id in syntax.contexts.values() {
+                let index = context_id.index();
+                let context = &all_contexts[index];
+                if !context.uses_backrefs {
+                    let mut uses_backrefs = false;
+                    for pattern in &context.patterns {
+                        match *pattern {
+                            Pattern::Include(ref context_ref) => {
+                                match context_ref {
+                                    ContextReference::Direct(ref id) => {
+                                        if (&all_contexts[id.index()]).uses_backrefs {
+                                            uses_backrefs = true;
+                                            break;
+                                        }
+                                    }, _ => {},
+                                }
+                            }, _ => {},
+                        }
+                    }
+                    if uses_backrefs {
+                        let mut context = &mut all_contexts[index];
+                        context.uses_backrefs = true;
+                    }
+                }
+            }
         }
 
         #[cfg(feature = "metadata")]
