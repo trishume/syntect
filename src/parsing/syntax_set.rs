@@ -477,7 +477,7 @@ impl SyntaxSetBuilder {
             syntaxes.push(syntax);
         }
 
-        let mut contexts_using_backrefs = HashSet::new();
+        let mut found_more_backref_includes = true;
         for syntax in &syntaxes {
             let mut no_prototype = HashSet::new();
             let prototype = syntax.contexts.get("prototype");
@@ -497,21 +497,21 @@ impl SyntaxSetBuilder {
                 Self::link_context(&mut context, syntax, &syntaxes);
                 
                 if context.uses_backrefs {
-                    contexts_using_backrefs.insert(index);
+                    found_more_backref_includes = true;
                 }
             }
         }
         
-        while !contexts_using_backrefs.is_empty() {
+        while found_more_backref_includes {
+            found_more_backref_includes = false;
             // find any contexts which include a context which uses backrefs
             // and mark those as using backrefs - to support nested includes
-            let check_references: Vec<usize> = contexts_using_backrefs.drain().collect();
             for context_index in 0..all_contexts.len() {
                 let context = &all_contexts[context_index];
                 if !context.uses_backrefs && context.patterns.iter().any(|pattern| {
                     if let Pattern::Include(ref context_ref) = *pattern {
                         if let ContextReference::Direct(ref id) = context_ref {
-                            if check_references.contains(&id.index()) || all_contexts[id.index()].uses_backrefs {
+                            if all_contexts[id.index()].uses_backrefs {
                                 return true;
                             }
                         }
@@ -521,7 +521,7 @@ impl SyntaxSetBuilder {
                     let mut context = &mut all_contexts[context_index];
                     context.uses_backrefs = true;
                     // look for contexts including this context
-                    contexts_using_backrefs.insert(context_index);
+                    found_more_backref_includes = true;
                 }
             }
         }
