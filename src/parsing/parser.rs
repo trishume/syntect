@@ -1711,6 +1711,29 @@ contexts:
 
         expect_scope_stacks_with_syntax(&"aa", &["<a>", "<b>"], syntax);
     }
+    
+    #[test]
+    fn can_include_nested_backrefs() {
+        let syntax = SyntaxDefinition::load_from_str(r#"
+                name: Backref Include Test
+                scope: source.backrefinc
+                contexts:
+                  main:
+                    - match: (a)
+                      scope: a
+                      push: context1
+                  context1:
+                    - include: context3
+                  context3:
+                    - include: context2
+                  context2:
+                    - match: \1
+                      scope: b
+                      pop: true
+                "#, true, None).unwrap();
+
+        expect_scope_stacks_with_syntax(&"aa", &["<a>", "<b>"], syntax);
+    }
 
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");

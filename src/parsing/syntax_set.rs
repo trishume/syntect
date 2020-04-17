@@ -477,6 +477,7 @@ impl SyntaxSetBuilder {
             syntaxes.push(syntax);
         }
 
+        let mut contexts_using_backrefs = HashSet::new();
         for syntax in &syntaxes {
             let mut no_prototype = HashSet::new();
             let prototype = syntax.contexts.get("prototype");
@@ -494,22 +495,33 @@ impl SyntaxSetBuilder {
                     }
                 }
                 Self::link_context(&mut context, syntax, &syntaxes);
+                
+                if context.uses_backrefs {
+                    contexts_using_backrefs.insert(index);
+                }
             }
-            
-            for context_id in syntax.contexts.values() {
-                let index = context_id.index();
-                let context = &all_contexts[index];
-                let uses_backrefs = context.patterns.iter().any(|pattern| {
+        }
+        
+        while !contexts_using_backrefs.is_empty() {
+            // find any contexts which include a context which uses backrefs
+            // and mark those as using backrefs - to support nested includes
+            let check_references: Vec<usize> = contexts_using_backrefs.drain().collect();
+            for context_index in 0..all_contexts.len() {
+                let context = &all_contexts[context_index];
+                if !context.uses_backrefs && context.patterns.iter().any(|pattern| {
                     if let Pattern::Include(ref context_ref) = *pattern {
                         if let ContextReference::Direct(ref id) = context_ref {
-                            return (&all_contexts[id.index()]).uses_backrefs;
+                            if check_references.contains(&id.index()) || all_contexts[id.index()].uses_backrefs {
+                                return true;
+                            }
                         }
                     }
                     false
-                });
-                if uses_backrefs {
-                    let mut context = &mut all_contexts[index];
+                }) {
+                    let mut context = &mut all_contexts[context_index];
                     context.uses_backrefs = true;
+                    // look for contexts including this context
+                    contexts_using_backrefs.insert(context_index);
                 }
             }
         }
