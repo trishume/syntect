@@ -502,6 +502,13 @@ impl SyntaxSetBuilder {
             }
         }
         
+        // We need to recursively mark contexts that include contexts which
+        // use backreferences as using backreferences. In theory we could use
+        // a more efficient method here like doing a toposort or constructing
+        // a representation with reversed edges and then tracing in the
+        // opposite direction, but I benchmarked this and it adds <2% to link
+        // time on the default syntax set, and linking doesn't even happen
+        // when loading from a binary dump.
         while found_more_backref_includes {
             found_more_backref_includes = false;
             // find any contexts which include a context which uses backrefs
@@ -509,14 +516,11 @@ impl SyntaxSetBuilder {
             for context_index in 0..all_contexts.len() {
                 let context = &all_contexts[context_index];
                 if !context.uses_backrefs && context.patterns.iter().any(|pattern| {
-                    if let Pattern::Include(ref context_ref) = *pattern {
-                        if let ContextReference::Direct(ref id) = context_ref {
-                            if all_contexts[id.index()].uses_backrefs {
-                                return true;
-                            }
-                        }
+                    match pattern {
+                        Pattern::Include(ContextReference::Direct(id))
+                            if all_contexts[id.index()].uses_backrefs => true,
+                        _ => false,
                     }
-                    false
                 }) {
                     let mut context = &mut all_contexts[context_index];
                     context.uses_backrefs = true;
