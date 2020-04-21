@@ -1,5 +1,9 @@
 # Changelog
 
+## [Version 4.1.1](https://github.com/trishume/syntect/compare/v4.1.0...v4.1.1) (2020-04-20)
+
+- Properly handle backreferences in included contexts [#288](https://github.com/trishume/syntect/pull/288)
+
 ## [Version 4.1.0](https://github.com/trishume/syntect/compare/v4.0.0...v4.1.0) (2020-03-30)
 
 - Make sure errors implement `Send` [#285](https://github.com/trishume/syntect/pull/285)
