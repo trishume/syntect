@@ -25,18 +25,18 @@ cache:
 
 script:
   - cargo build
-  - |
-    if [ "$TRAVIS_OS_NAME" == "linux" ]
-    then
-      p=$(cd ./target/debug/build/onig_sys-*/out/lib/ && pwd)
-      echo "adding $p to linker path"
-      export LD_LIBRARY_PATH="${p}:${LD_LIBRARY_PATH}"
-    fi
-  - cargo test
+  - cargo test --features metadata
+  # Run these tests in release mode since they're slow as heck otherwise
+  - cargo test --features default-fancy --no-default-features --release
   - make assets
   - make syntest
+  - make syntest-fancy
   - rm -Rf examples
-  - cargo doc
+  # Only run doc build on stable until this is fixed: https://github.com/rust-lang/rust/issues/51661
+  - |
+    if [[ "$TRAVIS_RUST_VERSION" = stable ]]; then
+      cargo doc
+    fi
   # default features are required for examples to build - so remove them from sight.
   # Doc-tests may also use default features
   - rm -Rf examples && cargo test --lib --no-default-features

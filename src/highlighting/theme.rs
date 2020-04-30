@@ -1,12 +1,11 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/theme.rs
 /// released under the MIT license by @defuz
-
 use std::str::FromStr;
 
 use super::settings::{ParseSettings, Settings};
 use super::style::*;
 use super::selector::*;
-use parsing::ParseScopeError;
+use crate::parsing::ParseScopeError;
 
 use self::ParseThemeError::*;
 
@@ -21,7 +20,7 @@ pub struct Theme {
 }
 
 /// Various properties meant to be used to style a text editor.
-/// Basically all the styles that aren't directly applied to text like selection colour.
+/// Basically all the styles that aren't directly applied to text like selection color.
 /// Use this to make your editor UI match the highlighted text.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSettings {
@@ -101,7 +100,6 @@ pub struct ThemeSettings {
     /// in a view that is not currently focused.
     pub inactive_selection_foreground: Option<Color>,
 
-
     /// Color of the guides displayed to indicate nesting levels.
     pub guide: Option<Color>,
     /// Color of the guide lined up with the caret.
@@ -113,7 +111,7 @@ pub struct ThemeSettings {
 
     /// Foreground color for regions added via `sublime.add_regions()`
     /// with the `sublime.DRAW_OUTLINED` flag added.
-    /// 
+    ///
     /// Deprecated!
     /// This setting does not exist in any available documentation.
     /// Use is discouraged, and it may be removed in a future release.
@@ -306,9 +304,9 @@ impl ParseSettings for StyleModifier {
         };
 
         Ok(StyleModifier {
-            foreground: foreground,
-            background: background,
-            font_style: font_style,
+            foreground,
+            background,
+            font_style,
         })
     }
 }
@@ -330,8 +328,8 @@ impl ParseSettings for ThemeItem {
             None => return Err(IncorrectSettings),
         };
         Ok(ThemeItem {
-            scope: scope,
-            style: style,
+            scope,
+            style,
         })
     }
 }
@@ -452,10 +450,10 @@ impl ParseSettings for Theme {
             }
         }
         Ok(Theme {
-            name: name,
-            author: author,
-            settings: settings,
-            scopes: scopes,
+            name,
+            author,
+            settings,
+            scopes,
         })
     }
 }

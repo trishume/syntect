@@ -1,17 +1,14 @@
-#[macro_use]
-extern crate criterion;
-extern crate syntect;
-
-use criterion::{Bencher, Criterion};
+use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use std::fs::File;
 use std::io::Read;
-use syntect::parsing::{ParseState, SyntaxDefinition, SyntaxSet};
+use std::time::Duration;
+use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 
-fn do_parse(s: &str, syntax: &SyntaxDefinition) -> usize {
+fn do_parse(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference) -> usize {
     let mut state = ParseState::new(syntax);
     let mut count = 0;
     for line in s.lines() {
-        let ops = state.parse_line(line);
+        let ops = state.parse_line(line, ss);
         count += ops.len();
     }
     count
@@ -29,14 +26,14 @@ fn parse_file(b: &mut Bencher, file: &str) {
     };
 
     // don't load from dump so we don't count lazy regex compilation time
-    let ps = SyntaxSet::load_defaults_nonewlines();
+    let ss = SyntaxSet::load_defaults_nonewlines();
 
-    let syntax = ps.find_syntax_for_file(path).unwrap().unwrap();
+    let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
     let mut f = File::open(path).unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
-    b.iter(|| do_parse(&s, syntax));
+    b.iter(|| do_parse(&s, &ss, syntax));
 }
 
 fn parsing_benchmark(c: &mut Criterion) {
@@ -56,7 +53,7 @@ fn parsing_benchmark(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(20);
+    config = Criterion::default().sample_size(50).warm_up_time(Duration::from_secs(30));
     targets = parsing_benchmark
 }
 criterion_main!(benches);

@@ -7,13 +7,18 @@ use std::io::{BufReader, BufRead, Seek};
 use walkdir::WalkDir;
 use std::fs::File;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSet {
     pub themes: BTreeMap<String, Theme>,
 }
 
 /// A set of themes, includes convenient methods for loading and discovering themes.
 impl ThemeSet {
+    /// Creates an empty set
+    pub fn new() -> ThemeSet {
+        ThemeSet::default()
+    }
+
     /// Returns all the themes found in a folder, good for enumerating before loading one with get_theme
     pub fn discover_theme_paths<P: AsRef<Path>>(folder: P) -> Result<Vec<PathBuf>, LoadingError> {
         let mut themes = Vec::new();
@@ -38,28 +43,37 @@ impl ThemeSet {
         Ok(Theme::parse_settings(read_plist(r)?)?)
     }
 
-    /// Loads all the themes in a folder
+    /// Generate a `ThemeSet` from all themes in a folder
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<ThemeSet, LoadingError> {
+        let mut theme_set = Self::new();
+        theme_set.add_from_folder(folder)?;
+        Ok(theme_set)
+    }
+
+    /// Load all the themes in the folder into this `ThemeSet`
+    pub fn add_from_folder<P: AsRef<Path>>(&mut self, folder: P) -> Result<(), LoadingError> {
         let paths = Self::discover_theme_paths(folder)?;
-        let mut map = BTreeMap::new();
         for p in &paths {
             let theme = Self::get_theme(p)?;
             let basename =
                 p.file_stem().and_then(|x| x.to_str()).ok_or(LoadingError::BadPath)?;
-            map.insert(basename.to_owned(), theme);
+            self.themes.insert(basename.to_owned(), theme);
         }
-        Ok(ThemeSet { themes: map })
+
+        Ok(())
     }
 }
 
 
 #[cfg(test)]
 mod tests {
-    use highlighting::{ThemeSet, Color};
+    use crate::highlighting::{ThemeSet, Color};
     #[test]
     fn can_parse_common_themes() {
         let themes = ThemeSet::load_from_folder("testdata").unwrap();
         let all_themes: Vec<&str> = themes.themes.keys().map(|x| &**x).collect();
+        assert!(all_themes.contains(&"base16-ocean.dark"));
+
         println!("{:?}", all_themes);
 
         let theme = ThemeSet::get_theme("testdata/spacegray/base16-ocean.dark.tmTheme").unwrap();

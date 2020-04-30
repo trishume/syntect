@@ -1,7 +1,6 @@
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs
 /// released under the MIT license by @defuz
-
-use parsing::{Scope, ScopeStack, MatchPower, ParseScopeError};
+use crate::parsing::{Scope, ScopeStack, MatchPower, ParseScopeError};
 use std::str::FromStr;
 
 /// A single selector consisting of a stack to match and a possible stack to exclude from being matched.
@@ -44,6 +43,11 @@ impl ScopeSelector {
         }
         Some(self.path.as_slice()[0])
     }
+
+    /// extract all selectors for generating css
+    pub fn extract_scopes(&self) -> Vec<Scope> {
+        self.path.scopes.clone()
+    }
 }
 
 impl FromStr for ScopeSelector {
@@ -62,7 +66,7 @@ impl FromStr for ScopeSelector {
         }
         Ok(ScopeSelector {
             path: ScopeStack::from_str(path_str)?,
-            excludes: excludes,
+            excludes,
         })
     }
 }
@@ -97,7 +101,7 @@ impl FromStr for ScopeSelectors {
         for selector in s.split(&[',', '|'][..]) {
             selectors.push(ScopeSelector::from_str(selector)?)
         }
-        Ok(ScopeSelectors { selectors: selectors })
+        Ok(ScopeSelectors { selectors })
     }
 }
 
@@ -114,7 +118,7 @@ mod tests {
         let first_sel = &sels.selectors[0];
         assert_eq!(format!("{:?}", first_sel),
                    "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<source.php>, <meta.preprocessor>] }, excludes: [ScopeStack { clear_stack: [], scopes: [<string.quoted>] }] }");
-        
+
         let sels = ScopeSelectors::from_str("source.php meta.preprocessor -string.quoted|\
                                              source string")
             .unwrap();
@@ -122,21 +126,21 @@ mod tests {
         let first_sel = &sels.selectors[0];
         assert_eq!(format!("{:?}", first_sel),
                    "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<source.php>, <meta.preprocessor>] }, excludes: [ScopeStack { clear_stack: [], scopes: [<string.quoted>] }] }");
-        
+
         let sels = ScopeSelectors::from_str("text.xml meta.tag.preprocessor.xml punctuation.separator.key-value.xml")
             .unwrap();
         assert_eq!(sels.selectors.len(), 1);
         let first_sel = &sels.selectors[0];
         assert_eq!(format!("{:?}", first_sel),
                    "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<text.xml>, <meta.tag.preprocessor.xml>, <punctuation.separator.key-value.xml>] }, excludes: [] }");
-        
+
         let sels = ScopeSelectors::from_str("text.xml meta.tag.preprocessor.xml punctuation.separator.key-value.xml - text.html - string")
             .unwrap();
         assert_eq!(sels.selectors.len(), 1);
         let first_sel = &sels.selectors[0];
         assert_eq!(format!("{:?}", first_sel),
                    "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<text.xml>, <meta.tag.preprocessor.xml>, <punctuation.separator.key-value.xml>] }, excludes: [ScopeStack { clear_stack: [], scopes: [<text.html>] }, ScopeStack { clear_stack: [], scopes: [<string>] }] }");
-        
+
         let sels = ScopeSelectors::from_str("text.xml meta.tag.preprocessor.xml punctuation.separator.key-value.xml - text.html - string, source - comment")
             .unwrap();
         assert_eq!(sels.selectors.len(), 2);
@@ -146,7 +150,7 @@ mod tests {
         let second_sel = &sels.selectors[1];
         assert_eq!(format!("{:?}", second_sel),
                    "ScopeSelector { path: ScopeStack { clear_stack: [], scopes: [<source>] }, excludes: [ScopeStack { clear_stack: [], scopes: [<comment>] }] }");
-        
+
         let sels = ScopeSelectors::from_str(" -a.b|j.g")
             .unwrap();
         assert_eq!(sels.selectors.len(), 2);
@@ -159,7 +163,7 @@ mod tests {
     }
     #[test]
     fn matching_works() {
-        use parsing::{ScopeStack, MatchPower};
+        use crate::parsing::{ScopeStack, MatchPower};
         use std::str::FromStr;
         assert_eq!(ScopeSelectors::from_str("a.b, a e, e.f")
                        .unwrap()
@@ -186,10 +190,10 @@ mod tests {
                        .does_match(ScopeStack::from_str("a.b c.d e.f").unwrap().as_slice()),
                    Some(MatchPower(0o201u64 as f64)));
     }
-    
+
     #[test]
     fn empty_stack_matching_works() {
-        use parsing::{ScopeStack, MatchPower};
+        use crate::parsing::{ScopeStack, MatchPower};
         use std::str::FromStr;
         assert_eq!(ScopeSelector::from_str(" - a.b")
                        .unwrap()
@@ -227,7 +231,7 @@ mod tests {
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
                    Some(MatchPower(0o1u64 as f64)));
-        
+
         assert_eq!(ScopeSelector::from_str(" -a.b")
                        .unwrap()
                        .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
@@ -261,10 +265,10 @@ mod tests {
                        .does_match(ScopeStack::from_str("a.b c.d j e.f").unwrap().as_slice()),
                    Some(MatchPower(0o1u64 as f64)));
     }
-    
+
     #[test]
     fn multiple_excludes_matching_works() {
-        use parsing::{ScopeStack, MatchPower};
+        use crate::parsing::{ScopeStack, MatchPower};
         use std::str::FromStr;
         assert_eq!(ScopeSelector::from_str(" - a.b - c.d")
                        .unwrap()

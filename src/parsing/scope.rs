@@ -74,7 +74,7 @@ pub struct ScopeRepository {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScopeStack {
     clear_stack: Vec<Vec<Scope>>,
-    scopes: Vec<Scope>,
+    pub scopes: Vec<Scope>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -136,7 +136,7 @@ impl ScopeRepository {
         if s.is_empty() {
             return Ok(Scope { a: 0, b: 0 });
         }
-        let parts: Vec<usize> = s.trim_right_matches('.').split('.').map(|a| self.atom_to_index(a)).collect();
+        let parts: Vec<usize> = s.trim_end_matches('.').split('.').map(|a| self.atom_to_index(a)).collect();
         if parts.len() > 8 {
             return Err(ParseScopeError::TooManyAtoms);
         }
@@ -191,9 +191,9 @@ impl Scope {
     /// It is used internally for turning a scope back into a string.
     pub fn atom_at(self, index: usize) -> u16 {
         let shifted = if index < 4 {
-            (self.a >> ((3 - index) * 16))
+            self.a >> ((3 - index) * 16)
         } else if index < 8 {
-            (self.b >> ((7 - index) * 16))
+            self.b >> ((7 - index) * 16)
         } else {
             panic!("atom index out of bounds {:?}", index);
         };
@@ -283,14 +283,14 @@ impl FromStr for Scope {
 }
 
 impl fmt::Display for Scope {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = self.build_string();
         write!(f, "{}", s)
     }
 }
 
 impl fmt::Debug for Scope {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = self.build_string();
         write!(f, "<{}>", s)
     }
@@ -311,7 +311,7 @@ impl<'de> Deserialize<'de> for Scope {
         impl<'de> Visitor<'de> for ScopeVisitor {
             type Value = Scope;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 formatter.write_str("a string")
             }
 
@@ -390,7 +390,7 @@ impl ScopeStack {
             ScopeStackOp::Clear(amount) => {
                 let cleared = match amount {
                     ClearAmount::TopN(n) => {
-                        // don't try to clear more scopes than are on the stack 
+                        // don't try to clear more scopes than are on the stack
                         let to_leave = self.scopes.len() - min(n, self.scopes.len());
                         self.scopes.split_off(to_leave)
                     }
@@ -427,7 +427,7 @@ impl ScopeStack {
         for s in &self.scopes {
             print!("{} ", repo.to_string(*s));
         }
-        println!("");
+        println!();
     }
 
     /// Return the bottom n elements of the stack.
@@ -482,7 +482,7 @@ impl ScopeStack {
             if sel_scope.is_prefix_of(*scope) {
                 let len = sel_scope.len();
                 // equivalent to score |= len << (ATOM_LEN_BITS*i) on a large unsigned
-                score += (len as f64) * ((ATOM_LEN_BITS * (i as u16)) as f64).exp2();
+                score += f64::from(len) * f64::from(ATOM_LEN_BITS * (i as u16)).exp2();
                 sel_index += 1;
                 if sel_index >= self.scopes.len() {
                     return Some(MatchPower(score));
@@ -507,7 +507,7 @@ impl FromStr for ScopeStack {
 }
 
 impl fmt::Display for ScopeStack {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for s in &self.scopes {
             write!(f, "{} ", s)?;
         }

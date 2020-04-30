@@ -1,6 +1,3 @@
-extern crate syntect;
-extern crate getopts;
-
 use getopts::Options;
 use std::borrow::Cow;
 use std::io::BufRead;
@@ -10,7 +7,6 @@ use syntect::highlighting::{Theme, ThemeSet, Style};
 use syntect::util::as_24_bit_terminal_escaped;
 use syntect::easy::HighlightFile;
 use syntect::dumps::{from_dump_file, dump_to_file};
-
 
 fn load_theme(tm_file: &String, enable_caching: bool) -> Theme {
     let tm_path = Path::new(tm_file);
@@ -31,7 +27,6 @@ fn load_theme(tm_file: &String, enable_caching: bool) -> Theme {
 }
 
 fn main() {
-
     let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
     opts.optflag("l", "list-file-types", "Lists supported file types");
@@ -57,8 +52,9 @@ fn main() {
     };
 
     if let Some(folder) = matches.opt_str("extra-syntaxes") {
-        ss.load_syntaxes(folder, !no_newlines).unwrap();
-        ss.link_syntaxes();
+        let mut builder = ss.into_builder();
+        builder.add_from_folder(folder, !no_newlines).unwrap();
+        ss = builder.build();
     }
 
     let ts = ThemeSet::load_defaults();
@@ -98,7 +94,7 @@ fn main() {
 
             // We use read_line instead of `for line in highlighter.reader.lines()` because that
             // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
-            // See the documentation for `SyntaxSet::load_syntaxes`.
+            // See the documentation for `SyntaxSetBuilder::add_from_folder`.
             // It also allows re-using the line buffer, which should be a tiny bit faster.
             let mut line = String::new();
             while highlighter.reader.read_line(&mut line).unwrap() > 0 {
@@ -107,7 +103,7 @@ fn main() {
                 }
 
                 {
-                    let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line);
+                    let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line, &ss);
                     print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
                 }
                 line.clear();

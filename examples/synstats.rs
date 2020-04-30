@@ -6,8 +6,6 @@
 //! Another thing it does that other line count programs can't always
 //! do is properly count comments in embedded syntaxes. For example
 //! JS, CSS and Ruby comments embedded in ERB files.
-extern crate syntect;
-extern crate walkdir;
 use syntect::parsing::{SyntaxSet, ParseState, ScopeStackOp, ScopeStack};
 use syntect::highlighting::{ScopeSelector, ScopeSelectors};
 use syntect::easy::{ScopeRegionIterator};
@@ -135,7 +133,7 @@ fn count(ss: &SyntaxSet, path: &Path, stats: &mut Stats) {
     let mut stack = ScopeStack::new();
     while reader.read_line(&mut line).unwrap() > 0 {
         {
-            let ops = state.parse_line(&line);
+            let ops = state.parse_line(&line, &ss);
             stats.chars += line.len();
             count_line(&ops, &line, &mut stack, stats);
         }

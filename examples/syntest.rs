@@ -7,15 +7,10 @@
 // you can tell it where to parse them from - the following will execute only 1 syntax test after
 // parsing the sublime-syntax files in the JavaScript folder:
 // cargo run --example syntest testdata/Packages/JavaScript/syntax_test_json.json testdata/Packages/JavaScript/
-extern crate syntect;
-extern crate walkdir;
 #[macro_use]
 extern crate lazy_static;
-extern crate regex;
-extern crate getopts;
 
-//extern crate onig;
-use syntect::parsing::{SyntaxSet, ParseState, ScopeStack, Scope};
+use syntect::parsing::{SyntaxSet, SyntaxSetBuilder, ParseState, ScopeStack, Scope};
 use syntect::highlighting::ScopeSelectors;
 use syntect::easy::{ScopeRegionIterator};
 
@@ -97,21 +92,21 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
                 if let Some(end_token_pos) = sst.find(token) { // and there is an end token in the line
                     let (ss, after_token_end) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
                     sst = &ss;
-                    only_whitespace_after_token_end = after_token_end.trim_right().is_empty();
+                    only_whitespace_after_token_end = after_token_end.trim_end().is_empty();
                 }
             }
             return Some(AssertionRange {
                 begin_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().start() } else { 0 },
                 end_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().end() } else { 1 },
                 scope_selector_text: sst,
-                is_pure_assertion_line: before_token_start.trim_left().is_empty() && only_whitespace_after_token_end, // if only whitespace surrounds the test tokens on the line, then it is a pure assertion line
+                is_pure_assertion_line: before_token_start.trim_start().is_empty() && only_whitespace_after_token_end, // if only whitespace surrounds the test tokens on the line, then it is a pure assertion line
             });
         }
     }
     None
 }
 
-fn process_assertions(assertion: &AssertionRange, test_against_line_scopes: &Vec<ScopedText>) -> Vec<RangeTestResult> {
+fn process_assertions(assertion: &AssertionRange<'_>, test_against_line_scopes: &Vec<ScopedText>) -> Vec<RangeTestResult> {
     // format the scope selector to include a space at the beginning, because, currently, ScopeSelector expects excludes to begin with " -"
     // and they are sometimes in the syntax test as ^^^-comment, for example
     let selector = ScopeSelectors::from_str(&format!(" {}", &assertion.scope_selector_text)).unwrap();
@@ -215,7 +210,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
             if out_opts.debug && !line_only_has_assertion {
                 println!("-- debugging line {} -- scope stack: {:?}", current_line_number, stack);
             }
-            let ops = state.parse_line(&line);
+            let ops = state.parse_line(&line, &ss);
             if out_opts.debug && !line_only_has_assertion {
                 if ops.is_empty() && !line.is_empty() {
                     println!("no operations for this line...");
@@ -305,8 +300,9 @@ fn main() {
     };
     if !syntaxes_path.is_empty() {
         println!("loading syntax definitions from {}", syntaxes_path);
-        ss.load_syntaxes(&syntaxes_path, true).unwrap(); // note that we load the version with newlines
-        ss.link_syntaxes();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add_from_folder(&syntaxes_path, true).unwrap(); // note that we load the version with newlines
+        ss = builder.build();
     }
 
     let out_opts = OutputOptions {
