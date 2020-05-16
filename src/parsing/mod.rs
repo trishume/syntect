@@ -11,20 +11,20 @@ mod syntax_set;
 #[cfg(all(feature = "parsing", feature = "yaml-load"))]
 mod yaml_load;
 
-mod scope;
 #[cfg(any(feature = "parsing", feature = "yaml-load", feature = "metadata"))]
 mod regex;
+mod scope;
 
-#[cfg(feature = "parsing")]
-pub use self::syntax_definition::SyntaxDefinition;
-#[cfg(all(feature = "parsing", feature = "yaml-load"))]
-pub use self::yaml_load::*;
-#[cfg(feature = "parsing")]
-pub use self::syntax_set::*;
-#[cfg(feature = "parsing")]
-pub use self::parser::*;
 #[cfg(feature = "metadata")]
 pub use self::metadata::*;
+#[cfg(feature = "parsing")]
+pub use self::parser::*;
+#[cfg(feature = "parsing")]
+pub use self::syntax_definition::SyntaxDefinition;
+#[cfg(feature = "parsing")]
+pub use self::syntax_set::*;
+#[cfg(all(feature = "parsing", feature = "yaml-load"))]
+pub use self::yaml_load::*;
 
 #[cfg(any(feature = "parsing", feature = "yaml-load", feature = "metadata"))]
 pub use self::regex::*;

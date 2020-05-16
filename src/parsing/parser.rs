@@ -1,12 +1,12 @@
-use super::syntax_definition::*;
-use super::scope::*;
 use super::regex::Region;
-use std::usize;
-use std::collections::HashMap;
-use std::i32;
-use std::hash::BuildHasherDefault;
+use super::scope::*;
+use super::syntax_definition::*;
+use crate::parsing::syntax_set::{SyntaxReference, SyntaxSet};
 use fnv::FnvHasher;
-use crate::parsing::syntax_set::{SyntaxSet, SyntaxReference};
+use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
+use std::i32;
+use std::usize;
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
 /// If you are parsing an entire file you create one of these at the start and use it
@@ -177,8 +177,10 @@ impl ParseState {
     /// reason for this is that contexts within the `SyntaxSet` are referenced
     /// via indexes.
     pub fn parse_line(&mut self, line: &str, syntax_set: &SyntaxSet) -> Vec<(usize, ScopeStackOp)> {
-        assert!(!self.stack.is_empty(),
-                "Somehow main context was popped from the stack");
+        assert!(
+            !self.stack.is_empty(),
+            "Somehow main context was popped from the stack"
+        );
         let mut match_start = 0;
         let mut res = Vec::new();
 
@@ -204,7 +206,7 @@ impl ParseState {
             &mut search_cache,
             &mut regions,
             &mut non_consuming_push_at,
-            &mut res
+            &mut res,
         ) {}
 
         res
@@ -226,11 +228,23 @@ impl ParseState {
         };
 
         // Trim proto_starts that are no longer valid
-        while self.proto_starts.last().map(|start| *start >= self.stack.len()).unwrap_or(false) {
+        while self
+            .proto_starts
+            .last()
+            .map(|start| *start >= self.stack.len())
+            .unwrap_or(false)
+        {
             self.proto_starts.pop();
         }
 
-        let best_match = self.find_best_match(line, *start, syntax_set, search_cache, regions, check_pop_loop);
+        let best_match = self.find_best_match(
+            line,
+            *start,
+            syntax_set,
+            search_cache,
+            regions,
+            check_pop_loop,
+        );
 
         if let Some(reg_match) = best_match {
             if reg_match.would_loop {
@@ -313,9 +327,14 @@ impl ParseState {
         let context_chain = {
             let proto_start = self.proto_starts.last().cloned().unwrap_or(0);
             // Sublime applies with_prototypes from bottom to top
-            let with_prototypes = self.stack[proto_start..].iter().flat_map(|lvl| lvl.prototypes.iter().map(move |ctx| (true, ctx, lvl.captures.as_ref())));
+            let with_prototypes = self.stack[proto_start..].iter().flat_map(|lvl| {
+                lvl.prototypes
+                    .iter()
+                    .map(move |ctx| (true, ctx, lvl.captures.as_ref()))
+            });
             let cur_prototype = prototype.into_iter().map(|ctx| (false, ctx, None));
-            let cur_context = Some((false, &cur_level.context, cur_level.captures.as_ref())).into_iter();
+            let cur_context =
+                Some((false, &cur_level.context, cur_level.captures.as_ref())).into_iter();
             with_prototypes.chain(cur_prototype).chain(cur_context)
         };
 
@@ -330,9 +349,9 @@ impl ParseState {
             for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)) {
                 let match_pat = pat_context.match_at(pat_index);
 
-                if let Some(match_region) = self.search(
-                    line, start, match_pat, captures, search_cache, regions
-                ) {
+                if let Some(match_region) =
+                    self.search(line, start, match_pat, captures, search_cache, regions)
+                {
                     let (match_start, match_end) = match_region.pos(0).unwrap();
 
                     // println!("matched pattern {:?} at start {} end {}", match_pat.regex_str, match_start, match_end);
@@ -347,10 +366,12 @@ impl ParseState {
                         min_start = match_start;
 
                         let consuming = match_end > start;
-                        pop_would_loop = check_pop_loop && !consuming && match match_pat.operation {
-                            MatchOperation::Pop => true,
-                            _ => false,
-                        };
+                        pop_would_loop = check_pop_loop
+                            && !consuming
+                            && match match_pat.operation {
+                                MatchOperation::Pop => true,
+                                _ => false,
+                            };
 
                         best_match = Some(RegexMatch {
                             regions: match_region,
@@ -372,13 +393,14 @@ impl ParseState {
         best_match
     }
 
-    fn search(&self,
-              line: &str,
-              start: usize,
-              match_pat: &MatchPattern,
-              captures: Option<&(Region, String)>,
-              search_cache: &mut SearchCache,
-              regions: &mut Region,
+    fn search(
+        &self,
+        line: &str,
+        start: usize,
+        match_pat: &MatchPattern,
+        captures: Option<&(Region, String)>,
+        search_cache: &mut SearchCache,
+        regions: &mut Region,
     ) -> Option<Region> {
         // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
         let match_ptr = match_pat as *const MatchPattern;
@@ -442,7 +464,14 @@ impl ParseState {
         let pat = context.match_at(reg_match.pat_index);
         // println!("running pattern {:?} on '{}' at {}, operation {:?}", pat.regex_str, line, match_start, pat.operation);
 
-        self.push_meta_ops(true, match_start, level_context, &pat.operation, syntax_set, ops);
+        self.push_meta_ops(
+            true,
+            match_start,
+            level_context,
+            &pat.operation,
+            syntax_set,
+            ops,
+        );
         for s in &pat.scope {
             // println!("pushing {:?} at {}", s, match_start);
             ops.push((match_start, ScopeStackOp::Push(*s)));
@@ -460,8 +489,10 @@ impl ParseState {
                     }
                     // println!("capture {:?} at {:?}-{:?}", scopes[0], cap_start, cap_end);
                     for scope in scopes.iter() {
-                        map.push(((cap_start, -((cap_end - cap_start) as i32)),
-                                  ScopeStackOp::Push(*scope)));
+                        map.push((
+                            (cap_start, -((cap_end - cap_start) as i32)),
+                            ScopeStackOp::Push(*scope),
+                        ));
                     }
                     map.push(((cap_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
                 }
@@ -475,7 +506,14 @@ impl ParseState {
             // println!("popping at {}", match_end);
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
-        self.push_meta_ops(false, match_end, &*level_context, &pat.operation, syntax_set, ops);
+        self.push_meta_ops(
+            false,
+            match_end,
+            &*level_context,
+            &pat.operation,
+            syntax_set,
+            ops,
+        );
 
         self.perform_op(line, &reg_match.regions, pat, syntax_set)
     }
@@ -508,16 +546,15 @@ impl ParseState {
                 if !initial && cur_context.clear_scopes != None {
                     ops.push((index, ScopeStackOp::Restore));
                 }
-            },
+            }
             // for some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
             // - the meta_content_scope of the current context is applied to the matched thing, unlike pop
             // - the clear_scopes are applied after the matched token, unlike push
             // - the interaction with meta scopes means that the token has the meta scopes of both the current scope and the new scope.
-            MatchOperation::Push(ref context_refs) |
-            MatchOperation::Set(ref context_refs) => {
+            MatchOperation::Push(ref context_refs) | MatchOperation::Set(ref context_refs) => {
                 let is_set = match *match_op {
                     MatchOperation::Set(_) => true,
-                    _ => false
+                    _ => false,
                 };
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
@@ -540,21 +577,29 @@ impl ParseState {
                         }
                     }
                 } else {
-                    let repush = (is_set && (!cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty())) || context_refs.iter().any(|r| {
-                        let ctx = r.resolve(syntax_set);
+                    let repush = (is_set
+                        && (!cur_context.meta_scope.is_empty()
+                            || !cur_context.meta_content_scope.is_empty()))
+                        || context_refs.iter().any(|r| {
+                            let ctx = r.resolve(syntax_set);
 
-                        !ctx.meta_content_scope.is_empty() || (ctx.clear_scopes.is_some() && is_set)
-                    });
+                            !ctx.meta_content_scope.is_empty()
+                                || (ctx.clear_scopes.is_some() && is_set)
+                        });
                     if repush {
                         // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
-                        let mut num_to_pop : usize = context_refs.iter().map(|r| {
-                            let ctx = r.resolve(syntax_set);
-                            ctx.meta_scope.len()
-                        }).sum();
+                        let mut num_to_pop: usize = context_refs
+                            .iter()
+                            .map(|r| {
+                                let ctx = r.resolve(syntax_set);
+                                ctx.meta_scope.len()
+                            })
+                            .sum();
 
                         // also pop off the original context's meta scopes
                         if is_set {
-                            num_to_pop += cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
+                            num_to_pop +=
+                                cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
                         }
 
                         // do all the popping as one operation
@@ -582,7 +627,7 @@ impl ParseState {
                         }
                     }
                 }
-            },
+            }
             MatchOperation::None => (),
         }
     }
@@ -593,7 +638,7 @@ impl ParseState {
         line: &str,
         regions: &Region,
         pat: &MatchPattern,
-        syntax_set: &SyntaxSet
+        syntax_set: &SyntaxSet,
     ) -> bool {
         let (ctx_refs, old_proto_ids) = match pat.operation {
             MatchOperation::Push(ref ctx_refs) => (ctx_refs, None),
@@ -632,7 +677,10 @@ impl ParseState {
             let captures = {
                 let mut uses_backrefs = context.uses_backrefs;
                 if !proto_ids.is_empty() {
-                    uses_backrefs = uses_backrefs || proto_ids.iter().any(|id| syntax_set.get_context(id).uses_backrefs);
+                    uses_backrefs = uses_backrefs
+                        || proto_ids
+                            .iter()
+                            .any(|id| syntax_set.get_context(id).uses_backrefs);
                 }
                 if uses_backrefs {
                     Some((regions.clone(), line.to_owned()))
@@ -654,8 +702,8 @@ impl ParseState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::{SyntaxSet, SyntaxSetBuilder, Scope, ScopeStack};
-    use crate::parsing::ScopeStackOp::{Push, Pop, Clear, Restore};
+    use crate::parsing::ScopeStackOp::{Clear, Pop, Push, Restore};
+    use crate::parsing::{Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder};
     use crate::util::debug_print_ops;
 
     const TEST_SYNTAX: &str = include_str!("../../testdata/parser_tests.sublime-syntax");
@@ -691,7 +739,7 @@ mod tests {
             (3, Pop(2)),
             (3, Push(Scope::new("meta.function.ruby").unwrap())),
             (4, Push(Scope::new("entity.name.function.ruby").unwrap())),
-            (7, Pop(1))
+            (7, Pop(1)),
         ];
         assert_eq!(&ops2[0..test_ops2.len()], &test_ops2[..]);
     }
@@ -704,16 +752,28 @@ mod tests {
             ParseState::new(syntax)
         };
 
-        assert_eq!(ops(&mut state, "key: value\n", &ps), vec![
-            (0, Push(Scope::new("source.yaml").unwrap())),
-            (0, Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())),
-            (0, Push(Scope::new("entity.name.tag.yaml").unwrap())),
-            (3, Pop(2)),
-            (3, Push(Scope::new("punctuation.separator.key-value.mapping.yaml").unwrap())),
-            (4, Pop(1)),
-            (5, Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())),
-            (10, Pop(1)),
-        ]);
+        assert_eq!(
+            ops(&mut state, "key: value\n", &ps),
+            vec![
+                (0, Push(Scope::new("source.yaml").unwrap())),
+                (
+                    0,
+                    Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())
+                ),
+                (0, Push(Scope::new("entity.name.tag.yaml").unwrap())),
+                (3, Pop(2)),
+                (
+                    3,
+                    Push(Scope::new("punctuation.separator.key-value.mapping.yaml").unwrap())
+                ),
+                (4, Pop(1)),
+                (
+                    5,
+                    Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())
+                ),
+                (10, Pop(1)),
+            ]
+        );
     }
 
     #[test]
@@ -753,30 +813,51 @@ mod tests {
         // For parsing HEREDOC, the "SQL" is captured at the beginning and then used in another
         // regex with a backref, to match the end of the HEREDOC. Note that there can be code
         // after the marker (`.strip`) here.
-        assert_eq!(ops(&mut state, "lol = <<-SQL.strip", &ss), vec![
-            (0, Push(Scope::new("source.ruby.rails").unwrap())),
-            (4, Push(Scope::new("keyword.operator.assignment.ruby").unwrap())),
-            (5, Pop(1)),
-            (6, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
-            (6, Push(Scope::new("punctuation.definition.string.begin.ruby").unwrap())),
-            (12, Pop(1)),
-            (12, Pop(1)),
-            (12, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
-            (12, Push(Scope::new("text.sql.embedded.ruby").unwrap())),
-            (12, Clear(ClearAmount::TopN(2))),
-            (12, Push(Scope::new("punctuation.accessor.ruby").unwrap())),
-            (13, Pop(1)),
-            (18, Restore),
-        ]);
+        assert_eq!(
+            ops(&mut state, "lol = <<-SQL.strip", &ss),
+            vec![
+                (0, Push(Scope::new("source.ruby.rails").unwrap())),
+                (
+                    4,
+                    Push(Scope::new("keyword.operator.assignment.ruby").unwrap())
+                ),
+                (5, Pop(1)),
+                (
+                    6,
+                    Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())
+                ),
+                (
+                    6,
+                    Push(Scope::new("punctuation.definition.string.begin.ruby").unwrap())
+                ),
+                (12, Pop(1)),
+                (12, Pop(1)),
+                (
+                    12,
+                    Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())
+                ),
+                (12, Push(Scope::new("text.sql.embedded.ruby").unwrap())),
+                (12, Clear(ClearAmount::TopN(2))),
+                (12, Push(Scope::new("punctuation.accessor.ruby").unwrap())),
+                (13, Pop(1)),
+                (18, Restore),
+            ]
+        );
 
         assert_eq!(ops(&mut state, "wow", &ss), vec![]);
 
-        assert_eq!(ops(&mut state, "SQL", &ss), vec![
-            (0, Pop(1)),
-            (0, Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())),
-            (3, Pop(1)),
-            (3, Pop(1)),
-        ]);
+        assert_eq!(
+            ops(&mut state, "SQL", &ss),
+            vec![
+                (0, Pop(1)),
+                (
+                    0,
+                    Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())
+                ),
+                (3, Pop(1)),
+                (3, Pop(1)),
+            ]
+        );
     }
 
     #[test]
@@ -787,47 +868,77 @@ mod tests {
             ParseState::new(syntax)
         };
 
-        assert_eq!(ops(&mut state, "#ifdef FOO", &ss), vec![
-            (0, Push(Scope::new("source.c").unwrap())),
-            (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
-            (0, Push(Scope::new("keyword.control.import.c").unwrap())),
-            (6, Pop(1)),
-            (10, Pop(1)),
-        ]);
-        assert_eq!(ops(&mut state, "{", &ss), vec![
-            (0, Push(Scope::new("meta.block.c").unwrap())),
-            (0, Push(Scope::new("punctuation.section.block.begin.c").unwrap())),
-            (1, Pop(1)),
-        ]);
-        assert_eq!(ops(&mut state, "#else", &ss), vec![
-            (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
-            (0, Push(Scope::new("keyword.control.import.c").unwrap())),
-            (5, Pop(1)),
-            (5, Pop(1)),
-        ]);
-        assert_eq!(ops(&mut state, "{", &ss), vec![
-            (0, Push(Scope::new("meta.block.c").unwrap())),
-            (0, Push(Scope::new("punctuation.section.block.begin.c").unwrap())),
-            (1, Pop(1)),
-        ]);
-        assert_eq!(ops(&mut state, "#endif", &ss), vec![
-            (0, Pop(1)),
-            (0, Push(Scope::new("meta.block.c").unwrap())),
-            (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
-            (0, Push(Scope::new("keyword.control.import.c").unwrap())),
-            (6, Pop(2)),
-            (6, Pop(2)),
-            (6, Push(Scope::new("meta.block.c").unwrap())),
-        ]);
-        assert_eq!(ops(&mut state, "    foo;", &ss), vec![
-            (7, Push(Scope::new("punctuation.terminator.c").unwrap())),
-            (8, Pop(1)),
-        ]);
-        assert_eq!(ops(&mut state, "}", &ss), vec![
-            (0, Push(Scope::new("punctuation.section.block.end.c").unwrap())),
-            (1, Pop(1)),
-            (1, Pop(1)),
-        ]);
+        assert_eq!(
+            ops(&mut state, "#ifdef FOO", &ss),
+            vec![
+                (0, Push(Scope::new("source.c").unwrap())),
+                (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
+                (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+                (6, Pop(1)),
+                (10, Pop(1)),
+            ]
+        );
+        assert_eq!(
+            ops(&mut state, "{", &ss),
+            vec![
+                (0, Push(Scope::new("meta.block.c").unwrap())),
+                (
+                    0,
+                    Push(Scope::new("punctuation.section.block.begin.c").unwrap())
+                ),
+                (1, Pop(1)),
+            ]
+        );
+        assert_eq!(
+            ops(&mut state, "#else", &ss),
+            vec![
+                (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
+                (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+                (5, Pop(1)),
+                (5, Pop(1)),
+            ]
+        );
+        assert_eq!(
+            ops(&mut state, "{", &ss),
+            vec![
+                (0, Push(Scope::new("meta.block.c").unwrap())),
+                (
+                    0,
+                    Push(Scope::new("punctuation.section.block.begin.c").unwrap())
+                ),
+                (1, Pop(1)),
+            ]
+        );
+        assert_eq!(
+            ops(&mut state, "#endif", &ss),
+            vec![
+                (0, Pop(1)),
+                (0, Push(Scope::new("meta.block.c").unwrap())),
+                (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
+                (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+                (6, Pop(2)),
+                (6, Pop(2)),
+                (6, Push(Scope::new("meta.block.c").unwrap())),
+            ]
+        );
+        assert_eq!(
+            ops(&mut state, "    foo;", &ss),
+            vec![
+                (7, Push(Scope::new("punctuation.terminator.c").unwrap())),
+                (8, Pop(1)),
+            ]
+        );
+        assert_eq!(
+            ops(&mut state, "}", &ss),
+            vec![
+                (
+                    0,
+                    Push(Scope::new("punctuation.section.block.end.c").unwrap())
+                ),
+                (1, Pop(1)),
+                (1, Pop(1)),
+            ]
+        );
     }
 
     #[test]
@@ -894,9 +1005,7 @@ mod tests {
     #[test]
     fn can_parse_infinite_loop() {
         let line = "#infinite_loop_test 123";
-        let expect = [
-            "<source.test>, <constant.numeric.test>",
-        ];
+        let expect = ["<source.test>, <constant.numeric.test>"];
         expect_scope_stacks(&line, &expect, TEST_SYNTAX);
     }
 
@@ -965,8 +1074,9 @@ contexts:
         let syntax = SyntaxDefinition::load_from_str(
             include_str!("../../testdata/embed_escape_test.sublime-syntax"),
             false,
-            None
-        ).unwrap();
+            None,
+        )
+        .unwrap();
 
         let line1 = "\"abctest\" foobar";
         let expect1 = [
@@ -1327,11 +1437,15 @@ contexts:
 "#;
 
         let stack_states = stack_states(parse("aa b", syntax));
-        assert_eq!(stack_states, vec![
-            "<source.test>",
-            "<source.test>, <test.good>",
-            "<source.test>",
-        ], "Expected test.bad to not match");
+        assert_eq!(
+            stack_states,
+            vec![
+                "<source.test>",
+                "<source.test>, <test.good>",
+                "<source.test>",
+            ],
+            "Expected test.bad to not match"
+        );
     }
 
     #[test]
@@ -1385,14 +1499,23 @@ contexts:
         expect_scope_stacks_with_syntax(
             "a1b2c3d4e5",
             &[
-                "<a>", "<1>", "<b>", "<2>", "<c>", "<3>", "<d>", "<4>", "<e>", "<5>"
-            ], SyntaxDefinition::load_from_str(&syntax, true, None).unwrap()
+                "<a>", "<1>", "<b>", "<2>", "<c>", "<3>", "<d>", "<4>", "<e>", "<5>",
+            ],
+            SyntaxDefinition::load_from_str(&syntax, true, None).unwrap(),
         );
         expect_scope_stacks_with_syntax(
             "5cfcecbedcdea",
             &[
-                "<5>", "<cwith>", "<f>", "<e>", "<b>", "<d>", "<cwithout>", "<a>"
-            ], SyntaxDefinition::load_from_str(&syntax, true, None).unwrap()
+                "<5>",
+                "<cwith>",
+                "<f>",
+                "<e>",
+                "<b>",
+                "<d>",
+                "<cwithout>",
+                "<a>",
+            ],
+            SyntaxDefinition::load_from_str(&syntax, true, None).unwrap(),
         );
     }
 
@@ -1414,7 +1537,11 @@ contexts:
 "#;
 
         let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
-        expect_scope_stacks_with_syntax("testfoo", &["<test>", /*"<ignored>",*/ "<f>", "<keyword>"], syntax);
+        expect_scope_stacks_with_syntax(
+            "testfoo",
+            &["<test>", /*"<ignored>",*/ "<f>", "<keyword>"],
+            syntax,
+        );
     }
 
     #[test]
@@ -1619,27 +1746,30 @@ contexts:
         let syntax_set = link(syntax_newlines);
 
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
-        assert_eq!(ops(&mut state, "foo\n", &syntax_set), vec![
-            (0, Push(Scope::new("source.test").unwrap())),
-            (0, Push(Scope::new("word").unwrap())),
-            (3, Pop(1))
-        ]);
-        assert_eq!(ops(&mut state, "===\n", &syntax_set), vec![
-            (0, Push(Scope::new("heading").unwrap())),
-            (3, Pop(1))
-        ]);
+        assert_eq!(
+            ops(&mut state, "foo\n", &syntax_set),
+            vec![
+                (0, Push(Scope::new("source.test").unwrap())),
+                (0, Push(Scope::new("word").unwrap())),
+                (3, Pop(1))
+            ]
+        );
+        assert_eq!(
+            ops(&mut state, "===\n", &syntax_set),
+            vec![(0, Push(Scope::new("heading").unwrap())), (3, Pop(1))]
+        );
 
-        assert_eq!(ops(&mut state, "bar\n", &syntax_set), vec![
-            (0, Push(Scope::new("word").unwrap())),
-            (3, Pop(1))
-        ]);
+        assert_eq!(
+            ops(&mut state, "bar\n", &syntax_set),
+            vec![(0, Push(Scope::new("word").unwrap())), (3, Pop(1))]
+        );
         // This should result in popping out of the context
         assert_eq!(ops(&mut state, "\n", &syntax_set), vec![]);
         // So now this matches other
-        assert_eq!(ops(&mut state, "====\n", &syntax_set), vec![
-            (0, Push(Scope::new("other").unwrap())),
-            (4, Pop(1))
-        ]);
+        assert_eq!(
+            ops(&mut state, "====\n", &syntax_set),
+            vec![(0, Push(Scope::new("other").unwrap())), (4, Pop(1))]
+        );
     }
 
     #[test]
@@ -1657,14 +1787,17 @@ contexts:
         let syntax_set = link(syntax_newlines);
 
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
-        assert_eq!(ops(&mut state, "// foo\n", &syntax_set), vec![
-            (0, Push(Scope::new("source.test").unwrap())),
-            (0, Push(Scope::new("comment.line.double-slash").unwrap())),
-            // 6 is important here, should not be 7. The pattern should *not* consume the newline,
-            // but instead match before it. This is important for whitespace-sensitive syntaxes
-            // where newlines terminate statements such as Scala.
-            (6, Pop(1))
-        ]);
+        assert_eq!(
+            ops(&mut state, "// foo\n", &syntax_set),
+            vec![
+                (0, Push(Scope::new("source.test").unwrap())),
+                (0, Push(Scope::new("comment.line.double-slash").unwrap())),
+                // 6 is important here, should not be 7. The pattern should *not* consume the newline,
+                // but instead match before it. This is important for whitespace-sensitive syntaxes
+                // where newlines terminate statements such as Scala.
+                (6, Pop(1))
+            ]
+        );
     }
 
     #[test]
@@ -1693,7 +1826,8 @@ contexts:
 
     #[test]
     fn can_include_backrefs() {
-        let syntax = SyntaxDefinition::load_from_str(r#"
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
                 name: Backref Include Test
                 scope: source.backrefinc
                 contexts:
@@ -1707,14 +1841,19 @@ contexts:
                     - match: \1
                       scope: b
                       pop: true
-                "#, true, None).unwrap();
+                "#,
+            true,
+            None,
+        )
+        .unwrap();
 
         expect_scope_stacks_with_syntax(&"aa", &["<a>", "<b>"], syntax);
     }
-    
+
     #[test]
     fn can_include_nested_backrefs() {
-        let syntax = SyntaxDefinition::load_from_str(r#"
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
                 name: Backref Include Test
                 scope: source.backrefinc
                 contexts:
@@ -1730,7 +1869,11 @@ contexts:
                     - match: \1
                       scope: b
                       pop: true
-                "#, true, None).unwrap();
+                "#,
+            true,
+            None,
+        )
+        .unwrap();
 
         expect_scope_stacks_with_syntax(&"aa", &["<a>", "<b>"], syntax);
     }
@@ -1784,7 +1927,11 @@ contexts:
         builder.build()
     }
 
-    fn ops(state: &mut ParseState, line: &str, syntax_set: &SyntaxSet) -> Vec<(usize, ScopeStackOp)> {
+    fn ops(
+        state: &mut ParseState,
+        line: &str,
+        syntax_set: &SyntaxSet,
+    ) -> Vec<(usize, ScopeStackOp)> {
         let ops = state.parse_line(line, syntax_set);
         debug_print_ops(line, &ops);
         ops
@@ -1795,7 +1942,11 @@ contexts:
         let mut stack = ScopeStack::new();
         for &(_, ref op) in ops.iter() {
             stack.apply(op);
-            let scopes: Vec<String> = stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+            let scopes: Vec<String> = stack
+                .as_slice()
+                .iter()
+                .map(|s| format!("{:?}", s))
+                .collect();
             let stack_str = scopes.join(", ");
             states.push(stack_str);
         }

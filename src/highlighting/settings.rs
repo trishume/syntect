@@ -1,7 +1,7 @@
+use plist::Error as PlistError;
 /// Code based on https://github.com/defuz/sublimate/blob/master/src/core/settings.rs
 /// released under the MIT license by @defuz
 use std::io::{Read, Seek};
-use plist::{Error as PlistError};
 
 pub use serde_json::Value as Settings;
 pub use serde_json::Value::Array as SettingsArray;

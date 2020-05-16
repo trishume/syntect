@@ -23,7 +23,7 @@ fn main() -> Result<(), std::io::Error> {
     // generate html
     let ss = SyntaxSet::load_defaults_newlines();
 
-    let html_file =  File::create(Path::new("synhtml-css-classes.html"))?;
+    let html_file = File::create(Path::new("synhtml-css-classes.html"))?;
     let mut html = BufWriter::new(&html_file);
 
     // write html header
@@ -31,7 +31,10 @@ fn main() -> Result<(), std::io::Error> {
     writeln!(html, "<html>")?;
     writeln!(html, "  <head>")?;
     writeln!(html, "    <title>synhtml-css-classes.rs</title>")?;
-    writeln!(html, "    <link rel=\"stylesheet\" href=\"synhtml-css-classes.css\">")?;
+    writeln!(
+        html,
+        "    <link rel=\"stylesheet\" href=\"synhtml-css-classes.css\">"
+    )?;
     writeln!(html, "  </head>")?;
     writeln!(html, "  <body>")?;
 

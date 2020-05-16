@@ -5,29 +5,32 @@
 //!
 //! An example of how this script is used to generate the pack files included
 //! with syntect can be found under `make packs` in the Makefile.
-use syntect::parsing::SyntaxSetBuilder;
-use syntect::highlighting::ThemeSet;
-use syntect::dumps::*;
 use std::env;
+use syntect::dumps::*;
+use syntect::highlighting::ThemeSet;
+use syntect::parsing::SyntaxSetBuilder;
 
 fn usage_and_exit() -> ! {
-    println!("USAGE: gendata synpack source-dir \
+    println!(
+        "USAGE: gendata synpack source-dir \
               newlines.packdump nonewlines.packdump \
               [metadata.packdump] [metadata extra-source-dir]\n       \
-              gendata themepack source-dir themepack.themedump");
+              gendata themepack source-dir themepack.themedump"
+    );
     ::std::process::exit(2);
 }
 
 fn main() {
     let mut a = env::args().skip(1);
     match (a.next(), a.next(), a.next(), a.next(), a.next(), a.next()) {
-        (Some(ref cmd),
-         Some(ref package_dir),
-         Some(ref packpath_newlines),
-         Some(ref packpath_nonewlines),
-         ref _option_metapath,
-         ref _option_metasource,
-         ) if cmd == "synpack" => {
+        (
+            Some(ref cmd),
+            Some(ref package_dir),
+            Some(ref packpath_newlines),
+            Some(ref packpath_nonewlines),
+            ref _option_metapath,
+            ref _option_metasource,
+        ) if cmd == "synpack" => {
             let mut builder = SyntaxSetBuilder::new();
             builder.add_plain_text_syntax();
             builder.add_from_folder(package_dir, true).unwrap();
@@ -36,12 +39,16 @@ fn main() {
 
             let mut builder_nonewlines = SyntaxSetBuilder::new();
             builder_nonewlines.add_plain_text_syntax();
-            builder_nonewlines.add_from_folder(package_dir, false).unwrap();
+            builder_nonewlines
+                .add_from_folder(package_dir, false)
+                .unwrap();
 
             #[cfg(feature = "metadata")]
             {
                 if let Some(metasource) = _option_metasource {
-                    builder_nonewlines.add_from_folder(metasource, false).unwrap();
+                    builder_nonewlines
+                        .add_from_folder(metasource, false)
+                        .unwrap();
                 }
             }
 
@@ -54,7 +61,6 @@ fn main() {
                     dump_to_file(&ss_nonewlines.metadata(), metapath).unwrap();
                 }
             }
-
         }
         (Some(ref s), Some(ref theme_dir), Some(ref packpath), ..) if s == "themepack" => {
             let ts = ThemeSet::load_from_folder(theme_dir).unwrap();

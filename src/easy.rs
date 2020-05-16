@@ -2,10 +2,10 @@
 //! files without caring about intermediate semantic representation
 //! and caching.
 
-use crate::parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, ScopeStackOp};
-use crate::highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
-use std::io::{self, BufReader};
+use crate::highlighting::{HighlightIterator, HighlightState, Highlighter, Style, Theme};
+use crate::parsing::{ParseState, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet};
 use std::fs::File;
+use std::io::{self, BufReader};
 use std::path::Path;
 // use util::debug_print_ops;
 
@@ -55,7 +55,11 @@ impl<'a> HighlightLines<'a> {
     }
 
     /// Highlights a line of a file
-    pub fn highlight<'b>(&mut self, line: &'b str, syntax_set: &SyntaxSet) -> Vec<(Style, &'b str)> {
+    pub fn highlight<'b>(
+        &mut self,
+        line: &'b str,
+        syntax_set: &SyntaxSet,
+    ) -> Vec<(Style, &'b str)> {
         // println!("{}", self.highlight_state.path);
         let ops = self.parse_state.parse_line(line, syntax_set);
         // use util::debug_print_ops;
@@ -126,13 +130,15 @@ impl<'a> HighlightFile<'a> {
     ///     println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
     /// }
     /// ```
-    pub fn new<P: AsRef<Path>>(path_obj: P,
-                               ss: &SyntaxSet,
-                               theme: &'a Theme)
-                               -> io::Result<HighlightFile<'a>> {
+    pub fn new<P: AsRef<Path>>(
+        path_obj: P,
+        ss: &SyntaxSet,
+        theme: &'a Theme,
+    ) -> io::Result<HighlightFile<'a>> {
         let path: &Path = path_obj.as_ref();
         let f = File::open(path)?;
-        let syntax = ss.find_syntax_for_file(path)?
+        let syntax = ss
+            .find_syntax_for_file(path)?
             .unwrap_or_else(|| ss.find_syntax_plain_text());
 
         Ok(HighlightFile {
@@ -192,7 +198,7 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
         let op = if self.index == 0 {
             &NOOP_OP
         } else {
-            &self.ops[self.index-1].1
+            &self.ops[self.index - 1].1
         };
 
         self.index += 1;
@@ -200,12 +206,15 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
     }
 }
 
-#[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+#[cfg(all(
+    feature = "assets",
+    any(feature = "dump-load", feature = "dump-load-rs")
+))]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::{SyntaxSet, ParseState, ScopeStack};
     use crate::highlighting::ThemeSet;
+    use crate::parsing::{ParseState, ScopeStack, SyntaxSet};
     use std::str::FromStr;
 
     #[test]
@@ -222,10 +231,12 @@ mod tests {
     fn can_highlight_file() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
-        HighlightFile::new("testdata/highlight_test.erb",
-                           &ss,
-                           &ts.themes["base16-ocean.dark"])
-            .unwrap();
+        HighlightFile::new(
+            "testdata/highlight_test.erb",
+            &ss,
+            &ts.themes["base16-ocean.dark"],
+        )
+        .unwrap();
     }
 
     #[test]
@@ -239,11 +250,15 @@ mod tests {
         let mut token_count = 0;
         for (s, op) in ScopeRegionIterator::new(&ops, line) {
             stack.apply(op);
-            if s.is_empty() { // in this case we don't care about blank tokens
+            if s.is_empty() {
+                // in this case we don't care about blank tokens
                 continue;
             }
             if token_count == 1 {
-                assert_eq!(stack, ScopeStack::from_str("source.ruby keyword.operator.assignment.ruby").unwrap());
+                assert_eq!(
+                    stack,
+                    ScopeStack::from_str("source.ruby keyword.operator.assignment.ruby").unwrap()
+                );
                 assert_eq!(s, "=");
             }
             token_count += 1;
@@ -270,7 +285,7 @@ mod tests {
                 println!("{:?}", op);
             }
 
-            let all_ops: Vec<&ScopeStackOp> = ops.iter().map(|t|&t.1).collect();
+            let all_ops: Vec<&ScopeStackOp> = ops.iter().map(|t| &t.1).collect();
             assert_eq!(all_ops.len(), iterated_ops.len() - 1); // -1 because we want to ignore the NOOP
         }
     }

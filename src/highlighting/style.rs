@@ -53,7 +53,6 @@ bitflags! {
     }
 }
 
-
 impl Color {
     /// Black color (`#000000`)
     pub const BLACK: Color = Color {

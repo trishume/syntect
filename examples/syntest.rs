@@ -10,16 +10,16 @@
 #[macro_use]
 extern crate lazy_static;
 
-use syntect::parsing::{SyntaxSet, SyntaxSetBuilder, ParseState, ScopeStack, Scope};
+use syntect::easy::ScopeRegionIterator;
 use syntect::highlighting::ScopeSelectors;
-use syntect::easy::{ScopeRegionIterator};
+use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder};
 
-use std::path::Path;
-use std::io::{BufRead, BufReader};
+use std::cmp::{max, min};
 use std::fs::File;
-use std::cmp::{min, max};
-use std::time::Instant;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
 use std::str::FromStr;
+use std::time::Instant;
 
 use getopts::Options;
 use regex::Regex;
@@ -38,16 +38,22 @@ pub enum SyntaxTestFileResult {
 }
 
 lazy_static! {
-    pub static ref SYNTAX_TEST_HEADER_PATTERN: Regex = Regex::new(r#"(?xm)
+    pub static ref SYNTAX_TEST_HEADER_PATTERN: Regex = Regex::new(
+        r#"(?xm)
             ^(?P<testtoken_start>\s*\S+)
             \s+SYNTAX\sTEST\s+
             "(?P<syntax_file>[^"]+)"
             \s*(?P<testtoken_end>\S+)?$
-        "#).unwrap();
-    pub static ref SYNTAX_TEST_ASSERTION_PATTERN: Regex = Regex::new(r#"(?xm)
+        "#
+    )
+    .unwrap();
+    pub static ref SYNTAX_TEST_ASSERTION_PATTERN: Regex = Regex::new(
+        r#"(?xm)
         \s*(?:
             (?P<begin_of_token><-)|(?P<range>\^+)
-        )(.*)$"#).unwrap();
+        )(.*)$"#
+    )
+    .unwrap();
 }
 
 #[derive(Clone, Copy)]
@@ -79,45 +85,75 @@ struct RangeTestResult {
     success: bool,
 }
 
-fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&str>, line: &'a str) -> Option<AssertionRange<'a>> {
+fn get_line_assertion_details<'a>(
+    testtoken_start: &str,
+    testtoken_end: Option<&str>,
+    line: &'a str,
+) -> Option<AssertionRange<'a>> {
     // if the test start token specified in the test file's header is on the line
     if let Some(index) = line.find(testtoken_start) {
         let (before_token_start, token_and_rest_of_line) = line.split_at(index);
 
-        if let Some(captures) = SYNTAX_TEST_ASSERTION_PATTERN.captures(&token_and_rest_of_line[testtoken_start.len()..]) {
+        if let Some(captures) =
+            SYNTAX_TEST_ASSERTION_PATTERN.captures(&token_and_rest_of_line[testtoken_start.len()..])
+        {
             let mut sst = captures.get(3).unwrap().as_str(); // get the scope selector text
             let mut only_whitespace_after_token_end = true;
 
-            if let Some(token) = testtoken_end { // if there is an end token defined in the test file header
-                if let Some(end_token_pos) = sst.find(token) { // and there is an end token in the line
+            if let Some(token) = testtoken_end {
+                // if there is an end token defined in the test file header
+                if let Some(end_token_pos) = sst.find(token) {
+                    // and there is an end token in the line
                     let (ss, after_token_end) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
                     sst = &ss;
                     only_whitespace_after_token_end = after_token_end.trim_end().is_empty();
                 }
             }
             return Some(AssertionRange {
-                begin_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().start() } else { 0 },
-                end_char: index + if captures.get(2).is_some() { testtoken_start.len() + captures.get(2).unwrap().end() } else { 1 },
+                begin_char: index
+                    + if captures.get(2).is_some() {
+                        testtoken_start.len() + captures.get(2).unwrap().start()
+                    } else {
+                        0
+                    },
+                end_char: index
+                    + if captures.get(2).is_some() {
+                        testtoken_start.len() + captures.get(2).unwrap().end()
+                    } else {
+                        1
+                    },
                 scope_selector_text: sst,
-                is_pure_assertion_line: before_token_start.trim_start().is_empty() && only_whitespace_after_token_end, // if only whitespace surrounds the test tokens on the line, then it is a pure assertion line
+                is_pure_assertion_line: before_token_start.trim_start().is_empty()
+                    && only_whitespace_after_token_end, // if only whitespace surrounds the test tokens on the line, then it is a pure assertion line
             });
         }
     }
     None
 }
 
-fn process_assertions(assertion: &AssertionRange<'_>, test_against_line_scopes: &Vec<ScopedText>) -> Vec<RangeTestResult> {
+fn process_assertions(
+    assertion: &AssertionRange<'_>,
+    test_against_line_scopes: &Vec<ScopedText>,
+) -> Vec<RangeTestResult> {
     // format the scope selector to include a space at the beginning, because, currently, ScopeSelector expects excludes to begin with " -"
     // and they are sometimes in the syntax test as ^^^-comment, for example
-    let selector = ScopeSelectors::from_str(&format!(" {}", &assertion.scope_selector_text)).unwrap();
+    let selector =
+        ScopeSelectors::from_str(&format!(" {}", &assertion.scope_selector_text)).unwrap();
     // find the scope at the specified start column, and start matching the selector through the rest of the tokens on the line from there until the end column is reached
     let mut results = Vec::new();
-    for scoped_text in test_against_line_scopes.iter().skip_while(|s|s.char_start + s.text_len <= assertion.begin_char).take_while(|s|s.char_start < assertion.end_char) {
+    for scoped_text in test_against_line_scopes
+        .iter()
+        .skip_while(|s| s.char_start + s.text_len <= assertion.begin_char)
+        .take_while(|s| s.char_start < assertion.end_char)
+    {
         let match_value = selector.does_match(scoped_text.scope.as_slice());
         let result = RangeTestResult {
             column_begin: max(scoped_text.char_start, assertion.begin_char),
-            column_end: min(scoped_text.char_start + scoped_text.text_len, assertion.end_char),
-            success: match_value.is_some()
+            column_end: min(
+                scoped_text.char_start + scoped_text.text_len,
+                assertion.end_char,
+            ),
+            success: match_value.is_some(),
         };
         results.push(result);
     }
@@ -128,7 +164,7 @@ fn process_assertions(assertion: &AssertionRange<'_>, test_against_line_scopes: 
         let result = RangeTestResult {
             column_begin: max(last.char_start + last.text_len, assertion.begin_char),
             column_end: assertion.end_char,
-            success: match_value.is_some()
+            success: match_value.is_some(),
         };
         results.push(result);
     }
@@ -136,7 +172,12 @@ fn process_assertions(assertion: &AssertionRange<'_>, test_against_line_scopes: 
 }
 
 /// If `parse_test_lines` is `false` then lines that only contain assertions are not parsed
-fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: OutputOptions) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
+fn test_file(
+    ss: &SyntaxSet,
+    path: &Path,
+    parse_test_lines: bool,
+    out_opts: OutputOptions,
+) -> Result<SyntaxTestFileResult, SyntaxTestHeaderError> {
     use syntect::util::debug_print_ops;
     let f = File::open(path).unwrap();
     let mut reader = BufReader::new(f);
@@ -155,14 +196,21 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
     let captures = search_result.ok_or(SyntaxTestHeaderError::MalformedHeader)?;
 
     let testtoken_start = captures.name("testtoken_start").unwrap().as_str();
-    let testtoken_end = captures.name("testtoken_end").map_or(None, |c|Some(c.as_str()));
+    let testtoken_end = captures
+        .name("testtoken_end")
+        .map_or(None, |c| Some(c.as_str()));
     let syntax_file = captures.name("syntax_file").unwrap().as_str();
 
     // find the relevant syntax definition to parse the file with - case is important!
     if !out_opts.summary {
-        println!("The test file references syntax definition file: {}", syntax_file);
+        println!(
+            "The test file references syntax definition file: {}",
+            syntax_file
+        );
     }
-    let syntax = ss.find_syntax_by_path(syntax_file).ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound)?;
+    let syntax = ss
+        .find_syntax_by_path(syntax_file)
+        .ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound)?;
 
     // iterate over the lines of the file, testing them
     let mut state = ParseState::new(syntax);
@@ -176,24 +224,38 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
     let mut assertion_failures: usize = 0;
     let mut total_assertions: usize = 0;
 
-    loop { // over lines of file, starting with the header line
+    loop {
+        // over lines of file, starting with the header line
         let mut line_only_has_assertion = false;
         let mut line_has_assertion = false;
         if let Some(assertion) = get_line_assertion_details(testtoken_start, testtoken_end, &line) {
             let result = process_assertions(&assertion, &scopes_on_line_being_tested);
             total_assertions += &assertion.end_char - &assertion.begin_char;
-            for failure in result.iter().filter(|r|!r.success) {
+            for failure in result.iter().filter(|r| !r.success) {
                 let length = failure.column_end - failure.column_begin;
-                let text: String = previous_non_assertion_line.chars().skip(failure.column_begin).take(length).collect();
+                let text: String = previous_non_assertion_line
+                    .chars()
+                    .skip(failure.column_begin)
+                    .take(length)
+                    .collect();
                 if !out_opts.summary {
-                    println!("  Assertion selector {:?} \
+                    println!(
+                        "  Assertion selector {:?} \
                         from line {:?} failed against line {:?}, column range {:?}-{:?} \
                         (with text {:?}) \
                         has scope {:?}",
                         assertion.scope_selector_text.trim(),
-                        current_line_number, test_against_line_number, failure.column_begin, failure.column_end,
+                        current_line_number,
+                        test_against_line_number,
+                        failure.column_begin,
+                        failure.column_end,
                         text,
-                        scopes_on_line_being_tested.iter().skip_while(|s|s.char_start + s.text_len <= failure.column_begin).next().unwrap_or(scopes_on_line_being_tested.last().unwrap()).scope
+                        scopes_on_line_being_tested
+                            .iter()
+                            .skip_while(|s| s.char_start + s.text_len <= failure.column_begin)
+                            .next()
+                            .unwrap_or(scopes_on_line_being_tested.last().unwrap())
+                            .scope
                     );
                 }
                 assertion_failures += failure.column_end - failure.column_begin;
@@ -202,13 +264,17 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
             line_has_assertion = true;
         }
         if !line_only_has_assertion || parse_test_lines {
-            if !line_has_assertion { // ST seems to ignore lines that have assertions when calculating which line the assertion tests against
+            if !line_has_assertion {
+                // ST seems to ignore lines that have assertions when calculating which line the assertion tests against
                 scopes_on_line_being_tested.clear();
                 test_against_line_number = current_line_number;
                 previous_non_assertion_line = line.to_string();
             }
             if out_opts.debug && !line_only_has_assertion {
-                println!("-- debugging line {} -- scope stack: {:?}", current_line_number, stack);
+                println!(
+                    "-- debugging line {} -- scope stack: {:?}",
+                    current_line_number, stack
+                );
             }
             let ops = state.parse_line(&line, &ss);
             if out_opts.debug && !line_only_has_assertion {
@@ -221,19 +287,18 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
             let mut col: usize = 0;
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
                 stack.apply(op);
-                if s.is_empty() { // in this case we don't care about blank tokens
+                if s.is_empty() {
+                    // in this case we don't care about blank tokens
                     continue;
                 }
                 if !line_has_assertion {
                     // if the line has no assertions on it, remember the scopes on the line so we can test against them later
                     let len = s.chars().count();
-                    scopes_on_line_being_tested.push(
-                        ScopedText {
-                            char_start: col,
-                            text_len: len,
-                            scope: stack.as_slice().to_vec()
-                        }
-                    );
+                    scopes_on_line_being_tested.push(ScopedText {
+                        char_start: col,
+                        text_len: len,
+                        scope: stack.as_slice().to_vec(),
+                    });
                     // TODO: warn when there are duplicate adjacent (non-meta?) scopes, as it is almost always undesired
                     col += len;
                 }
@@ -248,7 +313,10 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
         line = line.replace("\r", &"");
     }
     let res = if assertion_failures > 0 {
-        Ok(SyntaxTestFileResult::FailedAssertions(assertion_failures, total_assertions))
+        Ok(SyntaxTestFileResult::FailedAssertions(
+            assertion_failures,
+            total_assertions,
+        ))
     } else {
         Ok(SyntaxTestFileResult::Success(total_assertions))
     };
@@ -269,12 +337,16 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
     opts.optflag("d", "debug", "Show parsing results for each test line");
-    opts.optflag("t", "time", "Time execution as a more broad-ranging benchmark");
+    opts.optflag(
+        "t",
+        "time",
+        "Time execution as a more broad-ranging benchmark",
+    );
     opts.optflag("s", "summary", "Print only summary of test failures");
 
     let matches = match opts.parse(&args[1..]) {
-        Ok(m) => { m }
-        Err(f) => { panic!(f.to_string()) }
+        Ok(m) => m,
+        Err(f) => panic!(f.to_string()),
     };
 
     let tests_path = if matches.free.len() < 1 {
@@ -283,11 +355,7 @@ fn main() {
         &args[1]
     };
 
-    let syntaxes_path = if matches.free.len() < 2 {
-        ""
-    } else {
-        &args[2]
-    };
+    let syntaxes_path = if matches.free.len() < 2 { "" } else { &args[2] };
 
     // load the syntaxes from disk if told to
     // (as opposed to from the binary dumps)
@@ -314,9 +382,7 @@ fn main() {
     let exit_code = recursive_walk(&ss, &tests_path, out_opts);
     println!("exiting with code {}", exit_code);
     std::process::exit(exit_code);
-
 }
-
 
 fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
     let mut exit_code: i32 = 0; // exit with code 0 by default, if all tests pass
@@ -324,7 +390,7 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
 
     // accumulate and sort for consistency of diffs across machines
     let mut files = Vec::new();
-    for entry in walker.filter_entry(|e|e.file_type().is_dir() || is_a_syntax_test_file(e)) {
+    for entry in walker.filter_entry(|e| e.file_type().is_dir() || is_a_syntax_test_file(e)) {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
             files.push(entry.path().to_owned());
@@ -343,8 +409,10 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
             let ms = (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64;
             println!("{} ms for file {}", ms, path.display());
         }
-        if exit_code != 2 { // leave exit code 2 if there was an error
-            if let Err(_) = result { // set exit code 2 if there was an error
+        if exit_code != 2 {
+            // leave exit code 2 if there was an error
+            if let Err(_) = result {
+                // set exit code 2 if there was an error
                 exit_code = 2;
             } else if let Ok(ok) = result {
                 if let SyntaxTestFileResult::FailedAssertions(_, _) = ok {
@@ -358,8 +426,9 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
 }
 
 fn is_a_syntax_test_file(entry: &DirEntry) -> bool {
-    entry.file_name()
-         .to_str()
-         .map(|s| s.starts_with("syntax_test_"))
-         .unwrap_or(false)
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| s.starts_with("syntax_test_"))
+        .unwrap_or(false)
 }

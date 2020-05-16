@@ -1,10 +1,13 @@
 //! Rendering highlighted code as HTML+CSS
-use std::fmt::Write;
-use crate::parsing::{ScopeStackOp, BasicScopeStackOp, Scope, ScopeStack, SyntaxReference, ParseState, SyntaxSet, SCOPE_REPO};
-use crate::easy::{HighlightLines, HighlightFile};
-use crate::highlighting::{Color, FontStyle, Style, Theme};
-use crate::util::LinesWithEndings;
+use crate::easy::{HighlightFile, HighlightLines};
 use crate::escape::Escape;
+use crate::highlighting::{Color, FontStyle, Style, Theme};
+use crate::parsing::{
+    BasicScopeStackOp, ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet,
+    SCOPE_REPO,
+};
+use crate::util::LinesWithEndings;
+use std::fmt::Write;
 
 use std::io::{self, BufRead};
 use std::path::Path;
@@ -45,7 +48,10 @@ pub struct ClassedHTMLGenerator<'a> {
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
-    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet) -> ClassedHTMLGenerator<'a> {
+    pub fn new(
+        syntax_reference: &'a SyntaxReference,
+        syntax_set: &'a SyntaxSet,
+    ) -> ClassedHTMLGenerator<'a> {
         let parse_state = ParseState::new(syntax_reference);
         let open_spans = 0;
         let html = String::new();
@@ -60,10 +66,8 @@ impl<'a> ClassedHTMLGenerator<'a> {
     /// Parse the line of code and update the internal HTML buffer with tagged HTML
     pub fn parse_html_for_line(&mut self, line: &str) {
         let parsed_line = self.parse_state.parse_line(line, &self.syntax_set);
-        let (formatted_line, delta) = tokens_to_classed_spans(
-            line,
-            parsed_line.as_slice(),
-            ClassStyle::Spaced);
+        let (formatted_line, delta) =
+            tokens_to_classed_spans(line, parsed_line.as_slice(), ClassStyle::Spaced);
         self.open_spans += delta;
         self.html.push_str(formatted_line.as_str());
         // retain newline
@@ -91,26 +95,34 @@ pub fn css_for_theme(theme: &Theme) -> String {
 
     css.push_str(".code {\n");
     if let Some(fgc) = theme.settings.foreground {
-        css.push_str(&format!(" color: #{:02x}{:02x}{:02x};\n", fgc.r, fgc.g, fgc.b));
+        css.push_str(&format!(
+            " color: #{:02x}{:02x}{:02x};\n",
+            fgc.r, fgc.g, fgc.b
+        ));
     }
     if let Some(bgc) = theme.settings.background {
-        css.push_str(&format!(" background-color: #{:02x}{:02x}{:02x};\n", bgc.r, bgc.g, bgc.b));
+        css.push_str(&format!(
+            " background-color: #{:02x}{:02x}{:02x};\n",
+            bgc.r, bgc.g, bgc.b
+        ));
     }
     css.push_str("}\n\n");
 
     for i in &theme.scopes {
-
         for scope_selector in &i.scope.selectors {
             let scopes = scope_selector.extract_scopes();
             for k in &scopes {
                 css.push_str(&format!(".{} {{\n", k));
 
-                if let Some(fg) =  i.style.foreground {
+                if let Some(fg) = i.style.foreground {
                     css.push_str(&format!(" color: #{:02x}{:02x}{:02x};\n", fg.r, fg.g, fg.b));
                 }
 
                 if let Some(bg) = i.style.background {
-                    css.push_str(&format!(" background-color: #{:02x}{:02x}{:02x};\n", bg.r, bg.g, bg.b));
+                    css.push_str(&format!(
+                        " background-color: #{:02x}{:02x}{:02x};\n",
+                        bg.r, bg.g, bg.b
+                    ));
                 }
 
                 if let Some(fs) = i.style.font_style {
@@ -162,13 +174,22 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
-pub fn highlighted_html_for_string(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> String {
+pub fn highlighted_html_for_string(
+    s: &str,
+    ss: &SyntaxSet,
+    syntax: &SyntaxReference,
+    theme: &Theme,
+) -> String {
     let mut highlighter = HighlightLines::new(syntax, theme);
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
     for line in LinesWithEndings::from(s) {
         let regions = highlighter.highlight(line, ss);
-        append_highlighted_html_for_styled_line(&regions[..], IncludeBackground::IfDifferent(bg), &mut output);
+        append_highlighted_html_for_styled_line(
+            &regions[..],
+            IncludeBackground::IfDifferent(bg),
+            &mut output,
+        );
     }
     output.push_str("</pre>\n");
     output
@@ -180,10 +201,11 @@ pub fn highlighted_html_for_string(s: &str, ss: &SyntaxSet, syntax: &SyntaxRefer
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
-pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
-                                                 ss: &SyntaxSet,
-                                                 theme: &Theme)
-                                                 -> io::Result<String> {
+pub fn highlighted_html_for_file<P: AsRef<Path>>(
+    path: P,
+    ss: &SyntaxSet,
+    theme: &Theme,
+) -> io::Result<String> {
     let mut highlighter = HighlightFile::new(path, ss, theme)?;
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
@@ -191,7 +213,11 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
     while highlighter.reader.read_line(&mut line)? > 0 {
         {
             let regions = highlighter.highlight_lines.highlight(&line, ss);
-            append_highlighted_html_for_styled_line(&regions[..], IncludeBackground::IfDifferent(bg), &mut output);
+            append_highlighted_html_for_styled_line(
+                &regions[..],
+                IncludeBackground::IfDifferent(bg),
+                &mut output,
+            );
         }
         line.clear();
     }
@@ -214,10 +240,11 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
 /// Returns the HTML string and the number of `<span>` tags opened
 /// (negative for closed). So that you can emit the correct number of closing
 /// tags at the end.
-pub fn tokens_to_classed_spans(line: &str,
-                           ops: &[(usize, ScopeStackOp)],
-                           style: ClassStyle)
-                           -> (String, isize) {
+pub fn tokens_to_classed_spans(
+    line: &str,
+    ops: &[(usize, ScopeStackOp)],
+    style: ClassStyle,
+) -> (String, isize) {
     let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
     let mut cur_index = 0;
     let mut stack = ScopeStack::new();
@@ -233,26 +260,23 @@ pub fn tokens_to_classed_spans(line: &str,
             write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
             cur_index = i
         }
-        stack.apply_with_hook(op, |basic_op, _| {
-            match basic_op {
-                BasicScopeStackOp::Push(scope) => {
-                    span_start = s.len();
-                    span_empty = true;
-                    s.push_str("<span class=\"");
-                    scope_to_classes(&mut s, scope, style);
-                    s.push_str("\">");
-                    span_delta += 1;
+        stack.apply_with_hook(op, |basic_op, _| match basic_op {
+            BasicScopeStackOp::Push(scope) => {
+                span_start = s.len();
+                span_empty = true;
+                s.push_str("<span class=\"");
+                scope_to_classes(&mut s, scope, style);
+                s.push_str("\">");
+                span_delta += 1;
+            }
+            BasicScopeStackOp::Pop => {
+                if span_empty == false {
+                    s.push_str("</span>");
+                } else {
+                    s.truncate(span_start);
                 }
-                BasicScopeStackOp::Pop => {
-                    if span_empty == false {
-                        s.push_str("</span>");
-                    }
-                    else {
-                        s.truncate(span_start);
-                    }
-                    span_delta -= 1;
-                    span_empty = false;
-                }
+                span_delta -= 1;
+                span_empty = false;
             }
         });
     }
@@ -260,11 +284,12 @@ pub fn tokens_to_classed_spans(line: &str,
     (s, span_delta)
 }
 
-#[deprecated(since="3.1.0", note="please use `tokens_to_classed_spans` instead")]
-pub fn tokens_to_classed_html(line: &str,
-                              ops: &[(usize, ScopeStackOp)],
-                              style: ClassStyle)
-                              -> String {
+#[deprecated(since = "3.1.0", note = "please use `tokens_to_classed_spans` instead")]
+pub fn tokens_to_classed_html(
+    line: &str,
+    ops: &[(usize, ScopeStackOp)],
+    style: ClassStyle,
+) -> String {
     tokens_to_classed_spans(line, ops, style).0
 }
 
@@ -281,9 +306,9 @@ pub enum IncludeBackground {
 
 fn write_css_color(s: &mut String, c: Color) {
     if c.a != 0xFF {
-        write!(s,"#{:02x}{:02x}{:02x}{:02x}",c.r,c.g,c.b,c.a).unwrap();
+        write!(s, "#{:02x}{:02x}{:02x}{:02x}", c.r, c.g, c.b, c.a).unwrap();
     } else {
-        write!(s,"#{:02x}{:02x}{:02x}",c.r,c.g,c.b).unwrap();
+        write!(s, "#{:02x}{:02x}{:02x}", c.r, c.g, c.b).unwrap();
     }
 }
 
@@ -319,12 +344,15 @@ pub fn styled_line_to_highlighted_html(v: &[(Style, &str)], bg: IncludeBackgroun
 
 /// Like `styled_line_to_highlighted_html` but appends to a `String` for increased efficiency.
 /// In fact `styled_line_to_highlighted_html` is just a wrapper around this function.
-pub fn append_highlighted_html_for_styled_line(v: &[(Style, &str)], bg: IncludeBackground, mut s: &mut String) {
+pub fn append_highlighted_html_for_styled_line(
+    v: &[(Style, &str)],
+    bg: IncludeBackground,
+    mut s: &mut String,
+) {
     let mut prev_style: Option<&Style> = None;
     for &(ref style, text) in v.iter() {
         let unify_style = if let Some(ps) = prev_style {
-            style == ps ||
-                (style.background == ps.background && text.trim().is_empty())
+            style == ps || (style.background == ps.background && text.trim().is_empty())
         } else {
             false
         };
@@ -377,17 +405,20 @@ pub fn append_highlighted_html_for_styled_line(v: &[(Style, &str)], bg: IncludeB
 /// helper for that :-)
 pub fn start_highlighted_html_snippet(t: &Theme) -> (String, Color) {
     let c = t.settings.background.unwrap_or(Color::WHITE);
-    (format!("<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
-            c.r,
-            c.g,
-            c.b), c)
+    (
+        format!(
+            "<pre style=\"background-color:#{:02x}{:02x}{:02x};\">\n",
+            c.r, c.g, c.b
+        ),
+        c,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::{SyntaxSet, ParseState, ScopeStack, SyntaxSetBuilder};
-    use crate::highlighting::{ThemeSet, Style, Highlighter, HighlightIterator, HighlightState};
+    use crate::highlighting::{HighlightIterator, HighlightState, Highlighter, Style, ThemeSet};
+    use crate::parsing::{ParseState, ScopeStack, SyntaxSet, SyntaxSetBuilder};
     #[test]
     fn tokens() {
         let ss = SyntaxSet::load_defaults_newlines();
@@ -423,17 +454,21 @@ mod tests {
         let html = highlighted_html_for_string(s, &ss, syntax, &ts.themes["base16-ocean.dark"]);
         // println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test3.html"));
-        let html2 = highlighted_html_for_file("testdata/highlight_test.erb",
-                                                 &ss,
-                                                 &ts.themes["base16-ocean.dark"])
-            .unwrap();
+        let html2 = highlighted_html_for_file(
+            "testdata/highlight_test.erb",
+            &ss,
+            &ts.themes["base16-ocean.dark"],
+        )
+        .unwrap();
         assert_eq!(html2, html);
 
         // YAML is a tricky syntax and InspiredGitHub is a fancy theme, this is basically an integration test
-        let html3 = highlighted_html_for_file("testdata/Packages/Rust/Cargo.sublime-syntax",
-                                                 &ss,
-                                                 &ts.themes["InspiredGitHub"])
-            .unwrap();
+        let html3 = highlighted_html_for_file(
+            "testdata/Packages/Rust/Cargo.sublime-syntax",
+            &ss,
+            &ts.themes["InspiredGitHub"],
+        )
+        .unwrap();
         println!("{}", html3);
         assert_eq!(html3, include_str!("../testdata/test4.html"));
     }
@@ -446,10 +481,12 @@ mod tests {
         builder.add_from_folder("testdata", true).unwrap();
         let ss = builder.build();
         let ts = ThemeSet::load_defaults();
-        let html = highlighted_html_for_file("testdata/testing-syntax.testsyntax",
-                                                &ss,
-                                                &ts.themes["base16-ocean.dark"])
-            .unwrap();
+        let html = highlighted_html_for_file(
+            "testdata/testing-syntax.testsyntax",
+            &ss,
+            &ts.themes["base16-ocean.dark"],
+        )
+        .unwrap();
         println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test5.html"));
     }

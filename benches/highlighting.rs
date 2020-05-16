@@ -1,11 +1,11 @@
-use criterion::{Bencher, Criterion, criterion_group, criterion_main};
-use syntect::parsing::{SyntaxSet, SyntaxReference, ScopeStack};
-use syntect::highlighting::{ThemeSet, Theme};
-use syntect::easy::HighlightLines;
-use syntect::html::highlighted_html_for_string;
-use std::str::FromStr;
+use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use std::fs::File;
 use std::io::Read;
+use std::str::FromStr;
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{Theme, ThemeSet};
+use syntect::html::highlighted_html_for_string;
+use syntect::parsing::{ScopeStack, SyntaxReference, SyntaxSet};
 
 fn do_highlight(s: &str, syntax_set: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> usize {
     let mut h = HighlightLines::new(syntax, theme);
@@ -37,19 +37,14 @@ fn highlight_file(b: &mut Bencher, file: &str) {
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
-    b.iter(|| {
-        do_highlight(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
-    });
+    b.iter(|| do_highlight(&s, &ss, syntax, &ts.themes["base16-ocean.dark"]));
 }
-
 
 fn stack_matching(b: &mut Bencher) {
     let s = "source.js meta.group.js meta.group.js meta.block.js meta.function-call.method.js meta.group.js meta.object-literal.js meta.block.js meta.function-call.method.js meta.group.js variable.other.readwrite.js";
     let stack = ScopeStack::from_str(s).unwrap();
     let selector = ScopeStack::from_str("source meta.function-call.method").unwrap();
-    b.iter(|| {
-        selector.does_match(stack.as_slice())
-    });
+    b.iter(|| selector.does_match(stack.as_slice()));
 }
 
 fn highlight_html(b: &mut Bencher) {
@@ -62,9 +57,7 @@ fn highlight_html(b: &mut Bencher) {
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
-    b.iter(|| {
-        highlighted_html_for_string(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
-    });
+    b.iter(|| highlighted_html_for_string(&s, &ss, syntax, &ts.themes["base16-ocean.dark"]));
 }
 
 fn highlighting_benchmark(c: &mut Criterion) {

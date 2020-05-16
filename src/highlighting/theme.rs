@@ -2,9 +2,9 @@
 /// released under the MIT license by @defuz
 use std::str::FromStr;
 
+use super::selector::*;
 use super::settings::{ParseSettings, Settings};
 use super::style::*;
-use super::selector::*;
 use crate::parsing::ParseScopeError;
 
 use self::ParseThemeError::*;
@@ -206,8 +206,7 @@ impl FromStr for FontStyle {
                 "bold" => FontStyle::BOLD,
                 "underline" => FontStyle::UNDERLINE,
                 "italic" => FontStyle::ITALIC,
-                "normal" |
-                "regular" => FontStyle::empty(),
+                "normal" | "regular" => FontStyle::empty(),
                 s => return Err(IncorrectFontStyle(s.to_owned())),
             })
         }
@@ -239,30 +238,24 @@ impl FromStr for Color {
             d.push(char.to_digit(16).ok_or(IncorrectColor)? as u8);
         }
         Ok(match d.len() {
-            3 => {
-                Color {
-                    r: d[0],
-                    g: d[1],
-                    b: d[2],
-                    a: 255,
-                }
-            }
-            6 => {
-                Color {
-                    r: d[0] * 16 + d[1],
-                    g: d[2] * 16 + d[3],
-                    b: d[4] * 16 + d[5],
-                    a: 255,
-                }
-            }
-            8 => {
-                Color {
-                    r: d[0] * 16 + d[1],
-                    g: d[2] * 16 + d[3],
-                    b: d[4] * 16 + d[5],
-                    a: d[6] * 16 + d[7],
-                }
-            }
+            3 => Color {
+                r: d[0],
+                g: d[1],
+                b: d[2],
+                a: 255,
+            },
+            6 => Color {
+                r: d[0] * 16 + d[1],
+                g: d[2] * 16 + d[3],
+                b: d[4] * 16 + d[5],
+                a: 255,
+            },
+            8 => Color {
+                r: d[0] * 16 + d[1],
+                g: d[2] * 16 + d[3],
+                b: d[4] * 16 + d[5],
+                a: d[6] * 16 + d[7],
+            },
             _ => return Err(IncorrectColor),
         })
     }
@@ -327,10 +320,7 @@ impl ParseSettings for ThemeItem {
             Some(settings) => StyleModifier::parse_settings(settings)?,
             None => return Err(IncorrectSettings),
         };
-        Ok(ThemeItem {
-            scope,
-            style,
-        })
+        Ok(ThemeItem { scope, style })
     }
 }
 
@@ -434,12 +424,10 @@ impl ParseSettings for Theme {
         };
         let mut iter = items.into_iter();
         let settings = match iter.next() {
-            Some(Settings::Object(mut obj)) => {
-                match obj.remove("settings") {
-                    Some(settings) => ThemeSettings::parse_settings(settings)?,
-                    None => return Err(UndefinedSettings),
-                }
-            }
+            Some(Settings::Object(mut obj)) => match obj.remove("settings") {
+                Some(settings) => ThemeSettings::parse_settings(settings)?,
+                None => return Err(UndefinedSettings),
+            },
             _ => return Err(UndefinedSettings),
         };
         let mut scopes = Vec::new();
