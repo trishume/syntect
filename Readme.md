@@ -23,7 +23,7 @@ I consider this project mostly complete, I still maintain it and review PRs, but
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "4.1"
+syntect = "4.2"
 ```
 
 After that take a look at the [documentation](https://docs.rs/syntect) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
@@ -128,14 +128,14 @@ For more information on available features, see the features section in `Cargo.t
 
 Since 4.0 `syntect` offers an alternative pure-rust regex engine based on the [fancy-regex](https://github.com/fancy-regex/fancy-regex) engine which extends the awesome [regex crate](https://github.com/rust-lang/regex) with support for fancier regex features that Sublime syntaxes need like lookaheads.
 
-The advantage of `fancy-regex` is that it does not require the [onig crate](https://github.com/rust-onig/rust-onig) which requires building and linking the Oniguruma C library. Many users experience difficulty building the `onig` crate, especially on Windows and Webassembly. The `onig` crate also recently added a requirement on `bindgen` which needs Clang/LLVM and thus makes it even harder to build. The `bindgen` dependency [may eventually be removed](https://github.com/rust-onig/rust-onig/pull/126) but even if it is, a pure-Rust build still makes things better for Webassembly and systems without a C compiler.
+The advantage of `fancy-regex` is that it does not require the [onig crate](https://github.com/rust-onig/rust-onig) which requires building and linking the Oniguruma C library. Many users experience difficulty building the `onig` crate, especially on Windows and Webassembly.
 
 As far as our tests can tell this new engine is just as correct, but it hasn't been tested as extensively in production. It also currently seems to be about **half the speed** of the default Oniguruma engine, although further testing and optimization (perhaps by you!) may eventually see it surpass Oniguruma's speed and become the default.
 
 To use the fancy-regex engine with syntect, add it to your `Cargo.toml` like so:
 
 ```toml
-syntect = { version = "4.1", default-features = false, features = ["default-fancy"]}
+syntect = { version = "4.2", default-features = false, features = ["default-fancy"]}
 ```
 
 If you want to run examples with the fancy-regex engine you can use a command line like the following:
