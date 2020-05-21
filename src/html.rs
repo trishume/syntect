@@ -20,7 +20,7 @@ use std::path::Path;
 /// # Example
 ///
 /// ```
-/// use syntect::html::ClassedHTMLGenerator;
+/// use syntect::html::{ClassedHTMLGenerator, ClassStyle};
 /// use syntect::parsing::SyntaxSet;
 ///
 /// let current_code = r#"
