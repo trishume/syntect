@@ -11,7 +11,7 @@
 //! mode.
 use syntect::highlighting::ThemeSet;
 use syntect::html::css_for_theme;
-use syntect::html::ClassedHTMLGenerator;
+use syntect::html::{ClassedHTMLGenerator, ClassStyle};
 use syntect::parsing::SyntaxSet;
 
 use std::fs::File;
@@ -42,7 +42,7 @@ fn main() {
 }";
 
     let sr_rs = ss.find_syntax_by_extension("rs").unwrap();
-    let mut rs_html_generator = ClassedHTMLGenerator::new(&sr_rs, &ss);
+    let mut rs_html_generator = ClassedHTMLGenerator::new(&sr_rs, &ss, ClassStyle::Spaced);
     for line in code_rs.lines() {
         rs_html_generator.parse_html_for_line(&line);
     }
@@ -60,7 +60,7 @@ int main() {
 }";
 
     let sr_cpp = ss.find_syntax_by_extension("cpp").unwrap();
-    let mut cpp_html_generator = ClassedHTMLGenerator::new(&sr_cpp, &ss);
+    let mut cpp_html_generator = ClassedHTMLGenerator::new(&sr_cpp, &ss, ClassStyle::Spaced);
     for line in code_cpp.lines() {
         cpp_html_generator.parse_html_for_line(&line);
     }
@@ -104,7 +104,7 @@ int main() {
     let css_dark_file = File::create(Path::new("theme-dark.css"))?;
     let mut css_dark_writer = BufWriter::new(&css_dark_file);
 
-    let css_dark = css_for_theme(dark_theme);
+    let css_dark = css_for_theme(dark_theme, &ClassStyle::Spaced);
     writeln!(css_dark_writer, "{}", css_dark)?;
 
     // create light color scheme css
@@ -112,7 +112,7 @@ int main() {
     let css_light_file = File::create(Path::new("theme-light.css"))?;
     let mut css_light_writer = BufWriter::new(&css_light_file);
 
-    let css_light = css_for_theme(light_theme);
+    let css_light = css_for_theme(light_theme, &ClassStyle::Spaced);
     writeln!(css_light_writer, "{}", css_light)?;
 
     Ok(())
