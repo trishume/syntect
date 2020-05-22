@@ -143,8 +143,6 @@ pub fn css_for_theme(theme: &Theme, style: ClassStyle) -> String {
     css
 }
 
-/// Only one style for now, I may add more class styles later.
-/// Just here so I don't have to change the API
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ClassStyle<'a> {
     /// The classes are the atoms of the scope separated by spaces
