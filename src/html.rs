@@ -42,11 +42,11 @@ pub struct ClassedHTMLGenerator<'a> {
     open_spans: isize,
     parse_state: ParseState,
     html: String,
-    style: ClassStyle,
+    style: ClassStyle<'a>,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
-    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet, style: ClassStyle) -> ClassedHTMLGenerator<'a> {
+    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet, style: ClassStyle<'a>) -> ClassedHTMLGenerator<'a> {
         let parse_state = ParseState::new(syntax_reference);
         let open_spans = 0;
         let html = String::new();
@@ -65,7 +65,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         let (formatted_line, delta) = tokens_to_classed_spans(
             line,
             parsed_line.as_slice(),
-            &self.style,
+            self.style,
         );
         self.open_spans += delta;
         self.html.push_str(formatted_line.as_str());
@@ -84,7 +84,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
 
 /// Create a complete CSS for a given theme. Can be used inline, or written to
 /// a CSS file.
-pub fn css_for_theme(theme: &Theme, style: &ClassStyle) -> String {
+pub fn css_for_theme(theme: &Theme, style: ClassStyle) -> String {
     let mut css = String::new();
 
     css.push_str("/*\n");
@@ -113,7 +113,7 @@ pub fn css_for_theme(theme: &Theme, style: &ClassStyle) -> String {
         for scope_selector in &i.scope.selectors {
             let scopes = scope_selector.extract_scopes();
             for k in &scopes {
-                scope_to_selector(&mut css, *k, &style);
+                scope_to_selector(&mut css, *k, style);
                 css.push_str(" {\n");
 
                 if let Some(fg) =  i.style.foreground {
@@ -145,8 +145,8 @@ pub fn css_for_theme(theme: &Theme, style: &ClassStyle) -> String {
 
 /// Only one style for now, I may add more class styles later.
 /// Just here so I don't have to change the API
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ClassStyle {
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ClassStyle<'a> {
     /// The classes are the atoms of the scope separated by spaces
     /// (e.g `source.php` becomes `source php`).
     /// This isn't that fast since it has to use the scope repository
@@ -159,11 +159,11 @@ pub enum ClassStyle {
     ///
     /// The prefix must be a valid CSS class name.
     SpacedPrefixed {
-        prefix: String,
+        prefix: &'a str,
     },
 }
 
-fn scope_to_classes(s: &mut String, scope: Scope, style: &ClassStyle) {
+fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
     match style {
         ClassStyle::Spaced => {
             let repo = SCOPE_REPO.lock().unwrap();
@@ -191,7 +191,7 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: &ClassStyle) {
     }
 }
 
-fn scope_to_selector(s: &mut String, scope: Scope, style: &ClassStyle) {
+fn scope_to_selector(s: &mut String, scope: Scope, style: ClassStyle) {
     match style {
         ClassStyle::Spaced => {
             let repo = SCOPE_REPO.lock().unwrap();
@@ -275,7 +275,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
 /// tags at the end.
 pub fn tokens_to_classed_spans(line: &str,
                            ops: &[(usize, ScopeStackOp)],
-                           style: &ClassStyle)
+                           style: ClassStyle)
                            -> (String, isize) {
     let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
     let mut cur_index = 0;
@@ -322,7 +322,7 @@ pub fn tokens_to_classed_spans(line: &str,
 #[deprecated(since="3.1.0", note="please use `tokens_to_classed_spans` instead")]
 pub fn tokens_to_classed_html(line: &str,
                               ops: &[(usize, ScopeStackOp)],
-                              style: &ClassStyle)
+                              style: ClassStyle)
                               -> String {
     tokens_to_classed_spans(line, ops, style).0
 }
@@ -458,7 +458,7 @@ mod tests {
         // use util::debug_print_ops;
         // debug_print_ops(line, &ops);
 
-        let (html, _) = tokens_to_classed_spans(line, &ops[..], &ClassStyle::Spaced);
+        let (html, _) = tokens_to_classed_spans(line, &ops[..], ClassStyle::Spaced);
         println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test2.html").trim_end());
 
@@ -531,7 +531,7 @@ mod tests {
         let current_code = "x + y".to_string();
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-        let mut html_generator = ClassedHTMLGenerator::new(&syntax, &syntax_set, ClassStyle::SpacedPrefixed { prefix: "foo-".to_string() });
+        let mut html_generator = ClassedHTMLGenerator::new(&syntax, &syntax_set, ClassStyle::SpacedPrefixed { prefix: "foo-" });
         for line in current_code.lines() {
             html_generator.parse_html_for_line(&line);
         }
