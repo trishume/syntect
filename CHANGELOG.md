@@ -1,5 +1,9 @@
 # Changelog
 
+## [Version 4.2.0](https://github.com/trishume/syntect/compare/v4.1.1...v4.2.0) (2020-04-20)
+
+- Updates to new versions of `onig` and `plist`. The new `onig` version doesn't require `bindgen` thus making compilation easier. [#293](https://github.com/trishume/syntect/pull/293)
+
 ## [Version 4.1.1](https://github.com/trishume/syntect/compare/v4.1.0...v4.1.1) (2020-04-20)
 
 - Properly handle backreferences in included contexts [#288](https://github.com/trishume/syntect/pull/288)
