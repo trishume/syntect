@@ -31,7 +31,7 @@ use std::path::Path;
 ///
 /// let syntax_set = SyntaxSet::load_defaults_newlines();
 /// let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-/// let mut html_generator = ClassedHTMLGenerator::new(&syntax, &syntax_set, ClassStyle::Spaced);
+/// let mut html_generator = ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::Spaced);
 /// for line in current_code.lines() {
 ///     html_generator.parse_html_for_line(&line);
 /// }
@@ -42,11 +42,16 @@ pub struct ClassedHTMLGenerator<'a> {
     open_spans: isize,
     parse_state: ParseState,
     html: String,
-    style: ClassStyle<'a>,
+    style: ClassStyle,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
-    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet, style: ClassStyle<'a>) -> ClassedHTMLGenerator<'a> {
+    #[deprecated(since="4.2.0", note="Please use `new_with_class_style` instead")]
+    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet) -> ClassedHTMLGenerator<'a> {
+        Self::new_with_class_style(syntax_reference, syntax_set, ClassStyle::Spaced)
+    }
+
+    pub fn new_with_class_style(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet, style: ClassStyle) -> ClassedHTMLGenerator<'a> {
         let parse_state = ParseState::new(syntax_reference);
         let open_spans = 0;
         let html = String::new();
@@ -82,9 +87,14 @@ impl<'a> ClassedHTMLGenerator<'a> {
     }
 }
 
+#[deprecated(since="4.2.0", note="Please use `css_for_theme_with_class_style` instead.")]
+pub fn css_for_theme(theme: &Theme) -> String {
+    css_for_theme_with_class_style(theme, ClassStyle::Spaced)
+}
+
 /// Create a complete CSS for a given theme. Can be used inline, or written to
 /// a CSS file.
-pub fn css_for_theme(theme: &Theme, style: ClassStyle) -> String {
+pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> String {
     let mut css = String::new();
 
     css.push_str("/*\n");
@@ -144,7 +154,7 @@ pub fn css_for_theme(theme: &Theme, style: ClassStyle) -> String {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ClassStyle<'a> {
+pub enum ClassStyle {
     /// The classes are the atoms of the scope separated by spaces
     /// (e.g `source.php` becomes `source php`).
     /// This isn't that fast since it has to use the scope repository
@@ -155,9 +165,14 @@ pub enum ClassStyle<'a> {
     /// can ensure that the theme's CSS applies precisely to syntect's
     /// output.
     ///
-    /// The prefix must be a valid CSS class name.
+    /// The prefix must be a valid CSS class name. To help ennforce
+    /// this invariant and prevent accidental foot-shooting, it must
+    /// be statically known. (If this requirement is onerous, please
+    /// file an issue; the HTML generator can also be forked
+    /// separately from the rest of syntect, as it only uses the
+    /// public API.)
     SpacedPrefixed {
-        prefix: &'a str,
+        prefix: &'static str,
     },
 }
 
@@ -516,7 +531,7 @@ mod tests {
         let current_code = "x + y".to_string();
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-        let mut html_generator = ClassedHTMLGenerator::new(&syntax, &syntax_set, ClassStyle::Spaced);
+        let mut html_generator = ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::Spaced);
         for line in current_code.lines() {
             html_generator.parse_html_for_line(&line);
         }
@@ -529,7 +544,7 @@ mod tests {
         let current_code = "x + y".to_string();
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-        let mut html_generator = ClassedHTMLGenerator::new(&syntax, &syntax_set, ClassStyle::SpacedPrefixed { prefix: "foo-" });
+        let mut html_generator = ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::SpacedPrefixed { prefix: "foo-" });
         for line in current_code.lines() {
             html_generator.parse_html_for_line(&line);
         }
@@ -545,7 +560,7 @@ fn main() {
 }";
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_extension("rs").unwrap();
-        let mut html_generator = ClassedHTMLGenerator::new(&syntax, &syntax_set, ClassStyle::Spaced);
+        let mut html_generator = ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::Spaced);
         for line in code.lines() {
             html_generator.parse_html_for_line(&line);
         }
