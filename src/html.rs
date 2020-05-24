@@ -154,6 +154,7 @@ pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Strin
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[non_exhaustive]
 pub enum ClassStyle {
     /// The classes are the atoms of the scope separated by spaces
     /// (e.g `source.php` becomes `source php`).
