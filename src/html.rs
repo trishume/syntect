@@ -177,54 +177,38 @@ pub enum ClassStyle {
 }
 
 fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
-    match style {
-        ClassStyle::Spaced => {
-            let repo = SCOPE_REPO.lock().unwrap();
-            for i in 0..(scope.len()) {
-                let atom = scope.atom_at(i as usize);
-                let atom_s = repo.atom_str(atom);
-                if i != 0 {
-                    s.push_str(" ")
-                }
-                s.push_str(atom_s);
-            }
-        },
-        ClassStyle::SpacedPrefixed { prefix } => {
-            let repo = SCOPE_REPO.lock().unwrap();
-            for i in 0..(scope.len()) {
-                let atom = scope.atom_at(i as usize);
-                let atom_s = repo.atom_str(atom);
-                if i != 0 {
-                    s.push_str(" ")
-                }
+    let repo = SCOPE_REPO.lock().unwrap();
+    for i in 0..(scope.len()) {
+        let atom = scope.atom_at(i as usize);
+        let atom_s = repo.atom_str(atom);
+        if i != 0 {
+            s.push_str(" ")
+        }
+        match style {
+            ClassStyle::Spaced => {
+            },
+            ClassStyle::SpacedPrefixed { prefix } => {
                 s.push_str(&prefix);
-                s.push_str(atom_s);
-            }
-        },
+            },
+        }
+        s.push_str(atom_s);
     }
 }
 
 fn scope_to_selector(s: &mut String, scope: Scope, style: ClassStyle) {
-    match style {
-        ClassStyle::Spaced => {
-            let repo = SCOPE_REPO.lock().unwrap();
-            for i in 0..(scope.len()) {
-                let atom = scope.atom_at(i as usize);
-                let atom_s = repo.atom_str(atom);
-                s.push_str(".");
-                s.push_str(atom_s);
-            }
-        },
-        ClassStyle::SpacedPrefixed { prefix } => {
-            let repo = SCOPE_REPO.lock().unwrap();
-            for i in 0..(scope.len()) {
-                let atom = scope.atom_at(i as usize);
-                let atom_s = repo.atom_str(atom);
-                s.push_str(".");
+    let repo = SCOPE_REPO.lock().unwrap();
+    for i in 0..(scope.len()) {
+        let atom = scope.atom_at(i as usize);
+        let atom_s = repo.atom_str(atom);
+        s.push_str(".");
+        match style {
+            ClassStyle::Spaced => {
+            },
+            ClassStyle::SpacedPrefixed { prefix } => {
                 s.push_str(&prefix);
-                s.push_str(atom_s);
-            }
-        },
+            },
+        }
+        s.push_str(atom_s);
     }
 }
 
