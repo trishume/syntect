@@ -64,7 +64,7 @@ metadata = ["parsing"]
 # The `assets` feature enables inclusion of the default theme and syntax packages.
 # For `assets` to do anything, it requires one of `dump-load-rs` or `dump-load` to be set.
 assets = []
-html = ["parsing", "assets"]
+html = ["parsing"]
 yaml-load = ["yaml-rust", "parsing"]
 default-onig = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create", "regex-onig"]
 # In order to switch to the fancy-regex engine, disable default features then add the default-fancy feature

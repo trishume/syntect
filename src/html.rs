@@ -440,6 +440,7 @@ pub fn start_highlighted_html_snippet(t: &Theme) -> (String, Color) {
             c.b), c)
 }
 
+#[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
 #[cfg(test)]
 mod tests {
     use super::*;
