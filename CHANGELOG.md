@@ -1,5 +1,10 @@
 # Changelog
 
+## [Version 4.3.0](https://github.com/trishume/syntect/compare/v4.2.0...v4.3.0) (2020-08-01)
+
+- Fixes unnecesary dependency of the `html` feature on the `assets` feature. [#300](https://github.com/trishume/syntect/pull/300)
+- Adds ability to add prefixes to `html` module CSS class names. [#296](https://github.com/trishume/syntect/pull/296)
+
 ## [Version 4.2.0](https://github.com/trishume/syntect/compare/v4.1.1...v4.2.0) (2020-04-20)
 
 - Updates to new versions of `onig` and `plist`. The new `onig` version doesn't require `bindgen` thus making compilation easier. [#293](https://github.com/trishume/syntect/pull/293)
