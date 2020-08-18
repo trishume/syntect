@@ -18,7 +18,7 @@ pub enum ParseSyntaxError {
     /// Some keys are required for something to be a valid `.sublime-syntax`
     MissingMandatoryKey(&'static str),
     /// Invalid regex
-    RegexCompileError(String, Box<dyn Error + Send>),
+    RegexCompileError(String, Box<dyn Error + Send + Sync + 'static>),
     /// A scope that syntect's scope implementation can't handle
     InvalidScope(ParseScopeError),
     /// A reference to another file that is invalid
