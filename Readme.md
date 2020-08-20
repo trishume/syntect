@@ -23,7 +23,7 @@ I consider this project mostly complete, I still maintain it and review PRs, but
 `syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
 
 ```toml
-syntect = "4.2"
+syntect = "4.4"
 ```
 
 After that take a look at the [documentation](https://docs.rs/syntect) and the [examples](https://github.com/trishume/syntect/tree/master/examples).

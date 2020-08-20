@@ -1,5 +1,9 @@
 # Changelog
 
+## [Version 4.4.0](https://github.com/trishume/syntect/compare/v4.3.0...v4.4.0) (2020-08-19)
+
+- Errors are now `Send + Sync + 'static` [#304](https://github.com/trishume/syntect/pull/304)
+
 ## [Version 4.3.0](https://github.com/trishume/syntect/compare/v4.2.0...v4.3.0) (2020-08-01)
 
 - Fixes unnecesary dependency of the `html` feature on the `assets` feature. [#300](https://github.com/trishume/syntect/pull/300)
