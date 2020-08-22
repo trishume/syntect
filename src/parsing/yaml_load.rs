@@ -1,13 +1,13 @@
 use super::regex::{Regex, Region};
 use super::scope::*;
 use super::syntax_definition::*;
-use yaml_rust::{YamlLoader, Yaml, ScanError};
-use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::path::Path;
 use std::ops::DerefMut;
+use std::path::Path;
+use yaml_rust::yaml::Hash;
+use yaml_rust::{ScanError, Yaml, YamlLoader};
 
 #[derive(Debug)]
 pub enum ParseSyntaxError {
@@ -39,9 +39,9 @@ impl fmt::Display for ParseSyntaxError {
             InvalidYaml(_) => write!(f, "Invalid YAML file syntax"),
             EmptyFile => write!(f, "Empty file"),
             MissingMandatoryKey(_) => write!(f, "Missing mandatory key in YAML file"),
-            RegexCompileError(ref regex, ref error) =>
-                write!(f, "Error while compiling regex '{}': {}",
-                       regex, error),
+            RegexCompileError(ref regex, ref error) => {
+                write!(f, "Error while compiling regex '{}': {}", regex, error)
+            }
             InvalidScope(_) => write!(f, "Invalid scope"),
             BadFileRef => write!(f, "Invalid file reference"),
             MainMissing => write!(f, "Context 'main' is missing"),
@@ -62,10 +62,11 @@ impl Error for ParseSyntaxError {
     }
 }
 
-fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a Hash,
-                                                    key: &'static str,
-                                                    f: F)
-                                                    -> Result<R, ParseSyntaxError> {
+fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(
+    map: &'a Hash,
+    key: &'static str,
+    f: F,
+) -> Result<R, ParseSyntaxError> {
     map.get(&Yaml::String(key.to_owned()))
         .ok_or_else(|| ParseSyntaxError::MissingMandatoryKey(key))
         .and_then(|x| f(x).ok_or(ParseSyntaxError::TypeMismatch))
@@ -101,10 +102,11 @@ impl SyntaxDefinition {
     /// Generally you should use a `SyntaxSet`
     ///
     /// `fallback_name` is an optional name to use when the YAML doesn't provide a `name` key.
-    pub fn load_from_str(s: &str,
-                         lines_include_newline: bool,
-                         fallback_name: Option<&str>)
-                         -> Result<SyntaxDefinition, ParseSyntaxError> {
+    pub fn load_from_str(
+        s: &str,
+        lines_include_newline: bool,
+        fallback_name: Option<&str>,
+    ) -> Result<SyntaxDefinition, ParseSyntaxError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
             Err(e) => return Err(ParseSyntaxError::InvalidYaml(e)),
@@ -114,14 +116,20 @@ impl SyntaxDefinition {
         }
         let doc = &docs[0];
         let mut scope_repo = SCOPE_REPO.lock().unwrap();
-        SyntaxDefinition::parse_top_level(doc, scope_repo.deref_mut(), lines_include_newline, fallback_name)
+        SyntaxDefinition::parse_top_level(
+            doc,
+            scope_repo.deref_mut(),
+            lines_include_newline,
+            fallback_name,
+        )
     }
 
-    fn parse_top_level(doc: &Yaml,
-                       scope_repo: &mut ScopeRepository,
-                       lines_include_newline: bool,
-                       fallback_name: Option<&str>)
-                       -> Result<SyntaxDefinition, ParseSyntaxError> {
+    fn parse_top_level(
+        doc: &Yaml,
+        scope_repo: &mut ScopeRepository,
+        lines_include_newline: bool,
+        fallback_name: Option<&str>,
+    ) -> Result<SyntaxDefinition, ParseSyntaxError> {
         let h = doc.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
         let mut variables = HashMap::new();
@@ -133,7 +141,8 @@ impl SyntaxDefinition {
             }
         }
         let contexts_hash = get_key(h, "contexts", |x| x.as_hash())?;
-        let top_level_scope = scope_repo.build(get_key(h, "scope", |x| x.as_str())?)
+        let top_level_scope = scope_repo
+            .build(get_key(h, "scope", |x| x.as_str())?)
             .map_err(ParseSyntaxError::InvalidScope)?;
         let mut state = ParserState {
             scope_repo,
@@ -148,18 +157,21 @@ impl SyntaxDefinition {
             return Err(ParseSyntaxError::MainMissing);
         }
 
-        SyntaxDefinition::add_initial_contexts(
-            &mut contexts,
-            &mut state,
-            top_level_scope,
-        );
+        SyntaxDefinition::add_initial_contexts(&mut contexts, &mut state, top_level_scope);
 
         let defn = SyntaxDefinition {
-            name: get_key(h, "name", |x| x.as_str()).unwrap_or_else(|_| fallback_name.unwrap_or("Unnamed")).to_owned(),
+            name: get_key(h, "name", |x| x.as_str())
+                .unwrap_or_else(|_| fallback_name.unwrap_or("Unnamed"))
+                .to_owned(),
             scope: top_level_scope,
             file_extensions: {
                 get_key(h, "file_extensions", |x| x.as_vec())
-                    .map(|v| v.iter().filter_map(|y| y.as_str()).map(|x| x.to_owned()).collect())
+                    .map(|v| {
+                        v.iter()
+                            .filter_map(|y| y.as_str())
+                            .map(|x| x.to_owned())
+                            .collect()
+                    })
                     .unwrap_or_else(|_| Vec::new())
             },
             // TODO maybe cache a compiled version of this Regex
@@ -174,28 +186,36 @@ impl SyntaxDefinition {
         Ok(defn)
     }
 
-    fn parse_contexts(map: &Hash,
-                      state: &mut ParserState<'_>)
-                      -> Result<HashMap<String, Context>, ParseSyntaxError> {
+    fn parse_contexts(
+        map: &Hash,
+        state: &mut ParserState<'_>,
+    ) -> Result<HashMap<String, Context>, ParseSyntaxError> {
         let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
                 let is_prototype = name == "prototype";
                 let mut namer = ContextNamer::new(name);
-                SyntaxDefinition::parse_context(val_vec, state, &mut contexts, is_prototype, &mut namer)?;
+                SyntaxDefinition::parse_context(
+                    val_vec,
+                    state,
+                    &mut contexts,
+                    is_prototype,
+                    &mut namer,
+                )?;
             }
         }
 
         Ok(contexts)
     }
 
-    fn parse_context(vec: &[Yaml],
-                     // TODO: Maybe just pass the scope repo if that's all that's needed?
-                     state: &mut ParserState<'_>,
-                     contexts: &mut HashMap<String, Context>,
-                     is_prototype: bool,
-                     namer: &mut ContextNamer)
-                     -> Result<String, ParseSyntaxError> {
+    fn parse_context(
+        vec: &[Yaml],
+        // TODO: Maybe just pass the scope repo if that's all that's needed?
+        state: &mut ParserState<'_>,
+        contexts: &mut HashMap<String, Context>,
+        is_prototype: bool,
+        namer: &mut ContextNamer,
+    ) -> Result<String, ParseSyntaxError> {
         let mut context = Context::new(!is_prototype);
         let name = namer.next();
 
@@ -225,30 +245,29 @@ impl SyntaxDefinition {
             }
             if !is_special {
                 if let Ok(x) = get_key(map, "include", Some) {
-                    let reference = SyntaxDefinition::parse_reference(
-                        x, state, contexts, namer)?;
+                    let reference = SyntaxDefinition::parse_reference(x, state, contexts, namer)?;
                     context.patterns.push(Pattern::Include(reference));
                 } else {
-                    let pattern = SyntaxDefinition::parse_match_pattern(
-                        map, state, contexts, namer)?;
+                    let pattern =
+                        SyntaxDefinition::parse_match_pattern(map, state, contexts, namer)?;
                     if pattern.has_captures {
                         context.uses_backrefs = true;
                     }
                     context.patterns.push(Pattern::Match(pattern));
                 }
             }
-
         }
 
         contexts.insert(name.clone(), context);
         Ok(name)
     }
 
-    fn parse_reference(y: &Yaml,
-                       state: &mut ParserState<'_>,
-                       contexts: &mut HashMap<String, Context>,
-                       namer: &mut ContextNamer)
-                       -> Result<ContextReference, ParseSyntaxError> {
+    fn parse_reference(
+        y: &Yaml,
+        state: &mut ParserState<'_>,
+        contexts: &mut HashMap<String, Context>,
+        namer: &mut ContextNamer,
+    ) -> Result<ContextReference, ParseSyntaxError> {
         if let Some(s) = y.as_str() {
             let parts: Vec<&str> = s.split('#').collect();
             let sub_context = if parts.len() > 1 {
@@ -258,7 +277,8 @@ impl SyntaxDefinition {
             };
             if parts[0].starts_with("scope:") {
                 Ok(ContextReference::ByScope {
-                    scope: state.scope_repo
+                    scope: state
+                        .scope_repo
                         .build(&parts[0][6..])
                         .map_err(ParseSyntaxError::InvalidScope)?,
                     sub_context,
@@ -283,11 +303,12 @@ impl SyntaxDefinition {
         }
     }
 
-    fn parse_match_pattern(map: &Hash,
-                           state: &mut ParserState<'_>,
-                           contexts: &mut HashMap<String, Context>,
-                           namer: &mut ContextNamer)
-                           -> Result<MatchPattern, ParseSyntaxError> {
+    fn parse_match_pattern(
+        map: &Hash,
+        state: &mut ParserState<'_>,
+        contexts: &mut HashMap<String, Context>,
+        namer: &mut ContextNamer,
+    ) -> Result<MatchPattern, ParseSyntaxError> {
         let raw_regex = get_key(map, "match", |x| x.as_str())?;
         let regex_str = Self::parse_regex(raw_regex, state)?;
         // println!("{:?}", regex_str);
@@ -306,7 +327,9 @@ impl SyntaxDefinition {
         let mut has_captures = false;
         let operation = if get_key(map, "pop", Some).is_ok() {
             // Thanks @wbond for letting me know this is the correct way to check for captures
-            has_captures = state.backref_regex.search(&regex_str, 0, regex_str.len(), None);
+            has_captures = state
+                .backref_regex
+                .search(&regex_str, 0, regex_str.len(), None);
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", Some) {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
@@ -314,9 +337,12 @@ impl SyntaxDefinition {
             MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
         } else if let Ok(y) = get_key(map, "embed", Some) {
             // Same as push so we translate it to what it would be
-            let mut embed_escape_context_yaml = vec!();
+            let mut embed_escape_context_yaml = vec![];
             let mut commands = Hash::new();
-            commands.insert(Yaml::String("meta_include_prototype".to_string()), Yaml::Boolean(false));
+            commands.insert(
+                Yaml::String("meta_include_prototype".to_string()),
+                Yaml::Boolean(false),
+            );
             embed_escape_context_yaml.push(Yaml::Hash(commands));
             if let Ok(s) = get_key(map, "embed_scope", Some) {
                 commands = Hash::new();
@@ -338,12 +364,13 @@ impl SyntaxDefinition {
                     false,
                     namer,
                 )?;
-                MatchOperation::Push(vec![ContextReference::Inline(escape_context),
-                                          SyntaxDefinition::parse_reference(y, state, contexts, namer)?])
+                MatchOperation::Push(vec![
+                    ContextReference::Inline(escape_context),
+                    SyntaxDefinition::parse_reference(y, state, contexts, namer)?,
+                ])
             } else {
                 return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
             }
-
         } else {
             MatchOperation::None
         };
@@ -357,9 +384,13 @@ impl SyntaxDefinition {
 
             let mut context = Context::new(false);
             let mut match_map = Hash::new();
-            match_map.insert(Yaml::String("match".to_string()), Yaml::String(format!("(?={})", v.as_str().unwrap())));
+            match_map.insert(
+                Yaml::String("match".to_string()),
+                Yaml::String(format!("(?={})", v.as_str().unwrap())),
+            );
             match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
-            let pattern = SyntaxDefinition::parse_match_pattern(&match_map, state, contexts, namer)?;
+            let pattern =
+                SyntaxDefinition::parse_match_pattern(&match_map, state, contexts, namer)?;
             if pattern.has_captures {
                 context.uses_backrefs = true;
             }
@@ -383,13 +414,18 @@ impl SyntaxDefinition {
         Ok(pattern)
     }
 
-    fn parse_pushargs(y: &Yaml,
-                      state: &mut ParserState<'_>,
-                      contexts: &mut HashMap<String, Context>,
-                      namer: &mut ContextNamer)
-                      -> Result<Vec<ContextReference>, ParseSyntaxError> {
+    fn parse_pushargs(
+        y: &Yaml,
+        state: &mut ParserState<'_>,
+        contexts: &mut HashMap<String, Context>,
+        namer: &mut ContextNamer,
+    ) -> Result<Vec<ContextReference>, ParseSyntaxError> {
         // check for a push of multiple items
-        if y.as_vec().map_or(false, |v| !v.is_empty() && (v[0].as_str().is_some() || (v[0].as_vec().is_some() && v[0].as_vec().unwrap()[0].as_hash().is_some()))) {
+        if y.as_vec().map_or(false, |v| {
+            !v.is_empty()
+                && (v[0].as_str().is_some()
+                    || (v[0].as_vec().is_some() && v[0].as_vec().unwrap()[0].as_hash().is_some()))
+        }) {
             // this works because Result implements FromIterator to handle the errors
             y.as_vec()
                 .unwrap()
@@ -421,14 +457,21 @@ impl SyntaxDefinition {
         let mut result = String::new();
         let mut index = 0;
         let mut region = Region::new();
-        while state.variable_regex.search(raw_regex, index, raw_regex.len(), Some(&mut region)) {
+        while state
+            .variable_regex
+            .search(raw_regex, index, raw_regex.len(), Some(&mut region))
+        {
             let (begin, end) = region.pos(0).unwrap();
 
             result.push_str(&raw_regex[index..begin]);
 
             let var_pos = region.pos(1).unwrap();
             let var_name = &raw_regex[var_pos.0..var_pos.1];
-            let var_raw = state.variables.get(var_name).map(String::as_ref).unwrap_or("");
+            let var_raw = state
+                .variables
+                .get(var_name)
+                .map(String::as_ref)
+                .unwrap_or("");
             let var_resolved = Self::resolve_variables(var_raw, state);
             result.push_str(&var_resolved);
 
@@ -442,7 +485,8 @@ impl SyntaxDefinition {
 
     fn try_compile_regex(regex_str: &str) -> Result<(), ParseSyntaxError> {
         // Replace backreferences with a placeholder value that will also appear in errors
-        let regex_str = substitute_backrefs_in_regex(regex_str, |i| Some(format!("<placeholder_{}>", i)));
+        let regex_str =
+            substitute_backrefs_in_regex(regex_str, |i| Some(format!("<placeholder_{}>", i)));
 
         if let Some(error) = Regex::try_compile(&regex_str) {
             Err(ParseSyntaxError::RegexCompileError(regex_str, error))
@@ -482,14 +526,28 @@ impl SyntaxDefinition {
         let yaml_docs = YamlLoader::load_from_str(START_CONTEXT).unwrap();
         let yaml = &yaml_docs[0];
 
-        let start_yaml : &[Yaml] = yaml["__start"].as_vec().unwrap();
-        SyntaxDefinition::parse_context(start_yaml, state, contexts, false, &mut ContextNamer::new("__start")).unwrap();
+        let start_yaml: &[Yaml] = yaml["__start"].as_vec().unwrap();
+        SyntaxDefinition::parse_context(
+            start_yaml,
+            state,
+            contexts,
+            false,
+            &mut ContextNamer::new("__start"),
+        )
+        .unwrap();
         if let Some(start) = contexts.get_mut("__start") {
             start.meta_content_scope = vec![top_level_scope];
         }
 
-        let main_yaml : &[Yaml] = yaml["__main"].as_vec().unwrap();
-        SyntaxDefinition::parse_context(main_yaml, state, contexts, false, &mut ContextNamer::new("__main")).unwrap();
+        let main_yaml: &[Yaml] = yaml["__main"].as_vec().unwrap();
+        SyntaxDefinition::parse_context(
+            main_yaml,
+            state,
+            contexts,
+            false,
+            &mut ContextNamer::new("__main"),
+        )
+        .unwrap();
 
         let meta_include_prototype = contexts["main"].meta_include_prototype;
         let meta_scope = contexts["main"].meta_scope.clone();
@@ -539,13 +597,13 @@ impl ContextNamer {
 /// Sublime's syntaxes expect them to match Unicode characters as well, so transform them to
 /// corresponding Unicode character classes.
 fn replace_posix_char_classes(regex: String) -> String {
-    regex.replace("[:alpha:]", r"\p{L}")
+    regex
+        .replace("[:alpha:]", r"\p{L}")
         .replace("[:alnum:]", r"\p{L}\p{N}")
         .replace("[:lower:]", r"\p{Ll}")
         .replace("[:upper:]", r"\p{Lu}")
         .replace("[:digit:]", r"\p{Nd}")
 }
-
 
 /// Some of the regexes include `$` and expect it to match end of line,
 /// e.g. *before* the `\n` in `test\n`.
@@ -774,10 +832,7 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn new(bytes: &[u8]) -> Parser {
-        Parser {
-            bytes,
-            index: 0,
-        }
+        Parser { bytes, index: 0 }
     }
 
     fn peek(&self) -> Option<u8> {
@@ -845,27 +900,28 @@ impl<'a> Parser<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::parsing::syntax_definition::*;
     use crate::parsing::Scope;
-    use super::*;
 
     #[test]
     fn can_parse() {
-        let defn: SyntaxDefinition =
-            SyntaxDefinition::load_from_str("name: C\nscope: source.c\ncontexts: {main: []}",
-                                            false, None)
-                .unwrap();
+        let defn: SyntaxDefinition = SyntaxDefinition::load_from_str(
+            "name: C\nscope: source.c\ncontexts: {main: []}",
+            false,
+            None,
+        )
+        .unwrap();
         assert_eq!(defn.name, "C");
         assert_eq!(defn.scope, Scope::new("source.c").unwrap());
         let exts_empty: Vec<String> = Vec::new();
         assert_eq!(defn.file_extensions, exts_empty);
         assert_eq!(defn.hidden, false);
         assert!(defn.variables.is_empty());
-        let defn2: SyntaxDefinition =
-            SyntaxDefinition::load_from_str("
+        let defn2: SyntaxDefinition = SyntaxDefinition::load_from_str(
+            "
         name: C
         scope: source.c
         file_extensions: [c, h]
@@ -896,8 +952,10 @@ mod tests {
             - match: '\"'
               pop: true
         ",
-                                            false, None)
-                .unwrap();
+            false,
+            None,
+        )
+        .unwrap();
         assert_eq!(defn2.name, "C");
         let top_level_scope = Scope::new("source.c").unwrap();
         assert_eq!(defn2.scope, top_level_scope);
@@ -915,32 +973,49 @@ mod tests {
         assert_eq!(main.meta_include_prototype, true);
 
         assert_eq!(defn2.contexts["__main"].meta_content_scope, n);
-        assert_eq!(defn2.contexts["__start"].meta_content_scope, vec![top_level_scope]);
+        assert_eq!(
+            defn2.contexts["__start"].meta_content_scope,
+            vec![top_level_scope]
+        );
 
-        assert_eq!(defn2.contexts["string"].meta_scope,
-                   vec![Scope::new("string.quoted.double.c").unwrap()]);
+        assert_eq!(
+            defn2.contexts["string"].meta_scope,
+            vec![Scope::new("string.quoted.double.c").unwrap()]
+        );
         let first_pattern: &Pattern = &main.patterns[0];
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
-                assert_eq!(&m[0], &(1,vec![Scope::new("meta.preprocessor.c++").unwrap()]));
+                assert_eq!(
+                    &m[0],
+                    &(1, vec![Scope::new("meta.preprocessor.c++").unwrap()])
+                );
                 use crate::parsing::syntax_definition::ContextReference::*;
 
                 // this is sadly necessary because Context is not Eq because of the Regex
                 let expected = MatchOperation::Push(vec![
                     Named("string".to_owned()),
-                    ByScope { scope: Scope::new("source.c").unwrap(), sub_context: Some("main".to_owned()) },
+                    ByScope {
+                        scope: Scope::new("source.c").unwrap(),
+                        sub_context: Some("main".to_owned()),
+                    },
                     File {
                         name: "CSS".to_owned(),
-                        sub_context: Some("rule-list-body".to_owned())
+                        sub_context: Some("rule-list-body".to_owned()),
                     },
                 ]);
-                assert_eq!(format!("{:?}", match_pat.operation),
-                           format!("{:?}", expected));
+                assert_eq!(
+                    format!("{:?}", match_pat.operation),
+                    format!("{:?}", expected)
+                );
 
-                assert_eq!(match_pat.scope,
-                           vec![Scope::new("keyword.control.c").unwrap(),
-                                Scope::new("keyword.looping.c").unwrap()]);
+                assert_eq!(
+                    match_pat.scope,
+                    vec![
+                        Scope::new("keyword.control.c").unwrap(),
+                        Scope::new("keyword.looping.c").unwrap()
+                    ]
+                );
 
                 assert!(match_pat.with_prototype.is_some());
             }
@@ -969,7 +1044,8 @@ mod tests {
                   pop: true
         "#,false, None).unwrap();
 
-        let def_with_embed = SyntaxDefinition::load_from_str(r#"
+        let def_with_embed = SyntaxDefinition::load_from_str(
+            r#"
         name: C
         scope: source.c
         file_extensions: [c, h]
@@ -983,14 +1059,19 @@ mod tests {
               embed: scope:source.css
               embed_scope: source.css.embedded.html
               escape: (?i)(?=</style)
-        "#,false, None).unwrap();
+        "#,
+            false,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
     }
 
     #[test]
     fn errors_on_embed_without_escape() {
-        let def = SyntaxDefinition::load_from_str(r#"
+        let def = SyntaxDefinition::load_from_str(
+            r#"
         name: C
         scope: source.c
         file_extensions: [c, h]
@@ -1003,7 +1084,10 @@ mod tests {
                 1: meta.tag.style.begin.html punctuation.definition.tag.end.html
               embed: scope:source.css
               embed_scope: source.css.embedded.html
-        "#,false, None);
+        "#,
+            false,
+            None,
+        );
         assert!(def.is_err());
         match def.unwrap_err() {
             ParseSyntaxError::MissingMandatoryKey(key) => assert_eq!(key, "escape"),
@@ -1013,7 +1097,8 @@ mod tests {
 
     #[test]
     fn errors_on_regex_compile_error() {
-        let def = SyntaxDefinition::load_from_str(r#"
+        let def = SyntaxDefinition::load_from_str(
+            r#"
         name: C
         scope: source.c
         file_extensions: [test]
@@ -1021,7 +1106,10 @@ mod tests {
           main:
             - match: '[a'
               scope: keyword.name
-        "#,false, None);
+        "#,
+            false,
+            None,
+        );
         assert!(def.is_err());
         match def.unwrap_err() {
             ParseSyntaxError::RegexCompileError(ref regex, _) => assert_eq!("[a", regex),
@@ -1031,8 +1119,8 @@ mod tests {
 
     #[test]
     fn can_parse_ugly_yaml() {
-        let defn: SyntaxDefinition =
-            SyntaxDefinition::load_from_str("
+        let defn: SyntaxDefinition = SyntaxDefinition::load_from_str(
+            "
         name: LaTeX
         scope: text.tex.latex
         contexts:
@@ -1054,8 +1142,10 @@ mod tests {
             - match: '(?=\\S)'
               pop: true
         ",
-                                            false, None)
-                .unwrap();
+            false,
+            None,
+        )
+        .unwrap();
         assert_eq!(defn.name, "LaTeX");
         let top_level_scope = Scope::new("text.tex.latex").unwrap();
         assert_eq!(defn.scope, top_level_scope);
@@ -1064,7 +1154,10 @@ mod tests {
         match first_pattern {
             &Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
-                assert_eq!(&m[0], &(1,vec![Scope::new("support.function.box.latex").unwrap()]));
+                assert_eq!(
+                    &m[0],
+                    &(1, vec![Scope::new("support.function.box.latex").unwrap()])
+                );
 
                 //use parsing::syntax_definition::ContextReference::*;
                 // TODO: check the first pushed reference is Inline(...) and has a meta_scope of meta.function.box.latex
@@ -1101,24 +1194,38 @@ mod tests {
                   escape: 'test'
             "#,
             false,
-            None
-        ).unwrap();
+            None,
+        )
+        .unwrap();
 
         assert_eq!(def.contexts["a"].meta_scope, vec![Scope::new("a").unwrap()]);
-        assert_eq!(def.contexts["#anon_a_0"].meta_scope, vec![Scope::new("anonymous_x").unwrap()]);
-        assert_eq!(def.contexts["#anon_a_1"].meta_scope, vec![Scope::new("anonymous_x_2").unwrap()]);
-        assert_eq!(def.contexts["#anon_a_2"].meta_scope, vec![Scope::new("anonymous_y").unwrap()]);
+        assert_eq!(
+            def.contexts["#anon_a_0"].meta_scope,
+            vec![Scope::new("anonymous_x").unwrap()]
+        );
+        assert_eq!(
+            def.contexts["#anon_a_1"].meta_scope,
+            vec![Scope::new("anonymous_x_2").unwrap()]
+        );
+        assert_eq!(
+            def.contexts["#anon_a_2"].meta_scope,
+            vec![Scope::new("anonymous_y").unwrap()]
+        );
         assert_eq!(def.contexts["#anon_a_3"].patterns.len(), 1); // escape
     }
 
     #[test]
     fn can_use_fallback_name() {
-        let def = SyntaxDefinition::load_from_str(r#"
+        let def = SyntaxDefinition::load_from_str(
+            r#"
         scope: source.c
         contexts:
           main:
             - match: ''
-        "#,false, Some("C"));
+        "#,
+            false,
+            Some("C"),
+        );
         assert_eq!(def.unwrap().name, "C");
     }
 

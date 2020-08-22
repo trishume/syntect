@@ -1,5 +1,5 @@
-use super::syntax_definition::*;
 use super::scope::*;
+use super::syntax_definition::*;
 
 #[cfg(feature = "metadata")]
 use super::metadata::{LoadMetadata, Metadata, RawMetadataEntry};
@@ -8,18 +8,18 @@ use super::metadata::{LoadMetadata, Metadata, RawMetadataEntry};
 use super::super::LoadingError;
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
-#[cfg(feature = "yaml-load")]
-use walkdir::WalkDir;
+use std::fs::File;
 #[cfg(feature = "yaml-load")]
 use std::io::Read;
 use std::io::{self, BufRead, BufReader};
-use std::fs::File;
 use std::mem;
+use std::path::Path;
+#[cfg(feature = "yaml-load")]
+use walkdir::WalkDir;
 
-use lazycell::AtomicLazyCell;
 use super::regex::Regex;
 use crate::parsing::syntax_definition::ContextId;
+use lazycell::AtomicLazyCell;
 
 /// A syntax set holds multiple syntaxes that have been linked together.
 ///
@@ -77,20 +77,20 @@ pub struct SyntaxSetBuilder {
 }
 
 #[cfg(feature = "yaml-load")]
-fn load_syntax_file(p: &Path,
-                    lines_include_newline: bool)
-                    -> Result<SyntaxDefinition, LoadingError> {
+fn load_syntax_file(
+    p: &Path,
+    lines_include_newline: bool,
+) -> Result<SyntaxDefinition, LoadingError> {
     let mut f = File::open(p)?;
     let mut s = String::new();
     f.read_to_string(&mut s)?;
 
-    Ok(
-        SyntaxDefinition::load_from_str(
-            &s,
-            lines_include_newline,
-            p.file_stem().and_then(|x| x.to_str())
-        ).map_err(|e| LoadingError::ParseSyntax(e, Some(format!("{}", p.display()))))?
+    Ok(SyntaxDefinition::load_from_str(
+        &s,
+        lines_include_newline,
+        p.file_stem().and_then(|x| x.to_str()),
     )
+    .map_err(|e| LoadingError::ParseSyntax(e, Some(format!("{}", p.display()))))?)
 }
 
 impl Clone for SyntaxSet {
@@ -119,7 +119,6 @@ impl Default for SyntaxSet {
         }
     }
 }
-
 
 impl SyntaxSet {
     pub fn new() -> SyntaxSet {
@@ -167,7 +166,10 @@ impl SyntaxSet {
     }
 
     pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxReference> {
-        self.syntaxes.iter().rev().find(|&s| s.file_extensions.iter().any(|e| e == extension))
+        self.syntaxes
+            .iter()
+            .rev()
+            .find(|&s| s.file_extensions.iter().any(|e| e == extension))
     }
 
     /// Searches for a syntax first by extension and then by case-insensitive name
@@ -180,7 +182,10 @@ impl SyntaxSet {
                 return ext_res;
             }
         }
-        self.syntaxes.iter().rev().find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
+        self.syntaxes
+            .iter()
+            .rev()
+            .find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
     }
 
     /// Try to find the syntax for a file based on its first line.
@@ -205,7 +210,11 @@ impl SyntaxSet {
     pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxReference> {
         let mut slash_path = "/".to_string();
         slash_path.push_str(&path);
-        self.path_syntaxes.iter().rev().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i])
+        self.path_syntaxes
+            .iter()
+            .rev()
+            .find(|t| t.0.ends_with(&slash_path) || t.0 == path)
+            .map(|&(_, i)| &self.syntaxes[i])
     }
 
     /// Convenience method that tries to find the syntax for a file path,
@@ -223,14 +232,16 @@ impl SyntaxSet {
     ///     .unwrap_or_else(|| ss.find_syntax_plain_text());
     /// assert_eq!(syntax.name, "HTML (Rails)");
     /// ```
-    pub fn find_syntax_for_file<P: AsRef<Path>>(&self,
-                                                path_obj: P)
-                                                -> io::Result<Option<&SyntaxReference>> {
+    pub fn find_syntax_for_file<P: AsRef<Path>>(
+        &self,
+        path_obj: P,
+    ) -> io::Result<Option<&SyntaxReference>> {
         let path: &Path = path_obj.as_ref();
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
-        let ext_syntax = self.find_syntax_by_extension(file_name).or_else(
-                            || self.find_syntax_by_extension(extension));
+        let ext_syntax = self
+            .find_syntax_by_extension(file_name)
+            .or_else(|| self.find_syntax_by_extension(extension));
         let line_syntax = if ext_syntax.is_none() {
             let mut line = String::new();
             let f = File::open(path)?;
@@ -272,9 +283,20 @@ impl SyntaxSet {
     /// in the set, but not the other way around.
     pub fn into_builder(self) -> SyntaxSetBuilder {
         #[cfg(feature = "metadata")]
-        let SyntaxSet { syntaxes, contexts, path_syntaxes, metadata, .. } = self;
+        let SyntaxSet {
+            syntaxes,
+            contexts,
+            path_syntaxes,
+            metadata,
+            ..
+        } = self;
         #[cfg(not(feature = "metadata"))]
-        let SyntaxSet { syntaxes, contexts, path_syntaxes, .. } = self;
+        let SyntaxSet {
+            syntaxes,
+            contexts,
+            path_syntaxes,
+            ..
+        } = self;
 
         let mut context_map = HashMap::with_capacity(contexts.len());
         for (i, context) in contexts.into_iter().enumerate() {
@@ -339,7 +361,6 @@ impl SyntaxSet {
     }
 }
 
-
 impl SyntaxSetBuilder {
     pub fn new() -> SyntaxSetBuilder {
         SyntaxSetBuilder::default()
@@ -376,18 +397,23 @@ impl SyntaxSetBuilder {
     pub fn add_from_folder<P: AsRef<Path>>(
         &mut self,
         folder: P,
-        lines_include_newline: bool
+        lines_include_newline: bool,
     ) -> Result<(), LoadingError> {
         for entry in WalkDir::new(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
-            if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
+            if entry
+                .path()
+                .extension()
+                .map_or(false, |e| e == "sublime-syntax")
+            {
                 let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
                 if let Some(path_str) = entry.path().to_str() {
                     // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
                     // can still be loaded the same way.
                     let path = Path::new(path_str);
                     let path_parts: Vec<_> = path.iter().map(|c| c.to_str().unwrap()).collect();
-                    self.path_syntaxes.push((path_parts.join("/").to_string(), self.syntaxes.len()));
+                    self.path_syntaxes
+                        .push((path_parts.join("/").to_string(), self.syntaxes.len()));
                 }
                 self.syntaxes.push(syntax);
             }
@@ -426,9 +452,11 @@ impl SyntaxSetBuilder {
     /// serialize a `SyntaxSet` for your program and when you run the program,
     /// directly load the `SyntaxSet`.
     pub fn build(self) -> SyntaxSet {
-
         #[cfg(not(feature = "metadata"))]
-        let SyntaxSetBuilder { syntaxes: syntax_definitions, path_syntaxes } = self;
+        let SyntaxSetBuilder {
+            syntaxes: syntax_definitions,
+            path_syntaxes,
+        } = self;
         #[cfg(feature = "metadata")]
         let SyntaxSetBuilder {
             syntaxes: syntax_definitions,
@@ -483,7 +511,12 @@ impl SyntaxSetBuilder {
             let prototype = syntax.contexts.get("prototype");
             if let Some(prototype_id) = prototype {
                 // TODO: We could do this after parsing YAML, instead of here?
-                Self::recursively_mark_no_prototype(syntax, prototype_id.index(), &all_contexts, &mut no_prototype);
+                Self::recursively_mark_no_prototype(
+                    syntax,
+                    prototype_id.index(),
+                    &all_contexts,
+                    &mut no_prototype,
+                );
             }
 
             for context_id in syntax.contexts.values() {
@@ -495,13 +528,13 @@ impl SyntaxSetBuilder {
                     }
                 }
                 Self::link_context(&mut context, syntax, &syntaxes);
-                
+
                 if context.uses_backrefs {
                     found_more_backref_includes = true;
                 }
             }
         }
-        
+
         // We need to recursively mark contexts that include contexts which
         // use backreferences as using backreferences. In theory we could use
         // a more efficient method here like doing a toposort or constructing
@@ -515,13 +548,16 @@ impl SyntaxSetBuilder {
             // and mark those as using backrefs - to support nested includes
             for context_index in 0..all_contexts.len() {
                 let context = &all_contexts[context_index];
-                if !context.uses_backrefs && context.patterns.iter().any(|pattern| {
-                    match pattern {
+                if !context.uses_backrefs
+                    && context.patterns.iter().any(|pattern| match pattern {
                         Pattern::Include(ContextReference::Direct(id))
-                            if all_contexts[id.index()].uses_backrefs => true,
+                            if all_contexts[id.index()].uses_backrefs =>
+                        {
+                            true
+                        }
                         _ => false,
-                    }
-                }) {
+                    })
+                {
                     let mut context = &mut all_contexts[context_index];
                     context.uses_backrefs = true;
                     // look for contexts including this context
@@ -565,39 +601,58 @@ impl SyntaxSetBuilder {
                 // This is really weird, but necessary to run the YAML syntax.
                 Pattern::Match(ref match_pat) => {
                     let maybe_context_refs = match match_pat.operation {
-                        MatchOperation::Push(ref context_refs) |
-                        MatchOperation::Set(ref context_refs) => Some(context_refs),
+                        MatchOperation::Push(ref context_refs)
+                        | MatchOperation::Set(ref context_refs) => Some(context_refs),
                         MatchOperation::Pop | MatchOperation::None => None,
                     };
                     if let Some(context_refs) = maybe_context_refs {
                         for context_ref in context_refs.iter() {
                             match context_ref {
-                                ContextReference::Inline(ref s) | ContextReference::Named(ref s) => {
+                                ContextReference::Inline(ref s)
+                                | ContextReference::Named(ref s) => {
                                     if let Some(i) = syntax.contexts.get(s) {
-                                        Self::recursively_mark_no_prototype(syntax, i.index(), contexts, no_prototype);
+                                        Self::recursively_mark_no_prototype(
+                                            syntax,
+                                            i.index(),
+                                            contexts,
+                                            no_prototype,
+                                        );
                                     }
-                                },
+                                }
                                 ContextReference::Direct(ref id) => {
-                                    Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
-                                },
+                                    Self::recursively_mark_no_prototype(
+                                        syntax,
+                                        id.index(),
+                                        contexts,
+                                        no_prototype,
+                                    );
+                                }
                                 _ => (),
                             }
                         }
                     }
                 }
-                Pattern::Include(ref reference) => {
-                    match reference {
-                        ContextReference::Named(ref s) => {
-                            if let Some(id) = syntax.contexts.get(s) {
-                                Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
-                            }
-                        },
-                        ContextReference::Direct(ref id) => {
-                            Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
-                        },
-                        _ => (),
+                Pattern::Include(ref reference) => match reference {
+                    ContextReference::Named(ref s) => {
+                        if let Some(id) = syntax.contexts.get(s) {
+                            Self::recursively_mark_no_prototype(
+                                syntax,
+                                id.index(),
+                                contexts,
+                                no_prototype,
+                            );
+                        }
                     }
-                }
+                    ContextReference::Direct(ref id) => {
+                        Self::recursively_mark_no_prototype(
+                            syntax,
+                            id.index(),
+                            contexts,
+                            no_prototype,
+                        );
+                    }
+                    _ => (),
+                },
             }
         }
     }
@@ -605,13 +660,21 @@ impl SyntaxSetBuilder {
     fn link_context(context: &mut Context, syntax: &SyntaxReference, syntaxes: &[SyntaxReference]) {
         for pattern in &mut context.patterns {
             match *pattern {
-                Pattern::Match(ref mut match_pat) => Self::link_match_pat(match_pat, syntax, syntaxes),
-                Pattern::Include(ref mut context_ref) => Self::link_ref(context_ref, syntax, syntaxes),
+                Pattern::Match(ref mut match_pat) => {
+                    Self::link_match_pat(match_pat, syntax, syntaxes)
+                }
+                Pattern::Include(ref mut context_ref) => {
+                    Self::link_ref(context_ref, syntax, syntaxes)
+                }
             }
         }
     }
 
-    fn link_ref(context_ref: &mut ContextReference, syntax: &SyntaxReference, syntaxes: &[SyntaxReference]) {
+    fn link_ref(
+        context_ref: &mut ContextReference,
+        syntax: &SyntaxReference,
+        syntaxes: &[SyntaxReference],
+    ) {
         // println!("{:?}", context_ref);
         use super::syntax_definition::ContextReference::*;
         let linked_context_id = match *context_ref {
@@ -625,7 +688,10 @@ impl SyntaxSetBuilder {
                     syntax.contexts.get(s)
                 }
             }
-            ByScope { scope, ref sub_context } => {
+            ByScope {
+                scope,
+                ref sub_context,
+            } => {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 syntaxes
                     .iter()
@@ -633,7 +699,10 @@ impl SyntaxSetBuilder {
                     .find(|s| s.scope == scope)
                     .and_then(|s| s.contexts.get(context_name))
             }
-            File { ref name, ref sub_context } => {
+            File {
+                ref name,
+                ref sub_context,
+            } => {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
                 syntaxes
                     .iter()
@@ -649,10 +718,14 @@ impl SyntaxSetBuilder {
         }
     }
 
-    fn link_match_pat(match_pat: &mut MatchPattern, syntax: &SyntaxReference, syntaxes: &[SyntaxReference]) {
+    fn link_match_pat(
+        match_pat: &mut MatchPattern,
+        syntax: &SyntaxReference,
+        syntaxes: &[SyntaxReference],
+    ) {
         let maybe_context_refs = match match_pat.operation {
-            MatchOperation::Push(ref mut context_refs) |
-            MatchOperation::Set(ref mut context_refs) => Some(context_refs),
+            MatchOperation::Push(ref mut context_refs)
+            | MatchOperation::Set(ref mut context_refs) => Some(context_refs),
             MatchOperation::Pop | MatchOperation::None => None,
         };
         if let Some(context_refs) = maybe_context_refs {
@@ -681,18 +754,15 @@ impl FirstLineCache {
                 regexes.push((reg, i));
             }
         }
-        FirstLineCache {
-            regexes,
-        }
+        FirstLineCache { regexes }
     }
 }
-
 
 #[cfg(feature = "yaml-load")]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::{ParseState, Scope, syntax_definition};
+    use crate::parsing::{syntax_definition, ParseState, Scope};
     use std::collections::HashMap;
 
     #[test]
@@ -715,32 +785,63 @@ mod tests {
 
         let ps = builder.build();
 
-        assert_eq!(&ps.find_syntax_by_first_line("#!/usr/bin/env node").unwrap().name,
-                   "JavaScript");
+        assert_eq!(
+            &ps.find_syntax_by_first_line("#!/usr/bin/env node")
+                .unwrap()
+                .name,
+            "JavaScript"
+        );
         let rails_scope = Scope::new("source.ruby.rails").unwrap();
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         ps.find_syntax_plain_text();
         assert_eq!(&ps.find_syntax_by_extension("rake").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
-        assert_eq!(&ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line").unwrap().name,
-                   "C");
-        assert_eq!(&ps.find_syntax_for_file("testdata/parser.rs").unwrap().unwrap().name,
-                   "Rust");
-        assert_eq!(&ps.find_syntax_for_file("testdata/test_first_line.test")
-                       .expect("Error finding syntax for file")
-                       .expect("No syntax found for file")
-                       .name,
-                   "Ruby");
-        assert_eq!(&ps.find_syntax_for_file(".bashrc").unwrap().unwrap().name,
-                   "Bourne Again Shell (bash)");
-        assert_eq!(&ps.find_syntax_for_file("CMakeLists.txt").unwrap().unwrap().name,
-                   "CMake");
-        assert_eq!(&ps.find_syntax_for_file("test.cmake").unwrap().unwrap().name,
-                   "CMake");
-        assert_eq!(&ps.find_syntax_for_file("Rakefile").unwrap().unwrap().name, "Ruby");
+        assert_eq!(
+            &ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line")
+                .unwrap()
+                .name,
+            "C"
+        );
+        assert_eq!(
+            &ps.find_syntax_for_file("testdata/parser.rs")
+                .unwrap()
+                .unwrap()
+                .name,
+            "Rust"
+        );
+        assert_eq!(
+            &ps.find_syntax_for_file("testdata/test_first_line.test")
+                .expect("Error finding syntax for file")
+                .expect("No syntax found for file")
+                .name,
+            "Ruby"
+        );
+        assert_eq!(
+            &ps.find_syntax_for_file(".bashrc").unwrap().unwrap().name,
+            "Bourne Again Shell (bash)"
+        );
+        assert_eq!(
+            &ps.find_syntax_for_file("CMakeLists.txt")
+                .unwrap()
+                .unwrap()
+                .name,
+            "CMake"
+        );
+        assert_eq!(
+            &ps.find_syntax_for_file("test.cmake").unwrap().unwrap().name,
+            "CMake"
+        );
+        assert_eq!(
+            &ps.find_syntax_for_file("Rakefile").unwrap().unwrap().name,
+            "Ruby"
+        );
         assert!(&ps.find_syntax_by_first_line("derp derp hi lol").is_none());
-        assert_eq!(&ps.find_syntax_by_path("Packages/Rust/Rust.sublime-syntax").unwrap().name,
-                   "Rust");
+        assert_eq!(
+            &ps.find_syntax_by_path("Packages/Rust/Rust.sublime-syntax")
+                .unwrap()
+                .name,
+            "Rust"
+        );
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // assert!(false);
@@ -779,7 +880,8 @@ mod tests {
 
         let mut builder = syntax_set_original.into_builder();
 
-        let syntax_c = SyntaxDefinition::load_from_str(r#"
+        let syntax_c = SyntaxDefinition::load_from_str(
+            r#"
         name: C
         scope: source.c
         file_extensions: [c]
@@ -789,7 +891,11 @@ mod tests {
               scope: c
             - match: 'go_a'
               push: scope:source.a#main
-        "#, true, None).unwrap();
+        "#,
+            true,
+            None,
+        )
+        .unwrap();
 
         builder.add(syntax_c);
 
@@ -813,12 +919,7 @@ mod tests {
             builder.build()
         };
 
-        let lines = vec![
-            "a a a",
-            "a go_b b",
-            "go_b b",
-            "go_b b  b",
-        ];
+        let lines = vec!["a a a", "a go_b b", "go_b b", "go_b b  b"];
 
         let results: Vec<Vec<(usize, ScopeStackOp)>> = lines
             .par_iter()
@@ -829,10 +930,22 @@ mod tests {
             })
             .collect();
 
-        assert_ops_contain(&results[0], &(4, ScopeStackOp::Push(Scope::new("a").unwrap())));
-        assert_ops_contain(&results[1], &(7, ScopeStackOp::Push(Scope::new("b").unwrap())));
-        assert_ops_contain(&results[2], &(5, ScopeStackOp::Push(Scope::new("b").unwrap())));
-        assert_ops_contain(&results[3], &(8, ScopeStackOp::Push(Scope::new("b").unwrap())));
+        assert_ops_contain(
+            &results[0],
+            &(4, ScopeStackOp::Push(Scope::new("a").unwrap())),
+        );
+        assert_ops_contain(
+            &results[1],
+            &(7, ScopeStackOp::Push(Scope::new("b").unwrap())),
+        );
+        assert_ops_contain(
+            &results[2],
+            &(5, ScopeStackOp::Push(Scope::new("b").unwrap())),
+        );
+        assert_ops_contain(
+            &results[3],
+            &(8, ScopeStackOp::Push(Scope::new("b").unwrap())),
+        );
     }
 
     #[test]
@@ -852,7 +965,8 @@ mod tests {
             builder.add(syntax_a());
             builder.add(syntax_b());
 
-            let syntax_a2 = SyntaxDefinition::load_from_str(r#"
+            let syntax_a2 = SyntaxDefinition::load_from_str(
+                r#"
                 name: A improved
                 scope: source.a
                 file_extensions: [a]
@@ -863,11 +977,16 @@ mod tests {
                       scope: a2
                     - match: go_b
                       push: scope:source.b#main
-                "#, true, None).unwrap();
+                "#,
+                true,
+                None,
+            )
+            .unwrap();
 
             builder.add(syntax_a2);
 
-            let syntax_c = SyntaxDefinition::load_from_str(r#"
+            let syntax_c = SyntaxDefinition::load_from_str(
+                r#"
                 name: C
                 scope: source.c
                 file_extensions: [c]
@@ -878,7 +997,11 @@ mod tests {
                       scope: c
                     - match: go_a
                       push: scope:source.a#main
-                "#, true, None).unwrap();
+                "#,
+                true,
+                None,
+            )
+            .unwrap();
 
             builder.add(syntax_c);
 
@@ -887,7 +1010,9 @@ mod tests {
 
         let mut syntax = syntax_set.find_syntax_by_extension("a").unwrap();
         assert_eq!(syntax.name, "A improved");
-        syntax = syntax_set.find_syntax_by_scope(Scope::new(&"source.a").unwrap()).unwrap();
+        syntax = syntax_set
+            .find_syntax_by_scope(Scope::new(&"source.a").unwrap())
+            .unwrap();
         assert_eq!(syntax.name, "A improved");
         syntax = syntax_set.find_syntax_by_first_line(&"syntax a").unwrap();
         assert_eq!(syntax.name, "C");
@@ -909,14 +1034,18 @@ mod tests {
 
         let mut parse_state = ParseState::new(syntax);
         let ops = parse_state.parse_line("# test\n", &syntax_set);
-        let expected = (0, ScopeStackOp::Push(Scope::new("comment.line.number-sign.yaml").unwrap()));
+        let expected = (
+            0,
+            ScopeStackOp::Push(Scope::new("comment.line.number-sign.yaml").unwrap()),
+        );
         assert_ops_contain(&ops, &expected);
     }
 
     #[test]
     fn no_prototype_for_contexts_included_from_prototype() {
         let mut builder = SyntaxSetBuilder::new();
-        let syntax = SyntaxDefinition::load_from_str(r#"
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
                 name: Test Prototype
                 scope: source.test
                 file_extensions: [test]
@@ -932,7 +1061,11 @@ mod tests {
                   included_from_prototype:
                     - match: p
                       scope: p
-                "#, true, None).unwrap();
+                "#,
+            true,
+            None,
+        )
+        .unwrap();
         builder.add(syntax);
         let ss = builder.build();
 
@@ -950,7 +1083,8 @@ mod tests {
     #[test]
     fn no_prototype_for_contexts_inline_in_prototype() {
         let mut builder = SyntaxSetBuilder::new();
-        let syntax = SyntaxDefinition::load_from_str(r#"
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
                 name: Test Prototype
                 scope: source.test
                 file_extensions: [test]
@@ -961,7 +1095,11 @@ mod tests {
                         - match: p2
                   main:
                     - match: main
-                "#, true, None).unwrap();
+                "#,
+            true,
+            None,
+        )
+        .unwrap();
         builder.add(syntax);
         let ss = builder.build();
 
@@ -971,15 +1109,20 @@ mod tests {
         assert_prototype_only_on(&["main"], &rebuilt, &rebuilt.syntaxes()[0]);
     }
 
-    fn assert_ops_contain(
-        ops: &[(usize, ScopeStackOp)],
-        expected: &(usize, ScopeStackOp)
-    ) {
-        assert!(ops.contains(expected),
-                "expected operations to contain {:?}: {:?}", expected, ops);
+    fn assert_ops_contain(ops: &[(usize, ScopeStackOp)], expected: &(usize, ScopeStackOp)) {
+        assert!(
+            ops.contains(expected),
+            "expected operations to contain {:?}: {:?}",
+            expected,
+            ops
+        );
     }
 
-    fn assert_prototype_only_on(expected: &[&str], syntax_set: &SyntaxSet, syntax: &SyntaxReference) {
+    fn assert_prototype_only_on(
+        expected: &[&str],
+        syntax_set: &SyntaxSet,
+        syntax: &SyntaxReference,
+    ) {
         for (name, id) in &syntax.contexts {
             if name == "__main" || name == "__start" {
                 // Skip special contexts
@@ -987,9 +1130,17 @@ mod tests {
             }
             let context = syntax_set.get_context(id);
             if expected.contains(&name.as_str()) {
-                assert!(context.prototype.is_some(), "Expected context {} to have prototype", name);
+                assert!(
+                    context.prototype.is_some(),
+                    "Expected context {} to have prototype",
+                    name
+                );
             } else {
-                assert!(context.prototype.is_none(), "Expected context {} to not have prototype", name);
+                assert!(
+                    context.prototype.is_none(),
+                    "Expected context {} to not have prototype",
+                    name
+                );
             }
         }
     }
@@ -1013,7 +1164,8 @@ mod tests {
             "#,
             true,
             None,
-        ).unwrap()
+        )
+        .unwrap()
     }
 
     fn syntax_b() -> SyntaxDefinition {
@@ -1029,6 +1181,7 @@ mod tests {
             "#,
             true,
             None,
-        ).unwrap()
+        )
+        .unwrap()
     }
 }

@@ -1,11 +1,11 @@
-use super::theme::Theme;
-use super::settings::*;
 use super::super::LoadingError;
+use super::settings::*;
+use super::theme::Theme;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::io::{BufReader, BufRead, Seek};
-use walkdir::WalkDir;
 use std::fs::File;
+use std::io::{BufRead, BufReader, Seek};
+use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSet {
@@ -55,8 +55,10 @@ impl ThemeSet {
         let paths = Self::discover_theme_paths(folder)?;
         for p in &paths {
             let theme = Self::get_theme(p)?;
-            let basename =
-                p.file_stem().and_then(|x| x.to_str()).ok_or(LoadingError::BadPath)?;
+            let basename = p
+                .file_stem()
+                .and_then(|x| x.to_str())
+                .ok_or(LoadingError::BadPath)?;
             self.themes.insert(basename.to_owned(), theme);
         }
 
@@ -64,10 +66,9 @@ impl ThemeSet {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::highlighting::{ThemeSet, Color};
+    use crate::highlighting::{Color, ThemeSet};
     #[test]
     fn can_parse_common_themes() {
         let themes = ThemeSet::load_from_folder("testdata").unwrap();
@@ -78,20 +79,24 @@ mod tests {
 
         let theme = ThemeSet::get_theme("testdata/spacegray/base16-ocean.dark.tmTheme").unwrap();
         assert_eq!(theme.name.unwrap(), "Base16 Ocean Dark");
-        assert_eq!(theme.settings.selection.unwrap(),
-                   Color {
-                       r: 0x4f,
-                       g: 0x5b,
-                       b: 0x66,
-                       a: 0xff,
-                   });
-        assert_eq!(theme.scopes[0].style.foreground.unwrap(),
-                   Color {
-                       r: 0xc0,
-                       g: 0xc5,
-                       b: 0xce,
-                       a: 0xFF,
-                   });
+        assert_eq!(
+            theme.settings.selection.unwrap(),
+            Color {
+                r: 0x4f,
+                g: 0x5b,
+                b: 0x66,
+                a: 0xff,
+            }
+        );
+        assert_eq!(
+            theme.scopes[0].style.foreground.unwrap(),
+            Color {
+                r: 0xc0,
+                g: 0xc5,
+                b: 0xce,
+                a: 0xFF,
+            }
+        );
         // assert!(false);
     }
 }

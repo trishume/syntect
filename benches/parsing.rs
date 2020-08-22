@@ -1,4 +1,4 @@
-use criterion::{Bencher, Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use std::fs::File;
 use std::io::Read;
 use std::time::Duration;

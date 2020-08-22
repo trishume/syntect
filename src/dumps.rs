@@ -7,31 +7,38 @@
 //! You can use these methods to manage your own caching of compiled syntaxes and
 //! themes. And even your own `serde::Serialize` structures if you want to
 //! be consistent with your format.
-use bincode::Result;
+#[cfg(all(
+    feature = "assets",
+    any(feature = "dump-load", feature = "dump-load-rs")
+))]
+use crate::highlighting::ThemeSet;
+#[cfg(all(
+    feature = "parsing",
+    feature = "assets",
+    any(feature = "dump-load", feature = "dump-load-rs")
+))]
+use crate::parsing::SyntaxSet;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use bincode::deserialize_from;
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use bincode::serialize_into;
+use bincode::Result;
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+use flate2::bufread::ZlibDecoder;
+#[cfg(feature = "dump-create")]
+use flate2::write::ZlibEncoder;
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+use flate2::Compression;
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+use serde::de::DeserializeOwned;
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+use serde::Serialize;
 use std::fs::File;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use std::io::{BufRead, BufReader};
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use std::io::{BufWriter, Write};
-#[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
-use crate::parsing::SyntaxSet;
-#[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
-use crate::highlighting::ThemeSet;
 use std::path::Path;
-#[cfg(feature = "dump-create")]
-use flate2::write::ZlibEncoder;
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
-use flate2::bufread::ZlibDecoder;
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
-use flate2::Compression;
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
-use serde::Serialize;
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
-use serde::de::DeserializeOwned;
 
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
@@ -77,7 +84,11 @@ pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T>
     from_reader(reader)
 }
 
-#[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+#[cfg(all(
+    feature = "parsing",
+    feature = "assets",
+    any(feature = "dump-load", feature = "dump-load-rs")
+))]
 impl SyntaxSet {
     /// Instantiates a new syntax set from a binary dump of
     /// Sublime Text's default open source syntax definitions.
@@ -94,10 +105,10 @@ impl SyntaxSet {
     /// you can even use the fact that SyntaxDefinitions are serializable with
     /// the bincode crate to cache dumps of additional syntaxes yourself.
     pub fn load_defaults_nonewlines() -> SyntaxSet {
-
         #[cfg(feature = "metadata")]
         {
-            let mut ps: SyntaxSet = from_binary(include_bytes!("../assets/default_nonewlines.packdump"));
+            let mut ps: SyntaxSet =
+                from_binary(include_bytes!("../assets/default_nonewlines.packdump"));
             let metadata = from_binary(include_bytes!("../assets/default_metadata.packdump"));
             ps.metadata = metadata;
             ps
@@ -112,10 +123,10 @@ impl SyntaxSet {
     /// These are separate methods because thanks to linker garbage collection, only the serialized
     /// dumps for the method(s) you call will be included in the binary (each is ~200kb for now).
     pub fn load_defaults_newlines() -> SyntaxSet {
-
         #[cfg(feature = "metadata")]
         {
-            let mut ps: SyntaxSet = from_binary(include_bytes!("../assets/default_newlines.packdump"));
+            let mut ps: SyntaxSet =
+                from_binary(include_bytes!("../assets/default_newlines.packdump"));
             let metadata = from_binary(include_bytes!("../assets/default_metadata.packdump"));
             ps.metadata = metadata;
             ps
@@ -127,7 +138,10 @@ impl SyntaxSet {
     }
 }
 
-#[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+#[cfg(all(
+    feature = "assets",
+    any(feature = "dump-load", feature = "dump-load-rs")
+))]
 impl ThemeSet {
     /// Loads the set of default themes
     /// Currently includes (these are the keys for the map):
@@ -142,7 +156,11 @@ impl ThemeSet {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(all(feature = "yaml-load", any(feature = "dump-create", feature = "dump-create-rs"), any(feature = "dump-load", feature = "dump-load-rs")))]
+    #[cfg(all(
+        feature = "yaml-load",
+        any(feature = "dump-create", feature = "dump-create-rs"),
+        any(feature = "dump-load", feature = "dump-load-rs")
+    ))]
     #[test]
     fn can_dump_and_load() {
         use super::*;
@@ -157,19 +175,27 @@ mod tests {
         assert_eq!(ss.syntaxes().len(), ss2.syntaxes().len());
     }
 
-    #[cfg(all(feature = "yaml-load", any(feature = "dump-create", feature = "dump-create-rs"), any(feature = "dump-load", feature = "dump-load-rs")))]
+    #[cfg(all(
+        feature = "yaml-load",
+        any(feature = "dump-create", feature = "dump-create-rs"),
+        any(feature = "dump-load", feature = "dump-load-rs")
+    ))]
     #[test]
     fn dump_is_deterministic() {
         use super::*;
         use crate::parsing::SyntaxSetBuilder;
 
         let mut builder1 = SyntaxSetBuilder::new();
-        builder1.add_from_folder("testdata/Packages", false).unwrap();
+        builder1
+            .add_from_folder("testdata/Packages", false)
+            .unwrap();
         let ss1 = builder1.build();
         let bin1 = dump_binary(&ss1);
 
         let mut builder2 = SyntaxSetBuilder::new();
-        builder2.add_from_folder("testdata/Packages", false).unwrap();
+        builder2
+            .add_from_folder("testdata/Packages", false)
+            .unwrap();
         let ss2 = builder2.build();
         let bin2 = dump_binary(&ss2);
         // This is redundant, but assert_eq! can be really slow on a large
@@ -178,7 +204,10 @@ mod tests {
         assert_eq!(bin1, bin2);
     }
 
-    #[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+    #[cfg(all(
+        feature = "assets",
+        any(feature = "dump-load", feature = "dump-load-rs")
+    ))]
     #[test]
     fn has_default_themes() {
         use crate::highlighting::ThemeSet;

@@ -23,7 +23,12 @@ extern crate serde_derive;
 #[macro_use]
 extern crate pretty_assertions;
 
-#[cfg(any(feature = "dump-load-rs", feature = "dump-load", feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(any(
+    feature = "dump-load-rs",
+    feature = "dump-load",
+    feature = "dump-create",
+    feature = "dump-create-rs"
+))]
 pub mod dumps;
 #[cfg(feature = "parsing")]
 pub mod easy;
@@ -35,15 +40,15 @@ pub mod html;
 pub mod parsing;
 pub mod util;
 
-use std::io::Error as IoError;
 use std::error::Error;
 use std::fmt;
+use std::io::Error as IoError;
 
-#[cfg(feature = "metadata")]
-use serde_json::Error as JsonError;
+use crate::highlighting::{ParseThemeError, SettingsError};
 #[cfg(all(feature = "yaml-load", feature = "parsing"))]
 use crate::parsing::ParseSyntaxError;
-use crate::highlighting::{ParseThemeError, SettingsError};
+#[cfg(feature = "metadata")]
+use serde_json::Error as JsonError;
 
 /// Common error type used by syntax and theme loading
 #[derive(Debug)]
@@ -113,7 +118,7 @@ impl fmt::Display for LoadingError {
                 } else {
                     error.fmt(f)
                 }
-            },
+            }
             #[cfg(feature = "metadata")]
             ParseMetadata(_) => write!(f, "Failed to parse JSON"),
             ParseTheme(_) => write!(f, "Invalid syntax theme"),
