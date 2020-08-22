@@ -9,21 +9,24 @@ use fnv::FnvHasher;
 use crate::parsing::syntax_set::{SyntaxSet, SyntaxReference};
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
+///
 /// If you are parsing an entire file you create one of these at the start and use it
 /// all the way to the end.
 ///
 /// # Caching
 ///
 /// One reason this is exposed is that since it implements `Clone` you can actually cache
-/// these (probably along with a `HighlightState`) and only re-start parsing from the point of a change.
-/// See the docs for `HighlightState` for more in-depth discussion of caching.
+/// these (probably along with a [`HighlightState`]) and only re-start parsing from the point of a change.
+/// See the docs for [`HighlightState`] for more in-depth discussion of caching.
 ///
 /// This state doesn't keep track of the current scope stack and parsing only returns changes to this stack
 /// so if you want to construct scope stacks you'll need to keep track of that as well.
-/// Note that `HighlightState` contains exactly this as a public field that you can use.
+/// Note that [`HighlightState`] contains exactly this as a public field that you can use.
 ///
 /// **Note:** Caching is for advanced users who have tons of time to maximize performance or want to do so eventually.
 /// It is not recommended that you try caching the first time you implement highlighting.
+///
+/// [`HighlightState`]: ../highlighting/struct.HighlightState.html
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParseState {
     stack: Vec<StateLevel>,
@@ -49,7 +52,7 @@ struct RegexMatch<'a> {
     would_loop: bool,
 }
 
-/// maps the pattern to the start index, which is -1 if not found.
+/// Maps the pattern to the start index, which is -1 if not found.
 type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
 
 // To understand the implementation of this, here's an introduction to how
@@ -145,8 +148,8 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 // again. This time, the "\w+" wins because it comes first.
 
 impl ParseState {
-    /// Create a state from a syntax, keeps its own reference counted
-    /// pointer to the main context of the syntax.
+    /// Creates a state from a syntax definition, keeping its own reference-counted point to the
+    /// main context of the syntax
     pub fn new(syntax: &SyntaxReference) -> ParseState {
         let start_state = StateLevel {
             context: syntax.contexts["__start"],
@@ -165,17 +168,20 @@ impl ParseState {
     /// Sublime Text avoids this by just not highlighting lines that are too long (thousands of characters).
     ///
     /// For efficiency reasons this returns only the changes to the current scope at each point in the line.
-    /// You can use `ScopeStack#apply` on each operation in succession to get the stack for a given point.
+    /// You can use [`ScopeStack::apply`] on each operation in succession to get the stack for a given point.
     /// Look at the code in `highlighter.rs` for an example of doing this for highlighting purposes.
     ///
     /// The returned vector is in order both by index to apply at (the `usize`) and also by order to apply them at a
     /// given index (e.g popping old scopes before pushing new scopes).
     ///
-    /// The `SyntaxSet` has to be the one that contained the syntax that was
-    /// used to construct this `ParseState`, or an extended version of it.
-    /// Otherwise the parsing would return the wrong result or even panic. The
-    /// reason for this is that contexts within the `SyntaxSet` are referenced
-    /// via indexes.
+    /// The [`SyntaxSet`] has to be the one that contained the syntax that was used to construct
+    /// this [`ParseState`], or an extended version of it. Otherwise the parsing would return the
+    /// wrong result or even panic. The reason for this is that contexts within the [`SyntaxSet`]
+    /// are referenced via indexes.
+    ///
+    /// [`ScopeStack::apply`]: struct.ScopeStack.html#method.apply
+    /// [`SyntaxSet`]: struct.SyntaxSet.html
+    /// [`ParseState`]: struct.ParseState.html
     pub fn parse_line(&mut self, line: &str, syntax_set: &SyntaxSet) -> Vec<(usize, ScopeStackOp)> {
         assert!(!self.stack.is_empty(),
                 "Somehow main context was popped from the stack");

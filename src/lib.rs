@@ -3,15 +3,21 @@
 //! Much more info about syntect is available on the [Github Page](https://github.com/trishume/syntect).
 //!
 //! May I suggest that you start by reading the `Readme.md` file in the main repo.
-//! Once you're done with that you can look at the docs for `parsing::SyntaxSet`
-//! and for the `easy` module.
+//! Once you're done with that you can look at the docs for [`parsing::SyntaxSet`]
+//! and for the [`easy`] module.
 //!
-//! Almost everything in syntect is divided up into either the `parsing` module
-//! for turning text into text annotated with scopes, and the `highlighting` module
+//! Almost everything in syntect is divided up into either the [`parsing`] module
+//! for turning text into text annotated with scopes, and the [`highlighting`] module
 //! for turning annotated text into styled/colored text.
 //!
-//! Some docs have example code but a good place to look is the `syncat` example as well as the source code
-//! for the `easy` module in `easy.rs` as that shows how to plug the various parts together for common use cases.
+//! Some docs have example code but a good place to look is the `syncat` example as
+//! well as the source code for the [`easy`] module in `easy.rs` as that shows how to
+//! plug the various parts together for common use cases.
+//!
+//! [`parsing::SyntaxSet`]: parsing/struct.SyntaxSet.html
+//! [`easy`]: easy/index.html
+//! [`parsing`]: parsing/index.html
+//! [`highlighting`]: highlighting/index.html
 
 #![doc(html_root_url = "https://docs.rs/syntect/4.4.0")]
 

@@ -1,19 +1,22 @@
 //! Convenient helper functions for common use cases:
-//! printing to terminal, iterating lines with `\n`s, modifying ranges of highlighted output
+//! * Printing to terminal
+//! * Iterating lines with `\n`s
+//! * Modifying ranges of highlighted output
+
 use crate::highlighting::{Style, StyleModifier};
 use std::fmt::Write;
 use std::ops::Range;
 #[cfg(feature = "parsing")]
 use crate::parsing::ScopeStackOp;
 
-/// Formats the styled fragments using 24-bit color
-/// terminal escape codes. Meant for debugging and testing.
-/// It's currently fairly inefficient in its use of escape codes.
+/// Formats the styled fragments using 24-bit color terminal escape codes.
+/// Meant for debugging and testing.
 ///
-/// Note that this does not currently ever un-set the color so that
-/// the end of a line will also get highlighted with the background.
-/// This means if you might want to use `println!("\x1b[0m");` after
-/// to clear the coloring.
+/// This function is currently fairly inefficient in its use of escape codes.
+///
+/// Note that this does not currently ever un-set the color so that the end of a line will also get
+/// highlighted with the background.  This means if you might want to use `println!("\x1b[0m");`
+/// after to clear the coloring.
 ///
 /// If `bg` is true then the background is also set
 pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
@@ -201,8 +204,10 @@ impl<'a> Iterator for LinesWithEndings<'a> {
 }
 
 /// Split a highlighted line at a byte index in the line into a before and
-/// after component. It's just a helper that does the somewhat tricky logic
-/// including splitting a span if the index lies on a boundary.
+/// after component.
+///
+/// This is just a helper that does the somewhat tricky logic including splitting
+/// a span if the index lies on a boundary.
 ///
 /// This can be used to extract a chunk of the line out for special treatment
 /// like wrapping it in an HTML tag for extra styling.

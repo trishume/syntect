@@ -1,5 +1,9 @@
 //! Everything about parsing text into text annotated with scopes.
-//! The most important struct here is `SyntaxSet`, check out the docs for that.
+//!
+//! The most important struct here is [`SyntaxSet`], check out the docs for that.
+//!
+//! [`SyntaxSet`]: struct.SyntaxSet.html
+
 #[cfg(feature = "metadata")]
 pub mod metadata;
 #[cfg(feature = "parsing")]

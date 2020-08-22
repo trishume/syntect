@@ -10,13 +10,17 @@ use std::io::{self, BufRead};
 use std::path::Path;
 
 /// Output HTML for a line of code with `<span>` elements using class names
-/// As this has to keep track of open and closed `<span>` tags, it is a `struct`
-/// with additional state.
 ///
-/// There is a `finalize()` function that has to be called in the end in order
+/// Because this has to keep track of open and closed `<span>` tags, it is a `struct` with
+/// additional state.
+///
+/// There is a [`finalize()`] method that must be called in the end in order
 /// to close all open `<span>` tags.
 ///
 /// The lines returned don't include a newline at the end.
+///
+/// [`finalize()`]: #method.finalize
+///
 /// # Example
 ///
 /// ```
@@ -92,8 +96,7 @@ pub fn css_for_theme(theme: &Theme) -> String {
     css_for_theme_with_class_style(theme, ClassStyle::Spaced)
 }
 
-/// Create a complete CSS for a given theme. Can be used inline, or written to
-/// a CSS file.
+/// Create a complete CSS for a given theme. Can be used inline, or written to a CSS file.
 pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> String {
     let mut css = String::new();
 
@@ -427,7 +430,9 @@ pub fn append_highlighted_html_for_styled_line(v: &[(Style, &str)], bg: IncludeB
 /// `highlighted_html_for_string`.
 ///
 /// If you don't care about the background color you can just prefix the lines from
-/// `styled_line_to_highlighted_html` with a `<pre>`. This is meant to be used with `IncludeBackground::IfDifferent`.
+/// `styled_line_to_highlighted_html` with a `<pre>`. This is meant to be used with
+/// `IncludeBackground::IfDifferent`.
+///
 /// As of `v3.0` this method also returns the background color to be passed to `IfDifferent`.
 ///
 /// You're responsible for creating the string `</pre>` to close this, I'm not gonna provide a
