@@ -1,28 +1,35 @@
-/// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs
-/// released under the MIT license by @defuz
+// Code based on [https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs](https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs)
+// released under the MIT license by @defuz
 use crate::parsing::{MatchPower, ParseScopeError, Scope, ScopeStack};
 use std::str::FromStr;
 
-/// A single selector consisting of a stack to match and a possible stack to exclude from being matched.
-/// You probably want `ScopeSelectors` which is this but with union support.
+/// A single selector consisting of a stack to match and a possible stack to
+/// exclude from being matched.
+///
+/// You probably want [`ScopeSelectors`] which is this but with union support.
+///
+/// [`ScopeSelectors`]: struct.ScopeSelectors.html
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScopeSelector {
-    path: ScopeStack,
-    excludes: Vec<ScopeStack>,
+    pub path: ScopeStack,
+    pub excludes: Vec<ScopeStack>,
 }
 
 /// A selector set that matches anything matched by any of its component selectors.
-/// See [The TextMate Docs](https://manual.macromates.com/en/scope_selectors) for how these
-/// work.
+///
+/// See [The TextMate Docs](https://manual.macromates.com/en/scope_selectors) for how these work.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScopeSelectors {
-    /// the selectors, if any of them match, this matches
+    /// The selectors, if any of them match, that this matches
     pub selectors: Vec<ScopeSelector>,
 }
 
 impl ScopeSelector {
     /// Checks if this selector matches a given scope stack.
-    /// See `ScopeSelectors#does_match` for more info.
+    ///
+    /// See [`ScopeSelectors::does_match`] for more info.
+    ///
+    /// [`ScopeSelectors::does_match`]: struct.ScopeSelectors.html#method.does_match
     pub fn does_match(&self, stack: &[Scope]) -> Option<MatchPower> {
         // if there are any exclusions, and any one of them matches, then this selector doesn't match
         if self
@@ -48,7 +55,7 @@ impl ScopeSelector {
         Some(self.path.as_slice()[0])
     }
 
-    /// extract all selectors for generating css
+    /// Extract all selectors for generating CSS
     pub fn extract_scopes(&self) -> Vec<Scope> {
         self.path.scopes.clone()
     }
@@ -76,10 +83,10 @@ impl FromStr for ScopeSelector {
 }
 
 impl ScopeSelectors {
-    /// checks if any of these selectors match the given scope stack
-    /// if so it returns a match score, higher match scores are stronger
-    /// matches. Scores are ordered according to the rules found
-    /// at https://manual.macromates.com/en/scope_selectors
+    /// Checks if any of the given selectors match the given scope stack
+    ///
+    /// If so, it returns a match score. Higher match scores indicate stronger matches. Scores are
+    /// ordered according to the rules found at [https://manual.macromates.com/en/scope_selectors](https://manual.macromates.com/en/scope_selectors).
     ///
     /// # Examples
     ///

@@ -49,8 +49,10 @@ impl Regex {
     /// Search for the pattern in the given text from begin/end positions.
     ///
     /// If a region is passed, it is used for storing match group positions. The argument allows
-    /// the `Region` to be reused between searches, which makes a significant performance
+    /// the [`Region`] to be reused between searches, which makes a significant performance
     /// difference.
+    ///
+    /// [`Region`]: struct.Region.html
     pub fn search(
         &self,
         text: &str,

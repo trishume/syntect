@@ -1,8 +1,9 @@
-//! This module contains data structures for representing syntax definitions.
-//! Everything is public because I want this library to be useful in super
-//! integrated cases like text editors and I have no idea what kind of monkeying
-//! you might want to do with the data. Perhaps parsing your own syntax format
-//! into this data structure?
+//! Data structures for representing syntax definitions
+//!
+//! Everything here is public becaues I want this library to be useful in super integrated cases
+//! like text editors and I have no idea what kind of monkeying you might want to do with the data.
+//! Perhaps parsing your own syntax format into this data structure?
+
 use super::regex::{Regex, Region};
 use super::scope::*;
 use crate::parsing::syntax_set::SyntaxSet;
@@ -19,12 +20,13 @@ pub struct ContextId {
 }
 
 /// The main data structure representing a syntax definition loaded from a
-/// `.sublime-syntax` file. You'll probably only need these as references
-/// to be passed around to parsing code.
+/// `.sublime-syntax` file
 ///
-/// Some useful public fields are the `name` field which is a human readable
-/// name to display in syntax lists, and the `hidden` field which means hide
-/// this syntax from any lists because it is for internal use.
+/// You'll probably only need these as references to be passed around to parsing code.
+///
+/// Some useful public fields are the `name` field which is a human readable name to display in
+/// syntax lists, and the `hidden` field which means hide this syntax from any lists because it is
+/// for internal use.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SyntaxDefinition {
     pub name: String,
@@ -75,9 +77,9 @@ pub enum Pattern {
     Include(ContextReference),
 }
 
-/// Used to iterate over all the match patterns in a context.
-/// Basically walks the tree of patterns and include directives
-/// in the correct order.
+/// Used to iterate over all the match patterns in a context
+///
+/// Basically walks the tree of patterns and include directives in the correct order.
 #[derive(Debug)]
 pub struct MatchIter<'a> {
     syntax_set: &'a SyntaxSet,
@@ -159,8 +161,9 @@ impl<'a> Iterator for MatchIter<'a> {
 }
 
 /// Returns an iterator over all the match patterns in this context.
-/// It recursively follows include directives. Can only be run on
-/// contexts that have already been linked up.
+///
+/// It recursively follows include directives. Can only be run on contexts that have already been
+/// linked up.
 pub fn context_iter<'a>(syntax_set: &'a SyntaxSet, context: &'a Context) -> MatchIter<'a> {
     MatchIter {
         syntax_set,

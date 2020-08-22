@@ -1,12 +1,16 @@
-//! Methods for dumping serializable structs to a compressed binary format
-//! These are used to load and store the dumps used for fast startup times.
+//! Methods for dumping serializable structs to a compressed binary format,
+//! used to allow fast startup times
 //!
-//! Currently syntect serializes `SyntaxSet` structs with `dump_to_file`
-//! into `.packdump` files and likewise `ThemeSet` structs to `.themedump` files.
+//! Currently syntect serializes [`SyntaxSet`] structs with [`dump_to_file`]
+//! into `.packdump` files and likewise [`ThemeSet`] structs to `.themedump` files.
 //!
 //! You can use these methods to manage your own caching of compiled syntaxes and
 //! themes. And even your own `serde::Serialize` structures if you want to
 //! be consistent with your format.
+//!
+//! [`SyntaxSet`]: ../parsing/struct.SyntaxSet.html
+//! [`dump_to_file`]: fn.dump_to_file.html
+//! [`ThemeSet`]: ../highlighting/struct.ThemeSet.html
 #[cfg(all(
     feature = "assets",
     any(feature = "dump-load", feature = "dump-load-rs")
@@ -40,13 +44,18 @@ use std::io::{BufRead, BufReader};
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
+/// Dumps an object to the given writer in a compressed binary format
+///
+/// The writer is encoded with the `bincode` crate and compressed with `flate2`.
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
     let mut encoder = ZlibEncoder::new(output, Compression::best());
     serialize_into(&mut encoder, to_dump)
 }
 
-/// Dumps an object to a binary array in the same format as `dump_to_file`
+/// Dumps an object to a binary array in the same format as [`dump_to_writer`]
+///
+/// [`dump_to_writer`]: fn.dump_to_writer.html
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
     let mut v = Vec::new();
@@ -54,23 +63,28 @@ pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
     v
 }
 
-/// Dumps an encodable object to a file at a given path. If a file already exists at that path
-/// it will be overwritten. The files created are encoded with the `bincode` crate and then
-/// compressed with the `flate2` crate.
+/// Dumps an encodable object to a file at a given path, in the same format as [`dump_to_writer`]
+///
+/// If a file already exists at that path it will be overwritten. The files created are encoded with
+/// the `bincode` crate and then compressed with the `flate2` crate.
+///
+/// [`dump_to_writer`]: fn.dump_to_writer.html
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
     let out = BufWriter::new(File::create(path)?);
     dump_to_writer(o, out)
 }
 
+/// A helper function for decoding and decompressing data from a reader
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_reader<T: DeserializeOwned, R: BufRead>(input: R) -> Result<T> {
     let mut decoder = ZlibDecoder::new(input);
     deserialize_from(&mut decoder)
 }
 
-/// Returns a fully loaded syntax set from
-/// a binary dump. Panics if the dump is invalid.
+/// Returns a fully loaded syntax set from a binary dump.
+///
+/// This function panics if the dump is invalid.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
     from_reader(v).unwrap()
@@ -90,20 +104,25 @@ pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T>
     any(feature = "dump-load", feature = "dump-load-rs")
 ))]
 impl SyntaxSet {
-    /// Instantiates a new syntax set from a binary dump of
-    /// Sublime Text's default open source syntax definitions.
+    /// Instantiates a new syntax set from a binary dump of Sublime Text's default open source
+    /// syntax definitions.
+    ///
     /// These dumps are included in this library's binary for convenience.
     ///
     /// This method loads the version for parsing line strings with no `\n` characters at the end.
-    /// If you're able to efficiently include newlines at the end of strings, use `load_defaults_newlines`
-    /// since it works better. See `SyntaxSetBuilder::add_from_folder` for more info on this issue.
+    /// If you're able to efficiently include newlines at the end of strings, use
+    /// [`load_defaults_newlines`] since it works better. See [`SyntaxSetBuilder::add_from_folder`]
+    /// for more info on this issue.
     ///
-    /// This is the recommended way of creating a syntax set for
-    /// non-advanced use cases. It is also significantly faster than loading the YAML files.
+    /// This is the recommended way of creating a syntax set for non-advanced use cases. It is also
+    /// significantly faster than loading the YAML files.
     ///
-    /// Note that you can load additional syntaxes after doing this. If you want
-    /// you can even use the fact that SyntaxDefinitions are serializable with
-    /// the bincode crate to cache dumps of additional syntaxes yourself.
+    /// Note that you can load additional syntaxes after doing this. If you want you can even use
+    /// the fact that SyntaxDefinitions are serializable with the bincode crate to cache dumps of
+    /// additional syntaxes yourself.
+    ///
+    /// [`load_defaults_newlines`]: #method.load_defaults_nonewlines
+    /// [`SyntaxSetBuilder::add_from_folder`]: struct.SyntaxSetBuilder.html#method.add_from_folder
     pub fn load_defaults_nonewlines() -> SyntaxSet {
         #[cfg(feature = "metadata")]
         {
@@ -119,9 +138,12 @@ impl SyntaxSet {
         }
     }
 
-    /// Same as `load_defaults_nonewlines` but for parsing line strings with newlines at the end.
+    /// Same as [`load_defaults_nonewlines`] but for parsing line strings with newlines at the end.
+    ///
     /// These are separate methods because thanks to linker garbage collection, only the serialized
     /// dumps for the method(s) you call will be included in the binary (each is ~200kb for now).
+    ///
+    /// [`load_defaults_nonewlines`]: #method.load_defaults_nonewlines
     pub fn load_defaults_newlines() -> SyntaxSet {
         #[cfg(feature = "metadata")]
         {

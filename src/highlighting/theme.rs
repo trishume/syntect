@@ -1,5 +1,6 @@
-/// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/theme.rs
-/// released under the MIT license by @defuz
+// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/theme.rs
+// released under the MIT license by @defuz
+
 use std::str::FromStr;
 
 use super::selector::*;
@@ -10,18 +11,23 @@ use crate::parsing::ParseScopeError;
 use self::ParseThemeError::*;
 
 /// A theme parsed from a `.tmTheme` file.
-/// Contains fields useful for a theme list as well as `settings` for styling your editor.
+///
+/// This contains additional fields useful for a theme list as well as `settings` for styling your editor.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Theme {
     pub name: Option<String>,
     pub author: Option<String>,
+    /// External settings for the editor using this theme
     pub settings: ThemeSettings,
+    /// The styling rules for the viewed text
     pub scopes: Vec<ThemeItem>,
 }
 
-/// Various properties meant to be used to style a text editor.
-/// Basically all the styles that aren't directly applied to text like selection color.
-/// Use this to make your editor UI match the highlighted text.
+/// Properties for styling the UI of a text editor
+///
+/// This essentially consists of the styles that aren't directly applied to the text being viewed.
+/// `ThemeSettings` are intended to be used to make the UI of the editor match the styling of the
+/// text itself.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSettings {
     /// The default color for text.
@@ -59,14 +65,14 @@ pub struct ThemeSettings {
     /// Only applied when the `match_brackets` setting is set to `true`.
     pub brackets_background: Option<Color>,
     /// Controls certain options when the caret is next to a bracket.
-    /// Only applied when the match_brackets setting is set to `true`.
+    /// Only applied when the `match_brackets` setting is set to `true`.
     pub brackets_options: Option<UnderlineOption>,
 
     /// Color of tags when the caret is next to a tag.
     /// Only used when the `match_tags` setting is set to `true`.
     pub tags_foreground: Option<Color>,
     /// Controls certain options when the caret is next to a tag.
-    /// Only applied when the match_tags setting is set to `true`.
+    /// Only applied when the `match_tags` setting is set to `true`.
     pub tags_options: Option<UnderlineOption>,
 
     /// The border color for "other" matches.
@@ -90,6 +96,7 @@ pub struct ThemeSettings {
     ///
     /// This property is not part of the recognized tmTheme format. It may be
     /// removed in a future release.
+    #[deprecated]
     pub selection_background: Option<Color>,
 
     /// Color of the selection regions border.
@@ -115,6 +122,7 @@ pub struct ThemeSettings {
     /// Deprecated!
     /// This setting does not exist in any available documentation.
     /// Use is discouraged, and it may be removed in a future release.
+    #[deprecated]
     pub highlight_foreground: Option<Color>,
 
     /// The color of the shadow used when a text area can be horizontally scrolled.
@@ -127,6 +135,7 @@ pub struct ThemeSettings {
 pub struct ThemeItem {
     /// Target scope name.
     pub scope: ScopeSelectors,
+    /// The style to use for this component
     pub style: StyleModifier,
 }
 

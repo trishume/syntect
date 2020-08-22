@@ -23,10 +23,13 @@ use lazycell::AtomicLazyCell;
 
 /// A syntax set holds multiple syntaxes that have been linked together.
 ///
-/// Use a `SyntaxSetBuilder` to load syntax definitions and build a syntax set.
+/// Use a [`SyntaxSetBuilder`] to load syntax definitions and build a syntax set.
 ///
-/// After building, the syntax set is immutable and can no longer be modified.
-/// But you can convert it back to a builder by using `into_builder`.
+/// After building, the syntax set is immutable and can no longer be modified, but you can convert
+/// it back into a builder by using the [`into_builder`] method.
+///
+/// [`SyntaxSetBuilder`]: struct.SyntaxSetBuilder.html
+/// [`into_builder`]: #method.into_builder
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyntaxSet {
     syntaxes: Vec<SyntaxReference>,
@@ -37,9 +40,9 @@ pub struct SyntaxSet {
     #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
     first_line_cache: AtomicLazyCell<FirstLineCache>,
     /// Metadata, e.g. indent and commenting information.
-    /// NOTE: if serializing, you should handle metadata manually; that is,
-    /// you should serialize and deserialize it separately. See
-    /// `examples/gendata.rs` for an example.
+    ///
+    /// NOTE: if serializing, you should handle metadata manually; that is, you should serialize and
+    /// deserialize it separately. See `examples/gendata.rs` for an example.
     #[cfg(feature = "metadata")]
     #[serde(skip, default)]
     pub(crate) metadata: Metadata,
@@ -59,16 +62,21 @@ pub struct SyntaxReference {
 }
 
 /// A syntax set builder is used for loading syntax definitions from the file
-/// system or by adding `SyntaxDefinition` objects.
+/// system or by adding [`SyntaxDefinition`] objects.
 ///
-/// Once all the syntaxes have been added, call `build` to turn the builder into
-/// a `SyntaxSet` that can be used for parsing or highlighting.
+/// Once all the syntaxes have been added, call [`build`] to turn the builder into
+/// a [`SyntaxSet`] that can be used for parsing or highlighting.
+///
+/// [`SyntaxDefinition`]: syntax_definition/struct.SyntaxDefinition.html
+/// [`build`]: #method.build
+/// [`SyntaxSet`]: struct.SyntaxSet.html
 #[derive(Clone, Default)]
 pub struct SyntaxSetBuilder {
     syntaxes: Vec<SyntaxDefinition>,
     path_syntaxes: Vec<(String, usize)>,
     #[cfg(feature = "metadata")]
     raw_metadata: LoadMetadata,
+
     /// If this `SyntaxSetBuilder` is created with `SyntaxSet::into_builder`
     /// from a `SyntaxSet` that already had metadata, we keep that metadata,
     /// merging it with newly loaded metadata.
@@ -129,8 +137,11 @@ impl SyntaxSet {
     /// definitions from a folder and then building the syntax set.
     ///
     /// Note that this uses `lines_include_newline` set to `false`, see the
-    /// `add_from_folder` method docs on `SyntaxSetBuilder` for an explanation
+    /// [`add_from_folder`] method docs on [`SyntaxSetBuilder`] for an explanation
     /// as to why this might not be the best.
+    ///
+    /// [`add_from_folder`]: struct.SyntaxSetBuilder.html#method.add_from_folder
+    /// [`SyntaxSetBuilder`]: struct.SyntaxSetBuilder.html
     #[cfg(feature = "yaml-load")]
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<SyntaxSet, LoadingError> {
         let mut builder = SyntaxSetBuilder::new();
@@ -155,8 +166,10 @@ impl SyntaxSet {
     }
 
     /// Finds a syntax by its default scope, for example `source.regexp` finds the regex syntax.
+    ///
     /// This and all similar methods below do a linear search of syntaxes, this should be fast
-    /// because there aren't many syntaxes, but don't think you can call it a bajillion times per second.
+    /// because there aren't many syntaxes, but don't think you can call it a bajillion times per
+    /// second.
     pub fn find_syntax_by_scope(&self, scope: Scope) -> Option<&SyntaxReference> {
         self.syntaxes.iter().rev().find(|&s| s.scope == scope)
     }
@@ -173,8 +186,9 @@ impl SyntaxSet {
     }
 
     /// Searches for a syntax first by extension and then by case-insensitive name
-    /// useful for things like Github-flavoured-markdown code block highlighting where
-    /// all you have to go on is a short token given by the user
+    ///
+    /// This is useful for things like Github-flavoured-markdown code block highlighting where all
+    /// you have to go on is a short token given by the user
     pub fn find_syntax_by_token<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
         {
             let ext_res = self.find_syntax_by_extension(s);
@@ -188,9 +202,10 @@ impl SyntaxSet {
             .find(|&syntax| syntax.name.eq_ignore_ascii_case(s))
     }
 
-    /// Try to find the syntax for a file based on its first line.
-    /// This uses regexes that come with some sublime syntax grammars
-    /// for matching things like shebangs and mode lines like `-*- Mode: C -*-`
+    /// Try to find the syntax for a file based on its first line
+    ///
+    /// This uses regexes that come with some sublime syntax grammars for matching things like
+    /// shebangs and mode lines like `-*- Mode: C -*-`
     pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
         let cache = self.first_line_cache();
         for &(ref reg, i) in cache.regexes.iter().rev() {
@@ -202,10 +217,11 @@ impl SyntaxSet {
     }
 
     /// Searches for a syntax by it's original file path when it was first loaded from disk
-    /// primarily useful for syntax tests
-    /// some may specify a Packages/PackageName/SyntaxName.sublime-syntax path
-    /// others may just have SyntaxName.sublime-syntax
-    /// this caters for these by matching the end of the path of the loaded syntax definition files
+    ///
+    /// This is primarily useful for syntax tests. Some may specify a
+    /// `Packages/PackageName/SyntaxName.sublime-syntax` path, and others may just have
+    /// `SyntaxName.sublime-syntax`. This caters for these by matching the end of the path of the
+    /// loaded syntax definition files
     // however, if a syntax name is provided without a folder, make sure we don't accidentally match the end of a different syntax definition's name - by checking a / comes before it or it is the full path
     pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxReference> {
         let mut slash_path = "/".to_string();
@@ -217,12 +233,15 @@ impl SyntaxSet {
             .map(|&(_, i)| &self.syntaxes[i])
     }
 
-    /// Convenience method that tries to find the syntax for a file path,
-    /// first by extension/name and then by first line of the file if that doesn't work.
+    /// Convenience method that tries to find the syntax for a file path, first by extension/name
+    /// and then by first line of the file if that doesn't work.
+    ///
     /// May IO Error because it sometimes tries to read the first line of the file.
     ///
     /// # Examples
-    /// When determining how to highlight a file, use this in combination with a fallback to plain text:
+    ///
+    /// When determining how to highlight a file, use this in combination with a fallback to plain
+    /// text:
     ///
     /// ```
     /// use syntect::parsing::SyntaxSet;
@@ -256,11 +275,12 @@ impl SyntaxSet {
     }
 
     /// Finds a syntax for plain text, which usually has no highlighting rules.
-    /// Good as a fallback when you can't find another syntax but you still want
-    /// to use the same highlighting pipeline code.
     ///
-    /// This syntax should always be present, if not this method will panic.
-    /// If the way you load syntaxes doesn't create one, use `add_plain_text_syntax`.
+    /// This is good as a fallback when you can't find another syntax but you still want to use the
+    /// same highlighting pipeline code.
+    ///
+    /// This syntax should always be present, if not this method will panic. If the way you load
+    /// syntaxes doesn't create one, use [`add_plain_text_syntax`].
     ///
     /// # Examples
     /// ```
@@ -271,6 +291,8 @@ impl SyntaxSet {
     /// let syntax = ss.find_syntax_by_token("rs").unwrap_or_else(|| ss.find_syntax_plain_text());
     /// assert_eq!(syntax.name, "Plain Text");
     /// ```
+    ///
+    /// [`add_plain_text_syntax`]: struct.SyntaxSetBuilder.html#method.add_plain_text_syntax
     pub fn find_syntax_plain_text(&self) -> &SyntaxReference {
         self.find_syntax_by_name("Plain Text")
             .expect("All syntax sets ought to have a plain text syntax")
@@ -371,9 +393,10 @@ impl SyntaxSetBuilder {
         self.syntaxes.push(syntax);
     }
 
-    /// Rarely useful method that loads in a syntax with no highlighting rules for plain text.
-    /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some
-    /// reason the default Sublime plain text syntax is still in `.tmLanguage` format.
+    /// A rarely useful method that loads in a syntax with no highlighting rules for plain text
+    ///
+    /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some reason
+    /// the default Sublime plain text syntax is still in `.tmLanguage` format.
     #[cfg(feature = "yaml-load")]
     pub fn add_plain_text_syntax(&mut self) {
         let s = "---\nname: Plain Text\nfile_extensions: [txt]\nscope: text.plain\ncontexts: \
@@ -382,17 +405,19 @@ impl SyntaxSetBuilder {
         self.syntaxes.push(syn);
     }
 
-    /// Loads all the .sublime-syntax files in a folder into this builder.
+    /// Loads all the `.sublime-syntax` files in a folder into this builder.
     ///
-    /// The `lines_include_newline` parameter is used to work around the fact that Sublime Text normally
-    /// passes line strings including newline characters (`\n`) to its regex engine. This results in many
-    /// syntaxes having regexes matching `\n`, which doesn't work if you don't pass in newlines.
-    /// It is recommended that if you can you pass in lines with newlines if you can and pass `true` for this parameter.
-    /// If that is inconvenient pass `false` and the loader will do some hacky find and replaces on the
-    /// match regexes that seem to work for the default syntax set, but may not work for any other syntaxes.
+    /// The `lines_include_newline` parameter is used to work around the fact that Sublime Text
+    /// normally passes line strings including newline characters (`\n`) to its regex engine. This
+    /// results in many syntaxes having regexes matching `\n`, which doesn't work if you don't pass
+    /// in newlines. It is recommended that if you can you pass in lines with newlines if you can
+    /// and pass `true` for this parameter. If that is inconvenient pass `false` and the loader
+    /// will do some hacky find and replaces on the match regexes that seem to work for the default
+    /// syntax set, but may not work for any other syntaxes.
     ///
-    /// In the future I might include a "slow mode" that copies the lines passed in and appends a newline if there isn't one.
-    /// but in the interest of performance currently this hacky fix will have to do.
+    /// In the future I might include a "slow mode" that copies the lines passed in and appends a
+    /// newline if there isn't one, but in the interest of performance currently this hacky fix will
+    /// have to do.
     #[cfg(feature = "yaml-load")]
     pub fn add_from_folder<P: AsRef<Path>>(
         &mut self,
@@ -432,7 +457,7 @@ impl SyntaxSetBuilder {
         Ok(())
     }
 
-    /// Build a `SyntaxSet` from the syntaxes that have been added to this
+    /// Build a [`SyntaxSet`] from the syntaxes that have been added to this
     /// builder.
     ///
     /// ### Linking
@@ -448,9 +473,11 @@ impl SyntaxSetBuilder {
     ///
     /// Linking is done in this build step. So in order to get the best
     /// performance, you should try to avoid calling this too much. Ideally,
-    /// create a `SyntaxSet` once and then use it many times. If you can,
-    /// serialize a `SyntaxSet` for your program and when you run the program,
-    /// directly load the `SyntaxSet`.
+    /// create a [`SyntaxSet`] once and then use it many times. If you can,
+    /// serialize a [`SyntaxSet`] for your program and when you run the program,
+    /// directly load the [`SyntaxSet`].
+    ///
+    /// [`SyntaxSet`]: struct.SyntaxSet.html
     pub fn build(self) -> SyntaxSet {
         #[cfg(not(feature = "metadata"))]
         let SyntaxSetBuilder {

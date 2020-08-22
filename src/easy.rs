@@ -9,13 +9,15 @@ use std::io::{self, BufReader};
 use std::path::Path;
 // use util::debug_print_ops;
 
-/// Simple way to go directly from lines of text to colored
-/// tokens.
+/// Simple way to go directly from lines of text to colored tokens.
 ///
-/// Depending on how you load the syntaxes (see the `SyntaxSet` docs)
-/// you can either pass this strings with trailing `\n`s or without.
+/// Depending on how you load the syntaxes (see the [`SyntaxSet`] docs), this can either take
+/// strings with trailing `\n`s or without.
+///
+/// [`SyntaxSet`]: ../parsing/struct.SyntaxSet.html
 ///
 /// # Examples
+///
 /// Prints colored lines of a string to the terminal
 ///
 /// ```
@@ -70,9 +72,12 @@ impl<'a> HighlightLines<'a> {
     }
 }
 
-/// Convenience struct containing everything you need to highlight a file.
-/// Use the `reader` to get the lines of the file and the `highlight_lines` to highlight them.
-/// See the `new` method docs for more information.
+/// Convenience struct containing everything you need to highlight a file
+///
+/// Use the `reader` to get the lines of the file and the `highlight_lines` to highlight them. See
+/// the [`new`] method docs for more information.
+///
+/// [`new`]: #method.new
 pub struct HighlightFile<'a> {
     pub reader: BufReader<File>,
     pub highlight_lines: HighlightLines<'a>,
@@ -80,9 +85,14 @@ pub struct HighlightFile<'a> {
 
 impl<'a> HighlightFile<'a> {
     /// Constructs a file reader and a line highlighter to get you reading files as fast as possible.
-    /// Auto-detects the syntax from the extension and constructs a `HighlightLines` with the correct syntax and theme.
+    ///
+    /// This auto-detects the syntax from the extension and constructs a [`HighlightLines`] with the
+    /// correct syntax and theme.
+    ///
+    /// [`HighlightLines`]: struct.HighlightLines.html
     ///
     /// # Examples
+    ///
     /// Using the `newlines` mode is a bit involved but yields more robust and glitch-free highlighting,
     /// as well as being slightly faster since it can re-use a line buffer.
     ///
@@ -150,13 +160,16 @@ impl<'a> HighlightFile<'a> {
 
 /// Iterator over the regions of a line which a given the operation from the parser applies.
 ///
-/// To use just keep your own `ScopeStack` and then `ScopeStack.apply(op)` the operation that is yielded
-/// at the top of your `for` loop over this iterator. Now you have a substring of the line and the scope stack
-/// for that token.
+/// To use, just keep your own [`ScopeStack`] and then `ScopeStack.apply(op)` the operation that is
+/// yielded at the top of your `for` loop over this iterator. Now you have a substring of the line
+/// and the scope stack for that token.
 ///
 /// See the `synstats.rs` example for an example of using this iterator.
 ///
-/// **Note:** This will often return empty regions, just `continue` after applying the op if you don't want them.
+/// **Note:** This will often return empty regions, just `continue` after applying the op if you
+/// don't want them.
+///
+/// [`ScopeStack`]: ../parsing/struct.ScopeStack.html
 #[derive(Debug)]
 pub struct ScopeRegionIterator<'a> {
     ops: &'a [(usize, ScopeStackOp)],
@@ -177,6 +190,7 @@ impl<'a> ScopeRegionIterator<'a> {
 }
 
 static NOOP_OP: ScopeStackOp = ScopeStackOp::Noop;
+
 impl<'a> Iterator for ScopeRegionIterator<'a> {
     type Item = (&'a str, &'a ScopeStackOp);
     fn next(&mut self) -> Option<Self::Item> {

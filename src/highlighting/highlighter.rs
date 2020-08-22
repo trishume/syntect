@@ -13,13 +13,16 @@ use crate::parsing::{
     BasicScopeStackOp, MatchPower, Scope, ScopeStack, ScopeStackOp, ATOM_LEN_BITS,
 };
 
-/// Basically a wrapper around a `Theme` preparing it to be used for highlighting.
-/// This is part of the API to preserve the possibility of caching
-/// matches of the selectors of the theme on various scope paths
-/// or setting up some kind of accelerator structure.
+/// Basically a wrapper around a [`Theme`] preparing it to be used for highlighting.
+///
+/// This is part of the API to preserve the possibility of caching matches of the
+/// selectors of the theme on various scope paths or setting up some kind of
+/// accelerator structure.
 ///
 /// So for now this does very little but eventually if you keep it around between
 /// highlighting runs it will preserve its cache.
+///
+/// [`Theme`]: struct.Theme.html
 #[derive(Debug)]
 pub struct Highlighter<'a> {
     theme: &'a Theme,
@@ -31,22 +34,27 @@ pub struct Highlighter<'a> {
 }
 
 /// Keeps a stack of scopes and styles as state between highlighting different lines.
+///
 /// If you are highlighting an entire file you create one of these at the start and use it
 /// all the way to the end.
 ///
 /// # Caching
 ///
-/// One reason this is exposed is that since it implements `Clone` you can actually cache
-/// these (probably along with a `ParseState`) and only re-start highlighting from the point of a change.
-/// You could also do something fancy like only highlight a bit past the end of a user's screen and resume
-/// highlighting when they scroll down on large files.
+/// One reason this is exposed is that since it implements `Clone` you can actually cache these
+/// (probably along with a [`ParseState`]) and only re-start highlighting from the point of a
+/// change. You could also do something fancy like only highlight a bit past the end of a user's
+/// screen and resume highlighting when they scroll down on large files.
 ///
-/// Alternatively you can save space by caching only the `path` field of this struct
-/// then re-create the `HighlightState` when needed by passing that stack as the `initial_stack`
-/// parameter to the `new` method. This takes less space but a small amount of time to re-create the style stack.
+/// Alternatively you can save space by caching only the `path` field of this struct then re-create
+/// the `HighlightState` when needed by passing that stack as the `initial_stack` parameter to the
+/// [`new`] method. This takes less space but a small amount of time to re-create the style stack.
 ///
-/// **Note:** Caching is for advanced users who have tons of time to maximize performance or want to do so eventually.
-/// It is not recommended that you try caching the first time you implement highlighting.
+/// **Note:** Caching is for advanced users who have tons of time to maximize performance or want to
+/// do so eventually. It is not recommended that you try caching the first time you implement
+/// highlighting.
+///
+/// [`ParseState`]: ../parsing/struct.ParseState.html
+/// [`new`]: #method.new
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HighlightState {
     styles: Vec<Style>,
@@ -54,11 +62,14 @@ pub struct HighlightState {
     pub path: ScopeStack,
 }
 
-/// Highlights a line of parsed code given a `HighlightState`
-/// and line of changes from the parser.
-/// Yields the `Style`, the `text` as well as the `Range` of the text in the source string.
+/// Highlights a line of parsed code given a [`HighlightState`] and line of changes from the parser.
 ///
-/// It splits a line of text into different pieces each with a `Style`
+/// Yields the [`Style`], the text and well as the `Range` of the text in the source string.
+///
+/// It splits a line of text into different pieces each with a [`Style`]
+///
+/// [`HighlightState`]: struct.HighlightState.html
+/// [`Style`]: struct.Style.html
 #[derive(Debug)]
 pub struct RangedHighlightIterator<'a, 'b> {
     index: usize,
@@ -69,21 +80,30 @@ pub struct RangedHighlightIterator<'a, 'b> {
     state: &'a mut HighlightState,
 }
 
-/// Highlights a line of parsed code given a `HighlightState`
-/// and line of changes from the parser.
-/// This is a backwards compatible shim on top of the `RangedHighlightIterator` which only
-/// yields the `Style` and the `Text` of the token, not the range.
+/// Highlights a line of parsed code given a [`HighlightState`] and line of changes from the parser.
 ///
-/// It splits a line of text into different pieces each with a `Style`
+/// This is a backwards compatible shim on top of the [`RangedHighlightIterator`] which only
+/// yields the [`Style`] and the text of the token, not the range.
+///
+/// It splits a line of text into different pieces each with a [`Style`].
+///
+/// [`HighlightState`]: struct.HighlightState.html
+/// [`RangedHighlightIterator`]: struct.RangedHighlightIterator.html
+/// [`Style`]: struct.Style.html
 #[derive(Debug)]
 pub struct HighlightIterator<'a, 'b> {
     ranged_iterator: RangedHighlightIterator<'a, 'b>,
 }
 
 impl HighlightState {
-    /// Note that the `Highlighter` is not stored, it is used to construct the initial
-    /// stack of styles. Most of the time you'll want to pass an empty stack as `initial_stack`
-    /// but see the docs for `HighlightState` for discussion of advanced caching use cases.
+    /// Note that the [`Highlighter`] is not stored; it is used to construct the initial stack
+    /// of styles.
+    ///
+    /// Most of the time you'll want to pass an empty stack as `initial_stack`, but see the docs for
+    /// [`HighlightState`] for a discussion of advanced caching use cases.
+    ///
+    /// [`Highlighter`]: struct.Highlighter.html
+    /// [`HighlightState`]: struct.HighlightState.html
     pub fn new(highlighter: &Highlighter<'_>, initial_stack: ScopeStack) -> HighlightState {
         let mut styles = vec![highlighter.get_default()];
         let mut single_caches = vec![ScoredStyle::from_style(styles[0])];
@@ -329,14 +349,17 @@ impl<'a> Highlighter<'a> {
         self.finalize_style_with_multis(&single_cache, stack)
     }
 
-    /// Returns a `StyleModifier` which, if applied to the default style,
+    /// Returns a [`StyleModifier`] which, if applied to the default style,
     /// would generate the fully resolved style for this stack.
     ///
     /// This is made available to applications that are using syntect styles
     /// in combination with style information from other sources.
     ///
     /// This operation is convenient but expensive. For reasonable performance,
-    /// the caller should be caching results. It's likely slower than style_for_stack.
+    /// the caller should be caching results. It's likely slower than [`style_for_stack`].
+    ///
+    /// [`StyleModifier`]: struct.StyleModifier.html
+    /// [`style_for_stack`]: #method.style_for_stack
     pub fn style_mod_for_stack(&self, path: &[Scope]) -> StyleModifier {
         let mut matching_items: Vec<(MatchPower, &ThemeItem)> = self
             .theme

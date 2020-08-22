@@ -99,9 +99,12 @@ __main:
 
 impl SyntaxDefinition {
     /// In case you want to create your own SyntaxDefinition's in memory from strings.
-    /// Generally you should use a `SyntaxSet`
+    ///
+    /// Generally you should use a [`SyntaxSet`].
     ///
     /// `fallback_name` is an optional name to use when the YAML doesn't provide a `name` key.
+    ///
+    /// [`SyntaxSet`]: ../struct.SyntaxSet.html
     pub fn load_from_str(
         s: &str,
         lines_include_newline: bool,
@@ -594,6 +597,7 @@ impl ContextNamer {
 }
 
 /// In fancy-regex, POSIX character classes only match ASCII characters.
+///
 /// Sublime's syntaxes expect them to match Unicode characters as well, so transform them to
 /// corresponding Unicode character classes.
 fn replace_posix_char_classes(regex: String) -> String {
@@ -607,6 +611,7 @@ fn replace_posix_char_classes(regex: String) -> String {
 
 /// Some of the regexes include `$` and expect it to match end of line,
 /// e.g. *before* the `\n` in `test\n`.
+///
 /// In fancy-regex, `$` means end of text by default, so that would
 /// match *after* `\n`. Using `(?m:$)` instead means it matches end of line.
 ///
@@ -742,12 +747,12 @@ struct ConsumingCaptureIndexParser<'a> {
 }
 
 impl<'a> ConsumingCaptureIndexParser<'a> {
-    /// find capture groups which are not inside lookarounds.
-    /// If, in a YAML syntax definition, a scope stack is applied
-    /// to a capture group inside a lookaround,
-    /// (i.e. "captures:\n x: scope.stack goes.here", where "x" is
-    /// the number of a capture group in a lookahead/behind), those
-    /// those scopes are not applied, so no need to even parse them.
+    /// Find capture groups which are not inside lookarounds.
+    ///
+    /// If, in a YAML syntax definition, a scope stack is applied to a capture group inside a
+    /// lookaround, (i.e. "captures:\n x: scope.stack goes.here", where "x" is the number of a
+    /// capture group in a lookahead/behind), those those scopes are not applied, so no need to
+    /// even parse them.
     fn get_consuming_capture_indexes(mut self) -> Vec<usize> {
         let mut result = Vec::new();
         let mut stack = Vec::new();

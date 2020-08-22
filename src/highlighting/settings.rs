@@ -1,6 +1,6 @@
-use plist::Error as PlistError;
-/// Code based on https://github.com/defuz/sublimate/blob/master/src/core/settings.rs
+/// Code based on [https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs](https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs)
 /// released under the MIT license by @defuz
+use plist::Error as PlistError;
 use std::io::{Read, Seek};
 
 pub use serde_json::Value as Settings;

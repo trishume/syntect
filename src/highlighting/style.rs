@@ -1,33 +1,39 @@
-// Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/style.rs
+// Code based on [https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs](https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs)
 // released under the MIT license by @defuz
 use bitflags::bitflags;
 
-/// The foreground, background and font style
+/// Foreground and background colors, with font style
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Style {
-    /// Foreground color.
+    /// Foreground color
     pub foreground: Color,
-    /// Background color.
+    /// Background color
     pub background: Color,
-    /// Style of the font.
+    /// Style of the font
     pub font_style: FontStyle,
 }
 
-/// A change to a `Style` applied incrementally by a theme rule.
+/// A change to a [`Style`] applied incrementally by a theme rule
+///
+/// Fields left empty (as `None`) will not modify the corresponding field on a `Style`
+///
+/// [`Style`]: struct.Style.html
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StyleModifier {
-    /// Foreground color.
+    /// Foreground color
     pub foreground: Option<Color>,
-    /// Background color.
+    /// Background color
     pub background: Option<Color>,
-    /// Style of the font.
+    /// Style of the font
     pub font_style: Option<FontStyle>,
 }
 
-/// RGBA color, these numbers come directly from the theme so
-/// for now you might have to do your own color space conversion if you are outputting
-/// a different color space from the theme. This can be a problem because some Sublime
-/// themes use sRGB and some don't. This is specified in an attribute syntect doesn't parse yet.
+/// RGBA color, directly from the theme
+///
+/// Because these numbers come directly from the theme, you might have to do your own color space
+/// conversion if you're outputting a different color space from the theme. This can be a problem
+/// because some Sublime themes use sRGB and some don't. This is specified in an attribute syntect
+/// doesn't parse yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Color {
     /// Red component
@@ -36,12 +42,12 @@ pub struct Color {
     pub g: u8,
     /// Blue component
     pub b: u8,
-    /// Alpha component
+    /// Alpha (transparency) component
     pub a: u8,
 }
 
 bitflags! {
-    /// This can be a combination of `BOLD`, `UNDERLINE` and `ITALIC`
+    /// The color-independent styling of a font - i.e. bold, italicized, and/or underlined
     #[derive(Serialize, Deserialize)]
     pub struct FontStyle: u8 {
         /// Bold font style
@@ -54,7 +60,7 @@ bitflags! {
 }
 
 impl Color {
-    /// Black color (`#000000`)
+    /// The color black (`#000000`)
     pub const BLACK: Color = Color {
         r: 0x00,
         g: 0x00,
@@ -62,7 +68,7 @@ impl Color {
         a: 0xFF,
     };
 
-    /// White color (`#FFFFFF`)
+    /// The color white (`#FFFFFF`)
     pub const WHITE: Color = Color {
         r: 0xFF,
         g: 0xFF,
@@ -94,6 +100,7 @@ impl Default for Style {
 
 impl StyleModifier {
     /// Applies the other modifier to this one, creating a new modifier.
+    ///
     /// Values in `other` are preferred.
     pub fn apply(&self, other: StyleModifier) -> StyleModifier {
         StyleModifier {
