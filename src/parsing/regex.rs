@@ -32,7 +32,7 @@ impl Regex {
     }
 
     /// Check whether the pattern compiles as a valid regex or not.
-    pub fn try_compile(regex_str: &str) -> Option<Box<dyn Error + Send>> {
+    pub fn try_compile(regex_str: &str) -> Option<Box<dyn Error + Send + Sync + 'static>> {
         regex_impl::Regex::new(regex_str).err()
     }
 
@@ -49,8 +49,10 @@ impl Regex {
     /// Search for the pattern in the given text from begin/end positions.
     ///
     /// If a region is passed, it is used for storing match group positions. The argument allows
-    /// the `Region` to be reused between searches, which makes a significant performance
+    /// the [`Region`] to be reused between searches, which makes a significant performance
     /// difference.
+    ///
+    /// [`Region`]: struct.Region.html
     pub fn search(
         &self,
         text: &str,
@@ -142,7 +144,7 @@ mod regex_impl {
     }
 
     impl Regex {
-        pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error + Send>> {
+        pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error + Send + Sync + 'static>> {
             let result = onig::Regex::with_options(
                 regex_str,
                 RegexOptions::REGEX_OPTION_CAPTURE_GROUP,
@@ -210,7 +212,7 @@ mod regex_impl {
     }
 
     impl Regex {
-        pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error + Send>> {
+        pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error + Send + Sync + 'static>> {
             let result = fancy_regex::Regex::new(regex_str);
             match result {
                 Ok(regex) => Ok(Regex { regex }),

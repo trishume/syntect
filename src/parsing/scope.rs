@@ -11,30 +11,36 @@ use std::mem;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error, Visitor};
 
-/// Multiplier on the power of 2 for MatchPower.
-/// Only useful if you compute your own MatchPower scores.
+/// Multiplier on the power of 2 for MatchPower. This is only useful if you compute your own
+/// [`MatchPower`] scores
+///
+/// [`MatchPower`]: struct.MatchPower.html
 pub const ATOM_LEN_BITS: u16 = 3;
 
 lazy_static! {
     /// The global scope repo, exposed in case you want to minimize locking and unlocking.
-    /// Shouldn't be necessary for you to use. See the `ScopeRepository` docs.
+    ///
+    /// Ths shouldn't be necessary for you to use. See the [`ScopeRepository`] docs.
+    ///
+    /// [`ScopeRepository`]: struct.ScopeRepository.html
     pub static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
 }
 
-/// A hierarchy of atoms with semi-standardized names
-/// used to accord semantic information to a specific piece of text.
-/// Generally written with the atoms separated by dots.
-/// By convention atoms are all lowercase alphanumeric.
+/// A hierarchy of atoms with semi-standardized names used to accord semantic information to a
+/// specific piece of text.
+///
+/// These are generally written with the atoms separated by dots, and - by convention - atoms are
+/// all lowercase alphanumeric.
 ///
 /// Example scopes: `text.plain`, `punctuation.definition.string.begin.ruby`,
 /// `meta.function.parameters.rust`
 ///
-/// `syntect` uses an optimized format for storing these that allows super fast comparison
-/// and determining if one scope is a prefix of another. It also always takes 16 bytes of space.
-/// It accomplishes this by using a global repository to store string values and using bit-packed
-/// 16 bit numbers to represent and compare atoms. Like "atoms" or "symbols" in other languages.
-/// This means that while comparing and prefix are fast, extracting a string is relatively slower
-/// but ideally should be very rare.
+/// `syntect` uses an optimized format for storing these that allows super fast comparison and
+/// determining if one scope is a prefix of another. It also always takes 16 bytes of space. It
+/// accomplishes this by using a global repository to store string values and using bit-packed 16
+/// bit numbers to represent and compare atoms. Like "atoms" or "symbols" in other languages. This
+/// means that while comparing and prefix are fast, extracting a string is relatively slower but
+/// ideally should be very rare.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Copy, Default, Hash)]
 pub struct Scope {
     a: u64,
@@ -52,25 +58,34 @@ pub enum ParseScopeError {
     TooManyAtoms,
 }
 
-/// The structure used to keep track of the mapping between scope atom numbers
-/// and their string names. It is only exposed in case you want to lock
-/// `SCOPE_REPO` and then allocate a whole bunch of scopes at once
-/// without thrashing the lock. It is recommended you just use `Scope::new()`
+/// The structure used to keep track of the mapping between scope atom numbers and their string
+/// names
 ///
-/// Only `Scope`s created by the same repository have valid comparison results.
+/// It is only exposed in case you want to lock [`SCOPE_REPO`] and then allocate a bunch of scopes
+/// at once without thrashing the lock. In general, you should just use [`Scope::new()`].
+///
+/// Only [`Scope`]s created by the same repository have valid comparison results.
+///
+/// [`SCOPE_REPO`]: struct.SCOPE_REPO.html
+/// [`Scope::new()`]: struct.Scope.html#method.new
+/// [`Scope`]: struct.Scope.html
 #[derive(Debug)]
 pub struct ScopeRepository {
     atoms: Vec<String>,
     atom_index_map: HashMap<String, usize>,
 }
 
-/// A stack/sequence of scopes. This is used both to represent hierarchies for a given
-/// token of text, as well as in `ScopeSelectors`. Press `ctrl+shift+p` in Sublime Text
-/// to see the scope stack at a given point.
-/// Also see [the TextMate docs](https://manual.macromates.com/en/scope_selectors).
+/// A stack/sequence of scopes for representing hierarchies for a given token of text
+///
+/// This is also used within [`ScopeSelectors`].
+///
+/// In Sublime Text, the scope stack at a given point can be seen by pressing `ctrl+shift+p`. Also
+/// see [the TextMate docs](https://manual.macromates.com/en/scope_selectors).
 ///
 /// Example for a JS string inside a script tag in a Rails `ERB` file:
 /// `text.html.ruby text.html.basic source.js.embedded.html string.quoted.double.js`
+///
+/// [`ScopeSelectors`]: ../highlighting/struct.ScopeSelectors.html
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ScopeStack {
     clear_stack: Vec<Vec<Scope>>,
@@ -83,21 +98,28 @@ pub enum ClearAmount {
     All,
 }
 
-/// A change to a scope stack. Generally `Noop` is only used internally and you don't have
-/// to worry about ever getting one back from a public function.
-/// Use `ScopeStack#apply` to apply this change.
+/// A change to a scope stack
+///
+/// Generally, `Noop` is only used internally and you won't need to worry about getting one back
+/// from calling a public function.
+///
+/// The change from a `ScopeStackOp` can be applied via [`ScopeStack::apply`].
+///
+/// [`ScopeStack::apply`]: struct.ScopeStack.html#method.apply
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScopeStackOp {
     Push(Scope),
     Pop(usize),
-    /// used for the clear_scopes feature
+    /// Used for the `clear_scopes` feature
     Clear(ClearAmount),
-    /// restores cleared scopes
+    /// Restores cleared scopes
     Restore,
     Noop,
 }
 
-/// Used for `ScopeStack::apply_with_hook`
+/// Used for [`ScopeStack::apply_with_hook`]
+///
+/// [`ScopeStack::apply_with_hook`]: struct.ScopeStack.html#method.apply_with_hook
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BasicScopeStackOp {
     Push(Scope),
@@ -172,23 +194,27 @@ impl ScopeRepository {
         index
     }
 
-    /// Return the string for an atom number returned by `Scope#atom_at`
+    /// Return the string for an atom number returned by [`Scope::atom_at`]
+    ///
+    /// [`Scope::atom_at`]: struct.Scope.html#method.atom_at
     pub fn atom_str(&self, atom_number: u16) -> &str {
         &self.atoms[(atom_number - 1) as usize]
     }
 }
 
 impl Scope {
-    /// Parses a `Scope` from a series of atoms separated by
-    /// `.` characters. Example: `Scope::new("meta.rails.controller")`
+    /// Parses a `Scope` from a series of atoms separated by dot (`.`) characters
+    ///
+    /// Example: `Scope::new("meta.rails.controller")`
     pub fn new(s: &str) -> Result<Scope, ParseScopeError> {
         let mut repo = SCOPE_REPO.lock().unwrap();
         repo.build(s.trim())
     }
 
     /// Gets the atom number at a given index.
-    /// I can't think of any reason you'd find this useful.
-    /// It is used internally for turning a scope back into a string.
+    ///
+    /// I can't think of any reason you'd find this useful. It is used internally for turning a
+    /// scope back into a string.
     pub fn atom_at(self, index: usize) -> u16 {
         let shifted = if index < 4 {
             self.a >> ((3 - index) * 16)
@@ -210,7 +236,7 @@ impl Scope {
         trail / 16
     }
 
-    /// return the number of atoms in the scope
+    /// Returns the number of atoms in the scope
     #[inline(always)]
     pub fn len(self) -> u32 {
         8 - self.missing_atoms()
@@ -220,15 +246,16 @@ impl Scope {
         self.len() == 0
     }
 
-    /// returns a string representation of this scope, this requires locking a
-    /// global repo and shouldn't be done frequently.
+    /// Returns a string representation of this scope
+    ///
+    /// This requires locking a global repo and shouldn't be done frequently.
     pub fn build_string(self) -> String {
         let repo = SCOPE_REPO.lock().unwrap();
         repo.to_string(self)
     }
 
-    /// Tests if this scope is a prefix of another scope.
-    /// Note that the empty scope is always a prefix.
+    /// Tests if this scope is a prefix of another scope. Note that the empty scope is always a
+    /// prefix.
     ///
     /// This operation uses bitwise operations and is very fast
     /// # Examples
@@ -324,11 +351,13 @@ impl<'de> Deserialize<'de> for Scope {
     }
 }
 
-/// Wrapper to get around the fact Rust f64 doesn't implement Ord
-/// and there is no non-NaN float type
+/// Wrapper to get around the fact Rust `f64` doesn't implement `Ord` and there is no non-NaN
+/// float type
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
 pub struct MatchPower(pub f64);
+
 impl Eq for MatchPower {}
+
 impl Ord for MatchPower {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap()
@@ -344,7 +373,7 @@ impl ScopeStack {
     }
 
     /// Note: creating a ScopeStack with this doesn't contain information
-    /// on what to do when clear_scopes contexts end.
+    /// on what to do when `clear_scopes` contexts end.
     pub fn from_vec(v: Vec<Scope>) -> ScopeStack {
         ScopeStack {
             clear_stack: Vec::new(),
@@ -363,15 +392,19 @@ impl ScopeStack {
     }
 
     /// Modifies this stack according to the operation given
-    /// use this to create a stack from a `Vec` of changes
-    /// given by the parser.
+    ///
+    /// Use this to create a stack from a `Vec` of changes given by the parser.
     pub fn apply(&mut self, op: &ScopeStackOp) {
         self.apply_with_hook(op, |_,_|{})
     }
 
     /// Modifies this stack according to the operation given and calls the hook for each basic operation.
-    /// Like `apply` but calls `hook` for every basic modification (as defined by `BasicScopeStackOp`).
-    /// Use this to do things only when the scope stack changes.
+    ///
+    /// Like [`apply`] but calls `hook` for every basic modification (as defined by
+    /// [`BasicScopeStackOp`]). Use this to do things only when the scope stack changes.
+    ///
+    /// [`apply`]: #method.apply
+    /// [`BasicScopeStackOp`]: enum.BasicScopeStackOp.html
     #[inline]
     pub fn apply_with_hook<F>(&mut self, op: &ScopeStackOp, mut hook: F)
         where F: FnMut(BasicScopeStackOp, &[Scope])
@@ -430,8 +463,9 @@ impl ScopeStack {
         println!();
     }
 
-    /// Return the bottom n elements of the stack.
-    /// Equivalent to &scopes[0..n] on a Vec
+    /// Returns the bottom `n` elements of the stack.
+    ///
+    /// Equivalent to `&scopes[0..n]` on a `Vec`
     pub fn bottom_n(&self, n: usize) -> &[Scope] {
         &self.scopes[0..n]
     }
@@ -453,16 +487,16 @@ impl ScopeStack {
         self.len() == 0
     }
 
-    /// checks if this stack as a selector matches the given stack
-    /// if so it returns a match score, higher match scores are stronger
-    /// matches. Scores are ordered according to the rules found
-    /// at https://manual.macromates.com/en/scope_selectors
+    /// Checks if this stack as a selector matches the given stack, returning the match score if so
     ///
-    /// It accomplishes this ordering through some floating point math
-    /// ensuring deeper and longer matches matter.
-    /// Unfortunately it is only guaranteed to return perfectly accurate results
-    /// up to stack depths of 17, but it should be reasonably good even afterwards.
-    /// Textmate has the exact same limitation, dunno about Sublime.
+    /// Higher match scores indicate stronger matches. Scores are ordered according to the rules
+    /// found at [https://manual.macromates.com/en/scope_selectors](https://manual.macromates.com/en/scope_selectors)
+    ///
+    /// It accomplishes this ordering through some floating point math ensuring deeper and longer
+    /// matches matter. Unfortunately it is only guaranteed to return perfectly accurate results up
+    /// to stack depths of 17, but it should be reasonably good even afterwards. TextMate has the
+    /// exact same limitation, dunno about Sublime Text.
+    ///
     /// # Examples
     /// ```
     /// use syntect::parsing::{ScopeStack, MatchPower};
@@ -518,6 +552,7 @@ impl fmt::Display for ScopeStack {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn misc() {
         // use std::mem;
@@ -526,6 +561,7 @@ mod tests {
         // assert_eq!(8, mem::size_of::<Rc<Scope>>());
         // assert_eq!(Scope::new("source.php"), Scope::new("source.php"));
     }
+
     #[test]
     fn repo_works() {
         let mut repo = ScopeRepository::new();
@@ -543,6 +579,7 @@ mod tests {
         assert_eq!(repo.build("comment.line.").unwrap(),
                    repo.build("comment.line").unwrap());
     }
+
     #[test]
     fn global_repo_works() {
         use std::str::FromStr;
@@ -551,6 +588,7 @@ mod tests {
         assert!(Scope::from_str("1.2.3.4.5.6.7.8").is_ok());
         assert!(Scope::from_str("1.2.3.4.5.6.7.8.9").is_err());
     }
+
     #[test]
     fn prefixes_work() {
         assert!(Scope::new("1.2.3.4.5.6.7.8")
@@ -575,6 +613,7 @@ mod tests {
             .unwrap()
             .is_prefix_of(Scope::new("1.2.3.4.5.6.7.8").unwrap()));
     }
+
     #[test]
     fn matching_works() {
         use std::str::FromStr;

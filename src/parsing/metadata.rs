@@ -1,6 +1,5 @@
-//! Support for loading `.tmPreferences` metadata files. These files contain
-//! information related to indentation rules, comment markers,
-//! and other syntax-specific things.
+//! Support for loading `.tmPreferences` metadata files, with information related to indentation
+//! rules, comment markers, and other syntax-specific things.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -19,16 +18,20 @@ use super::super::highlighting::ScopeSelectors;
 
 type Dict = serde_json::Map<String, Settings>;
 
-/// A String representation of a `ScopeSelectors` instance.
+/// A String representation of a [`ScopeSelectors`] instance.
+///
+/// [`ScopeSelectors`]: ../../highlighting/struct.ScopeSelectors.html
 type SelectorString = String;
 
-/// A collection of all loaded metadata.
+/// A collection of all loaded metadata
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub scoped_metadata: Vec<MetadataSet>,
 }
 
-/// Metadata for a particular `ScopeSelector`.
+/// Metadata for a particular [`ScopeSelector`]
+///
+/// [`ScopeSelector`]: ../../highlighting/struct.ScopeSelector.html
 #[derive(Debug, Clone, PartialEq)]
 pub struct MetadataSet {
     /// The raw string representation of this selector. We keep this around
@@ -94,14 +97,20 @@ const KEYS_WE_USE: &[&str] = &[
 ];
 
 impl LoadMetadata {
-    /// Adds the provided `RawMetadataEntry`. When creating the final `Metadata`
-    /// object, all `RawMetadataEntry` items are sorted by path, and items that
-    /// share a scope selector are merged; last writer wins.
+    /// Adds the provided `RawMetadataEntry`
+    ///
+    /// When creating the final [`Metadata`] object, all [`RawMetadataEntry`] items are sorted by
+    /// path, and items that share a scope selector are merged; last writer wins.
+    ///
+    /// [`Metadata`]: struct.Metadata.html
+    /// [`RawMetadataEntry`]: struct.RawMetadataEntry.html
     pub fn add_raw(&mut self, raw: RawMetadataEntry) {
         self.loaded.push(raw);
     }
 
-    /// Generates a `MetadataSet` from a single file
+    /// Generates a [`MetadataSet`] from a single file
+    ///
+    /// [`MetadataSet`]: struct.MetadataSet.html
     #[cfg(test)]
     pub(crate) fn quick_load(path: &str) -> Result<MetadataSet, LoadingError> {
         let mut loaded = Self::default();
@@ -171,8 +180,10 @@ fn append_vars(obj: &mut Dict, vars: Settings, scope: &str) {
 }
 
 impl Metadata {
-    /// For a given stack of scopes, returns a [`ScopedMetadata`] object
-    /// which provides convenient access to metadata items which match the stack.
+    /// For a given stack of scopes, returns a [`ScopedMetadata`] object which provides convenient
+    /// access to metadata items which match the stack.
+    ///
+    /// [`ScopedMetadata`]: struct.ScopedMetadata.html
     pub fn metadata_for_scope(&self, scope: &[Scope]) -> ScopedMetadata<'_> {
         let mut metadata_matches = self.scoped_metadata
             .iter()
@@ -256,8 +267,8 @@ impl MetadataSet {
     }
 }
 
-/// A collection of `MetadataSet`s which match a given scope selector,
-/// sorted in order of the strength of the match.
+/// A collection of [`MetadataSet`]s which match a given scope selector, sorted by the strength of
+/// the match
 ///
 /// # Examples
 ///
@@ -299,6 +310,8 @@ impl MetadataSet {
 /// // and the other match is used when it does not.
 /// assert!(scoped.decrease_indent("one decrease"));
 /// ```
+///
+/// [`MetadataSet`]: struct.MetadataSet.html
 #[derive(Debug, Clone)]
 pub struct ScopedMetadata<'a> {
     pub items: Vec<(MatchPower, &'a MetadataSet)>,

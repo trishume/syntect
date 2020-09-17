@@ -7,7 +7,7 @@ keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
 categories = ["parser-implementations", "parsing", "text-processing"]
 readme = "Readme.md"
 license = "MIT"
-version = "4.1.1" # remember to update html_root_url
+version = "4.4.0" # remember to update html_root_url
 authors = ["Tristan Hume <tristan@thume.ca>"]
 edition = "2018"
 exclude = [
@@ -19,14 +19,14 @@ exclude = [
 
 [dependencies]
 yaml-rust = { version = "0.4", optional = true }
-onig = { version = "5.0", optional = true }
+onig = { version = "6.0", optional = true, default-features = false }
 fancy-regex = { version = "0.3.2", optional = true }
 walkdir = "2.0"
 regex-syntax = { version = "0.6", optional = true }
 lazy_static = "1.0"
 lazycell = "1.0"
 bitflags = "1.0.4"
-plist = "0.5"
+plist = "1"
 bincode = { version = "1.0", optional = true }
 flate2 = { version = "1.0", optional = true, default-features = false }
 fnv = { version = "1.0", optional = true }
@@ -64,7 +64,7 @@ metadata = ["parsing"]
 # The `assets` feature enables inclusion of the default theme and syntax packages.
 # For `assets` to do anything, it requires one of `dump-load-rs` or `dump-load` to be set.
 assets = []
-html = ["parsing", "assets"]
+html = ["parsing"]
 yaml-load = ["yaml-rust", "parsing"]
 default-onig = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create", "regex-onig"]
 # In order to switch to the fancy-regex engine, disable default features then add the default-fancy feature
