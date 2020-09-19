@@ -37,7 +37,7 @@ use std::path::Path;
 /// x + y
 /// "#;
 ///
-/// let syntax_set = SyntaxSet::load_defaults_nonewlines();
+/// let syntax_set = SyntaxSet::load_defaults_newlines();
 /// let syntax = syntax_set.find_syntax_by_name("R").unwrap();
 /// let mut html_generator = ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::Spaced);
 /// for line in LinesWithEndings::from(current_code) {
