@@ -11,7 +11,7 @@
 	<key>name</key>
 	<string>Sourcegraph</string>
 	<key>semanticClass</key>
-	<string>theme.dark.base16_ocean_dark</string>
+	<string>theme.dark.sourcegraph</string>
 	<key>colorSpaceName</key>
 	<string>sRGB</string>
 	<key>gutterSettings</key>
@@ -71,7 +71,7 @@
 			<key>settings</key>
 			<dict>
 				<key>foreground</key>
-				<string>#2b8a3e</string>
+				<string>#359448</string>
 			</dict>
 		</dict>
 		<dict>
