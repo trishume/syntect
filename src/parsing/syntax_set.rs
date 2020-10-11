@@ -773,7 +773,7 @@ mod tests {
         // assert!(false);
         let main_context = ps.get_context(&syntax.contexts["main"]);
         let count = syntax_definition::context_iter(&ps, main_context).count();
-        assert_eq!(count, 109);
+        assert_eq!(count, 145);
     }
 
     #[test]

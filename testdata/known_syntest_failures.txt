@@ -1,5 +1,13 @@
 loading syntax definitions from testdata/Packages
-FAILED testdata/Packages/C#/tests/syntax_test_Strings.cs: 38
+FAILED testdata/Packages/Clojure/tests/syntax_test_clojure.clj: 1
+FAILED testdata/Packages/Erlang/syntax_test_erlang.erl: 783
+FAILED testdata/Packages/Git Formats/syntax_test_git_config: 17
+FAILED testdata/Packages/Git Formats/syntax_test_git_rebase: 3
+FAILED testdata/Packages/Java/syntax_test_java.java: 817
+FAILED testdata/Packages/JavaScript/tests/syntax_test_json.json: 4
 FAILED testdata/Packages/LaTeX/syntax_test_latex.tex: 1
 FAILED testdata/Packages/Makefile/syntax_test_makefile.mak: 6
+FAILED testdata/Packages/Markdown/syntax_test_markdown.md: 280
+FAILED testdata/Packages/Ruby/syntax_test_ruby.rb: 1
+FAILED testdata/Packages/ShellScript/test/syntax_test_bash.sh: 14
 exiting with code 1

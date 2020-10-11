@@ -484,7 +484,7 @@ mod tests {
         let s = include_str!("../testdata/highlight_test.erb");
         let syntax = ss.find_syntax_by_extension("erb").unwrap();
         let html = highlighted_html_for_string(s, &ss, syntax, &ts.themes["base16-ocean.dark"]);
-        // println!("{}", html);
+        println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test3.html"));
         let html2 = highlighted_html_for_file("testdata/highlight_test.erb",
                                                  &ss,

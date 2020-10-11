@@ -686,7 +686,7 @@ mod tests {
             (7, Push(Scope::new("entity.name.module.ruby").unwrap())),
             (7, Push(Scope::new("support.other.namespace.ruby").unwrap())),
             (10, Pop(1)),
-            (10, Push(Scope::new("punctuation.accessor.ruby").unwrap())),
+            (10, Push(Scope::new("punctuation.accessor.double-colon.ruby").unwrap())),
         ];
         assert_eq!(&ops1[0..test_ops1.len()], &test_ops1[..]);
 
@@ -737,6 +737,7 @@ mod tests {
         test_stack.push(Scope::new("text.html.basic").unwrap());
         test_stack.push(Scope::new("source.js.embedded.html").unwrap());
         test_stack.push(Scope::new("source.js").unwrap());
+        test_stack.push(Scope::new("meta.string.js").unwrap());
         test_stack.push(Scope::new("string.quoted.single.js").unwrap());
         test_stack.push(Scope::new("source.ruby.rails.embedded.html").unwrap());
         test_stack.push(Scope::new("meta.function.parameters.ruby").unwrap());
@@ -763,23 +764,25 @@ mod tests {
             (0, Push(Scope::new("source.ruby.rails").unwrap())),
             (4, Push(Scope::new("keyword.operator.assignment.ruby").unwrap())),
             (5, Pop(1)),
-            (6, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
+            (6, Push(Scope::new("meta.string.heredoc.ruby").unwrap())),
+            (6, Push(Scope::new("string.unquoted.heredoc.ruby").unwrap())),
             (6, Push(Scope::new("punctuation.definition.string.begin.ruby").unwrap())),
+            (12, Pop(2)),
             (12, Pop(1)),
-            (12, Pop(1)),
-            (12, Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())),
-            (12, Push(Scope::new("text.sql.embedded.ruby").unwrap())),
+            (12, Push(Scope::new("meta.string.heredoc.ruby").unwrap())),
+            (12, Push(Scope::new("source.sql.embedded.ruby").unwrap())),
             (12, Clear(ClearAmount::TopN(2))),
-            (12, Push(Scope::new("punctuation.accessor.ruby").unwrap())),
+            (12, Push(Scope::new("punctuation.accessor.dot.ruby").unwrap())),
             (13, Pop(1)),
-            (18, Restore),
         ]);
 
-        assert_eq!(ops(&mut state, "wow", &ss), vec![]);
+        assert_eq!(ops(&mut state, "wow", &ss), vec![(0, Restore)]);
 
         assert_eq!(ops(&mut state, "SQL", &ss), vec![
             (0, Pop(1)),
+            (0, Push(Scope::new("string.unquoted.heredoc.ruby").unwrap())),
             (0, Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())),
+            (3, Pop(1)),
             (3, Pop(1)),
             (3, Pop(1)),
         ]);
@@ -855,8 +858,8 @@ mod tests {
         let mut state1 = ParseState::new(syntax);
         let mut state2 = ParseState::new(syntax);
 
-        assert_eq!(ops(&mut state1, "class Foo {", &ss).len(), 11);
-        assert_eq!(ops(&mut state2, "class Fooo {", &ss).len(), 11);
+        assert_eq!(ops(&mut state1, "class Foo {", &ss).len(), 12);
+        assert_eq!(ops(&mut state2, "class Fooo {", &ss).len(), 12);
 
         assert_eq!(state1, state2);
         ops(&mut state1, "}", &ss);
