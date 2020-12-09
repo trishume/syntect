@@ -1,5 +1,9 @@
 # Changelog
 
+## [Version 4.5.0](https://github.com/trishume/syntect/compare/v4.4.0...v4.5.0) (2020-12-09)
+
+- Added a new function for producing classed HTML which handles newlines correctly and deprecated old one. [#307](https://github.com/trishume/syntect/pull/307)
+
 ## [Version 4.4.0](https://github.com/trishume/syntect/compare/v4.3.0...v4.4.0) (2020-08-19)
 
 - Errors are now `Send + Sync + 'static` [#304](https://github.com/trishume/syntect/pull/304)
