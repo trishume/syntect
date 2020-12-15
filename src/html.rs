@@ -152,29 +152,33 @@ pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Strin
                 css.push_str(" ");
             }
 
-            css.push_str("{\n");
-
-            if let Some(fg) =  i.style.foreground {
-                css.push_str(&format!(" color: #{:02x}{:02x}{:02x};\n", fg.r, fg.g, fg.b));
-            }
-
-            if let Some(bg) = i.style.background {
-                css.push_str(&format!(" background-color: #{:02x}{:02x}{:02x};\n", bg.r, bg.g, bg.b));
-            }
-
-            if let Some(fs) = i.style.font_style {
-                if fs.contains(FontStyle::UNDERLINE) {
-                    css.push_str(&format!("font-style: underline;\n"));
-                }
-                if fs.contains(FontStyle::BOLD) {
-                    css.push_str(&format!("font-weight: bold;\n"));
-                }
-                if fs.contains(FontStyle::ITALIC) {
-                    css.push_str(&format!("font-style: italic;\n"));
-                }
-            }
-            css.push_str("}\n");
+            css.pop();
+            css.push_str(", ");
         }
+        let len = css.len();
+        css.truncate(len - 2);
+        css.push_str(" {\n");
+
+        if let Some(fg) =  i.style.foreground {
+            css.push_str(&format!(" color: #{:02x}{:02x}{:02x};\n", fg.r, fg.g, fg.b));
+        }
+
+        if let Some(bg) = i.style.background {
+            css.push_str(&format!(" background-color: #{:02x}{:02x}{:02x};\n", bg.r, bg.g, bg.b));
+        }
+
+        if let Some(fs) = i.style.font_style {
+            if fs.contains(FontStyle::UNDERLINE) {
+                css.push_str(&format!("font-style: underline;\n"));
+            }
+            if fs.contains(FontStyle::BOLD) {
+                css.push_str(&format!("font-weight: bold;\n"));
+            }
+            if fs.contains(FontStyle::ITALIC) {
+                css.push_str(&format!("font-style: italic;\n"));
+            }
+        }
+        css.push_str("}\n");
     }
 
     css
