@@ -372,6 +372,12 @@ impl SyntaxSetBuilder {
         self.syntaxes.push(syntax);
     }
 
+    /// Remove a syntax from the set by name
+    /// Does not error if no matching syntax is found
+    pub fn remove(&mut self, name: &str) {
+        self.syntaxes.retain(|s| s.name != name);
+    }
+
     /// A rarely useful method that loads in a syntax with no highlighting rules for plain text
     ///
     /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some reason
@@ -827,6 +833,19 @@ mod tests {
         let ops = parse_state.parse_line("c go_a a go_b b", &syntax_set);
         let expected = (14, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn can_remove_syntax() {
+        let syntax_set = {
+            let mut builder = SyntaxSetBuilder::new();
+            builder.add(syntax_a());
+            builder.add(syntax_b());
+            builder.remove("A");
+            builder.build()
+        };
+        let syntax = syntax_set.find_syntax_by_extension("a");
+        assert!(syntax.is_none());
     }
 
     #[test]
