@@ -146,17 +146,15 @@ pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Strin
 
         for scope_selector in &i.scope.selectors {
             let scopes = scope_selector.extract_scopes();
-
             for k in &scopes {
                 scope_to_selector(&mut css, *k, style);
-                css.push_str(" ");
+                css.push_str(" "); // join multiple scopes
             }
-
-            css.pop();
-            css.push_str(", ");
+            css.pop(); // remove trailing space
+            css.push_str(", "); // join multiple selectors
         }
         let len = css.len();
-        css.truncate(len - 2);
+        css.truncate(len - 2); // remove trailing ", "
         css.push_str(" {\n");
 
         if let Some(fg) =  i.style.foreground {
