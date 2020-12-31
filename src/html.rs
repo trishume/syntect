@@ -148,30 +148,35 @@ pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Strin
             let scopes = scope_selector.extract_scopes();
             for k in &scopes {
                 scope_to_selector(&mut css, *k, style);
-                css.push_str(" {\n");
+                css.push_str(" "); // join multiple scopes
+            }
+            css.pop(); // remove trailing space
+            css.push_str(", "); // join multiple selectors
+        }
+        let len = css.len();
+        css.truncate(len - 2); // remove trailing ", "
+        css.push_str(" {\n");
 
-                if let Some(fg) =  i.style.foreground {
-                    css.push_str(&format!(" color: #{:02x}{:02x}{:02x};\n", fg.r, fg.g, fg.b));
-                }
+        if let Some(fg) =  i.style.foreground {
+            css.push_str(&format!(" color: #{:02x}{:02x}{:02x};\n", fg.r, fg.g, fg.b));
+        }
 
-                if let Some(bg) = i.style.background {
-                    css.push_str(&format!(" background-color: #{:02x}{:02x}{:02x};\n", bg.r, bg.g, bg.b));
-                }
+        if let Some(bg) = i.style.background {
+            css.push_str(&format!(" background-color: #{:02x}{:02x}{:02x};\n", bg.r, bg.g, bg.b));
+        }
 
-                if let Some(fs) = i.style.font_style {
-                    if fs.contains(FontStyle::UNDERLINE) {
-                        css.push_str(&format!("font-style: underline;\n"));
-                    }
-                    if fs.contains(FontStyle::BOLD) {
-                        css.push_str(&format!("font-weight: bold;\n"));
-                    }
-                    if fs.contains(FontStyle::ITALIC) {
-                        css.push_str(&format!("font-style: italic;\n"));
-                    }
-                }
-                css.push_str("}\n");
+        if let Some(fs) = i.style.font_style {
+            if fs.contains(FontStyle::UNDERLINE) {
+                css.push_str(&format!("font-style: underline;\n"));
+            }
+            if fs.contains(FontStyle::BOLD) {
+                css.push_str(&format!("font-weight: bold;\n"));
+            }
+            if fs.contains(FontStyle::ITALIC) {
+                css.push_str(&format!("font-style: italic;\n"));
             }
         }
+        css.push_str("}\n");
     }
 
     css
