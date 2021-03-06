@@ -3,7 +3,7 @@
 use bitflags::bitflags;
 
 /// Foreground and background colors, with font style
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Style {
     /// Foreground color
     pub foreground: Color,
@@ -34,7 +34,7 @@ pub struct StyleModifier {
 /// conversion if you're outputting a different color space from the theme. This can be a problem
 /// because some Sublime themes use sRGB and some don't. This is specified in an attribute syntect
 /// doesn't parse yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Color {
     /// Red component
     pub r: u8,
