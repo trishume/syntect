@@ -359,6 +359,41 @@ impl SyntaxSet {
             self.first_line_cache.borrow().unwrap()
         }
     }
+
+    pub fn find_unlinked_contexts(&self) -> Vec<String> {
+        let mut unlinked_contexts = Vec::new();
+        for context in self.contexts.iter() {
+            for pattern in context.patterns.iter() {
+                match pattern {
+                    Pattern::Match(match_pat) => {
+                        let mut maybe_refs_to_check = None;
+                        match &match_pat.operation {
+                            MatchOperation::Push(context_refs) => {
+                                maybe_refs_to_check = Some(context_refs);
+                            },
+                            MatchOperation::Set(context_refs) => {
+                                maybe_refs_to_check = Some(context_refs);
+                            },
+                            _ => {},
+                        }
+
+                        if let Some(refs_to_check) = maybe_refs_to_check {
+                            for context_ref in refs_to_check {
+                                match context_ref {
+                                    ContextReference::Direct(_) => {},
+                                    _ => {
+                                        unlinked_contexts.push(format!("{:?}", &context_ref));
+                                    },
+                                }
+                            }
+                        }
+                    },
+                    _ => {},
+                }
+            }
+        }
+        unlinked_contexts
+    }
 }
 
 
@@ -827,6 +862,29 @@ mod tests {
         let ops = parse_state.parse_line("c go_a a go_b b", &syntax_set);
         let expected = (14, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn can_find_unlinked_contexts() {
+        let syntax_set = {
+            let mut builder = SyntaxSetBuilder::new();
+            builder.add(syntax_a());
+            builder.add(syntax_b());
+            builder.build()
+        };
+
+        let unlinked_contexts = syntax_set.find_unlinked_contexts();
+        assert_eq!(unlinked_contexts.len(), 0);
+
+        let syntax_set = {
+            let mut builder = SyntaxSetBuilder::new();
+            builder.add(syntax_a());
+            builder.build()
+        };
+
+        let unlinked_contexts = syntax_set.find_unlinked_contexts();
+        assert_eq!(unlinked_contexts.len(), 1);
+        assert_eq!(unlinked_contexts[0], "ByScope { scope: <source.b>, sub_context: Some(\"main\") }");
     }
 
     #[test]
