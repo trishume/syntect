@@ -49,24 +49,22 @@ pub struct ClassedHTMLGenerator<'a> {
     syntax_set: &'a SyntaxSet,
     open_spans: isize,
     parse_state: ParseState,
+    scope_stack: ScopeStack,
     html: String,
     style: ClassStyle,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
-    #[deprecated(since="4.2.0", note="Please use `new_with_class_style` instead")]
-    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet) -> ClassedHTMLGenerator<'a> {
-        Self::new_with_class_style(syntax_reference, syntax_set, ClassStyle::Spaced)
-    }
-
     pub fn new_with_class_style(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet, style: ClassStyle) -> ClassedHTMLGenerator<'a> {
         let parse_state = ParseState::new(syntax_reference);
         let open_spans = 0;
         let html = String::new();
+        let scope_stack = ScopeStack::new();
         ClassedHTMLGenerator {
             syntax_set,
             open_spans,
             parse_state,
+            scope_stack,
             html,
             style,
         }
@@ -82,25 +80,10 @@ impl<'a> ClassedHTMLGenerator<'a> {
             line,
             parsed_line.as_slice(),
             self.style,
+            &mut self.scope_stack,
         );
         self.open_spans += delta;
         self.html.push_str(formatted_line.as_str());
-    }
-
-    /// Parse the line of code and update the internal HTML buffer with tagged HTML
-    ///
-    /// ## Warning
-    /// Due to an unfortunate oversight this function adds a newline after the HTML line,
-    /// and thus requires lines to be passed without newlines in them, and thus requires
-    /// usage of the `load_defaults_nonewlines` version of the default syntaxes.
-    ///
-    /// These versions of the syntaxes can have occasionally incorrect highlighting
-    /// but this function can't be changed without breaking compatibility so is deprecated.
-    #[deprecated(since="4.5.0", note="Please use `parse_html_for_line_which_includes_newline` instead")]
-    pub fn parse_html_for_line(&mut self, line: &str) {
-        self.parse_html_for_line_which_includes_newline(line);
-        // retain newline
-        self.html.push_str("\n");
     }
 
     /// Close all open `<span>` tags and return the finished HTML string
@@ -110,11 +93,6 @@ impl<'a> ClassedHTMLGenerator<'a> {
         }
         self.html
     }
-}
-
-#[deprecated(since="4.2.0", note="Please use `css_for_theme_with_class_style` instead.")]
-pub fn css_for_theme(theme: &Theme) -> String {
-    css_for_theme_with_class_style(theme, ClassStyle::Spaced)
 }
 
 /// Create a complete CSS for a given theme. Can be used inline, or written to a CSS file.
@@ -302,11 +280,11 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(path: P,
 /// tags at the end.
 pub fn tokens_to_classed_spans(line: &str,
                            ops: &[(usize, ScopeStackOp)],
-                           style: ClassStyle)
+                           style: ClassStyle,
+                           stack: &mut ScopeStack)
                            -> (String, isize) {
     let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
     let mut cur_index = 0;
-    let mut stack = ScopeStack::new();
     let mut span_delta = 0;
 
     // check and skip emty inner <span> tags
@@ -344,14 +322,6 @@ pub fn tokens_to_classed_spans(line: &str,
     }
     write!(s, "{}", Escape(&line[cur_index..line.len()])).unwrap();
     (s, span_delta)
-}
-
-#[deprecated(since="3.1.0", note="please use `tokens_to_classed_spans` instead")]
-pub fn tokens_to_classed_html(line: &str,
-                              ops: &[(usize, ScopeStackOp)],
-                              style: ClassStyle)
-                              -> String {
-    tokens_to_classed_spans(line, ops, style).0
 }
 
 /// Determines how background color attributes are generated
@@ -485,11 +455,12 @@ mod tests {
         let mut state = ParseState::new(syntax);
         let line = "[w](t.co) *hi* **five**";
         let ops = state.parse_line(line, &ss);
+        let mut stack = ScopeStack::new();
 
         // use util::debug_print_ops;
         // debug_print_ops(line, &ops);
 
-        let (html, _) = tokens_to_classed_spans(line, &ops[..], ClassStyle::Spaced);
+        let (html, _) = tokens_to_classed_spans(line, &ops[..], ClassStyle::Spaced, &mut stack);
         println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test2.html").trim_end());
 
@@ -542,6 +513,19 @@ mod tests {
             .unwrap();
         println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test5.html"));
+    }
+
+    #[test]
+    fn test_classed_html_generator_doesnt_panic() {
+        let current_code = "{\n    \"headers\": [\"Number\", \"Title\"],\n    \"records\": [\n        [\"1\", \"Gutenberg\"],\n        [\"2\", \"Printing\"]\n    ],\n}\n";
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_token("json").unwrap();
+        println!("{:?}", syntax);
+        let mut html_generator = ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::Spaced);
+        for line in LinesWithEndings::from(current_code) {
+            html_generator.parse_html_for_line_which_includes_newline(&line);
+        }
+        html_generator.finalize();
     }
 
     #[test]
