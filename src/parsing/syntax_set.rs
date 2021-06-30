@@ -360,7 +360,7 @@ impl SyntaxSet {
         }
     }
 
-    pub fn find_unlinked_contexts(&self) -> Vec<String> {
+    pub fn find_unlinked_contexts(&self) -> HashSet<String> {
         let SyntaxSet { syntaxes, contexts, .. } = self;
 
         let mut context_map = HashMap::with_capacity(contexts.len());
@@ -368,7 +368,7 @@ impl SyntaxSet {
             context_map.insert(i, context);
         }
 
-        let mut unlinked_contexts = Vec::new();
+        let mut unlinked_contexts = HashSet::new();
 
         for syntax in syntaxes {
             let SyntaxReference {
@@ -402,7 +402,7 @@ impl SyntaxSet {
                                         match context_ref {
                                             ContextReference::Direct(_) => {},
                                             _ => {
-                                                unlinked_contexts.push(
+                                                unlinked_contexts.insert(
                                                     format!(
                                                         "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
                                                         name, scope, &context_ref
@@ -909,7 +909,7 @@ mod tests {
             builder.build()
         };
 
-        let unlinked_contexts = syntax_set.find_unlinked_contexts();
+        let unlinked_contexts : Vec<String> = syntax_set.find_unlinked_contexts().into_iter().collect();
         assert_eq!(unlinked_contexts.len(), 1);
         assert_eq!(unlinked_contexts[0], "Syntax 'A' with scope 'source.a' has unresolved context reference ByScope { scope: <source.b>, sub_context: Some(\"main\") }");
     }
