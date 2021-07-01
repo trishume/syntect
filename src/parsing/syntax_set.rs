@@ -384,36 +384,35 @@ impl SyntaxSet {
                     builder_contexts.insert(context_name, context);
 
                     for pattern in context.patterns.iter() {
-                        match pattern {
+                        let maybe_refs_to_check = match pattern {
                             Pattern::Match(match_pat) => {
-                                let mut maybe_refs_to_check = None;
                                 match &match_pat.operation {
                                     MatchOperation::Push(context_refs) => {
-                                        maybe_refs_to_check = Some(context_refs);
+                                        Some(context_refs)
                                     },
                                     MatchOperation::Set(context_refs) => {
-                                        maybe_refs_to_check = Some(context_refs);
+                                        Some(context_refs)
                                     },
-                                    _ => {},
-                                }
-
-                                if let Some(refs_to_check) = maybe_refs_to_check {
-                                    for context_ref in refs_to_check {
-                                        match context_ref {
-                                            ContextReference::Direct(_) => {},
-                                            _ => {
-                                                unlinked_contexts.insert(
-                                                    format!(
-                                                        "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
-                                                        name, scope, &context_ref
-                                                    )
-                                                );
-                                            },
-                                        }
-                                    }
+                                    _ => None,
                                 }
                             },
-                            _ => {},
+                            _ => None,
+                        };
+
+                        if let Some(refs_to_check) = maybe_refs_to_check {
+                            for context_ref in refs_to_check {
+                                match context_ref {
+                                    ContextReference::Direct(_) => {},
+                                    _ => {
+                                        unlinked_contexts.insert(
+                                            format!(
+                                                "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
+                                                name, scope, &context_ref
+                                            )
+                                        );
+                                    },
+                                }
+                            }
                         }
                     }
                 }
