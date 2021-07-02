@@ -378,11 +378,8 @@ impl SyntaxSet {
                 ..
             } = syntax;
 
-            let mut builder_contexts = HashMap::with_capacity(contexts.len());
             for (context_name, context_id) in contexts {
                 if let Some(context) = context_map.remove(&context_id.index()) {
-                    builder_contexts.insert(context_name, context);
-
                     for pattern in context.patterns.iter() {
                         let maybe_refs_to_check = match pattern {
                             Pattern::Match(match_pat) => {
@@ -399,19 +396,17 @@ impl SyntaxSet {
                             _ => None,
                         };
 
-                        if let Some(refs_to_check) = maybe_refs_to_check {
-                            for context_ref in refs_to_check {
-                                match context_ref {
-                                    ContextReference::Direct(_) => {},
-                                    _ => {
-                                        unlinked_contexts.insert(
-                                            format!(
-                                                "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
-                                                name, scope, &context_ref
-                                            )
-                                        );
-                                    },
-                                }
+                        for context_ref in maybe_refs_to_check.into_iter().flatten() {
+                            match context_ref {
+                                ContextReference::Direct(_) => {},
+                                _ => {
+                                    unlinked_contexts.insert(
+                                        format!(
+                                            "Syntax '{}' with scope '{}' has unresolved context reference {:?} from context '{}'",
+                                            name, scope, &context_ref, context_name
+                                        )
+                                    );
+                                },
                             }
                         }
                     }
@@ -910,7 +905,7 @@ mod tests {
 
         let unlinked_contexts : Vec<String> = syntax_set.find_unlinked_contexts().into_iter().collect();
         assert_eq!(unlinked_contexts.len(), 1);
-        assert_eq!(unlinked_contexts[0], "Syntax 'A' with scope 'source.a' has unresolved context reference ByScope { scope: <source.b>, sub_context: Some(\"main\") }");
+        assert_eq!(unlinked_contexts[0], "Syntax 'A' with scope 'source.a' has unresolved context reference ByScope { scope: <source.b>, sub_context: Some(\"main\") } from context 'main'");
     }
 
     #[test]
