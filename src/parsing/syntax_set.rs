@@ -378,7 +378,7 @@ impl SyntaxSet {
                 ..
             } = syntax;
 
-            for (context_name, context_id) in contexts {
+            for (_, context_id) in contexts {
                 if let Some(context) = context_map.remove(&context_id.index()) {
                     for pattern in context.patterns.iter() {
                         let maybe_refs_to_check = match pattern {
@@ -402,8 +402,8 @@ impl SyntaxSet {
                                 _ => {
                                     unlinked_contexts.insert(
                                         format!(
-                                            "Syntax '{}' with scope '{}' has unresolved context reference {:?} from context '{}'",
-                                            name, scope, &context_ref, context_name
+                                            "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
+                                            name, scope, &context_ref
                                         )
                                     );
                                 },
@@ -905,7 +905,7 @@ mod tests {
 
         let unlinked_contexts : Vec<String> = syntax_set.find_unlinked_contexts().into_iter().collect();
         assert_eq!(unlinked_contexts.len(), 1);
-        assert_eq!(unlinked_contexts[0], "Syntax 'A' with scope 'source.a' has unresolved context reference ByScope { scope: <source.b>, sub_context: Some(\"main\") } from context 'main'");
+        assert_eq!(unlinked_contexts[0], "Syntax 'A' with scope 'source.a' has unresolved context reference ByScope { scope: <source.b>, sub_context: Some(\"main\") }");
     }
 
     #[test]
