@@ -48,6 +48,9 @@ pub struct SyntaxSet {
     pub(crate) metadata: Metadata,
 }
 
+/// A linked version of a [`SyntaxDefinition`] that is only useful as part of the
+/// [`SyntaxSet`] that contains it. See docs for [`SyntaxSetBuilder::build`] for
+/// more info.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SyntaxReference {
     pub name: String,
