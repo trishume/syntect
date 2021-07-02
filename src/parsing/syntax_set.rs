@@ -7,7 +7,7 @@ use super::metadata::{LoadMetadata, Metadata, RawMetadataEntry};
 #[cfg(feature = "yaml-load")]
 use super::super::LoadingError;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeSet};
 use std::path::Path;
 #[cfg(feature = "yaml-load")]
 use walkdir::WalkDir;
@@ -360,7 +360,7 @@ impl SyntaxSet {
         }
     }
 
-    pub fn find_unlinked_contexts(&self) -> HashSet<String> {
+    pub fn find_unlinked_contexts(&self) -> BTreeSet<String> {
         let SyntaxSet { syntaxes, contexts, .. } = self;
 
         let mut context_map = HashMap::with_capacity(contexts.len());
@@ -368,7 +368,7 @@ impl SyntaxSet {
             context_map.insert(i, context);
         }
 
-        let mut unlinked_contexts = HashSet::new();
+        let mut unlinked_contexts = BTreeSet::new();
 
         for syntax in syntaxes {
             let SyntaxReference {
