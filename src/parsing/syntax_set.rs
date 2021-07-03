@@ -7,7 +7,7 @@ use super::metadata::{LoadMetadata, Metadata, RawMetadataEntry};
 #[cfg(feature = "yaml-load")]
 use super::super::LoadingError;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeSet};
 use std::path::Path;
 #[cfg(feature = "yaml-load")]
 use walkdir::WalkDir;
@@ -363,35 +363,56 @@ impl SyntaxSet {
         }
     }
 
-    pub fn find_unlinked_contexts(&self) -> Vec<String> {
-        let mut unlinked_contexts = Vec::new();
-        for context in self.contexts.iter() {
-            for pattern in context.patterns.iter() {
-                match pattern {
-                    Pattern::Match(match_pat) => {
-                        let mut maybe_refs_to_check = None;
-                        match &match_pat.operation {
-                            MatchOperation::Push(context_refs) => {
-                                maybe_refs_to_check = Some(context_refs);
-                            },
-                            MatchOperation::Set(context_refs) => {
-                                maybe_refs_to_check = Some(context_refs);
-                            },
-                            _ => {},
-                        }
+    pub fn find_unlinked_contexts(&self) -> BTreeSet<String> {
+        let SyntaxSet { syntaxes, contexts, .. } = self;
 
-                        if let Some(refs_to_check) = maybe_refs_to_check {
-                            for context_ref in refs_to_check {
-                                match context_ref {
-                                    ContextReference::Direct(_) => {},
-                                    _ => {
-                                        unlinked_contexts.push(format!("{:?}", &context_ref));
+        let mut context_map = HashMap::with_capacity(contexts.len());
+        for (i, context) in contexts.into_iter().enumerate() {
+            context_map.insert(i, context);
+        }
+
+        let mut unlinked_contexts = BTreeSet::new();
+
+        for syntax in syntaxes {
+            let SyntaxReference {
+                name,
+                scope,
+                contexts,
+                ..
+            } = syntax;
+
+            for (_, context_id) in contexts {
+                if let Some(context) = context_map.remove(&context_id.index()) {
+                    for pattern in context.patterns.iter() {
+                        let maybe_refs_to_check = match pattern {
+                            Pattern::Match(match_pat) => {
+                                match &match_pat.operation {
+                                    MatchOperation::Push(context_refs) => {
+                                        Some(context_refs)
                                     },
+                                    MatchOperation::Set(context_refs) => {
+                                        Some(context_refs)
+                                    },
+                                    _ => None,
                                 }
+                            },
+                            _ => None,
+                        };
+
+                        for context_ref in maybe_refs_to_check.into_iter().flatten() {
+                            match context_ref {
+                                ContextReference::Direct(_) => {},
+                                _ => {
+                                    unlinked_contexts.insert(
+                                        format!(
+                                            "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
+                                            name, scope, &context_ref
+                                        )
+                                    );
+                                },
                             }
                         }
-                    },
-                    _ => {},
+                    }
                 }
             }
         }
@@ -885,9 +906,9 @@ mod tests {
             builder.build()
         };
 
-        let unlinked_contexts = syntax_set.find_unlinked_contexts();
+        let unlinked_contexts : Vec<String> = syntax_set.find_unlinked_contexts().into_iter().collect();
         assert_eq!(unlinked_contexts.len(), 1);
-        assert_eq!(unlinked_contexts[0], "ByScope { scope: <source.b>, sub_context: Some(\"main\") }");
+        assert_eq!(unlinked_contexts[0], "Syntax 'A' with scope 'source.a' has unresolved context reference ByScope { scope: <source.b>, sub_context: Some(\"main\") }");
     }
 
     #[test]
