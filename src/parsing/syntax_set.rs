@@ -431,6 +431,11 @@ impl SyntaxSetBuilder {
         self.syntaxes.push(syntax);
     }
 
+    /// The list of syntaxes added so far.
+    pub fn syntaxes(&self) -> &[SyntaxDefinition] {
+        &self.syntaxes[..]
+    }
+
     /// A rarely useful method that loads in a syntax with no highlighting rules for plain text
     ///
     /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some reason
@@ -852,6 +857,18 @@ mod tests {
         let ops = parse_state.parse_line("a go_b b", &cloned_syntax_set);
         let expected = (7, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn can_list_added_syntaxes() {
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax_a());
+        builder.add(syntax_b());
+        let syntaxes = builder.syntaxes();
+
+        assert_eq!(syntaxes.len(), 2);
+        assert_eq!(syntaxes[0].name, "A");
+        assert_eq!(syntaxes[1].name, "B");
     }
 
     #[test]
