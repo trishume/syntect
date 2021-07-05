@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+    - name: Build
+      run: |
+        cargo build
+    - name: Run tests
+      run: |
+        cargo test --features metadata
+    - name: Run tests with fancy
+      run: |
+        # Run these tests in release mode since they're slow as heck otherwise
+        cargo test --features default-fancy --no-default-features --release
+    - name: make stuff
+      run: |
+        make assets
+        make syntest
+        make syntest-fancy
+        rm -Rf examples
+    - name: Docs
+      run: |
+        # Only run doc build on stable until this is fixed: https://github.com/rust-lang/rust/issues/51661
+        cargo doc
+    - name: Run tests without default features
+      run: |
+        # default features are required for examples to build - so remove them from sight.
+        # Doc-tests may also use default features
+        rm -Rf examples && cargo test --lib --no-default-features
+    - name: Run Xi tests
+      run: |
+        # Test the build configuration that Xi uses
+        cargo test --lib --no-default-features --features "assets dump-load-rs"
