@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/syntect.svg?maxAge=2591000)](https://crates.io/crates/syntect)
 [![Documentation](https://docs.rs/syntect/badge.svg)](https://docs.rs/syntect)
 [![Crates.io](https://img.shields.io/crates/l/syntect.svg?maxAge=2591000)]()
-[![Build Status](https://travis-ci.org/trishume/syntect.svg?branch=master)](https://travis-ci.org/trishume/syntect)
+[![Build Status](https://github.com/trishume/syntect/actions/workflows/CI.yml/badge.svg)](https://github.com/trishume/syntect/actions)
 [![codecov](https://codecov.io/gh/trishume/syntect/branch/master/graph/badge.svg)](https://codecov.io/gh/trishume/syntect)
 
 `syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax).
