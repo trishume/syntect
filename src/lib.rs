@@ -33,6 +33,8 @@ extern crate pretty_assertions;
 pub mod dumps;
 #[cfg(feature = "parsing")]
 pub mod easy;
+#[cfg(feature = "parsing")]
+pub mod syntax_tests;
 #[cfg(feature = "html")]
 mod escape;
 pub mod highlighting;
