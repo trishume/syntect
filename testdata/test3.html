@@ -1,30 +1,30 @@
 <pre style="background-color:#2b303b;">
 <span style="color:#c0c5ce;">&lt;</span><span style="color:#bf616a;">script </span><span style="color:#d08770;">type</span><span style="color:#c0c5ce;">=&quot;</span><span style="color:#a3be8c;">text/javascript</span><span style="color:#c0c5ce;">&quot;&gt;
 </span><span style="color:#c0c5ce;">  </span><span style="color:#b48ead;">var </span><span style="color:#bf616a;">lol </span><span style="color:#c0c5ce;">= &quot;</span><span style="color:#a3be8c;">JS nesting</span><span style="color:#c0c5ce;">&quot;;
-</span><span style="color:#c0c5ce;">  </span><span style="color:#b48ead;">class </span><span style="color:#ebcb8b;">WithES6 </span><span style="color:#b48ead;">extends </span><span style="color:#a3be8c;">THREE</span><span style="color:#eff1f5;">.</span><span style="color:#a3be8c;">Mesh </span><span style="color:#eff1f5;">{
+</span><span style="color:#c0c5ce;">  </span><span style="color:#b48ead;">class </span><span style="color:#ebcb8b;">WithES6 </span><span style="color:#b48ead;">extends </span><span style="color:#ebcb8b;">THREE</span><span style="color:#eff1f5;">.</span><span style="color:#a3be8c;">Mesh </span><span style="color:#eff1f5;">{
 </span><span style="color:#eff1f5;">    </span><span style="color:#b48ead;">static </span><span style="color:#8fa1b3;">highQuality</span><span style="color:#eff1f5;">() { </span><span style="color:#65737e;">// such classes
-</span><span style="color:#eff1f5;">      </span><span style="color:#b48ead;">return </span><span style="color:#bf616a;">this</span><span style="color:#eff1f5;">.</span><span style="color:#8fa1b3;">toString</span><span style="color:#eff1f5;">();
+</span><span style="color:#eff1f5;">      </span><span style="color:#b48ead;">return </span><span style="color:#bf616a;">this</span><span style="color:#eff1f5;">.</span><span style="color:#96b5b4;">toString</span><span style="color:#eff1f5;">();
 </span><span style="color:#eff1f5;">    }
 </span><span style="color:#eff1f5;">  }
 </span><span style="color:#c0c5ce;">  </span><span style="color:#ab7967;">&lt;%
 </span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;"># The outer syntax is HTML (Rails) detected from the .erb extension
-</span><span style="color:#c0c5ce;">    </span><span style="color:#96b5b4;">puts </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Ruby </span><span style="color:#ab7967;">#{</span><span style="color:#c0c5ce;">&#39;</span><span style="color:#a3be8c;">nesting</span><span style="color:#c0c5ce;">&#39; * </span><span style="color:#d08770;">2</span><span style="color:#ab7967;">}</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#c0c5ce;">    </span><span style="color:#96b5b4;">puts </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Ruby </span><span style="color:#c0c5ce;">#{&#39;</span><span style="color:#a3be8c;">nesting</span><span style="color:#c0c5ce;">&#39; * </span><span style="color:#d08770;">2</span><span style="color:#c0c5ce;">}&quot;
 </span><span style="color:#c0c5ce;">    here = &lt;&lt;-WOWCOOL + </span><span style="color:#bf616a;">CORRECTLY_DOES_NOT_HIGHLIGHT_REST_OF_LINE
 </span><span style="color:#a3be8c;">      high quality parsing even supports custom heredoc endings
-</span><span style="color:#a3be8c;">      </span><span style="color:#ab7967;">#{
-</span><span style="color:#a3be8c;">      nested </span><span style="color:#c0c5ce;">= </span><span style="color:#d08770;">5 </span><span style="color:#c0c5ce;">* &lt;&lt;-ZOMG
-</span><span style="color:#a3be8c;">        nested heredocs! (no highlighting: 5 * 6, yes highlighting: </span><span style="color:#ab7967;">#{</span><span style="color:#d08770;">5 </span><span style="color:#c0c5ce;">* </span><span style="color:#d08770;">6</span><span style="color:#ab7967;">}</span><span style="color:#a3be8c;">)
-</span><span style="color:#c0c5ce;">      ZOMG
-</span><span style="color:#a3be8c;">      </span><span style="color:#ab7967;">}
-</span><span style="color:#c0c5ce;">    WOWCOOL
+</span><span style="color:#a3be8c;">      </span><span style="color:#c0c5ce;">#{
+</span><span style="color:#c0c5ce;">      nested = </span><span style="color:#d08770;">5 </span><span style="color:#c0c5ce;">* &lt;&lt;-ZOMG
+</span><span style="color:#a3be8c;">        nested heredocs! (no highlighting: 5 * 6, yes highlighting: </span><span style="color:#c0c5ce;">#{</span><span style="color:#d08770;">5 </span><span style="color:#c0c5ce;">* </span><span style="color:#d08770;">6</span><span style="color:#c0c5ce;">}</span><span style="color:#a3be8c;">)
+</span><span style="color:#a3be8c;">      </span><span style="color:#c0c5ce;">ZOMG
+</span><span style="color:#c0c5ce;">      }
+</span><span style="color:#a3be8c;">    </span><span style="color:#c0c5ce;">WOWCOOL
 </span><span style="color:#c0c5ce;">    sql = &lt;&lt;-SQL
-</span><span style="color:#a3be8c;">      </span><span style="color:#b48ead;">select </span><span style="color:#c0c5ce;">* </span><span style="color:#b48ead;">from</span><span style="color:#a3be8c;"> heredocs </span><span style="color:#b48ead;">where</span><span style="color:#a3be8c;"> there_are_special_heredoc_names </span><span style="color:#c0c5ce;">= </span><span style="color:#d08770;">true
-</span><span style="color:#c0c5ce;">    SQL
+</span><span style="color:#c0c5ce;">      </span><span style="color:#b48ead;">select </span><span style="color:#bf616a;">* </span><span style="color:#b48ead;">from</span><span style="color:#c0c5ce;"> heredocs </span><span style="color:#b48ead;">where</span><span style="color:#c0c5ce;"> there_are_special_heredoc_names = </span><span style="color:#d08770;">true
+</span><span style="color:#a3be8c;">    </span><span style="color:#c0c5ce;">SQL
 </span><span style="color:#c0c5ce;">  </span><span style="color:#ab7967;">%&gt;
 </span><span style="color:#c0c5ce;">&lt;/</span><span style="color:#bf616a;">script</span><span style="color:#c0c5ce;">&gt;
 </span><span style="color:#c0c5ce;">&lt;</span><span style="color:#bf616a;">style </span><span style="color:#d08770;">type</span><span style="color:#c0c5ce;">=&quot;</span><span style="color:#a3be8c;">text/css</span><span style="color:#c0c5ce;">&quot;&gt;
 </span><span style="color:#c0c5ce;">  </span><span style="color:#65737e;">/* the HTML syntax also supports CSS of course */
-</span><span style="color:#b48ead;">  </span><span style="color:#8fa1b3;">.</span><span style="color:#d08770;">stuff </span><span style="color:#8fa1b3;">#wow </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">  </span><span style="color:#8fa1b3;">.</span><span style="color:#d08770;">stuff </span><span style="color:#8fa1b3;">#wow </span><span style="color:#c0c5ce;">{
 </span><span style="color:#c0c5ce;">    border: </span><span style="color:#d08770;">5px </span><span style="color:#96b5b4;">#ffffff</span><span style="color:#c0c5ce;">;
 </span><span style="color:#c0c5ce;">    background: </span><span style="color:#96b5b4;">url</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">wow</span><span style="color:#c0c5ce;">&quot;);
 </span><span style="color:#c0c5ce;">  }
