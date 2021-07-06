@@ -1,5 +1,10 @@
 # Changelog
 
+## [Version 5.0.0]
+
+- Remove deprecated functions in the `html` module
+- Change definition of `tokens_to_classed_spans` to also take a mutable ScopeStack
+
 ## [Version 4.5.0](https://github.com/trishume/syntect/compare/v4.4.0...v4.5.0) (2020-12-09)
 
 - Added a new function for producing classed HTML which handles newlines correctly and deprecated old one. [#307](https://github.com/trishume/syntect/pull/307)
