@@ -34,7 +34,7 @@ pub mod dumps;
 #[cfg(feature = "parsing")]
 pub mod easy;
 #[cfg(feature = "html")]
-mod escape;
+pub mod escape;
 pub mod highlighting;
 #[cfg(feature = "html")]
 pub mod html;
