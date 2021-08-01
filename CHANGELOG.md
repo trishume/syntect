@@ -1,9 +1,12 @@
 # Changelog
 
-## [Version 5.0.0]
+## [Version 4.6.0](https://github.com/trishume/syntect/compare/v4.5.0...v4.6.0) (2021-08-01)
 
-- Remove deprecated functions in the `html` module
-- Change definition of `tokens_to_classed_spans` to also take a mutable ScopeStack
+- Add `html::line_tokens_to_classed_spans` to also take a mutable ScopeStack, deprecate `tokens_to_classed_spans`, to avoid panics and incorrect highlighting.
+- Derive Hash for Color and Style
+- Add `find_unlinked_contexts` to `SyntaxSet`
+- Add `syntaxes` method to `SyntaxSetBuilder`
+- Bump `fancy-regex` to v0.7 and `yaml-rust` to v0.4.5
 
 ## [Version 4.5.0](https://github.com/trishume/syntect/compare/v4.4.0...v4.5.0) (2020-12-09)
 
