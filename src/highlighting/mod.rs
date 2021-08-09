@@ -11,11 +11,13 @@ mod selector;
 pub(crate) mod settings;
 mod style;
 mod theme;
+mod theme_load;
 mod theme_set;
 
 pub use self::selector::*;
 pub use self::settings::SettingsError;
 pub use self::style::*;
 pub use self::theme::*;
+pub use self::theme_load::*;
 pub use self::highlighter::*;
 pub use self::theme_set::*;
