@@ -175,12 +175,6 @@ impl Default for UnderlineOption {
     }
 }
 
-impl Default for FontStyle {
-    fn default() -> FontStyle {
-        FontStyle::empty()
-    }
-}
-
 impl FromStr for UnderlineOption {
     type Err = ParseThemeError;
 

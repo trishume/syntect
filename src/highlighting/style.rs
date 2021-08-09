@@ -111,3 +111,9 @@ impl StyleModifier {
         }
     }
 }
+
+impl Default for FontStyle {
+    fn default() -> FontStyle {
+        FontStyle::empty()
+    }
+}
