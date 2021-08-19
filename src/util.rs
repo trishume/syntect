@@ -215,6 +215,7 @@ impl<'a> Iterator for LinesWithEndings<'a> {
 /// Generic for testing purposes and fancier use cases, but intended for use with
 /// the `Vec<(Style, &str)>` returned by `highlight` methods. Look at the source
 /// code for `modify_range` for an example usage.
+#[allow(clippy::type_complexity)]
 pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'a str)>, Vec<(A, &'a str)>) {
     // This function works by gradually reducing the problem into smaller sub-problems from the front
     let mut rest = v;

@@ -216,6 +216,7 @@ impl ParseState {
         res
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn parse_next_token(
         &mut self,
         line: &str,
