@@ -8,9 +8,22 @@ on:
     branches: [ master ]
 
 env:
+  MIN_SUPPORTED_RUST_VERSION: "1.42"
   CARGO_TERM_COLOR: always
 
 jobs:
+  min_version:
+    name: Minimum supported rust version
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ env.MIN_SUPPORTED_RUST_VERSION }}
+        default: true
+    - run: |
+        cargo check --verbose --all-features --all-targets
+
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
