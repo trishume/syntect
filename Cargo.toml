@@ -26,7 +26,7 @@ regex-syntax = { version = "0.6", optional = true }
 lazy_static = "1.0"
 lazycell = "1.0"
 bitflags = "1.0.4"
-plist = "1"
+plist = { version = "1", optional = true }
 bincode = { version = "1.0", optional = true }
 flate2 = { version = "1.0", optional = true, default-features = false }
 fnv = { version = "1.0", optional = true }
@@ -60,15 +60,18 @@ regex-fancy = ["fancy-regex"]
 regex-onig = ["onig"]
 parsing = ["regex-syntax", "fnv"]
 # Support for .tmPreferenes metadata files (indentation, comment syntax, etc)
-metadata = ["parsing"]
+metadata = ["parsing", "plist-load"]
 # The `assets` feature enables inclusion of the default theme and syntax packages.
 # For `assets` to do anything, it requires one of `dump-load-rs` or `dump-load` to be set.
 assets = []
 html = ["parsing"]
+# Support for parsing .tmTheme files and .tmPreferences files
+plist-load = ["plist"]
+# Support for parsing .sublime-syntax files
 yaml-load = ["yaml-rust", "parsing"]
-default-onig = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create", "regex-onig"]
+default-onig = ["parsing", "assets", "html", "plist-load", "yaml-load", "dump-load", "dump-create", "regex-onig"]
 # In order to switch to the fancy-regex engine, disable default features then add the default-fancy feature
-default-fancy = ["parsing", "assets", "html", "yaml-load", "dump-load", "dump-create", "regex-fancy"]
+default-fancy = ["parsing", "assets", "html", "plist-load", "yaml-load", "dump-load", "dump-create", "regex-fancy"]
 default = ["default-onig"]
 
 # [profile.release]

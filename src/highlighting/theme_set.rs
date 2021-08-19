@@ -1,11 +1,10 @@
 use super::theme::Theme;
+#[cfg(feature = "plist-load")]
 use super::settings::*;
 use super::super::LoadingError;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::io::{BufReader, BufRead, Seek};
 use walkdir::WalkDir;
-use std::fs::File;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSet {
@@ -35,18 +34,21 @@ impl ThemeSet {
     }
 
     /// Loads a theme given a path to a .tmTheme file
+    #[cfg(feature = "plist-load")]
     pub fn get_theme<P: AsRef<Path>>(path: P) -> Result<Theme, LoadingError> {
-        let file = File::open(path)?;
-        let mut file = BufReader::new(file);
+        let file = std::fs::File::open(path)?;
+        let mut file = std::io::BufReader::new(file);
         Self::load_from_reader(&mut file)
     }
 
     /// Loads a theme given a readable stream
-    pub fn load_from_reader<R: BufRead + Seek>(r: &mut R) -> Result<Theme, LoadingError> {
+    #[cfg(feature = "plist-load")]
+    pub fn load_from_reader<R: std::io::BufRead + std::io::Seek>(r: &mut R) -> Result<Theme, LoadingError> {
         Ok(Theme::parse_settings(read_plist(r)?)?)
     }
 
     /// Generate a `ThemeSet` from all themes in a folder
+    #[cfg(feature = "plist-load")]
     pub fn load_from_folder<P: AsRef<Path>>(folder: P) -> Result<ThemeSet, LoadingError> {
         let mut theme_set = Self::new();
         theme_set.add_from_folder(folder)?;
@@ -54,6 +56,7 @@ impl ThemeSet {
     }
 
     /// Load all the themes in the folder into this `ThemeSet`
+    #[cfg(feature = "plist-load")]
     pub fn add_from_folder<P: AsRef<Path>>(&mut self, folder: P) -> Result<(), LoadingError> {
         let paths = Self::discover_theme_paths(folder)?;
         for p in &paths {
@@ -71,6 +74,7 @@ impl ThemeSet {
 #[cfg(test)]
 mod tests {
     use crate::highlighting::{ThemeSet, Color};
+    #[cfg(feature = "plist-load")]
     #[test]
     fn can_parse_common_themes() {
         let themes = ThemeSet::load_from_folder("testdata").unwrap();

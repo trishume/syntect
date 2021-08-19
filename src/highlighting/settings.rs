@@ -7,10 +7,6 @@ pub use serde_json::Value as Settings;
 pub use serde_json::Value::Array as SettingsArray;
 pub use serde_json::Value::Object as SettingsObject;
 
-pub trait FromSettings: Sized {
-    fn from_settings(settings: Settings) -> Self;
-}
-
 pub trait ParseSettings: Sized {
     type Error;
     fn parse_settings(settings: Settings) -> Result<Self, Self::Error>;
