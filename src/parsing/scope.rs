@@ -175,7 +175,7 @@ impl ScopeRepository {
                 break;
             }
             if i != 0 {
-                s.push_str(".");
+                s.push('.');
             }
             s.push_str(self.atom_str(atom_number));
         }
