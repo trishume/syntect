@@ -353,10 +353,9 @@ impl ParseState {
                         min_start = match_start;
 
                         let consuming = match_end > start;
-                        pop_would_loop = check_pop_loop && !consuming && match match_pat.operation {
-                            MatchOperation::Pop => true,
-                            _ => false,
-                        };
+                        pop_would_loop = check_pop_loop
+                            && !consuming
+                            && matches!(match_pat.operation, MatchOperation::Pop);
 
                         best_match = Some(RegexMatch {
                             regions: match_region,
@@ -521,10 +520,7 @@ impl ParseState {
             // - the interaction with meta scopes means that the token has the meta scopes of both the current scope and the new scope.
             MatchOperation::Push(ref context_refs) |
             MatchOperation::Set(ref context_refs) => {
-                let is_set = match *match_op {
-                    MatchOperation::Set(_) => true,
-                    _ => false
-                };
+                let is_set = matches!(*match_op, MatchOperation::Set(_));
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
                     if is_set && cur_context.clear_scopes != None {
