@@ -1,3 +1,15 @@
+// Suppression of a false positive clippy lint. Upstream issue:
+//
+//   mutable_key_type false positive for raw pointers
+//   https://github.com/rust-lang/rust-clippy/issues/6745
+//
+// We use `*const MatchPattern` as key in our `SearchCache` hash map.
+// Clippy thinks this is a problem since `MatchPattern` has interior mutability
+// via `MatchPattern::regex::regex` which is an `AtomicLazyCell`.
+// But raw pointers are hashed via the pointer itself, not what is pointed to.
+// See https://github.com/rust-lang/rust/blob/1.54.0/library/core/src/hash/mod.rs#L717-L725
+#![allow(clippy::mutable_key_type)]
+
 use super::syntax_definition::*;
 use super::scope::*;
 use super::regex::Region;
