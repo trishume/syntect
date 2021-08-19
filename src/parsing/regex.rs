@@ -128,6 +128,12 @@ impl Region {
     }
 }
 
+impl Default for Region {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(feature = "regex-onig")]
 mod regex_impl {
     pub use onig::Region;
