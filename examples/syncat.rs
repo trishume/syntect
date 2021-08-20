@@ -8,7 +8,7 @@ use syntect::util::as_24_bit_terminal_escaped;
 use syntect::easy::HighlightFile;
 use syntect::dumps::{from_dump_file, dump_to_file};
 
-fn load_theme(tm_file: &String, enable_caching: bool) -> Theme {
+fn load_theme(tm_file: &str, enable_caching: bool) -> Theme {
     let tm_path = Path::new(tm_file);
 
     if enable_caching {
@@ -79,7 +79,7 @@ fn main() {
 
     } else {
         let theme_file : String = matches.opt_str("theme-file")
-            .unwrap_or("base16-ocean.dark".to_string());
+            .unwrap_or_else(|| "base16-ocean.dark".to_string());
 
         let theme = ts.themes.get(&theme_file)
             .map(|t| Cow::Borrowed(t))
@@ -98,7 +98,7 @@ fn main() {
             // It also allows re-using the line buffer, which should be a tiny bit faster.
             let mut line = String::new();
             while highlighter.reader.read_line(&mut line).unwrap() > 0 {
-                if no_newlines && line.ends_with("\n") {
+                if no_newlines && line.ends_with('\n') {
                     let _ = line.pop();
                 }
 
@@ -109,7 +109,7 @@ fn main() {
                 line.clear();
 
                 if no_newlines {
-                    println!("");
+                    println!();
                 }
             }
 

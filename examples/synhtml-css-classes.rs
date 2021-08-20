@@ -44,9 +44,9 @@ fn main() {
 }";
 
     let sr_rs = ss.find_syntax_by_extension("rs").unwrap();
-    let mut rs_html_generator = ClassedHTMLGenerator::new_with_class_style(&sr_rs, &ss, ClassStyle::Spaced);
+    let mut rs_html_generator = ClassedHTMLGenerator::new_with_class_style(sr_rs, &ss, ClassStyle::Spaced);
     for line in LinesWithEndings::from(code_rs) {
-        rs_html_generator.parse_html_for_line_which_includes_newline(&line);
+        rs_html_generator.parse_html_for_line_which_includes_newline(line);
     }
     let html_rs = rs_html_generator.finalize();
 
@@ -62,9 +62,9 @@ int main() {
 }";
 
     let sr_cpp = ss.find_syntax_by_extension("cpp").unwrap();
-    let mut cpp_html_generator = ClassedHTMLGenerator::new_with_class_style(&sr_cpp, &ss, ClassStyle::Spaced);
+    let mut cpp_html_generator = ClassedHTMLGenerator::new_with_class_style(sr_cpp, &ss, ClassStyle::Spaced);
     for line in LinesWithEndings::from(code_cpp) {
-        cpp_html_generator.parse_html_for_line_which_includes_newline(&line);
+        cpp_html_generator.parse_html_for_line_which_includes_newline(line);
     }
     let html_cpp = cpp_html_generator.finalize();
 

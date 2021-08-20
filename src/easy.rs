@@ -274,13 +274,13 @@ mod tests {
         let mut stack = ScopeStack::new();
 
         for line in lines.iter() {
-            let ops = state.parse_line(&line, &ss);
+            let ops = state.parse_line(line, &ss);
             println!("{:?}", ops);
 
             let mut iterated_ops: Vec<&ScopeStackOp> = Vec::new();
-            for (_, op) in ScopeRegionIterator::new(&ops, &line) {
+            for (_, op) in ScopeRegionIterator::new(&ops, line) {
                 stack.apply(op);
-                iterated_ops.push(&op);
+                iterated_ops.push(op);
                 println!("{:?}", op);
             }
 

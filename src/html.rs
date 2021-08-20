@@ -42,9 +42,9 @@ use std::path::Path;
 ///
 /// let syntax_set = SyntaxSet::load_defaults_newlines();
 /// let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-/// let mut html_generator = ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::Spaced);
+/// let mut html_generator = ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
 /// for line in LinesWithEndings::from(current_code) {
-///     html_generator.parse_html_for_line_which_includes_newline(&line);
+///     html_generator.parse_html_for_line_which_includes_newline(line);
 /// }
 /// let output_html = html_generator.finalize();
 /// ```
@@ -614,9 +614,9 @@ mod tests {
         let syntax = syntax_set.find_syntax_by_name("JSON").unwrap();
 
         let mut html_generator =
-            ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::Spaced);
+            ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
         for line in LinesWithEndings::from(current_code) {
-            html_generator.parse_html_for_line_which_includes_newline(&line);
+            html_generator.parse_html_for_line_which_includes_newline(line);
         }
         html_generator.finalize();
     }
@@ -628,9 +628,9 @@ mod tests {
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
 
         let mut html_generator =
-            ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::Spaced);
+            ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
         for line in LinesWithEndings::from(current_code) {
-            html_generator.parse_html_for_line_which_includes_newline(&line);
+            html_generator.parse_html_for_line_which_includes_newline(line);
         }
         let html = html_generator.finalize();
         assert_eq!(html, "<span class=\"source r\">x <span class=\"keyword operator arithmetic r\">+</span> y\n</span>");
@@ -642,12 +642,12 @@ mod tests {
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
         let mut html_generator = ClassedHTMLGenerator::new_with_class_style(
-            &syntax,
+            syntax,
             &syntax_set,
             ClassStyle::SpacedPrefixed { prefix: "foo-" },
         );
         for line in LinesWithEndings::from(current_code) {
-            html_generator.parse_html_for_line_which_includes_newline(&line);
+            html_generator.parse_html_for_line_which_includes_newline(line);
         }
         let html = html_generator.finalize();
         assert_eq!(html, "<span class=\"foo-source foo-r\">x <span class=\"foo-keyword foo-operator foo-arithmetic foo-r\">+</span> y\n</span>");
@@ -663,9 +663,9 @@ fn main() {
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_extension("rs").unwrap();
         let mut html_generator =
-            ClassedHTMLGenerator::new_with_class_style(&syntax, &syntax_set, ClassStyle::Spaced);
+            ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
         for line in LinesWithEndings::from(code) {
-            html_generator.parse_html_for_line_which_includes_newline(&line);
+            html_generator.parse_html_for_line_which_includes_newline(line);
         }
         let html = html_generator.finalize();
         assert_eq!(html, "<span class=\"source rust\"><span class=\"comment line double-slash rust\"><span class=\"punctuation definition comment rust\">//</span> Rust source\n</span><span class=\"meta function rust\"><span class=\"meta function rust\"><span class=\"storage type function rust\">fn</span> </span><span class=\"entity name function rust\">main</span></span><span class=\"meta function rust\"><span class=\"meta function parameters rust\"><span class=\"punctuation section parameters begin rust\">(</span></span><span class=\"meta function rust\"><span class=\"meta function parameters rust\"><span class=\"punctuation section parameters end rust\">)</span></span></span></span><span class=\"meta function rust\"> </span><span class=\"meta function rust\"><span class=\"meta block rust\"><span class=\"punctuation section block begin rust\">{</span>\n    <span class=\"support macro rust\">println!</span><span class=\"meta group rust\"><span class=\"punctuation section group begin rust\">(</span></span><span class=\"meta group rust\"><span class=\"string quoted double rust\"><span class=\"punctuation definition string begin rust\">&quot;</span>Hello World!<span class=\"punctuation definition string end rust\">&quot;</span></span></span><span class=\"meta group rust\"><span class=\"punctuation section group end rust\">)</span></span><span class=\"punctuation terminator rust\">;</span>\n</span><span class=\"meta block rust\"><span class=\"punctuation section block end rust\">}</span></span></span>\n</span>");

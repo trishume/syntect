@@ -52,19 +52,19 @@ struct Stats {
 }
 
 fn print_stats(stats: &Stats) {
-    println!("");
+    println!();
     println!("################## Stats ###################");
     println!("File count:                           {:>6}", stats.files);
     println!("Total characters:                     {:>6}", stats.chars);
-    println!("");
+    println!();
     println!("Function count:                       {:>6}", stats.functions);
     println!("Type count (structs, enums, classes): {:>6}", stats.types);
-    println!("");
+    println!();
     println!("Code lines (traditional SLOC):        {:>6}", stats.code_lines);
     println!("Total lines (w/ comments & blanks):   {:>6}", stats.lines);
     println!("Comment lines (comment but no code):  {:>6}", stats.comment_lines);
     println!("Blank lines (lines-blank-comment):    {:>6}", stats.lines-stats.code_lines-stats.comment_lines);
-    println!("");
+    println!();
     println!("Lines with a documentation comment:   {:>6}", stats.doc_comment_lines);
     println!("Total words written in doc comments:  {:>6}", stats.doc_comment_words);
     println!("Total words written in all comments:  {:>6}", stats.comment_words);
@@ -74,7 +74,7 @@ fn print_stats(stats: &Stats) {
 fn is_ignored(entry: &DirEntry) -> bool {
     entry.file_name()
          .to_str()
-         .map(|s| s.starts_with(".") && s.len() > 1 || s.ends_with(".md"))
+         .map(|s| s.starts_with('.') && s.len() > 1 || s.ends_with(".md"))
          .unwrap_or(false)
 }
 
@@ -84,7 +84,7 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stack: &mut ScopeStack,
     let mut line_has_comment = false;
     let mut line_has_doc_comment = false;
     let mut line_has_code = false;
-    for (s, op) in ScopeRegionIterator::new(&ops, line) {
+    for (s, op) in ScopeRegionIterator::new(ops, line) {
         stack.apply(op);
         if s.is_empty() { // in this case we don't care about blank tokens
             continue;
@@ -133,7 +133,7 @@ fn count(ss: &SyntaxSet, path: &Path, stats: &mut Stats) {
     let mut stack = ScopeStack::new();
     while reader.read_line(&mut line).unwrap() > 0 {
         {
-            let ops = state.parse_line(&line, &ss);
+            let ops = state.parse_line(&line, ss);
             stats.chars += line.len();
             count_line(&ops, &line, &mut stack, stats);
         }

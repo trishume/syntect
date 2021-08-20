@@ -91,7 +91,7 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
             if let Some(token) = testtoken_end { // if there is an end token defined in the test file header
                 if let Some(end_token_pos) = sst.find(token) { // and there is an end token in the line
                     let (ss, after_token_end) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
-                    sst = &ss;
+                    sst = ss;
                     only_whitespace_after_token_end = after_token_end.trim_end().is_empty();
                 }
             }
@@ -106,7 +106,7 @@ fn get_line_assertion_details<'a>(testtoken_start: &str, testtoken_end: Option<&
     None
 }
 
-fn process_assertions(assertion: &AssertionRange<'_>, test_against_line_scopes: &Vec<ScopedText>) -> Vec<RangeTestResult> {
+fn process_assertions(assertion: &AssertionRange<'_>, test_against_line_scopes: &[ScopedText]) -> Vec<RangeTestResult> {
     // format the scope selector to include a space at the beginning, because, currently, ScopeSelector expects excludes to begin with " -"
     // and they are sometimes in the syntax test as ^^^-comment, for example
     let selector = ScopeSelectors::from_str(&format!(" {}", &assertion.scope_selector_text)).unwrap();
@@ -147,7 +147,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
         return Err(SyntaxTestHeaderError::MalformedHeader);
     }
 
-    line = line.replace("\r", &"");
+    line = line.replace("\r", "");
 
     // parse the syntax test header in the first line of the file
     let header_line = line.clone();
@@ -181,7 +181,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
         let mut line_has_assertion = false;
         if let Some(assertion) = get_line_assertion_details(testtoken_start, testtoken_end, &line) {
             let result = process_assertions(&assertion, &scopes_on_line_being_tested);
-            total_assertions += &assertion.end_char - &assertion.begin_char;
+            total_assertions += assertion.end_char - assertion.begin_char;
             for failure in result.iter().filter(|r|!r.success) {
                 let length = failure.column_end - failure.column_begin;
                 let text: String = previous_non_assertion_line.chars().skip(failure.column_begin).take(length).collect();
@@ -210,7 +210,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
             if out_opts.debug && !line_only_has_assertion {
                 println!("-- debugging line {} -- scope stack: {:?}", current_line_number, stack);
             }
-            let ops = state.parse_line(&line, &ss);
+            let ops = state.parse_line(&line, ss);
             if out_opts.debug && !line_only_has_assertion {
                 if ops.is_empty() && !line.is_empty() {
                     println!("no operations for this line...");
@@ -245,7 +245,7 @@ fn test_file(ss: &SyntaxSet, path: &Path, parse_test_lines: bool, out_opts: Outp
         if reader.read_line(&mut line).unwrap() == 0 {
             break;
         }
-        line = line.replace("\r", &"");
+        line = line.replace("\r", "");
     }
     let res = if assertion_failures > 0 {
         Ok(SyntaxTestFileResult::FailedAssertions(assertion_failures, total_assertions))
@@ -311,7 +311,7 @@ fn main() {
         summary: matches.opt_present("summary"),
     };
 
-    let exit_code = recursive_walk(&ss, &tests_path, out_opts);
+    let exit_code = recursive_walk(&ss, tests_path, out_opts);
     println!("exiting with code {}", exit_code);
     std::process::exit(exit_code);
 
@@ -337,14 +337,14 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
             println!("Testing file {}", path.display());
         }
         let start = Instant::now();
-        let result = test_file(&ss, path, true, out_opts);
+        let result = test_file(ss, path, true, out_opts);
         let elapsed = start.elapsed();
         if out_opts.time {
             let ms = (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64;
             println!("{} ms for file {}", ms, path.display());
         }
         if exit_code != 2 { // leave exit code 2 if there was an error
-            if let Err(_) = result { // set exit code 2 if there was an error
+            if result.is_err() { // set exit code 2 if there was an error
                 exit_code = 2;
             } else if let Ok(ok) = result {
                 if let SyntaxTestFileResult::FailedAssertions(_, _) = ok {
