@@ -277,7 +277,7 @@ fn main() {
         Err(f) => { panic!("{}", f.to_string()) }
     };
 
-    let tests_path = if matches.free.len() < 1 {
+    let tests_path = if matches.free.is_empty() {
         "."
     } else {
         &args[1]
