@@ -67,7 +67,7 @@ fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a Hash,
                                                     f: F)
                                                     -> Result<R, ParseSyntaxError> {
     map.get(&Yaml::String(key.to_owned()))
-        .ok_or_else(|| ParseSyntaxError::MissingMandatoryKey(key))
+        .ok_or(ParseSyntaxError::MissingMandatoryKey(key))
         .and_then(|x| f(x).ok_or(ParseSyntaxError::TypeMismatch))
 }
 
@@ -87,7 +87,7 @@ struct ParserState<'a> {
 
 // `__start` must not include prototypes from the actual syntax definition,
 // otherwise it's possible that a prototype makes us pop out of `__start`.
-static START_CONTEXT: &'static str = "
+static START_CONTEXT: &str = "
 __start:
     - meta_include_prototype: false
     - match: ''
@@ -172,7 +172,7 @@ impl SyntaxDefinition {
                 .map(|s| s.to_owned()),
             hidden: get_key(h, "hidden", |x| x.as_bool()).unwrap_or(false),
 
-            variables: state.variables.clone(),
+            variables: state.variables,
             contexts,
         };
         Ok(defn)

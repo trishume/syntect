@@ -223,7 +223,7 @@ impl SyntaxSet {
     // however, if a syntax name is provided without a folder, make sure we don't accidentally match the end of a different syntax definition's name - by checking a / comes before it or it is the full path
     pub fn find_syntax_by_path<'a>(&'a self, path: &str) -> Option<&'a SyntaxReference> {
         let mut slash_path = "/".to_string();
-        slash_path.push_str(&path);
+        slash_path.push_str(path);
         self.path_syntaxes.iter().rev().find(|t| t.0.ends_with(&slash_path) || t.0 == path).map(|&(_,i)| &self.syntaxes[i])
     }
 
@@ -367,7 +367,7 @@ impl SyntaxSet {
         let SyntaxSet { syntaxes, contexts, .. } = self;
 
         let mut context_map = HashMap::with_capacity(contexts.len());
-        for (i, context) in contexts.into_iter().enumerate() {
+        for (i, context) in contexts.iter().enumerate() {
             context_map.insert(i, context);
         }
 
@@ -381,7 +381,7 @@ impl SyntaxSet {
                 ..
             } = syntax;
 
-            for (_, context_id) in contexts {
+            for context_id in contexts.values() {
                 if let Some(context) = context_map.remove(&context_id.index()) {
                     for pattern in context.patterns.iter() {
                         let maybe_refs_to_check = match pattern {
@@ -549,7 +549,7 @@ impl SyntaxSetBuilder {
             // resulting SyntaxSet have a deterministic order for serializing.
             // Because we're sorting by the keys which are unique, we can use
             // an unstable sort.
-            contexts.sort_unstable_by(|(name_a, _), (name_b, _)| name_a.cmp(&name_b));
+            contexts.sort_unstable_by(|(name_a, _), (name_b, _)| name_a.cmp(name_b));
             for (name, context) in contexts {
                 let index = all_contexts.len();
                 map.insert(name, ContextId::new(index));

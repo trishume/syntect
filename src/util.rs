@@ -42,7 +42,7 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
     s
 }
 
-const LATEX_REPLACE: [(&'static str, &'static str); 3] = [
+const LATEX_REPLACE: [(&str, &str); 3] = [
     ("\\", "\\\\"),
     ("{", "\\{"),
     ("}", "\\}"),
@@ -120,7 +120,7 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
         }
         content = text.to_string();
         for &(old, new) in LATEX_REPLACE.iter() {
-            content = content.replace(&old, &new);
+            content = content.replace(&old, new);
         }
         write!(s, "{}", &content).unwrap();
         prev_style = Some(style);

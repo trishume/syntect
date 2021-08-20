@@ -404,7 +404,7 @@ impl<'de> Deserialize<'de> for MetadataSet {
         let MetaSetSerializable { selector_string, items } = inner;
         let selector = ScopeSelectors::from_str(&selector_string)
             .map_err(|e| Error::custom(format!("{:?}", e)))?;
-        let items = items.ok_or_else(|| Error::custom(format!("no metadata items")))?;
+        let items = items.ok_or_else(|| Error::custom("no metadata items".to_string()))?;
         Ok(MetadataSet { selector_string, selector, items })
     }
 }

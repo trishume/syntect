@@ -619,7 +619,7 @@ impl ParseState {
             let mut proto_ids = if i == 0 {
                 // it is only necessary to preserve the old prototypes
                 // at the first stack frame pushed
-                old_proto_ids.clone().unwrap_or_else(|| Vec::new())
+                old_proto_ids.clone().unwrap_or_else(Vec::new)
             } else {
                 Vec::new()
             };
@@ -630,7 +630,7 @@ impl ParseState {
                 // referred to as the "target" of the push by sublimehq - see
                 // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
                 if let Some(ref p) = pat.with_prototype {
-                    proto_ids.push(p.id().clone());
+                    proto_ids.push(p.id());
                 }
             }
             let context_id = r.id();

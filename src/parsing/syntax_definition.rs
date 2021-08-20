@@ -263,7 +263,7 @@ impl MatchPattern {
             region.pos(i).map(|(start, end)| escape(&text[start..end]))
         });
 
-        return Regex::new(new_regex);
+        Regex::new(new_regex)
     }
 
     pub fn regex(&self) -> &Regex {
