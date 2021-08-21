@@ -73,7 +73,7 @@ fn main() {
             println!("- {}", t);
         }
 
-    } else if matches.free.len() == 0 {
+    } else if matches.free.is_empty() {
         let brief = format!("USAGE: {} [options] FILES", args[0]);
         println!("{}", opts.usage(&brief));
 
