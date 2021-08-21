@@ -787,7 +787,7 @@ impl<'a> Parser<'a> {
     }
 
     fn peek(&self) -> Option<u8> {
-        self.bytes.get(self.index).map(|&b| b)
+        self.bytes.get(self.index).copied()
     }
 
     fn next(&mut self) {
