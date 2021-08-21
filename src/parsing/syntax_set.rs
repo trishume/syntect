@@ -1013,9 +1013,9 @@ mod tests {
 
         let mut syntax = syntax_set.find_syntax_by_extension("a").unwrap();
         assert_eq!(syntax.name, "A improved");
-        syntax = syntax_set.find_syntax_by_scope(Scope::new(&"source.a").unwrap()).unwrap();
+        syntax = syntax_set.find_syntax_by_scope(Scope::new("source.a").unwrap()).unwrap();
         assert_eq!(syntax.name, "A improved");
-        syntax = syntax_set.find_syntax_by_first_line(&"syntax a").unwrap();
+        syntax = syntax_set.find_syntax_by_first_line("syntax a").unwrap();
         assert_eq!(syntax.name, "C");
 
         let mut parse_state = ParseState::new(syntax);

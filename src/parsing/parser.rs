@@ -871,7 +871,7 @@ mod tests {
             "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
             "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
         ];
-        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+        expect_scope_stacks(line, &expect, TEST_SYNTAX);
     }
 
     #[test]
@@ -882,7 +882,7 @@ mod tests {
             "<example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
             "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
         ];
-        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+        expect_scope_stacks(line, &expect, TEST_SYNTAX);
     }
 
     #[test]
@@ -894,7 +894,7 @@ mod tests {
             "<source.test>, <example.meta-scope.after-clear-scopes.example>, <example.pops-clear-scopes.example>",
             "<source.test>, <string.quoted.single.example>, <constant.character.escape.example>",
         ];
-        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+        expect_scope_stacks(line, &expect, TEST_SYNTAX);
     }
 
     #[test]
@@ -903,7 +903,7 @@ mod tests {
         let expect = [
             "<source.test>, <constant.numeric.test>",
         ];
-        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+        expect_scope_stacks(line, &expect, TEST_SYNTAX);
     }
 
     #[test]
@@ -916,7 +916,7 @@ mod tests {
             "<source.test>, <test>, <string.unquoted.test>",
             "<source.test>, <test>, <keyword.control.test>",
         ];
-        expect_scope_stacks(&line, &expect, TEST_SYNTAX);
+        expect_scope_stacks(line, &expect, TEST_SYNTAX);
     }
 
     #[test]
@@ -937,7 +937,7 @@ contexts:
 
         let line = "foo!";
         let expect = ["<source.test>, <test.good>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -955,7 +955,7 @@ contexts:
 
         let line = "foo";
         let expect = ["<source.test>, <foo.end>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
 
         let line = "foofoofoo";
         let expect = [
@@ -963,7 +963,7 @@ contexts:
             "<source.test>, <foo.any>",
             "<source.test>, <foo.end>",
         ];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -983,7 +983,7 @@ contexts:
             "<top-level.test>",
         ];
 
-        expect_scope_stacks_with_syntax(&line1, &expect1, syntax.clone());
+        expect_scope_stacks_with_syntax(line1, &expect1, syntax.clone());
 
         let line2 = ">abctest</style>foobar";
         let expect2 = [
@@ -991,7 +991,7 @@ contexts:
             "<source.css.embedded.html>, <test.embedded>",
             "<top-level.test>",
         ];
-        expect_scope_stacks_with_syntax(&line2, &expect2, syntax.clone());
+        expect_scope_stacks_with_syntax(line2, &expect2, syntax);
     }
 
     #[test]
@@ -1017,7 +1017,7 @@ contexts:
 
         let line = "hello";
         let expect = ["<source.test>, <test.matched>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1046,7 +1046,7 @@ contexts:
 
         let line = "test";
         let expect = ["<source.test>, <test.matched>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1074,7 +1074,7 @@ contexts:
 
         let line = "test";
         let expect = ["<source.test>, <test.matched>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1103,7 +1103,7 @@ contexts:
 
         let line = "hello";
         let expect = ["<source.test>, <test.matched>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1125,7 +1125,7 @@ contexts:
 
         let line = "hello";
         let expect = ["<source.test>, <test.matched>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1153,7 +1153,7 @@ contexts:
 
         let line = "hello";
         let expect = ["<source.test>, <test.good>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1188,7 +1188,7 @@ contexts:
 
         let line = "hello";
         let expect = ["<source.test>, <test.good>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1216,7 +1216,7 @@ contexts:
 
         let line = "hello";
         let expect = ["<source.test>, <test.good>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1248,7 +1248,7 @@ contexts:
 
         let line = "foo::bar::* xxx";
         let expect = ["<source.test>, <test.good>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1281,7 +1281,7 @@ contexts:
 
         let line = "hello";
         let expect = ["<source.test>, <test.good>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1308,7 +1308,7 @@ contexts:
     - match: ''
 "#;
 
-        let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
         expect_scope_stacks_with_syntax("/** * */", &["<comment.block.documentation.javadoc>, <punctuation.definition.comment.begin.javadoc>", "<comment.block.documentation.javadoc>, <text.html.javadoc>, <punctuation.definition.comment.javadoc>", "<comment.block.documentation.javadoc>, <punctuation.definition.comment.end.javadoc>"], syntax);
     }
 
@@ -1392,13 +1392,13 @@ contexts:
             "a1b2c3d4e5",
             &[
                 "<a>", "<1>", "<b>", "<2>", "<c>", "<3>", "<d>", "<4>", "<e>", "<5>"
-            ], SyntaxDefinition::load_from_str(&syntax, true, None).unwrap()
+            ], SyntaxDefinition::load_from_str(syntax, true, None).unwrap()
         );
         expect_scope_stacks_with_syntax(
             "5cfcecbedcdea",
             &[
                 "<5>", "<cwith>", "<f>", "<e>", "<b>", "<d>", "<cwithout>", "<a>"
-            ], SyntaxDefinition::load_from_str(&syntax, true, None).unwrap()
+            ], SyntaxDefinition::load_from_str(syntax, true, None).unwrap()
         );
     }
 
@@ -1419,7 +1419,7 @@ contexts:
             1: keyword
 "#;
 
-        let syntax = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
         expect_scope_stacks_with_syntax("testfoo", &["<test>", /*"<ignored>",*/ "<f>", "<keyword>"], syntax);
     }
 
@@ -1448,7 +1448,7 @@ contexts:
           scope: '1'
 "#;
 
-        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        let syntax = SyntaxDefinition::load_from_str(syntax_yamlstr, true, None).unwrap();
         expect_scope_stacks_with_syntax("abc12", &["<1>", "<2>"], syntax);
     }
 
@@ -1495,11 +1495,11 @@ contexts:
       pop: true
 "#;
 
-        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        let syntax = SyntaxDefinition::load_from_str(syntax_yamlstr, true, None).unwrap();
         expect_scope_stacks_with_syntax("ab12", &["<1>", "<2>"], syntax.clone());
         expect_scope_stacks_with_syntax("abc12", &["<1>", "<digit2>"], syntax.clone());
         expect_scope_stacks_with_syntax("abcd12", &["<1>", "<digit2>"], syntax.clone());
-        expect_scope_stacks_with_syntax("abcde12", &["<digit1>", "<digit2>"], syntax.clone());
+        expect_scope_stacks_with_syntax("abcde12", &["<digit1>", "<digit2>"], syntax);
     }
 
     #[test]
@@ -1528,7 +1528,7 @@ contexts:
           pop: true
 "#;
 
-        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        let syntax = SyntaxDefinition::load_from_str(syntax_yamlstr, true, None).unwrap();
         expect_scope_stacks_with_syntax("aa", &["<a>", "<1>"], syntax.clone());
         expect_scope_stacks_with_syntax("abcdb", &["<a>", "<b>", "<c>", "<d>", "<1>"], syntax);
     }
@@ -1562,7 +1562,7 @@ contexts:
           pop: true
 "#;
 
-        let syntax = SyntaxDefinition::load_from_str(&syntax_yamlstr, true, None).unwrap();
+        let syntax = SyntaxDefinition::load_from_str(syntax_yamlstr, true, None).unwrap();
         expect_scope_stacks_with_syntax("a--", &["<a>", "<2>"], syntax.clone());
         // it seems that when ST encounters a non existing pop backreference, it just pops back to the with_prototype's original parent context - i.e. cdb is unscoped
         // TODO: it would be useful to have syntest functionality available here for easier testing and clarity
@@ -1582,7 +1582,7 @@ contexts:
 
         let line = "foo";
         let expect = ["<source.test>, <foo.newline>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1598,7 +1598,7 @@ contexts:
 
         let line = "foo";
         let expect = ["<source.test>, <foo.newline>"];
-        expect_scope_stacks(&line, &expect, syntax);
+        expect_scope_stacks(line, &expect, syntax);
     }
 
     #[test]
@@ -1621,7 +1621,7 @@ contexts:
       scope: other
 "#;
 
-        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax_newlines = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
         let syntax_set = link(syntax_newlines);
 
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
@@ -1659,7 +1659,7 @@ contexts:
       scope: comment.line.double-slash
 "#;
 
-        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax_newlines = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
         let syntax_set = link(syntax_newlines);
 
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
@@ -1715,7 +1715,7 @@ contexts:
                       pop: true
                 "#, true, None).unwrap();
 
-        expect_scope_stacks_with_syntax(&"aa", &["<a>", "<b>"], syntax);
+        expect_scope_stacks_with_syntax("aa", &["<a>", "<b>"], syntax);
     }
     
     #[test]
@@ -1738,18 +1738,18 @@ contexts:
                       pop: true
                 "#, true, None).unwrap();
 
-        expect_scope_stacks_with_syntax(&"aa", &["<a>", "<b>"], syntax);
+        expect_scope_stacks_with_syntax("aa", &["<a>", "<b>"], syntax);
     }
 
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
         println!("Parsing with newlines");
         let line_with_newline = format!("{}\n", line_without_newline);
-        let syntax_newlines = SyntaxDefinition::load_from_str(&syntax, true, None).unwrap();
+        let syntax_newlines = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
         expect_scope_stacks_with_syntax(&line_with_newline, expect, syntax_newlines);
 
         println!("Parsing without newlines");
-        let syntax_nonewlines = SyntaxDefinition::load_from_str(&syntax, false, None).unwrap();
-        expect_scope_stacks_with_syntax(&line_without_newline, expect, syntax_nonewlines);
+        let syntax_nonewlines = SyntaxDefinition::load_from_str(syntax, false, None).unwrap();
+        expect_scope_stacks_with_syntax(line_without_newline, expect, syntax_nonewlines);
     }
 
     fn expect_scope_stacks_with_syntax(line: &str, expect: &[&str], syntax: SyntaxDefinition) {
