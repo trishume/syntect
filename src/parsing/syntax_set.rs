@@ -606,11 +606,7 @@ impl SyntaxSetBuilder {
             for context_index in 0..all_contexts.len() {
                 let context = &all_contexts[context_index];
                 if !context.uses_backrefs && context.patterns.iter().any(|pattern| {
-                    match pattern {
-                        Pattern::Include(ContextReference::Direct(id))
-                            if all_contexts[id.index()].uses_backrefs => true,
-                        _ => false,
-                    }
+                    matches!(pattern, Pattern::Include(ContextReference::Direct(id)) if all_contexts[id.index()].uses_backrefs)
                 }) {
                     let mut context = &mut all_contexts[context_index];
                     context.uses_backrefs = true;

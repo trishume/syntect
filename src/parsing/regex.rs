@@ -181,11 +181,7 @@ mod regex_impl {
             // If there's an error during search, treat it as non-matching.
             // For example, in case of catastrophic backtracking, onig should
             // fail with a "retry-limit-in-match over" error eventually.
-            if let Ok(Some(_)) = matched {
-                true
-            } else {
-                false
-            }
+            matches!(matched, Ok(Some(_)))
         }
     }
 }
