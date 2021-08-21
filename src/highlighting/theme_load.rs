@@ -262,9 +262,7 @@ impl ParseSettings for ThemeSettings {
                 "activeGuide" => settings.active_guide = Color::parse_settings(value).ok(),
                 "stackGuide" => settings.stack_guide = Color::parse_settings(value).ok(),
                 "shadow" => settings.shadow = Color::parse_settings(value).ok(),
-                "shadowWidth"| // ignored
-                "invisibles" | // ignored
-                _ => (),
+                _ => (), // E.g. "shadowWidth" and "invisibles" are ignored
             }
         }
         Ok(settings)
