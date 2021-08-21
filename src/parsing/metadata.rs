@@ -346,7 +346,7 @@ impl<'a> ScopedMetadata<'a> {
 
     pub fn line_comment(&self) -> Option<&str> {
         let idx = self.items.iter().position(|m| m.1.items.line_comment.is_some())?;
-        self.items[idx].1.items.line_comment.as_ref().map(|s| s.as_str())
+        self.items[idx].1.items.line_comment.as_deref()
     }
 
     pub fn block_comment(&self) -> Option<(&str, &str)> {
