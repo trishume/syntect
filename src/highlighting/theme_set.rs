@@ -99,6 +99,6 @@ mod tests {
                        b: 0xce,
                        a: 0xFF,
                    });
-        // assert!(false);
+        // unreachable!();
     }
 }

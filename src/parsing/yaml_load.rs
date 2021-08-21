@@ -914,7 +914,7 @@ mod tests {
 
         let n: Vec<Scope> = Vec::new();
         println!("{:?}", defn2);
-        // assert!(false);
+        // unreachable!();
         let main = &defn2.contexts["main"];
         assert_eq!(main.meta_content_scope, vec![top_level_scope]);
         assert_eq!(main.meta_scope, n);
@@ -950,7 +950,7 @@ mod tests {
 
                 assert!(match_pat.with_prototype.is_some());
             }
-            _ => assert!(false),
+            _ => unreachable!(),
         }
     }
 
@@ -1013,7 +1013,7 @@ mod tests {
         assert!(def.is_err());
         match def.unwrap_err() {
             ParseSyntaxError::MissingMandatoryKey(key) => assert_eq!(key, "escape"),
-            _ => assert!(false, "Got unexpected ParseSyntaxError"),
+            _ => unreachable!("Got unexpected ParseSyntaxError"),
         }
     }
 
@@ -1031,7 +1031,7 @@ mod tests {
         assert!(def.is_err());
         match def.unwrap_err() {
             ParseSyntaxError::RegexCompileError(ref regex, _) => assert_eq!("[a", regex),
-            _ => assert!(false, "Got unexpected ParseSyntaxError"),
+            _ => unreachable!("Got unexpected ParseSyntaxError"),
         }
     }
 
@@ -1079,7 +1079,7 @@ mod tests {
 
                 assert!(match_pat.with_prototype.is_none());
             }
-            _ => assert!(false),
+            _ => unreachable!(),
         }
     }
 
