@@ -358,6 +358,7 @@ pub struct MatchPower(pub f64);
 
 impl Eq for MatchPower {}
 
+#[allow(clippy::derive_ord_xor_partial_ord)] // The code works, so let's keep using it
 impl Ord for MatchPower {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap()
