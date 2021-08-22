@@ -1780,7 +1780,7 @@ contexts:
                 }
             }
         }
-        if let Some(missing) = expect.iter().filter(|e| !criteria_met.contains(&e)).next() {
+        if let Some(missing) = expect.iter().find(|e| !criteria_met.contains(e)) {
             panic!("expected scope stack '{}' missing", missing);
         }
     }
