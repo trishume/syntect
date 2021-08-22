@@ -284,8 +284,8 @@ mod tests {
                 println!("{:?}", op);
             }
 
-            let all_ops: Vec<&ScopeStackOp> = ops.iter().map(|t|&t.1).collect();
-            assert_eq!(all_ops.len(), iterated_ops.len() - 1); // -1 because we want to ignore the NOOP
+            let all_ops = ops.iter().map(|t| &t.1);
+            assert_eq!(all_ops.count(), iterated_ops.len() - 1); // -1 because we want to ignore the NOOP
         }
     }
 }
