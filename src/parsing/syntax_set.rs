@@ -843,6 +843,7 @@ mod tests {
             builder.add(syntax_b());
 
             let syntax_set_original = builder.build();
+            #[allow(clippy::redundant_clone)] // We want to test .clone()
             syntax_set_original.clone()
             // Note: The original syntax set is dropped
         };
