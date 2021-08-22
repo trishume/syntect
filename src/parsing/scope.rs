@@ -242,7 +242,7 @@ impl Scope {
         8 - self.missing_atoms()
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub fn is_empty(self) -> bool {
         self.len() == 0
     }
 
