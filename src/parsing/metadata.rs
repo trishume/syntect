@@ -48,6 +48,7 @@ pub struct MetadataSet {
 /// For more information, see [Metadata Files](http://docs.sublimetext.info/en/latest/reference/metadata.html)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct MetadataItems {
     pub increase_indent_pattern: Option<Regex>,
     pub decrease_indent_pattern: Option<Regex>,
@@ -64,9 +65,6 @@ pub struct MetadataItems {
     /// The first pair of `TM_COMMENT_START` and `TM_COMMENT_END` items in
     /// `shell_variables`, if they exist.
     pub block_comment: Option<(String, String)>,
-
-    #[serde(default)]
-    __allow_adding_fields_without_major_semver_bump: (),
 }
 
 /// A type that can be deserialized from a `.tmPreferences` file.
