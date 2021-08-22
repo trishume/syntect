@@ -926,8 +926,8 @@ mod tests {
         assert_eq!(defn2.contexts["string"].meta_scope,
                    vec![Scope::new("string.quoted.double.c").unwrap()]);
         let first_pattern: &Pattern = &main.patterns[0];
-        match first_pattern {
-            &Pattern::Match(ref match_pat) => {
+        match *first_pattern {
+            Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
                 assert_eq!(&m[0], &(1,vec![Scope::new("meta.preprocessor.c++").unwrap()]));
                 use crate::parsing::syntax_definition::ContextReference::*;
@@ -1067,8 +1067,8 @@ mod tests {
         assert_eq!(defn.scope, top_level_scope);
 
         let first_pattern: &Pattern = &defn.contexts["main"].patterns[0];
-        match first_pattern {
-            &Pattern::Match(ref match_pat) => {
+        match *first_pattern {
+            Pattern::Match(ref match_pat) => {
                 let m: &CaptureMapping = match_pat.captures.as_ref().expect("test failed");
                 assert_eq!(&m[0], &(1,vec![Scope::new("support.function.box.latex").unwrap()]));
 
