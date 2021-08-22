@@ -196,9 +196,7 @@ fn test_file(
     let captures = search_result.ok_or(SyntaxTestHeaderError::MalformedHeader)?;
 
     let testtoken_start = captures.name("testtoken_start").unwrap().as_str();
-    let testtoken_end = captures
-        .name("testtoken_end")
-        .map_or(None, |c| Some(c.as_str()));
+    let testtoken_end = captures.name("testtoken_end").map(|c| c.as_str());
     let syntax_file = captures.name("syntax_file").unwrap().as_str();
 
     // find the relevant syntax definition to parse the file with - case is important!
@@ -252,9 +250,8 @@ fn test_file(
                         text,
                         scopes_on_line_being_tested
                             .iter()
-                            .skip_while(|s| s.char_start + s.text_len <= failure.column_begin)
-                            .next()
-                            .unwrap_or(scopes_on_line_being_tested.last().unwrap())
+                            .find(|s| s.char_start + s.text_len > failure.column_begin)
+                            .unwrap_or_else(|| scopes_on_line_being_tested.last().unwrap())
                             .scope
                     );
                 }
@@ -408,7 +405,7 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
         let result = test_file(ss, path, true, out_opts);
         let elapsed = start.elapsed();
         if out_opts.time {
-            let ms = (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64;
+            let ms = (elapsed.as_secs() * 1_000) + elapsed.subsec_millis() as u64;
             println!("{} ms for file {}", ms, path.display());
         }
         if exit_code != 2 {
@@ -416,10 +413,8 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
             if result.is_err() {
                 // set exit code 2 if there was an error
                 exit_code = 2;
-            } else if let Ok(ok) = result {
-                if let SyntaxTestFileResult::FailedAssertions(_, _) = ok {
-                    exit_code = 1; // otherwise, if there were failures, exit with code 1
-                }
+            } else if let Ok(SyntaxTestFileResult::FailedAssertions(_, _)) = result {
+                exit_code = 1; // otherwise, if there were failures, exit with code 1
             }
         }
     }
