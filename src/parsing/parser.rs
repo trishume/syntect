@@ -415,15 +415,18 @@ impl ParseState {
             }
         }
 
-        let (matched, can_cache) = if match_pat.has_captures && captures.is_some() {
-            let &(ref region, ref s) = captures.unwrap();
-            let regex = match_pat.regex_with_refs(region, s);
-            let matched = regex.search(line, start, line.len(), Some(regions));
-            (matched, false)
-        } else {
-            let regex = match_pat.regex();
-            let matched = regex.search(line, start, line.len(), Some(regions));
-            (matched, true)
+        let (matched, can_cache) = match (match_pat.has_captures, captures) {
+            (true, Some(captures)) => {
+                let &(ref region, ref s) = captures;
+                let regex = match_pat.regex_with_refs(region, s);
+                let matched = regex.search(line, start, line.len(), Some(regions));
+                (matched, false)
+            }
+            _ => {
+                let regex = match_pat.regex();
+                let matched = regex.search(line, start, line.len(), Some(regions));
+                (matched, true)
+            }
         };
 
         if matched {
