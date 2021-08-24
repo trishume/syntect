@@ -21,8 +21,19 @@ jobs:
       with:
         toolchain: ${{ env.MIN_SUPPORTED_RUST_VERSION }}
         default: true
-    - run: |
-        cargo check --verbose --all-features --all-targets
+        profile: minimal
+        components: clippy
+    - name: Run cargo clippy
+      run: |
+        # Must run before `cargo check` until we use Rust 1.52
+        # See https://github.com/rust-lang/rust-clippy/issues/4612
+        cargo clippy --all-targets --all-features -- \
+          --allow clippy::unknown_clippy_lints \
+          --allow clippy::unnecessary_cast \
+          --allow clippy::block_in_if_condition_stmt
+    - name: Run cargo check
+      run: |
+        cargo check --all-features --all-targets
 
   build-and-test:
     name: Build and test
