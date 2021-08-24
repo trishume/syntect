@@ -182,7 +182,7 @@ impl SyntaxSet {
     }
 
     pub fn find_syntax_by_extension<'a>(&'a self, extension: &str) -> Option<&'a SyntaxReference> {
-        self.syntaxes.iter().rev().find(|&s| s.file_extensions.iter().any(|e| e == extension))
+        self.syntaxes.iter().rev().find(|&s| s.file_extensions.iter().any(|e| e.eq_ignore_ascii_case(extension)))
     }
 
     /// Searches for a syntax first by extension and then by case-insensitive name
@@ -807,6 +807,7 @@ mod tests {
         let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
         ps.find_syntax_plain_text();
         assert_eq!(&ps.find_syntax_by_extension("rake").unwrap().name, "Ruby");
+        assert_eq!(&ps.find_syntax_by_extension("RAKE").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line").unwrap().name,
                    "C");
