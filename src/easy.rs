@@ -152,7 +152,9 @@ impl<'a> HighlightFile<'a> {
     }
 }
 
-/// Iterator over the regions of a line which a given the operation from the parser applies.
+/// Iterator over the ranges of a line which a given the operation from the parser applies.
+///
+/// Use [`ScopeRegionIterator`] to obtain directly regions (`&str`s) from the line.
 ///
 /// To use, just keep your own [`ScopeStack`] and then `ScopeStack.apply(op)` the operation that is
 /// yielded at the top of your `for` loop over this iterator. Now you have a substring of the line
@@ -160,21 +162,22 @@ impl<'a> HighlightFile<'a> {
 ///
 /// See the `synstats.rs` example for an example of using this iterator.
 ///
-/// **Note:** This will often return empty regions, just `continue` after applying the op if you
+/// **Note:** This will often return empty ranges, just `continue` after applying the op if you
 /// don't want them.
 ///
 /// [`ScopeStack`]: ../parsing/struct.ScopeStack.html
+/// [`ScopeRegionIterator`]: ./struct.ScopeRegionIterator.html
 #[derive(Debug)]
-pub struct ScopeRegionIterator<'a> {
+pub struct ScopeRangeIterator<'a> {
     ops: &'a [(usize, ScopeStackOp)],
     line: &'a str,
     index: usize,
     last_str_index: usize,
 }
 
-impl<'a> ScopeRegionIterator<'a> {
-    pub fn new(ops: &'a [(usize, ScopeStackOp)], line: &'a str) -> ScopeRegionIterator<'a> {
-        ScopeRegionIterator {
+impl<'a> ScopeRangeIterator<'a> {
+    pub fn new(ops: &'a [(usize, ScopeStackOp)], line: &'a str) -> ScopeRangeIterator<'a> {
+        ScopeRangeIterator {
             ops,
             line,
             index: 0,
@@ -185,8 +188,8 @@ impl<'a> ScopeRegionIterator<'a> {
 
 static NOOP_OP: ScopeStackOp = ScopeStackOp::Noop;
 
-impl<'a> Iterator for ScopeRegionIterator<'a> {
-    type Item = (&'a str, &'a ScopeStackOp);
+impl<'a> Iterator for ScopeRangeIterator<'a> {
+    type Item = (std::ops::Range<usize>, &'a ScopeStackOp);
     fn next(&mut self) -> Option<Self::Item> {
         if self.index > self.ops.len() {
             return None;
@@ -199,18 +202,52 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
         } else {
             self.ops[self.index].0
         };
-        let substr = &self.line[self.last_str_index..next_str_i];
+        let range = self.last_str_index..next_str_i;
         self.last_str_index = next_str_i;
 
         // the first region covers everything before the first op, which may be empty
         let op = if self.index == 0 {
             &NOOP_OP
         } else {
-            &self.ops[self.index-1].1
+            &self.ops[self.index - 1].1
         };
 
         self.index += 1;
-        Some((substr, op))
+        Some((range, op))
+    }
+}
+
+/// A convenience wrapper over [`ScopeRangeIterator`] to return `&str`s directly.
+///
+/// To use, just keep your own [`ScopeStack`] and then `ScopeStack.apply(op)` the operation that is
+/// yielded at the top of your `for` loop over this iterator. Now you have a substring of the line
+/// and the scope stack for that token.
+///
+/// See the `synstats.rs` example for an example of using this iterator.
+///
+/// **Note:** This will often return empty regions, just `continue` after applying the op if you
+/// don't want them.
+///
+/// [`ScopeStack`]: ../parsing/struct.ScopeStack.html
+/// [`ScopeRangeIterator`]: ./struct.ScopeRangeIterator.html
+#[derive(Debug)]
+pub struct ScopeRegionIterator<'a> {
+    range_iter: ScopeRangeIterator<'a>,
+}
+
+impl<'a> ScopeRegionIterator<'a> {
+    pub fn new(ops: &'a [(usize, ScopeStackOp)], line: &'a str) -> ScopeRegionIterator<'a> {
+        ScopeRegionIterator {
+            range_iter: ScopeRangeIterator::new(ops, line),
+        }
+    }
+}
+
+impl<'a> Iterator for ScopeRegionIterator<'a> {
+    type Item = (&'a str, &'a ScopeStackOp);
+    fn next(&mut self) -> Option<Self::Item> {
+        let (range, op) = self.range_iter.next()?;
+        Some((&self.range_iter.line[range], op))
     }
 }
 
