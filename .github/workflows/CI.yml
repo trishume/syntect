@@ -63,7 +63,6 @@ jobs:
         rm -Rf examples
     - name: Docs
       run: |
-        # Only run doc build on stable until this is fixed: https://github.com/rust-lang/rust/issues/51661
         cargo doc
     - name: Run tests without default features
       run: |
