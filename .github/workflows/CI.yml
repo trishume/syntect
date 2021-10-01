@@ -60,15 +60,12 @@ jobs:
         make assets
         make syntest
         make syntest-fancy
-        rm -Rf examples
     - name: Docs
       run: |
         cargo doc
     - name: Run tests without default features
       run: |
-        # default features are required for examples to build - so remove them from sight.
-        # Doc-tests may also use default features
-        rm -Rf examples && cargo test --lib --no-default-features
+        cargo test --lib --no-default-features
     - name: Run Xi tests
       run: |
         # Test the build configuration that Xi uses
