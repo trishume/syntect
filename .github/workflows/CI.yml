@@ -54,7 +54,7 @@ jobs:
         cargo test --features default-fancy --no-default-features --release
     - name: Ensure highlight works without 'plist-load' and 'yaml-load' features
       run: |
-        cargo run --example synhtml --no-default-features --features html,assets,dump-load,regex-onig -- examples/synhtml.rs
+        cargo run --example synhtml --no-default-features --features html,assets,dump-load,dump-create,regex-onig -- examples/synhtml.rs
     - name: make stuff
       run: |
         make assets
