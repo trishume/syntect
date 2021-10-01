@@ -1105,6 +1105,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn can_parse_issue219() {
         // Go to builder and back after loading so that build() gets Direct references instead of
         // Named ones. The bug was that Direct references were not handled when marking as
