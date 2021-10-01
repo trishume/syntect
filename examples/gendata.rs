@@ -32,7 +32,7 @@ fn main() {
             builder.add_plain_text_syntax();
             builder.add_from_folder(package_dir, true).unwrap();
             let ss = builder.build();
-            dump_to_file(&ss, packpath_newlines).unwrap();
+            dump_to_file_no_compression(&ss, packpath_newlines).unwrap();
 
             let mut builder_nonewlines = SyntaxSetBuilder::new();
             builder_nonewlines.add_plain_text_syntax();
@@ -46,7 +46,7 @@ fn main() {
             }
 
             let ss_nonewlines = builder_nonewlines.build();
-            dump_to_file(&ss_nonewlines, packpath_nonewlines).unwrap();
+            dump_to_file_no_compression(&ss_nonewlines, packpath_nonewlines).unwrap();
 
             #[cfg(feature = "metadata")]
             {

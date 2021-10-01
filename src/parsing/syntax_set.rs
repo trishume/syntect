@@ -33,7 +33,6 @@ use crate::parsing::syntax_definition::ContextId;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyntaxSet {
     syntaxes: Vec<SyntaxReference>,
-    contexts: Vec<Context>,
     /// Stores the syntax index for every path that was loaded
     path_syntaxes: Vec<(String, usize)>,
 
@@ -58,10 +57,35 @@ pub struct SyntaxReference {
     pub scope: Scope,
     pub first_line_match: Option<String>,
     pub hidden: bool,
+    #[serde(skip)]
+    pub(crate) lazy_loaded: lazycell::AtomicLazyCell<LazyLoaded>,
+    pub(crate) serialized_lazy_loaded: Vec<u8>,
+}
+
+/// The lazy-loaded parts of a [`SyntaxReference`].
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct LazyLoaded {
+    /// TODO: Moving this here breaks API, we but we already break it by changing ContextId
+    /// We could leave it outside if we wished. We don't actually need to keep track
+    /// of Sublime Syntax varibles inside SyntaxReferences at all, but that is a separate discussion.
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
     #[serde(serialize_with = "ordered_map")]
-    pub(crate) contexts: HashMap<String, ContextId>,
+    pub(crate) contexts_map: HashMap<String, ContextId>,
+    pub(crate) contexts: Vec<Context>,
+}
+
+/// Used in [`SyntaxSetBuilder::build`]
+#[derive(Clone, Debug)]
+struct CompleteSyntaxReference {
+    name: String,
+    file_extensions: Vec<String>,
+    scope: Scope,
+    first_line_match: Option<String>,
+    hidden: bool,
+    variables: HashMap<String, String>,
+    contexts_map: HashMap<String, ContextId>,
+    contexts: Vec<Context>,
 }
 
 /// A syntax set builder is used for loading syntax definitions from the file
@@ -107,7 +131,6 @@ impl Clone for SyntaxSet {
     fn clone(&self) -> SyntaxSet {
         SyntaxSet {
             syntaxes: self.syntaxes.clone(),
-            contexts: self.contexts.clone(),
             path_syntaxes: self.path_syntaxes.clone(),
             // Will need to be re-initialized
             first_line_cache: AtomicLazyCell::new(),
@@ -121,7 +144,6 @@ impl Default for SyntaxSet {
     fn default() -> Self {
         SyntaxSet {
             syntaxes: Vec::new(),
-            contexts: Vec::new(),
             path_syntaxes: Vec::new(),
             first_line_cache: AtomicLazyCell::new(),
             #[cfg(feature = "metadata")]
@@ -296,14 +318,9 @@ impl SyntaxSet {
     /// in the set, but not the other way around.
     pub fn into_builder(self) -> SyntaxSetBuilder {
         #[cfg(feature = "metadata")]
-        let SyntaxSet { syntaxes, contexts, path_syntaxes, metadata, .. } = self;
+        let SyntaxSet { ref syntaxes, ref path_syntaxes, ref metadata, .. } = self;
         #[cfg(not(feature = "metadata"))]
-        let SyntaxSet { syntaxes, contexts, path_syntaxes, .. } = self;
-
-        let mut context_map = HashMap::with_capacity(contexts.len());
-        for (i, context) in contexts.into_iter().enumerate() {
-            context_map.insert(i, context);
-        }
+        let SyntaxSet { ref syntaxes, ref path_syntaxes, .. } = self;
 
         let mut builder_syntaxes = Vec::with_capacity(syntaxes.len());
 
@@ -314,24 +331,21 @@ impl SyntaxSet {
                 scope,
                 first_line_match,
                 hidden,
-                variables,
-                contexts,
+                ..
             } = syntax;
 
-            let mut builder_contexts = HashMap::with_capacity(contexts.len());
-            for (name, context_id) in contexts {
-                if let Some(context) = context_map.remove(&context_id.index()) {
-                    builder_contexts.insert(name, context);
-                }
+            let mut builder_contexts = HashMap::with_capacity(syntax.contexts_map().len());
+            for (name, context_id) in syntax.contexts_map() {
+                builder_contexts.insert(name.clone(), self.get_context(&context_id).clone());
             }
 
             let syntax_definition = SyntaxDefinition {
-                name,
-                file_extensions,
-                scope,
-                first_line_match,
-                hidden,
-                variables,
+                name: name.clone(),
+                file_extensions: file_extensions.clone(),
+                scope: *scope,
+                first_line_match: first_line_match.clone(),
+                hidden: *hidden,
+                variables: syntax.variables().clone(),
                 contexts: builder_contexts,
             };
             builder_syntaxes.push(syntax_definition);
@@ -339,9 +353,9 @@ impl SyntaxSet {
 
         SyntaxSetBuilder {
             syntaxes: builder_syntaxes,
-            path_syntaxes,
+            path_syntaxes: path_syntaxes.clone(),
             #[cfg(feature = "metadata")]
-            existing_metadata: Some(metadata),
+            existing_metadata: Some(metadata.clone()),
             #[cfg(feature = "metadata")]
             raw_metadata: LoadMetadata::default(),
         }
@@ -349,7 +363,8 @@ impl SyntaxSet {
 
     #[inline(always)]
     pub(crate) fn get_context(&self, context_id: &ContextId) -> &Context {
-        &self.contexts[context_id.index()]
+        let syntax = &self.syntaxes[context_id.syntax_index()];
+        &syntax.contexts()[context_id.context_index()]
     }
 
     fn first_line_cache(&self) -> &FirstLineCache {
@@ -363,12 +378,7 @@ impl SyntaxSet {
     }
 
     pub fn find_unlinked_contexts(&self) -> BTreeSet<String> {
-        let SyntaxSet { syntaxes, contexts, .. } = self;
-
-        let mut context_map = HashMap::with_capacity(contexts.len());
-        for (i, context) in contexts.iter().enumerate() {
-            context_map.insert(i, context);
-        }
+        let SyntaxSet { syntaxes, .. } = self;
 
         let mut unlinked_contexts = BTreeSet::new();
 
@@ -376,40 +386,39 @@ impl SyntaxSet {
             let SyntaxReference {
                 name,
                 scope,
-                contexts,
                 ..
             } = syntax;
 
-            for context_id in contexts.values() {
-                if let Some(context) = context_map.remove(&context_id.index()) {
-                    for pattern in context.patterns.iter() {
-                        let maybe_refs_to_check = match pattern {
-                            Pattern::Match(match_pat) => {
-                                match &match_pat.operation {
-                                    MatchOperation::Push(context_refs) => {
-                                        Some(context_refs)
-                                    },
-                                    MatchOperation::Set(context_refs) => {
-                                        Some(context_refs)
-                                    },
-                                    _ => None,
-                                }
-                            },
-                            _ => None,
-                        };
-
-                        for context_ref in maybe_refs_to_check.into_iter().flatten() {
-                            match context_ref {
-                                ContextReference::Direct(_) => {},
-                                _ => {
-                                    unlinked_contexts.insert(
-                                        format!(
-                                            "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
-                                            name, scope, &context_ref
-                                        )
-                                    );
+            // Ignore white space changes when diffing this section
+            for context_id in syntax.contexts_map().values() {
+                let context = self.get_context(&context_id);
+                for pattern in context.patterns.iter() {
+                    let maybe_refs_to_check = match pattern {
+                        Pattern::Match(match_pat) => {
+                            match &match_pat.operation {
+                                MatchOperation::Push(context_refs) => {
+                                    Some(context_refs)
                                 },
+                                MatchOperation::Set(context_refs) => {
+                                    Some(context_refs)
+                                },
+                                _ => None,
                             }
+                        },
+                        _ => None,
+                    };
+
+                    for context_ref in maybe_refs_to_check.into_iter().flatten() {
+                        match context_ref {
+                            ContextReference::Direct(_) => {},
+                            _ => {
+                                unlinked_contexts.insert(
+                                    format!(
+                                        "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
+                                        name, scope, &context_ref
+                                    )
+                                );
+                            },
                         }
                     }
                 }
@@ -419,6 +428,34 @@ impl SyntaxSet {
     }
 }
 
+impl SyntaxReference {
+    pub(crate) fn lazy_loaded(&self) -> &LazyLoaded {
+        if let Some(lazy_loaded) = self.lazy_loaded.borrow() {
+            lazy_loaded
+        } else {
+            self.lazy_loaded
+                .fill(
+                    crate::dumps::from_reader(&self.serialized_lazy_loaded[..])
+                        .expect("data is not corrupt or out of sync with the code"),
+                )
+                .ok();
+            //eprintln!("Syntax {} lazy-loaded", self.name);
+            self.lazy_loaded.borrow().unwrap()
+        }
+    }
+ 
+    pub(crate) fn contexts_map(&self) -> &HashMap<String, ContextId> {
+        &self.lazy_loaded().contexts_map
+    }
+ 
+    fn variables(&self) -> &HashMap<String, String> {
+        &self.lazy_loaded().variables
+    }
+ 
+    fn contexts(&self) -> &[Context] {
+        &self.lazy_loaded().contexts
+    }
+}
 
 impl SyntaxSetBuilder {
     pub fn new() -> SyntaxSetBuilder {
@@ -528,9 +565,8 @@ impl SyntaxSetBuilder {
         } = self;
 
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
-        let mut all_contexts = Vec::new();
 
-        for syntax_definition in syntax_definitions {
+        for (syntax_index, syntax_definition) in syntax_definitions.into_iter().enumerate() {
             let SyntaxDefinition {
                 name,
                 file_extensions,
@@ -542,6 +578,7 @@ impl SyntaxSetBuilder {
             } = syntax_definition;
 
             let mut map = HashMap::new();
+            let mut syntax_contexts = Vec::new();
 
             let mut contexts: Vec<(String, Context)> = contexts.into_iter().collect();
             // Sort the values of the HashMap so that the contexts in the
@@ -550,41 +587,46 @@ impl SyntaxSetBuilder {
             // an unstable sort.
             contexts.sort_unstable_by(|(name_a, _), (name_b, _)| name_a.cmp(name_b));
             for (name, context) in contexts {
-                let index = all_contexts.len();
-                map.insert(name, ContextId::new(index));
-                all_contexts.push(context);
+                let context_index = syntax_contexts.len();
+                map.insert(name, ContextId::new(syntax_index, context_index));
+                syntax_contexts.push(context);
             }
 
-            let syntax = SyntaxReference {
+            let syntax = CompleteSyntaxReference {
                 name,
                 file_extensions,
                 scope,
                 first_line_match,
                 hidden,
                 variables,
-                contexts: map,
+                contexts_map: map,
+                contexts: syntax_contexts,
             };
             syntaxes.push(syntax);
         }
 
+        // TODO: Sort out borrow checker complaints instead of cloning
+        let syntaxes_clone = syntaxes.clone();
         let mut found_more_backref_includes = true;
-        for syntax in &syntaxes {
+        for syntax in &mut syntaxes {
             let mut no_prototype = HashSet::new();
-            let prototype = syntax.contexts.get("prototype");
+            let prototype = syntax.contexts_map.get("prototype");
             if let Some(prototype_id) = prototype {
                 // TODO: We could do this after parsing YAML, instead of here?
-                Self::recursively_mark_no_prototype(syntax, prototype_id.index(), &all_contexts, &mut no_prototype);
+                Self::recursively_mark_no_prototype(syntax, prototype_id.context_index(), &syntax.contexts, &mut no_prototype);
             }
 
-            for context_id in syntax.contexts.values() {
-                let index = context_id.index();
-                let mut context = &mut all_contexts[index];
+            // TODO: Sort out borrow checker complaints instead of cloning
+            let syntax_clone = syntax.clone();
+            for context_id in syntax.contexts_map.values() {
+                let index = context_id.context_index();
+                let mut context = &mut syntax.contexts[index];
                 if let Some(prototype_id) = prototype {
                     if context.meta_include_prototype && !no_prototype.contains(&index) {
                         context.prototype = Some(*prototype_id);
                     }
                 }
-                Self::link_context(&mut context, syntax, &syntaxes);
+                Self::link_context(&mut context, &syntax_clone, &syntaxes_clone);
                 
                 if context.uses_backrefs {
                     found_more_backref_includes = true;
@@ -601,14 +643,26 @@ impl SyntaxSetBuilder {
         // when loading from a binary dump.
         while found_more_backref_includes {
             found_more_backref_includes = false;
-            // find any contexts which include a context which uses backrefs
-            // and mark those as using backrefs - to support nested includes
-            for context_index in 0..all_contexts.len() {
-                let context = &all_contexts[context_index];
-                if !context.uses_backrefs && context.patterns.iter().any(|pattern| {
-                    matches!(pattern, Pattern::Include(ContextReference::Direct(id)) if all_contexts[id.index()].uses_backrefs)
-                }) {
-                    let mut context = &mut all_contexts[context_index];
+
+            for syntax_index in 0..syntaxes.len() {
+                let mut use_backrefs_indices = vec![];
+                {
+                    let syntax = &syntaxes[syntax_index];
+                    // find any contexts which include a context which uses backrefs
+                    // and mark those as using backrefs - to support nested includes
+                    for context_index in 0..syntax.contexts.len() {
+                        let context = &syntax.contexts[context_index];
+                        if !context.uses_backrefs && context.patterns.clone().iter().any(|pattern| {
+                            matches!(pattern, Pattern::Include(ContextReference::Direct(id)) if syntaxes[id.syntax_index()].contexts[id.context_index()].uses_backrefs)
+                        }) {
+                            use_backrefs_indices.push(context_index);
+                        }
+                    }
+                }
+
+                let syntax = &mut syntaxes[syntax_index];
+                for context_index in use_backrefs_indices {
+                    let mut context = &mut syntax.contexts[context_index];
                     context.uses_backrefs = true;
                     // look for contexts including this context
                     found_more_backref_includes = true;
@@ -622,9 +676,38 @@ impl SyntaxSetBuilder {
             None => raw_metadata.into(),
         };
 
+        // Final step: Separate the lazy-loaded part from the not lazy-loaded part
+        let lazy_loaded_syntaxes = syntaxes.into_iter().map(|s|{
+            let CompleteSyntaxReference {
+                name,
+                file_extensions,
+                scope,
+                first_line_match,
+                hidden,
+                variables,
+                contexts_map,
+                contexts,
+            } = s;
+
+            let lazy_loaded = LazyLoaded {
+                variables,
+                contexts_map,
+                contexts,
+            };
+
+            SyntaxReference {
+                name,
+                file_extensions,
+                scope,
+                first_line_match,
+                hidden,
+                lazy_loaded: AtomicLazyCell::new(),
+                serialized_lazy_loaded: crate::dumps::dump_binary(&lazy_loaded),
+            }
+        });
+
         SyntaxSet {
-            syntaxes,
-            contexts: all_contexts,
+            syntaxes: lazy_loaded_syntaxes.collect(),
             path_syntaxes,
             first_line_cache: AtomicLazyCell::new(),
             #[cfg(feature = "metadata")]
@@ -635,7 +718,7 @@ impl SyntaxSetBuilder {
     /// Anything recursively included by the prototype shouldn't include the prototype.
     /// This marks them as such.
     fn recursively_mark_no_prototype(
-        syntax: &SyntaxReference,
+        syntax: &CompleteSyntaxReference,
         context_id: usize,
         contexts: &[Context],
         no_prototype: &mut HashSet<usize>,
@@ -659,12 +742,12 @@ impl SyntaxSetBuilder {
                         for context_ref in context_refs.iter() {
                             match context_ref {
                                 ContextReference::Inline(ref s) | ContextReference::Named(ref s) => {
-                                    if let Some(i) = syntax.contexts.get(s) {
-                                        Self::recursively_mark_no_prototype(syntax, i.index(), contexts, no_prototype);
+                                    if let Some(i) = syntax.contexts_map.get(s) {
+                                        Self::recursively_mark_no_prototype(syntax, i.context_index(), contexts, no_prototype);
                                     }
                                 },
                                 ContextReference::Direct(ref id) => {
-                                    Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
+                                    Self::recursively_mark_no_prototype(syntax, id.context_index(), contexts, no_prototype);
                                 },
                                 _ => (),
                             }
@@ -674,12 +757,12 @@ impl SyntaxSetBuilder {
                 Pattern::Include(ref reference) => {
                     match reference {
                         ContextReference::Named(ref s) => {
-                            if let Some(id) = syntax.contexts.get(s) {
-                                Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
+                            if let Some(id) = syntax.contexts_map.get(s) {
+                                Self::recursively_mark_no_prototype(syntax, id.context_index(), contexts, no_prototype);
                             }
                         },
                         ContextReference::Direct(ref id) => {
-                            Self::recursively_mark_no_prototype(syntax, id.index(), contexts, no_prototype);
+                            Self::recursively_mark_no_prototype(syntax, id.context_index(), contexts, no_prototype);
                         },
                         _ => (),
                     }
@@ -688,7 +771,7 @@ impl SyntaxSetBuilder {
         }
     }
 
-    fn link_context(context: &mut Context, syntax: &SyntaxReference, syntaxes: &[SyntaxReference]) {
+    fn link_context(context: &mut Context, syntax: &CompleteSyntaxReference, syntaxes: &[CompleteSyntaxReference]) {
         for pattern in &mut context.patterns {
             match *pattern {
                 Pattern::Match(ref mut match_pat) => Self::link_match_pat(match_pat, syntax, syntaxes),
@@ -697,7 +780,7 @@ impl SyntaxSetBuilder {
         }
     }
 
-    fn link_ref(context_ref: &mut ContextReference, syntax: &SyntaxReference, syntaxes: &[SyntaxReference]) {
+    fn link_ref(context_ref: &mut ContextReference, syntax: &CompleteSyntaxReference, syntaxes: &[CompleteSyntaxReference]) {
         // println!("{:?}", context_ref);
         use super::syntax_definition::ContextReference::*;
         let linked_context_id = match *context_ref {
@@ -706,9 +789,9 @@ impl SyntaxSetBuilder {
                 // This is being phased out anyhow, see https://github.com/sublimehq/Packages/issues/73
                 // Fixes issue #30
                 if s == "$top_level_main" {
-                    syntax.contexts.get("main")
+                    syntax.contexts_map.get("main")
                 } else {
-                    syntax.contexts.get(s)
+                    syntax.contexts_map.get(s)
                 }
             }
             ByScope { scope, ref sub_context } => {
@@ -717,7 +800,7 @@ impl SyntaxSetBuilder {
                     .iter()
                     .rev()
                     .find(|s| s.scope == scope)
-                    .and_then(|s| s.contexts.get(context_name))
+                    .and_then(|s| s.contexts_map.get(context_name))
             }
             File { ref name, ref sub_context } => {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
@@ -725,7 +808,7 @@ impl SyntaxSetBuilder {
                     .iter()
                     .rev()
                     .find(|s| &s.name == name)
-                    .and_then(|s| s.contexts.get(context_name))
+                    .and_then(|s| s.contexts_map.get(context_name))
             }
             Direct(_) => None,
         };
@@ -735,7 +818,7 @@ impl SyntaxSetBuilder {
         }
     }
 
-    fn link_match_pat(match_pat: &mut MatchPattern, syntax: &SyntaxReference, syntaxes: &[SyntaxReference]) {
+    fn link_match_pat(match_pat: &mut MatchPattern, syntax: &CompleteSyntaxReference, syntaxes: &[CompleteSyntaxReference]) {
         let maybe_context_refs = match match_pat.operation {
             MatchOperation::Push(ref mut context_refs) |
             MatchOperation::Set(ref mut context_refs) => Some(context_refs),
@@ -831,7 +914,7 @@ mod tests {
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // unreachable!();
-        let main_context = ps.get_context(&syntax.contexts["main"]);
+        let main_context = ps.get_context(&syntax.contexts_map()["main"]);
         let count = syntax_definition::context_iter(&ps, main_context).count();
         assert_eq!(count, 109);
     }
@@ -1103,7 +1186,7 @@ mod tests {
     }
 
     fn assert_prototype_only_on(expected: &[&str], syntax_set: &SyntaxSet, syntax: &SyntaxReference) {
-        for (name, id) in &syntax.contexts {
+        for (name, id) in syntax.contexts_map() {
             if name == "__main" || name == "__start" {
                 // Skip special contexts
                 continue;

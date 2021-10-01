@@ -14,9 +14,15 @@ use crate::parsing::syntax_set::SyntaxSet;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+/// Identifies a [`Context`] by first indexing what syntax that defines the context
+/// and then indexing a context in the given syntax
+///
+/// TODO: If we reserve say 8 least significant bits for syntax index, we can keep
+/// public API uchanged (signature wise, not semantically)
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContextId {
-    index: usize,
+    syntax_index: usize,
+    context_index: usize,
 }
 
 /// The main data structure representing a syntax definition loaded from a
@@ -226,13 +232,19 @@ pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -
 }
 
 impl ContextId {
-    pub fn new(index: usize) -> Self {
-        ContextId { index }
+    // TODO: We remove public API, but maybe not needed in public API?
+    pub(crate) fn new(syntax_index: usize, context_index: usize) -> Self {
+        ContextId { syntax_index, context_index }
     }
 
     #[inline(always)]
-    pub(crate) fn index(self) -> usize {
-        self.index
+    pub(crate) fn syntax_index(self) -> usize {
+        self.syntax_index
+    }
+ 
+    #[inline(always)]
+    pub(crate) fn context_index(self) -> usize {
+        self.context_index
     }
 }
 

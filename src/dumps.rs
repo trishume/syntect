@@ -68,6 +68,22 @@ pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> 
     dump_to_writer(o, out)
 }
 
+
+/// Temp hack
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+pub fn dump_to_file_no_compression<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
+    let mut contents = vec![];
+    bincode::serialize_into(&mut contents, o).unwrap();
+    std::fs::write(path, &contents[..]).unwrap();
+    Ok(())
+}
+
+/// Temp hack
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+pub fn from_binary_no_compression<T: DeserializeOwned>(v: &[u8]) -> T {
+    bincode::deserialize_from(v).unwrap()
+}
+
 /// A helper function for decoding and decompressing data from a reader
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_reader<T: DeserializeOwned, R: BufRead>(input: R) -> Result<T> {
@@ -116,14 +132,14 @@ impl SyntaxSet {
 
         #[cfg(feature = "metadata")]
         {
-            let mut ps: SyntaxSet = from_binary(include_bytes!("../assets/default_nonewlines.packdump"));
+            let mut ps: SyntaxSet = from_binary_no_compression(include_bytes!("../assets/default_nonewlines.packdump"));
             let metadata = from_binary(include_bytes!("../assets/default_metadata.packdump"));
             ps.metadata = metadata;
             ps
         }
         #[cfg(not(feature = "metadata"))]
         {
-            from_binary(include_bytes!("../assets/default_nonewlines.packdump"))
+            from_binary_no_compression(include_bytes!("../assets/default_nonewlines.packdump"))
         }
     }
 
@@ -137,14 +153,14 @@ impl SyntaxSet {
 
         #[cfg(feature = "metadata")]
         {
-            let mut ps: SyntaxSet = from_binary(include_bytes!("../assets/default_newlines.packdump"));
+            let mut ps: SyntaxSet = from_binary_no_compression(include_bytes!("../assets/default_newlines.packdump"));
             let metadata = from_binary(include_bytes!("../assets/default_metadata.packdump"));
             ps.metadata = metadata;
             ps
         }
         #[cfg(not(feature = "metadata"))]
         {
-            from_binary(include_bytes!("../assets/default_newlines.packdump"))
+            from_binary_no_compression(include_bytes!("../assets/default_newlines.packdump"))
         }
     }
 }

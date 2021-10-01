@@ -164,7 +164,7 @@ impl ParseState {
     /// main context of the syntax
     pub fn new(syntax: &SyntaxReference) -> ParseState {
         let start_state = StateLevel {
-            context: syntax.contexts["__start"],
+            context: syntax.contexts_map()["__start"],
             prototypes: Vec::new(),
             captures: None,
         };
