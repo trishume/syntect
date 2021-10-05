@@ -8,7 +8,7 @@ on:
     branches: [ master ]
 
 env:
-  MIN_SUPPORTED_RUST_VERSION: "1.42"
+  MIN_SUPPORTED_RUST_VERSION: "1.46"
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -60,16 +60,12 @@ jobs:
         make assets
         make syntest
         make syntest-fancy
-        rm -Rf examples
     - name: Docs
       run: |
-        # Only run doc build on stable until this is fixed: https://github.com/rust-lang/rust/issues/51661
         cargo doc
     - name: Run tests without default features
       run: |
-        # default features are required for examples to build - so remove them from sight.
-        # Doc-tests may also use default features
-        rm -Rf examples && cargo test --lib --no-default-features
+        cargo test --lib --no-default-features
     - name: Run Xi tests
       run: |
         # Test the build configuration that Xi uses
