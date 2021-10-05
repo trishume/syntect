@@ -14,15 +14,14 @@ use crate::parsing::syntax_set::SyntaxSet;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 
-/// Identifies a [`Context`] by first indexing what syntax that defines the context
-/// and then indexing a context in the given syntax
-///
-/// TODO: If we reserve say 8 least significant bits for syntax index, we can keep
-/// public API uchanged (signature wise, not semantically)
+/// An opaque ID for a [`Context`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContextId {
-    syntax_index: usize,
-    context_index: usize,
+    /// Index into [`SyntaxSet::syntaxes`]
+    pub(crate) syntax_index: usize,
+
+    /// Index into `LazyContexts::contexts` for the `SyntaxReference` indexed by [`Self::syntax_index`]
+    pub(crate) context_index: usize,
 }
 
 /// The main data structure representing a syntax definition loaded from a
@@ -232,19 +231,10 @@ pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -
 }
 
 impl ContextId {
-    // TODO: We remove public API, but maybe not needed in public API?
-    pub(crate) fn new(syntax_index: usize, context_index: usize) -> Self {
-        ContextId { syntax_index, context_index }
-    }
-
-    #[inline(always)]
-    pub(crate) fn syntax_index(self) -> usize {
-        self.syntax_index
-    }
- 
-    #[inline(always)]
-    pub(crate) fn context_index(self) -> usize {
-        self.context_index
+    /// Deprecated. You should never create your own context ID.
+    #[deprecated]
+    pub fn new(_index: usize) -> Self {
+        ContextId { syntax_index: 666, context_index: 666 }
     }
 }
 
