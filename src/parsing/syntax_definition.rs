@@ -20,7 +20,7 @@ pub struct ContextId {
     /// Index into [`SyntaxSet::syntaxes`]
     pub(crate) syntax_index: usize,
 
-    /// Index into [`crate::parsing::SyntaxReference::contexts`] for the [`Self::syntax_index`] syntax
+    /// Index into [`crate::parsing::LazyContexts::contexts`] for the [`Self::syntax_index`] syntax
     pub(crate) context_index: usize,
 }
 

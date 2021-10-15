@@ -58,7 +58,12 @@ dump-create-rs = ["flate2/rust_backend", "bincode"]
 
 regex-fancy = ["fancy-regex"]
 regex-onig = ["onig"]
+
+# If you enable "parsing", you must also enable either "dump-load" or
+# "dump-load-rs", and "dump-create" or "dump-create-rs". Otherwise the code that
+# enables lazy-loading of syntaxes will not compile.
 parsing = ["regex-syntax", "fnv"]
+
 # Support for .tmPreferenes metadata files (indentation, comment syntax, etc)
 metadata = ["parsing", "plist-load"]
 # The `assets` feature enables inclusion of the default theme and syntax packages.
