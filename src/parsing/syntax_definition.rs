@@ -14,9 +14,14 @@ use crate::parsing::syntax_set::SyntaxSet;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 
+/// An opaque ID for a [`Context`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContextId {
-    pub(crate) index: usize,
+    /// Index into [`SyntaxSet::syntaxes`]
+    pub(crate) syntax_index: usize,
+
+    /// Index into [`crate::parsing::SyntaxReference::contexts`] for the [`Self::syntax_index`] syntax
+    pub(crate) context_index: usize,
 }
 
 /// The main data structure representing a syntax definition loaded from a
@@ -226,8 +231,13 @@ pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -
 }
 
 impl ContextId {
-    pub fn new(index: usize) -> Self {
-        ContextId { index }
+    /// Deprecated. You should never create your own context ID.
+    #[deprecated]
+    pub fn new(_index: usize) -> Self {
+        ContextId {
+            syntax_index: 666,
+            context_index: 666,
+        }
     }
 }
 
