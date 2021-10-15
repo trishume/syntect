@@ -61,7 +61,7 @@ pub struct SyntaxReference {
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
     #[serde(serialize_with = "ordered_map")]
-    pub(crate) contexts: HashMap<String, ContextId>,
+    pub(crate) context_ids: HashMap<String, ContextId>,
 }
 
 /// A syntax set builder is used for loading syntax definitions from the file
@@ -315,11 +315,11 @@ impl SyntaxSet {
                 first_line_match,
                 hidden,
                 variables,
-                contexts,
+                context_ids,
             } = syntax;
 
-            let mut builder_contexts = HashMap::with_capacity(contexts.len());
-            for (name, context_id) in contexts {
+            let mut builder_contexts = HashMap::with_capacity(context_ids.len());
+            for (name, context_id) in context_ids {
                 if let Some(context) = context_map.remove(&context_id) {
                     builder_contexts.insert(name, context);
                 }
@@ -376,11 +376,11 @@ impl SyntaxSet {
             let SyntaxReference {
                 name,
                 scope,
-                contexts,
+                context_ids,
                 ..
             } = syntax;
 
-            for context_id in contexts.values() {
+            for context_id in context_ids.values() {
                 if let Some(context) = context_map.remove(context_id) {
                     for pattern in context.patterns.iter() {
                         let maybe_refs_to_check = match pattern {
@@ -541,7 +541,7 @@ impl SyntaxSetBuilder {
                 contexts,
             } = syntax_definition;
 
-            let mut map = HashMap::new();
+            let mut context_ids = HashMap::new();
 
             let mut contexts: Vec<(String, Context)> = contexts.into_iter().collect();
             // Sort the values of the HashMap so that the contexts in the
@@ -551,7 +551,7 @@ impl SyntaxSetBuilder {
             contexts.sort_unstable_by(|(name_a, _), (name_b, _)| name_a.cmp(name_b));
             for (name, context) in contexts {
                 let index = all_contexts.len();
-                map.insert(name, ContextId { index });
+                context_ids.insert(name, ContextId { index });
                 all_contexts.push(context);
             }
 
@@ -562,7 +562,7 @@ impl SyntaxSetBuilder {
                 first_line_match,
                 hidden,
                 variables,
-                contexts: map,
+                context_ids,
             };
             syntaxes.push(syntax);
         }
@@ -570,13 +570,13 @@ impl SyntaxSetBuilder {
         let mut found_more_backref_includes = true;
         for syntax in &syntaxes {
             let mut no_prototype = HashSet::new();
-            let prototype = syntax.contexts.get("prototype");
+            let prototype = syntax.context_ids.get("prototype");
             if let Some(prototype_id) = prototype {
                 // TODO: We could do this after parsing YAML, instead of here?
                 Self::recursively_mark_no_prototype(syntax, prototype_id, &all_contexts, &mut no_prototype);
             }
 
-            for context_id in syntax.contexts.values() {
+            for context_id in syntax.context_ids.values() {
                 let mut context = &mut all_contexts[context_id.index];
                 if let Some(prototype_id) = prototype {
                     if context.meta_include_prototype && !no_prototype.contains(context_id) {
@@ -658,7 +658,7 @@ impl SyntaxSetBuilder {
                         for context_ref in context_refs.iter() {
                             match context_ref {
                                 ContextReference::Inline(ref s) | ContextReference::Named(ref s) => {
-                                    if let Some(i) = syntax.contexts.get(s) {
+                                    if let Some(i) = syntax.context_ids.get(s) {
                                         Self::recursively_mark_no_prototype(syntax, i, contexts, no_prototype);
                                     }
                                 },
@@ -673,7 +673,7 @@ impl SyntaxSetBuilder {
                 Pattern::Include(ref reference) => {
                     match reference {
                         ContextReference::Named(ref s) => {
-                            if let Some(id) = syntax.contexts.get(s) {
+                            if let Some(id) = syntax.context_ids.get(s) {
                                 Self::recursively_mark_no_prototype(syntax, id, contexts, no_prototype);
                             }
                         },
@@ -705,9 +705,9 @@ impl SyntaxSetBuilder {
                 // This is being phased out anyhow, see https://github.com/sublimehq/Packages/issues/73
                 // Fixes issue #30
                 if s == "$top_level_main" {
-                    syntax.contexts.get("main")
+                    syntax.context_ids.get("main")
                 } else {
-                    syntax.contexts.get(s)
+                    syntax.context_ids.get(s)
                 }
             }
             ByScope { scope, ref sub_context } => {
@@ -716,7 +716,7 @@ impl SyntaxSetBuilder {
                     .iter()
                     .rev()
                     .find(|s| s.scope == scope)
-                    .and_then(|s| s.contexts.get(context_name))
+                    .and_then(|s| s.context_ids.get(context_name))
             }
             File { ref name, ref sub_context } => {
                 let context_name = sub_context.as_ref().map_or("main", |x| &**x);
@@ -724,7 +724,7 @@ impl SyntaxSetBuilder {
                     .iter()
                     .rev()
                     .find(|s| &s.name == name)
-                    .and_then(|s| s.contexts.get(context_name))
+                    .and_then(|s| s.context_ids.get(context_name))
             }
             Direct(_) => None,
         };
@@ -830,7 +830,7 @@ mod tests {
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // unreachable!();
-        let main_context = ps.get_context(&syntax.contexts["main"]);
+        let main_context = ps.get_context(&syntax.context_ids["main"]);
         let count = syntax_definition::context_iter(&ps, main_context).count();
         assert_eq!(count, 109);
     }
@@ -1102,7 +1102,7 @@ mod tests {
     }
 
     fn assert_prototype_only_on(expected: &[&str], syntax_set: &SyntaxSet, syntax: &SyntaxReference) {
-        for (name, id) in &syntax.contexts {
+        for (name, id) in &syntax.context_ids {
             if name == "__main" || name == "__start" {
                 // Skip special contexts
                 continue;
