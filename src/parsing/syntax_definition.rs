@@ -14,9 +14,9 @@ use crate::parsing::syntax_set::SyntaxSet;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContextId {
-    index: usize,
+    pub(crate) index: usize,
 }
 
 /// The main data structure representing a syntax definition loaded from a
@@ -228,11 +228,6 @@ pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -
 impl ContextId {
     pub fn new(index: usize) -> Self {
         ContextId { index }
-    }
-
-    #[inline(always)]
-    pub(crate) fn index(self) -> usize {
-        self.index
     }
 }
 
