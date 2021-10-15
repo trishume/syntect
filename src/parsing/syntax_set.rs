@@ -397,31 +397,22 @@ impl SyntaxSet {
     ) {
         for pattern in context.patterns.iter() {
             let maybe_refs_to_check = match pattern {
-                Pattern::Match(match_pat) => {
-                    match &match_pat.operation {
-                        MatchOperation::Push(context_refs) => {
-                            Some(context_refs)
-                        },
-                        MatchOperation::Set(context_refs) => {
-                            Some(context_refs)
-                        },
-                        _ => None,
-                    }
+                Pattern::Match(match_pat) => match &match_pat.operation {
+                    MatchOperation::Push(context_refs) => Some(context_refs),
+                    MatchOperation::Set(context_refs) => Some(context_refs),
+                    _ => None,
                 },
                 _ => None,
             };
-    
             for context_ref in maybe_refs_to_check.into_iter().flatten() {
                 match context_ref {
-                    ContextReference::Direct(_) => {},
+                    ContextReference::Direct(_) => {}
                     _ => {
-                        unlinked_contexts.insert(
-                            format!(
-                                "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
-                                name, scope, &context_ref
-                            )
-                        );
-                    },
+                        unlinked_contexts.insert(format!(
+                            "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
+                            name, scope, &context_ref
+                        ));
+                    }
                 }
             }
         }
