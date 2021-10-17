@@ -382,43 +382,42 @@ impl SyntaxSet {
 
             for context_id in contexts.values() {
                 if let Some(context) = context_map.remove(context_id) {
-                    for pattern in context.patterns.iter() {
-                        let maybe_refs_to_check = match pattern {
-                            Pattern::Match(match_pat) => {
-                                match &match_pat.operation {
-                                    MatchOperation::Push(context_refs) => {
-                                        Some(context_refs)
-                                    },
-                                    MatchOperation::Set(context_refs) => {
-                                        Some(context_refs)
-                                    },
-                                    _ => None,
-                                }
-                            },
-                            _ => None,
-                        };
-
-                        for context_ref in maybe_refs_to_check.into_iter().flatten() {
-                            match context_ref {
-                                ContextReference::Direct(_) => {},
-                                _ => {
-                                    unlinked_contexts.insert(
-                                        format!(
-                                            "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
-                                            name, scope, &context_ref
-                                        )
-                                    );
-                                },
-                            }
-                        }
-                    }
+                    Self::find_unlinked_contexts_in_context(name, scope, context, &mut unlinked_contexts);
                 }
             }
         }
         unlinked_contexts
     }
-}
 
+    fn find_unlinked_contexts_in_context(
+        name: &str,
+        scope: &Scope,
+        context: &Context,
+        unlinked_contexts: &mut BTreeSet<String>,
+    ) {
+        for pattern in context.patterns.iter() {
+            let maybe_refs_to_check = match pattern {
+                Pattern::Match(match_pat) => match &match_pat.operation {
+                    MatchOperation::Push(context_refs) => Some(context_refs),
+                    MatchOperation::Set(context_refs) => Some(context_refs),
+                    _ => None,
+                },
+                _ => None,
+            };
+            for context_ref in maybe_refs_to_check.into_iter().flatten() {
+                match context_ref {
+                    ContextReference::Direct(_) => {}
+                    _ => {
+                        unlinked_contexts.insert(format!(
+                            "Syntax '{}' with scope '{}' has unresolved context reference {:?}",
+                            name, scope, &context_ref
+                        ));
+                    }
+                }
+            }
+        }
+    }
+}
 
 impl SyntaxSetBuilder {
     pub fn new() -> SyntaxSetBuilder {
