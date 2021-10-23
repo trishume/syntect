@@ -750,22 +750,14 @@ impl SyntaxSetBuilder {
                 }
             }
             ByScope { scope, ref sub_context } => {
-                let context_name = sub_context.as_ref().map_or("main", |x| &**x);
-                syntaxes
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .find(|index_and_syntax| index_and_syntax.1.scope == scope)
-                    .and_then(|index_and_syntax| all_context_ids[index_and_syntax.0].get(context_name))
+                Self::find_id(sub_context, all_context_ids, syntaxes, |index_and_syntax| {
+                    index_and_syntax.1.scope == scope
+                })
             }
             File { ref name, ref sub_context } => {
-                let context_name = sub_context.as_ref().map_or("main", |x| &**x);
-                syntaxes
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .find(|index_and_syntax| &index_and_syntax.1.name == name)
-                    .and_then(|index_and_syntax| all_context_ids[index_and_syntax.0].get(context_name))
+                Self::find_id(sub_context, all_context_ids, syntaxes, |index_and_syntax| {
+                    &index_and_syntax.1.name == name
+                })
             }
             Direct(_) => None,
         };
@@ -773,6 +765,21 @@ impl SyntaxSetBuilder {
             let mut new_ref = Direct(*context_id);
             mem::swap(context_ref, &mut new_ref);
         }
+    }
+
+    fn find_id<'a>(
+        sub_context: &Option<String>,
+        all_context_ids: &'a [HashMap<String, ContextId>],
+        syntaxes: &'a [SyntaxReference],
+        predicate: impl FnMut(&(usize, &SyntaxReference)) -> bool,
+    ) -> Option<&'a ContextId> {
+        let context_name = sub_context.as_ref().map_or("main", |x| &**x);
+        syntaxes
+            .iter()
+            .enumerate()
+            .rev()
+            .find(predicate)
+            .and_then(|index_and_syntax| all_context_ids[index_and_syntax.0].get(context_name))
     }
 
     fn link_match_pat(
