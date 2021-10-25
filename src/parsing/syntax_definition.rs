@@ -230,17 +230,6 @@ pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -
     reg_str
 }
 
-impl ContextId {
-    /// Deprecated. You should never create your own context ID.
-    #[deprecated]
-    pub fn new(_index: usize) -> Self {
-        ContextId {
-            syntax_index: 666,
-            context_index: 666,
-        }
-    }
-}
-
 impl MatchPattern {
 
     pub fn new(
