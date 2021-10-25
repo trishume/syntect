@@ -37,18 +37,18 @@ fn parse_file(b: &mut Bencher, file: &str) {
 }
 
 fn parsing_benchmark(c: &mut Criterion) {
-    c.bench_function_over_inputs(
-        "parse",
-        |b, s| parse_file(b, s),
-        vec![
-            "highlight_test.erb",
-            "InspiredGitHub.tmTheme",
-            "Ruby.sublime-syntax",
-            "jquery.js",
-            "parser.rs",
-            "scope.rs",
-        ],
-    );
+    let mut parse = c.benchmark_group("parse");
+    for input in &[
+        "highlight_test.erb",
+        "InspiredGitHub.tmTheme",
+        "Ruby.sublime-syntax",
+        "jquery.js",
+        "parser.rs",
+        "scope.rs",
+    ] {
+        parse.bench_with_input(*input, input, |b, s| parse_file(b, s));
+    }
+    parse.finish();
 }
 
 criterion_group! {
