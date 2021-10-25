@@ -477,7 +477,7 @@ impl SyntaxDefinition {
     /// it is immediately re-added and when it is `set` over the file level
     /// scope remains. This behaviour is emulated through some added contexts
     /// that are the actual top level contexts used in parsing.
-    /// See https://github.com/trishume/syntect/issues/58 for more.
+    /// See <https://github.com/trishume/syntect/issues/58> for more.
     fn add_initial_contexts(
         contexts: &mut HashMap<String, Context>,
         state: &mut ParserState<'_>,
