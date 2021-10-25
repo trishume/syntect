@@ -242,7 +242,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 
 ## License and Acknowledgements
 
-Thanks to [Robin Stocker](https://github.com/robinst) and also [Keith Hall](https://github.com/keith-hall) for making awesome substantial contributions of the most important impressive improvements `syntect` has had post-`v1.0`!
+Thanks to [Robin Stocker](https://github.com/robinst), [Keith Hall](https://github.com/keith-hall) and [Martin Nordholts](https://github.com/Enselic) for making awesome substantial contributions of the most important impressive improvements `syntect` has had post-`v1.0`!
 They deserve lots of credit for where `syntect` is today. For example @robinst implemented [fancy-regex support](https://github.com/trishume/syntect/pull/270) and [a massive refactor](https://github.com/trishume/syntect/pull/182) to enable parallel highlighting using an arena. @keith-hall found and fixed many bugs and [implemented Sublime syntax test support](https://github.com/trishume/syntect/pull/44).
 
 Thanks to [Textmate 2](https://github.com/textmate/textmate) and @defuz's [sublimate](https://github.com/defuz/sublimate) for the existing open source code I used as inspiration and in the case of sublimate's `tmTheme` loader, copy-pasted.
