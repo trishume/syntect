@@ -79,7 +79,7 @@ fn highlighting_benchmark(c: &mut Criterion) {
         "parser.rs",
         "scope.rs",
     ] {
-        highlight.bench_with_input(*input, input, |b, s| highlight_file(b, s));
+        highlight.bench_with_input(format!("\"{}\"", input), input, |b, s| highlight_file(b, s));
     }
     highlight.finish();
 }

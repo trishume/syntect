@@ -46,7 +46,7 @@ fn parsing_benchmark(c: &mut Criterion) {
         "parser.rs",
         "scope.rs",
     ] {
-        parse.bench_with_input(*input, input, |b, s| parse_file(b, s));
+        parse.bench_with_input(format!("\"{}\"", input), input, |b, s| parse_file(b, s));
     }
     parse.finish();
 }
