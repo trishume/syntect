@@ -4,8 +4,6 @@ use syntect::highlighting::{ThemeSet, Theme};
 use syntect::easy::HighlightLines;
 use syntect::html::highlighted_html_for_string;
 use std::str::FromStr;
-use std::fs::File;
-use std::io::Read;
 
 fn do_highlight(s: &str, syntax_set: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> usize {
     let mut h = HighlightLines::new(syntax, theme);
@@ -33,9 +31,7 @@ fn highlight_file(b: &mut Bencher, file: &str) {
     let ts = ThemeSet::load_defaults();
 
     let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
-    let mut f = File::open(path).unwrap();
-    let mut s = String::new();
-    f.read_to_string(&mut s).unwrap();
+    let s = std::fs::read_to_string(path).unwrap();
 
     b.iter(|| {
         do_highlight(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
@@ -58,9 +54,7 @@ fn highlight_html(b: &mut Bencher) {
 
     let path = "testdata/parser.rs";
     let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
-    let mut f = File::open(path).unwrap();
-    let mut s = String::new();
-    f.read_to_string(&mut s).unwrap();
+    let s = std::fs::read_to_string(path).unwrap();
 
     b.iter(|| {
         highlighted_html_for_string(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
