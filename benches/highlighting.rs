@@ -1,30 +1,14 @@
 use criterion::{Bencher, Criterion, criterion_group, criterion_main};
-use syntect::parsing::{SyntaxSet, SyntaxReference, ScopeStack};
-use syntect::highlighting::{ThemeSet, Theme};
-use syntect::easy::HighlightLines;
+use syntect::parsing::{SyntaxSet, ScopeStack};
+use syntect::highlighting::{ThemeSet};
 use syntect::html::highlighted_html_for_string;
 use std::str::FromStr;
 
-fn do_highlight(s: &str, syntax_set: &SyntaxSet, syntax: &SyntaxReference, theme: &Theme) -> usize {
-    let mut h = HighlightLines::new(syntax, theme);
-    let mut count = 0;
-    for line in s.lines() {
-        let regions = h.highlight(line, syntax_set);
-        count += regions.len();
-    }
-    count
-}
+mod highlight_utils;
+mod utils;
 
 fn highlight_file(b: &mut Bencher, file: &str) {
-    let path = match file {
-        "highlight_test.erb" => "testdata/highlight_test.erb",
-        "InspiredGitHub.tmTheme" => "testdata/InspiredGitHub.tmtheme/InspiredGitHub.tmTheme",
-        "Ruby.sublime-syntax" => "testdata/Packages/Ruby/Ruby.sublime-syntax",
-        "jquery.js" => "testdata/jquery.js",
-        "parser.rs" => "testdata/parser.rs",
-        "scope.rs" => "src/parsing/scope.rs",
-        _ => panic!("Unknown test file {}", file),
-    };
+    let path = utils::get_test_file_path(file);
 
     // don't load from dump so we don't count lazy regex compilation time
     let ss = SyntaxSet::load_defaults_nonewlines();
@@ -34,10 +18,9 @@ fn highlight_file(b: &mut Bencher, file: &str) {
     let s = std::fs::read_to_string(path).unwrap();
 
     b.iter(|| {
-        do_highlight(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
+        highlight_utils::do_highlight(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
     });
 }
-
 
 fn stack_matching(b: &mut Bencher) {
     let s = "source.js meta.group.js meta.group.js meta.block.js meta.function-call.method.js meta.group.js meta.object-literal.js meta.block.js meta.function-call.method.js meta.group.js variable.other.readwrite.js";
