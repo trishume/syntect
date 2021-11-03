@@ -3,11 +3,28 @@
 //! * Iterating lines with `\n`s
 //! * Modifying ranges of highlighted output
 
-use crate::highlighting::{Style, StyleModifier};
-use std::fmt::Write;
-use std::ops::Range;
+use crate::highlighting::{Color, Style, StyleModifier};
 #[cfg(feature = "parsing")]
 use crate::parsing::ScopeStackOp;
+use std::fmt::Write;
+use std::ops::Range;
+
+#[inline]
+fn blend_fg_color(fg: Color, bg: Color) -> Color {
+    if fg.a == 0xff {
+        return fg;
+    }
+    let ratio = fg.a as u32;
+    let r = (fg.r as u32 * ratio + bg.r as u32 * (255 - ratio)) / 255;
+    let g = (fg.g as u32 * ratio + bg.g as u32 * (255 - ratio)) / 255;
+    let b = (fg.b as u32 * ratio + bg.b as u32 * (255 - ratio)) / 255;
+    Color {
+        r: r as u8,
+        g: g as u8,
+        b: b as u8,
+        a: 255,
+    }
+}
 
 /// Formats the styled fragments using 24-bit color terminal escape codes.
 /// Meant for debugging and testing.
@@ -30,13 +47,8 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
                    style.background.b)
                 .unwrap();
         }
-        write!(s,
-               "\x1b[38;2;{};{};{}m{}",
-               style.foreground.r,
-               style.foreground.g,
-               style.foreground.b,
-               text)
-            .unwrap();
+        let fg = blend_fg_color(style.foreground, style.background);
+        write!(s, "\x1b[38;2;{};{};{}m{}", fg.r, fg.g, fg.b, text).unwrap();
     }
     // s.push_str("\x1b[0m");
     s
@@ -274,6 +286,7 @@ pub fn modify_range<'a>(v: &[(Style, &'a str)], r: Range<usize>, modifier: Style
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::highlighting::FontStyle;
 
     #[test]
     fn test_lines_with_endings() {
@@ -315,5 +328,33 @@ mod tests {
 
         let (before, after) = split_at(l, 10); // out of bounds
         assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
+    }
+
+    #[test]
+    fn test_as_24_bit_terminal_escaped() {
+        let style = Style {
+            foreground: Color::WHITE,
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+
+        // With background
+        let s = as_24_bit_terminal_escaped(&[(style, "hello")], true);
+        assert_eq!(s, "\x1b[48;2;0;0;0m\x1b[38;2;255;255;255mhello");
+
+        // Without background
+        let s = as_24_bit_terminal_escaped(&[(style, "hello")], false);
+        assert_eq!(s, "\x1b[38;2;255;255;255mhello");
+
+        // Blend alpha
+        let mut foreground = Color::WHITE;
+        foreground.a = 128;
+        let style = Style {
+            foreground,
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+        let s = as_24_bit_terminal_escaped(&[(style, "hello")], true);
+        assert_eq!(s, "\x1b[48;2;0;0;0m\x1b[38;2;128;128;128mhello");
     }
 }
