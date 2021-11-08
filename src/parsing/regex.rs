@@ -1,4 +1,4 @@
-use lazycell::AtomicLazyCell;
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::error::Error;
 
@@ -10,7 +10,7 @@ use std::error::Error;
 #[derive(Debug)]
 pub struct Regex {
     regex_str: String,
-    regex: AtomicLazyCell<regex_impl::Regex>,
+    regex: OnceCell<regex_impl::Regex>,
 }
 
 /// A region contains text positions for capture groups in a match result.
@@ -27,7 +27,7 @@ impl Regex {
     pub fn new(regex_str: String) -> Self {
         Self {
             regex_str,
-            regex: AtomicLazyCell::new(),
+            regex: OnceCell::new(),
         }
     }
 
@@ -65,14 +65,9 @@ impl Regex {
     }
 
     fn regex(&self) -> &regex_impl::Regex {
-        if let Some(regex) = self.regex.borrow() {
-            regex
-        } else {
-            let regex =
-                regex_impl::Regex::new(&self.regex_str).expect("regex string should be pre-tested");
-            self.regex.fill(regex).ok();
-            self.regex.borrow().unwrap()
-        }
+        self.regex.get_or_init(|| {
+            regex_impl::Regex::new(&self.regex_str).expect("regex string should be pre-tested")
+        })
     }
 }
 
@@ -80,7 +75,7 @@ impl Clone for Regex {
     fn clone(&self) -> Self {
         Regex {
             regex_str: self.regex_str.clone(),
-            regex: AtomicLazyCell::new(),
+            regex: OnceCell::new(),
         }
     }
 }
@@ -275,9 +270,9 @@ mod tests {
     fn caches_compiled_regex() {
         let regex = Regex::new(String::from(r"\w+"));
 
-        assert!(!regex.regex.filled());
+        assert!(regex.regex.get().is_none());
         assert!(regex.is_match("test"));
-        assert!(regex.regex.filled());
+        assert!(regex.regex.get().is_some());
     }
 
     #[test]
