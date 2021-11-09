@@ -70,18 +70,18 @@ fn highlight_html(b: &mut Bencher) {
 fn highlighting_benchmark(c: &mut Criterion) {
     c.bench_function("stack_matching", stack_matching);
     c.bench_function("highlight_html", highlight_html);
-    c.bench_function_over_inputs(
-        "highlight",
-        |b, s| highlight_file(b, s),
-        vec![
-            "highlight_test.erb",
-            "InspiredGitHub.tmTheme",
-            "Ruby.sublime-syntax",
-            "jquery.js",
-            "parser.rs",
-            "scope.rs",
-        ],
-    );
+    let mut highlight = c.benchmark_group("highlight");
+    for input in &[
+        "highlight_test.erb",
+        "InspiredGitHub.tmTheme",
+        "Ruby.sublime-syntax",
+        "jquery.js",
+        "parser.rs",
+        "scope.rs",
+    ] {
+        highlight.bench_with_input(*input, input, |b, s| highlight_file(b, s));
+    }
+    highlight.finish();
 }
 
 criterion_group! {

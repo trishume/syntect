@@ -18,7 +18,7 @@ use bincode::deserialize_from;
 use bincode::serialize_into;
 use std::fs::File;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead};
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 use std::io::{BufWriter, Write};
 #[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
@@ -86,9 +86,8 @@ pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
 /// Returns a fully loaded syntax set from a binary dump file.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
-    let f = File::open(path)?;
-    let reader = BufReader::new(f);
-    from_reader(reader)
+    let contents = std::fs::read(path)?;
+    from_reader(&contents[..])
 }
 
 #[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]

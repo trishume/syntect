@@ -17,9 +17,9 @@ use std::io::{self, BufRead, BufReader};
 use std::fs::File;
 use std::mem;
 
-use lazycell::AtomicLazyCell;
 use super::regex::Regex;
 use crate::parsing::syntax_definition::ContextId;
+use once_cell::sync::OnceCell;
 
 /// A syntax set holds multiple syntaxes that have been linked together.
 ///
@@ -36,8 +36,8 @@ pub struct SyntaxSet {
     /// Stores the syntax index for every path that was loaded
     path_syntaxes: Vec<(String, usize)>,
 
-    #[serde(skip_serializing, skip_deserializing, default = "AtomicLazyCell::new")]
-    first_line_cache: AtomicLazyCell<FirstLineCache>,
+    #[serde(skip_serializing, skip_deserializing, default = "OnceCell::new")]
+    first_line_cache: OnceCell<FirstLineCache>,
     /// Metadata, e.g. indent and commenting information.
     ///
     /// NOTE: if serializing, you should handle metadata manually; that is, you should serialize and
@@ -109,7 +109,7 @@ impl Clone for SyntaxSet {
             syntaxes: self.syntaxes.clone(),
             path_syntaxes: self.path_syntaxes.clone(),
             // Will need to be re-initialized
-            first_line_cache: AtomicLazyCell::new(),
+            first_line_cache: OnceCell::new(),
             #[cfg(feature = "metadata")]
             metadata: self.metadata.clone(),
         }
@@ -121,13 +121,12 @@ impl Default for SyntaxSet {
         SyntaxSet {
             syntaxes: Vec::new(),
             path_syntaxes: Vec::new(),
-            first_line_cache: AtomicLazyCell::new(),
+            first_line_cache: OnceCell::new(),
             #[cfg(feature = "metadata")]
             metadata: Metadata::default(),
         }
     }
 }
-
 
 impl SyntaxSet {
     pub fn new() -> SyntaxSet {
@@ -355,13 +354,8 @@ impl SyntaxSet {
     }
 
     fn first_line_cache(&self) -> &FirstLineCache {
-        if let Some(cache) = self.first_line_cache.borrow() {
-            cache
-        } else {
-            let cache = FirstLineCache::new(self.syntaxes());
-            self.first_line_cache.fill(cache).ok();
-            self.first_line_cache.borrow().unwrap()
-        }
+        self.first_line_cache
+            .get_or_init(|| FirstLineCache::new(self.syntaxes()))
     }
 
     pub fn find_unlinked_contexts(&self) -> BTreeSet<String> {
@@ -631,7 +625,7 @@ impl SyntaxSetBuilder {
         SyntaxSet {
             syntaxes,
             path_syntaxes,
-            first_line_cache: AtomicLazyCell::new(),
+            first_line_cache: OnceCell::new(),
             #[cfg(feature = "metadata")]
             metadata,
         }

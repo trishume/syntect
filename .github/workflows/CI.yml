@@ -35,6 +35,13 @@ jobs:
       run: |
         cargo check --all-features --all-targets
 
+  documentation:
+    name: Documentation checks
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - run: RUSTDOCFLAGS='--deny warnings' cargo doc --no-deps --document-private-items --all-features
+
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest

@@ -36,12 +36,19 @@ fn bench_link_syntaxes(b: &mut Bencher) {
     });
 }
 
+fn bench_from_dump_file(b: &mut Bencher) {
+    b.iter(|| {
+        let _: SyntaxSet = syntect::dumps::from_dump_file("assets/default_newlines.packdump").unwrap();
+    })
+}
+
 fn loading_benchmark(c: &mut Criterion) {
     c.bench_function("load_internal_dump", bench_load_internal_dump);
     c.bench_function("load_internal_themes", bench_load_internal_themes);
     c.bench_function("load_theme", bench_load_theme);
     c.bench_function("add_from_folder", bench_add_from_folder);
     c.bench_function("link_syntaxes", bench_link_syntaxes);
+    c.bench_function("from_dump_file", bench_from_dump_file);
 }
 
 criterion_group! {
