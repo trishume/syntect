@@ -82,7 +82,7 @@ let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}";
 for line in LinesWithEndings::from(s) {
     let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
     let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
-    println!("{}", escaped);
+    print!("{}", escaped);
 }
 ```
 

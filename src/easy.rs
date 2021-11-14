@@ -36,7 +36,7 @@ use std::path::Path;
 /// for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
 ///     let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
 ///     let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
-///     println!("{}", escaped);
+///     print!("{}", escaped);
 /// }
 /// ```
 pub struct HighlightLines<'a> {
@@ -109,7 +109,7 @@ impl<'a> HighlightFile<'a> {
     /// while highlighter.reader.read_line(&mut line)? > 0 {
     ///     {
     ///         let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line, &ss);
-    ///         println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
+    ///         print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
     ///     } // until NLL this scope is needed so we can clear the buffer after
     ///     line.clear(); // read_line appends so we need to clear between lines
     /// }
