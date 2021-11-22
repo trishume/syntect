@@ -1,6 +1,4 @@
 use criterion::{Bencher, Criterion, criterion_group, criterion_main};
-use std::fs::File;
-use std::io::Read;
 use std::time::Duration;
 use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 
@@ -29,9 +27,7 @@ fn parse_file(b: &mut Bencher, file: &str) {
     let ss = SyntaxSet::load_defaults_nonewlines();
 
     let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
-    let mut f = File::open(path).unwrap();
-    let mut s = String::new();
-    f.read_to_string(&mut s).unwrap();
+    let s = std::fs::read_to_string(path).unwrap();
 
     b.iter(|| do_parse(&s, &ss, syntax));
 }

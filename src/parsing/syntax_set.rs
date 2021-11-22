@@ -11,8 +11,6 @@ use std::collections::{HashMap, HashSet, BTreeSet};
 use std::path::Path;
 #[cfg(feature = "yaml-load")]
 use walkdir::WalkDir;
-#[cfg(feature = "yaml-load")]
-use std::io::Read;
 use std::io::{self, BufRead, BufReader};
 use std::fs::File;
 use std::mem;
@@ -91,9 +89,7 @@ pub struct SyntaxSetBuilder {
 fn load_syntax_file(p: &Path,
                     lines_include_newline: bool)
                     -> Result<SyntaxDefinition, LoadingError> {
-    let mut f = File::open(p)?;
-    let mut s = String::new();
-    f.read_to_string(&mut s)?;
+    let s = std::fs::read_to_string(p)?;
 
     SyntaxDefinition::load_from_str(
         &s,
