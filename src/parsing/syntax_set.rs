@@ -57,6 +57,14 @@ pub struct SyntaxReference {
     pub hidden: bool,
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
+    #[serde(skip)]
+    pub(crate) lazy_contexts: OnceCell<LazyContexts>,
+    pub(crate) serialized_lazy_contexts: Vec<u8>,
+}
+
+/// The lazy-loaded parts of a [`SyntaxReference`].
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct LazyContexts {
     #[serde(serialize_with = "ordered_map")]
     pub(crate) context_ids: HashMap<String, ContextId>,
     pub(crate) contexts: Vec<Context>,
@@ -295,7 +303,7 @@ impl SyntaxSet {
 
         let mut context_map = HashMap::new();
         for (syntax_index, syntax) in syntaxes.iter().enumerate() {
-            for (context_index, context) in syntax.contexts.iter().enumerate() {
+            for (context_index, context) in syntax.contexts().iter().enumerate() {
                 context_map.insert(ContextId { syntax_index, context_index }, context.clone());
             }
         }
@@ -310,12 +318,13 @@ impl SyntaxSet {
                 first_line_match,
                 hidden,
                 variables,
-                context_ids,
+                serialized_lazy_contexts,
                 ..
             } = syntax;
 
-            let mut builder_contexts = HashMap::with_capacity(context_ids.len());
-            for (name, context_id) in context_ids {
+            let lazy_contexts = LazyContexts::deserialize(&serialized_lazy_contexts[..]);
+            let mut builder_contexts = HashMap::with_capacity(lazy_contexts.context_ids.len());
+            for (name, context_id) in lazy_contexts.context_ids {
                 if let Some(context) = context_map.remove(&context_id) {
                     builder_contexts.insert(name, context);
                 }
@@ -346,7 +355,7 @@ impl SyntaxSet {
     #[inline(always)]
     pub(crate) fn get_context(&self, context_id: &ContextId) -> &Context {
         let syntax = &self.syntaxes[context_id.syntax_index];
-        &syntax.contexts[context_id.context_index]
+        &syntax.contexts()[context_id.context_index]
     }
 
     fn first_line_cache(&self) -> &FirstLineCache {
@@ -366,7 +375,7 @@ impl SyntaxSet {
                 ..
             } = syntax;
 
-            for context in &syntax.contexts {
+            for context in syntax.contexts() {
                 Self::find_unlinked_contexts_in_context(name, scope, context, &mut unlinked_contexts);
             }
         }
@@ -400,6 +409,27 @@ impl SyntaxSet {
                 }
             }
         }
+    }
+}
+
+impl SyntaxReference {
+    pub(crate) fn context_ids(&self) -> &HashMap<String, ContextId> {
+        &self.lazy_contexts().context_ids
+    }
+
+    fn contexts(&self) -> &[Context] {
+        &self.lazy_contexts().contexts
+    }
+
+    fn lazy_contexts(&self) -> &LazyContexts {
+        self.lazy_contexts
+            .get_or_init(|| LazyContexts::deserialize(&self.serialized_lazy_contexts[..]))
+    }
+}
+
+impl LazyContexts {
+    fn deserialize(data: &[u8]) -> LazyContexts {
+        crate::dumps::from_reader(data).expect("data is not corrupt or out of sync with the code")
     }
 }
 
@@ -546,8 +576,8 @@ impl SyntaxSetBuilder {
                 first_line_match,
                 hidden,
                 variables,
-                context_ids: HashMap::new(), // initialized in the last step
-                contexts: Vec::new(), // initialized in the last step
+                lazy_contexts: OnceCell::new(),
+                serialized_lazy_contexts: Vec::new(), // initialized in the last step
             };
             syntaxes.push(syntax);
             all_context_ids.push(context_ids);
@@ -614,8 +644,12 @@ impl SyntaxSetBuilder {
         //  * the borrow checker
         // makes it necessary to set these up as the last step.
         for syntax in &mut syntaxes {
-            syntax.context_ids = all_context_ids.remove(0);
-            syntax.contexts = all_contexts.remove(0);
+            let lazy_contexts = LazyContexts {
+                context_ids: all_context_ids.remove(0),
+                contexts: all_contexts.remove(0),
+            };
+
+            syntax.serialized_lazy_contexts = crate::dumps::dump_binary(&lazy_contexts);
         };
 
         SyntaxSet {
@@ -844,7 +878,7 @@ mod tests {
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // unreachable!();
-        let main_context = ps.get_context(&syntax.context_ids["main"]);
+        let main_context = ps.get_context(&syntax.context_ids()["main"]);
         let count = syntax_definition::context_iter(&ps, main_context).count();
         assert_eq!(count, 109);
     }
@@ -1116,7 +1150,7 @@ mod tests {
     }
 
     fn assert_prototype_only_on(expected: &[&str], syntax_set: &SyntaxSet, syntax: &SyntaxReference) {
-        for (name, id) in &syntax.context_ids {
+        for (name, id) in syntax.context_ids() {
             if name == "__main" || name == "__start" {
                 // Skip special contexts
                 continue;
