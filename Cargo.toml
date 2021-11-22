@@ -85,6 +85,10 @@ name = "highlighting"
 harness = false
 
 [[bench]]
+name = "load_and_highlight"
+harness = false
+
+[[bench]]
 name = "loading"
 harness = false
 
