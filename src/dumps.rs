@@ -1,16 +1,17 @@
 //! Methods for dumping serializable structs to a compressed binary format,
 //! used to allow fast startup times
 //!
-//! Currently syntect serializes [`SyntaxSet`] structs with [`dump_to_file`]
-//! into `.packdump` files and likewise [`ThemeSet`] structs to `.themedump` files.
+//! Currently syntect serializes [`SyntaxSet`] structs with [`dump_to_uncompressed_file`]
+//! into `.packdump` files and likewise [`ThemeSet`] structs to `.themedump` files with [`dump_to_file`].
 //!
 //! You can use these methods to manage your own caching of compiled syntaxes and
 //! themes. And even your own `serde::Serialize` structures if you want to
 //! be consistent with your format.
 //!
 //! [`SyntaxSet`]: ../parsing/struct.SyntaxSet.html
-//! [`dump_to_file`]: fn.dump_to_file.html
+//! [`dump_to_uncompressed_file`]: fn.dump_to_uncompressed_file.html
 //! [`ThemeSet`]: ../highlighting/struct.ThemeSet.html
+//! [`dump_to_file`]: fn.dump_to_file.html
 use bincode::Result;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use bincode::deserialize_from;
@@ -73,7 +74,7 @@ pub fn from_reader<T: DeserializeOwned, R: BufRead>(input: R) -> Result<T> {
     deserialize_from_reader_impl(input, true)
 }
 
-/// Returns a fully loaded syntax set from a binary dump.
+/// Returns a fully loaded object from a binary dump.
 ///
 /// This function panics if the dump is invalid.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
@@ -81,7 +82,7 @@ pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
     from_reader(v).unwrap()
 }
 
-/// Returns a fully loaded syntax set from a binary dump file.
+/// Returns a fully loaded object from a binary dump file.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
     let contents = std::fs::read(path)?;
