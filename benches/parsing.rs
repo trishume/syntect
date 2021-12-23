@@ -2,6 +2,8 @@ use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use std::time::Duration;
 use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 
+mod utils;
+
 fn do_parse(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference) -> usize {
     let mut state = ParseState::new(syntax);
     let mut count = 0;
@@ -13,15 +15,7 @@ fn do_parse(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference) -> usize {
 }
 
 fn parse_file(b: &mut Bencher, file: &str) {
-    let path = match file {
-        "highlight_test.erb" => "testdata/highlight_test.erb",
-        "InspiredGitHub.tmTheme" => "testdata/InspiredGitHub.tmtheme/InspiredGitHub.tmTheme",
-        "Ruby.sublime-syntax" => "testdata/Packages/Ruby/Ruby.sublime-syntax",
-        "jquery.js" => "testdata/jquery.js",
-        "parser.rs" => "testdata/parser.rs",
-        "scope.rs" => "src/parsing/scope.rs",
-        _ => panic!("Unknown test file {}", file),
-    };
+    let path = utils::get_test_file_path(file);
 
     // don't load from dump so we don't count lazy regex compilation time
     let ss = SyntaxSet::load_defaults_nonewlines();
