@@ -1,16 +1,17 @@
 //! Methods for dumping serializable structs to a compressed binary format,
 //! used to allow fast startup times
 //!
-//! Currently syntect serializes [`SyntaxSet`] structs with [`dump_to_file`]
-//! into `.packdump` files and likewise [`ThemeSet`] structs to `.themedump` files.
+//! Currently syntect serializes [`SyntaxSet`] structs with [`dump_to_uncompressed_file`]
+//! into `.packdump` files and likewise [`ThemeSet`] structs to `.themedump` files with [`dump_to_file`].
 //!
 //! You can use these methods to manage your own caching of compiled syntaxes and
 //! themes. And even your own `serde::Serialize` structures if you want to
 //! be consistent with your format.
 //!
 //! [`SyntaxSet`]: ../parsing/struct.SyntaxSet.html
-//! [`dump_to_file`]: fn.dump_to_file.html
+//! [`dump_to_uncompressed_file`]: fn.dump_to_uncompressed_file.html
 //! [`ThemeSet`]: ../highlighting/struct.ThemeSet.html
+//! [`dump_to_file`]: fn.dump_to_file.html
 use bincode::Result;
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 use bincode::deserialize_from;
@@ -42,8 +43,7 @@ use serde::de::DeserializeOwned;
 /// The writer is encoded with the `bincode` crate and compressed with `flate2`.
 #[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
-    let mut encoder = ZlibEncoder::new(output, Compression::best());
-    serialize_into(&mut encoder, to_dump)
+    serialize_to_writer_impl(to_dump, output, true)
 }
 
 /// Dumps an object to a binary array in the same format as [`dump_to_writer`]
@@ -71,11 +71,10 @@ pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> 
 /// A helper function for decoding and decompressing data from a reader
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_reader<T: DeserializeOwned, R: BufRead>(input: R) -> Result<T> {
-    let mut decoder = ZlibDecoder::new(input);
-    deserialize_from(&mut decoder)
+    deserialize_from_reader_impl(input, true)
 }
 
-/// Returns a fully loaded syntax set from a binary dump.
+/// Returns a fully loaded object from a binary dump.
 ///
 /// This function panics if the dump is invalid.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
@@ -83,11 +82,59 @@ pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
     from_reader(v).unwrap()
 }
 
-/// Returns a fully loaded syntax set from a binary dump file.
+/// Returns a fully loaded object from a binary dump file.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
 pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
     let contents = std::fs::read(path)?;
     from_reader(&contents[..])
+}
+
+/// To be used when serializing a [`SyntaxSet`] to a file. A [`SyntaxSet`]
+/// itself shall not be compressed, because the data for its lazy-loaded
+/// syntaxes are already compressed. Compressing another time just results in
+/// bad performance.
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
+    let out = BufWriter::new(File::create(path)?);
+    serialize_to_writer_impl(o, out, false)
+}
+
+/// To be used when deserializing a [`SyntaxSet`] that was previously written to
+/// file using [dump_to_uncompressed_file].
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
+    let contents = std::fs::read(path)?;
+    deserialize_from_reader_impl(&contents[..], false)
+}
+
+/// To be used when deserializing a [`SyntaxSet`] from raw data, for example
+/// data that has been embedded in your own binary with the [`include_bytes!`]
+/// macro.
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+fn from_uncompressed_data<T: DeserializeOwned>(v: &[u8]) -> Result<T> {
+    deserialize_from_reader_impl(v, false)
+}
+
+/// Private low level helper function used to implement the public API.
+#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+fn serialize_to_writer_impl<T: Serialize, W: Write>(to_dump: &T, output: W, use_compression: bool) -> Result<()> {
+    if use_compression {
+        let mut encoder = ZlibEncoder::new(output, Compression::best());
+        serialize_into(&mut encoder, to_dump)
+    } else {
+        serialize_into(output, to_dump)
+    }
+}
+
+/// Private low level helper function used to implement the public API.
+#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+fn deserialize_from_reader_impl<T: DeserializeOwned, R: BufRead>(input: R, use_compression: bool) -> Result<T> {
+    if use_compression {
+        let mut decoder = ZlibDecoder::new(input);
+        deserialize_from(&mut decoder)
+    } else {
+        deserialize_from(input)
+    }
 }
 
 #[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
@@ -115,14 +162,14 @@ impl SyntaxSet {
 
         #[cfg(feature = "metadata")]
         {
-            let mut ps: SyntaxSet = from_binary(include_bytes!("../assets/default_nonewlines.packdump"));
+            let mut ps: SyntaxSet = from_uncompressed_data(include_bytes!("../assets/default_nonewlines.packdump")).unwrap();
             let metadata = from_binary(include_bytes!("../assets/default_metadata.packdump"));
             ps.metadata = metadata;
             ps
         }
         #[cfg(not(feature = "metadata"))]
         {
-            from_binary(include_bytes!("../assets/default_nonewlines.packdump"))
+            from_uncompressed_data(include_bytes!("../assets/default_nonewlines.packdump")).unwrap()
         }
     }
 
@@ -136,14 +183,14 @@ impl SyntaxSet {
 
         #[cfg(feature = "metadata")]
         {
-            let mut ps: SyntaxSet = from_binary(include_bytes!("../assets/default_newlines.packdump"));
+            let mut ps: SyntaxSet = from_uncompressed_data(include_bytes!("../assets/default_newlines.packdump")).unwrap();
             let metadata = from_binary(include_bytes!("../assets/default_metadata.packdump"));
             ps.metadata = metadata;
             ps
         }
         #[cfg(not(feature = "metadata"))]
         {
-            from_binary(include_bytes!("../assets/default_newlines.packdump"))
+            from_uncompressed_data(include_bytes!("../assets/default_newlines.packdump")).unwrap()
         }
     }
 }

@@ -38,7 +38,7 @@ fn bench_link_syntaxes(b: &mut Bencher) {
 
 fn bench_from_dump_file(b: &mut Bencher) {
     b.iter(|| {
-        let _: SyntaxSet = syntect::dumps::from_dump_file("assets/default_newlines.packdump").unwrap();
+        let _: SyntaxSet = syntect::dumps::from_uncompressed_dump_file("assets/default_newlines.packdump").unwrap();
     })
 }
 
