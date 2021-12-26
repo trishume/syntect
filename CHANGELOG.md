@@ -1,5 +1,20 @@
 # Changelog
 
+## [Version 4.7.0](https://github.com/trishume/syntect/compare/v4.6.0...v4.7.0) (2021-12-25)
+
+- Lazy-load syntaxes to significantly improve startup time
+- Replace lazycell with once_cell to fix crash on lazy initialization
+- Remove `ContextId::new()` from public API to support lazy-loading of syntaxes
+- Add `ScopeRangeIterator`
+- Add CI check for Minimum Supported Rust Version. This is currently Rust 1.51.
+- Make 'plist' dependency (used for loading themes) optional via new 'plist-load' feature
+- Make looking up a syntax by extension use case-insensitive comparison
+- Make from_dump_file() ~15% faster
+- Blend alpha value on converting colors to ANSI color sequences
+- Fix sample code in documentation to avoid double newlines
+- Fix lots of build warnings and lints
+- Add Criterion benchmarks for a whole syntect pipeline and for from_dump_file()
+
 ## [Version 4.6.0](https://github.com/trishume/syntect/compare/v4.5.0...v4.6.0) (2021-08-01)
 
 - Add `html::line_tokens_to_classed_spans` to also take a mutable ScopeStack, deprecate `tokens_to_classed_spans`, to avoid panics and incorrect highlighting.
