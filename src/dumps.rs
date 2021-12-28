@@ -111,7 +111,7 @@ pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P)
 /// data that has been embedded in your own binary with the [`include_bytes!`]
 /// macro.
 #[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
-fn from_uncompressed_data<T: DeserializeOwned>(v: &[u8]) -> Result<T> {
+pub fn from_uncompressed_data<T: DeserializeOwned>(v: &[u8]) -> Result<T> {
     deserialize_from_reader_impl(v, false)
 }
 
