@@ -49,7 +49,6 @@ use std::fmt;
 use serde_json::Error as JsonError;
 #[cfg(all(feature = "yaml-load", feature = "parsing"))]
 use crate::parsing::ParseSyntaxError;
-#[cfg(feature = "plist-load")]
 use crate::highlighting::{ParseThemeError, SettingsError};
 
 /// Common error type used by syntax and theme loading
@@ -66,17 +65,14 @@ pub enum LoadingError {
     #[cfg(feature = "metadata")]
     ParseMetadata(JsonError),
     /// a theme file was invalid in some way
-    #[cfg(feature = "plist-load")]
     ParseTheme(ParseThemeError),
     /// a theme's Plist syntax was invalid in some way
-    #[cfg(feature = "plist-load")]
     ReadSettings(SettingsError),
     /// A path given to a method was invalid.
     /// Possibly because it didn't reference a file or wasn't UTF-8.
     BadPath,
 }
 
-#[cfg(feature = "plist-load")]
 impl From<SettingsError> for LoadingError {
     fn from(error: SettingsError) -> LoadingError {
         LoadingError::ReadSettings(error)
@@ -89,7 +85,6 @@ impl From<IoError> for LoadingError {
     }
 }
 
-#[cfg(feature = "plist-load")]
 impl From<ParseThemeError> for LoadingError {
     fn from(error: ParseThemeError) -> LoadingError {
         LoadingError::ParseTheme(error)
@@ -127,9 +122,7 @@ impl fmt::Display for LoadingError {
             },
             #[cfg(feature = "metadata")]
             ParseMetadata(_) => write!(f, "Failed to parse JSON"),
-            #[cfg(feature = "plist-load")]
             ParseTheme(_) => write!(f, "Invalid syntax theme"),
-            #[cfg(feature = "plist-load")]
             ReadSettings(_) => write!(f, "Invalid syntax theme settings"),
             BadPath => write!(f, "Invalid path"),
         }
