@@ -29,7 +29,7 @@ extern crate serde_derive;
 #[macro_use]
 extern crate pretty_assertions;
 
-#[cfg(any(feature = "dump-load-rs", feature = "dump-load", feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(any(feature = "dump-load", feature = "dump-create"))]
 pub mod dumps;
 #[cfg(feature = "parsing")]
 pub mod easy;

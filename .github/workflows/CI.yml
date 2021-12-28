@@ -76,4 +76,4 @@ jobs:
     - name: Run Xi tests
       run: |
         # Test the build configuration that Xi uses
-        cargo test --lib --no-default-features --features "assets dump-load-rs"
+        cargo test --lib --no-default-features --features "assets dump-load"

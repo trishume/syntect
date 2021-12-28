@@ -518,7 +518,7 @@ pub fn start_highlighted_html_snippet(t: &Theme) -> (String, Color) {
 
 #[cfg(all(
     feature = "assets",
-    any(feature = "dump-load", feature = "dump-load-rs")
+    feature = "dump-load"
 ))]
 #[cfg(test)]
 mod tests {
