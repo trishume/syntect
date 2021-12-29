@@ -6,6 +6,8 @@
 [![Build Status](https://github.com/trishume/syntect/actions/workflows/CI.yml/badge.svg)](https://github.com/trishume/syntect/actions)
 [![codecov](https://codecov.io/gh/trishume/syntect/branch/master/graph/badge.svg)](https://codecov.io/gh/trishume/syntect)
 
+**NOTE:** This is Sourcegraph's fork of syntect, which is used to power [`syntect_server`](https://github.com/sourcegraph/sourcegraph/tree/main/docker-images/syntax-highlighter) for syntax highlighting on Sourcegraph.com. For making changes to this repo, in addition to other docs below, it may be helpful to consult [Workflow.md](./Workflow.md).
+
 `syntect` is a syntax highlighting library for Rust that uses [Sublime Text syntax definitions](http://www.sublimetext.com/docs/3/syntax.html#include-syntax).
 It aims to be a good solution for any Rust project that needs syntax highlighting, including deep integration with text editors written in Rust.
 It's used in production by at least two companies, and by [many open source projects](#projects-using-syntect).
