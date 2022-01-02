@@ -251,7 +251,7 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
     }
 }
 
-#[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+#[cfg(all(feature = "assets", feature = "dump-load"))]
 #[cfg(test)]
 mod tests {
     use super::*;

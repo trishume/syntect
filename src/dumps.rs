@@ -13,35 +13,35 @@
 //! [`ThemeSet`]: ../highlighting/struct.ThemeSet.html
 //! [`dump_to_file`]: fn.dump_to_file.html
 use bincode::Result;
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+#[cfg(feature = "dump-load")]
 use bincode::deserialize_from;
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(feature = "dump-create")]
 use bincode::serialize_into;
 use std::fs::File;
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+#[cfg(feature = "dump-load")]
 use std::io::{BufRead};
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(feature = "dump-create")]
 use std::io::{BufWriter, Write};
-#[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+#[cfg(all(feature = "parsing", feature = "assets", feature = "dump-load"))]
 use crate::parsing::SyntaxSet;
-#[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+#[cfg(all(feature = "assets", feature = "dump-load"))]
 use crate::highlighting::ThemeSet;
 use std::path::Path;
 #[cfg(feature = "dump-create")]
 use flate2::write::ZlibEncoder;
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+#[cfg(feature = "dump-load")]
 use flate2::bufread::ZlibDecoder;
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(feature = "dump-create")]
 use flate2::Compression;
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(feature = "dump-create")]
 use serde::Serialize;
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+#[cfg(feature = "dump-load")]
 use serde::de::DeserializeOwned;
 
 /// Dumps an object to the given writer in a compressed binary format
 ///
 /// The writer is encoded with the `bincode` crate and compressed with `flate2`.
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(feature = "dump-create")]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
     serialize_to_writer_impl(to_dump, output, true)
 }
@@ -49,7 +49,7 @@ pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<
 /// Dumps an object to a binary array in the same format as [`dump_to_writer`]
 ///
 /// [`dump_to_writer`]: fn.dump_to_writer.html
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(feature = "dump-create")]
 pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
     let mut v = Vec::new();
     dump_to_writer(o, &mut v).unwrap();
@@ -62,14 +62,14 @@ pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
 /// the `bincode` crate and then compressed with the `flate2` crate.
 ///
 /// [`dump_to_writer`]: fn.dump_to_writer.html
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(feature = "dump-create")]
 pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
     let out = BufWriter::new(File::create(path)?);
     dump_to_writer(o, out)
 }
 
 /// A helper function for decoding and decompressing data from a reader
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+#[cfg(feature = "dump-load")]
 pub fn from_reader<T: DeserializeOwned, R: BufRead>(input: R) -> Result<T> {
     deserialize_from_reader_impl(input, true)
 }
@@ -77,13 +77,13 @@ pub fn from_reader<T: DeserializeOwned, R: BufRead>(input: R) -> Result<T> {
 /// Returns a fully loaded object from a binary dump.
 ///
 /// This function panics if the dump is invalid.
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+#[cfg(feature = "dump-load")]
 pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
     from_reader(v).unwrap()
 }
 
 /// Returns a fully loaded object from a binary dump file.
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+#[cfg(feature = "dump-load")]
 pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
     let contents = std::fs::read(path)?;
     from_reader(&contents[..])
@@ -93,7 +93,7 @@ pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T>
 /// itself shall not be compressed, because the data for its lazy-loaded
 /// syntaxes are already compressed. Compressing another time just results in
 /// bad performance.
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(feature = "dump-create")]
 pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
     let out = BufWriter::new(File::create(path)?);
     serialize_to_writer_impl(o, out, false)
@@ -101,7 +101,7 @@ pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -
 
 /// To be used when deserializing a [`SyntaxSet`] that was previously written to
 /// file using [dump_to_uncompressed_file].
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+#[cfg(feature = "dump-load")]
 pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
     let contents = std::fs::read(path)?;
     deserialize_from_reader_impl(&contents[..], false)
@@ -110,13 +110,13 @@ pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P)
 /// To be used when deserializing a [`SyntaxSet`] from raw data, for example
 /// data that has been embedded in your own binary with the [`include_bytes!`]
 /// macro.
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
-fn from_uncompressed_data<T: DeserializeOwned>(v: &[u8]) -> Result<T> {
+#[cfg(feature = "dump-load")]
+pub fn from_uncompressed_data<T: DeserializeOwned>(v: &[u8]) -> Result<T> {
     deserialize_from_reader_impl(v, false)
 }
 
 /// Private low level helper function used to implement the public API.
-#[cfg(any(feature = "dump-create", feature = "dump-create-rs"))]
+#[cfg(feature = "dump-create")]
 fn serialize_to_writer_impl<T: Serialize, W: Write>(to_dump: &T, output: W, use_compression: bool) -> Result<()> {
     if use_compression {
         let mut encoder = ZlibEncoder::new(output, Compression::best());
@@ -127,7 +127,7 @@ fn serialize_to_writer_impl<T: Serialize, W: Write>(to_dump: &T, output: W, use_
 }
 
 /// Private low level helper function used to implement the public API.
-#[cfg(any(feature = "dump-load", feature = "dump-load-rs"))]
+#[cfg(feature = "dump-load")]
 fn deserialize_from_reader_impl<T: DeserializeOwned, R: BufRead>(input: R, use_compression: bool) -> Result<T> {
     if use_compression {
         let mut decoder = ZlibDecoder::new(input);
@@ -137,7 +137,7 @@ fn deserialize_from_reader_impl<T: DeserializeOwned, R: BufRead>(input: R, use_c
     }
 }
 
-#[cfg(all(feature = "parsing", feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+#[cfg(all(feature = "parsing", feature = "assets", feature = "dump-load"))]
 impl SyntaxSet {
     /// Instantiates a new syntax set from a binary dump of Sublime Text's default open source
     /// syntax definitions.
@@ -195,7 +195,7 @@ impl SyntaxSet {
     }
 }
 
-#[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+#[cfg(all(feature = "assets", feature = "dump-load"))]
 impl ThemeSet {
     /// Loads the set of default themes
     /// Currently includes (these are the keys for the map):
@@ -210,7 +210,7 @@ impl ThemeSet {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(all(feature = "yaml-load", any(feature = "dump-create", feature = "dump-create-rs"), any(feature = "dump-load", feature = "dump-load-rs")))]
+    #[cfg(all(feature = "yaml-load", feature = "dump-create", feature = "dump-load"))]
     #[test]
     fn can_dump_and_load() {
         use super::*;
@@ -225,7 +225,7 @@ mod tests {
         assert_eq!(ss.syntaxes().len(), ss2.syntaxes().len());
     }
 
-    #[cfg(all(feature = "yaml-load", any(feature = "dump-create", feature = "dump-create-rs"), any(feature = "dump-load", feature = "dump-load-rs")))]
+    #[cfg(all(feature = "yaml-load", feature = "dump-create", feature = "dump-load"))]
     #[test]
     fn dump_is_deterministic() {
         use super::*;
@@ -246,7 +246,7 @@ mod tests {
         assert_eq!(bin1, bin2);
     }
 
-    #[cfg(all(feature = "assets", any(feature = "dump-load", feature = "dump-load-rs")))]
+    #[cfg(all(feature = "assets", feature = "dump-load"))]
     #[test]
     fn has_default_themes() {
         use crate::highlighting::ThemeSet;

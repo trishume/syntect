@@ -1,5 +1,9 @@
 # Changelog
 
+## [Version 4.7.1](https://github.com/trishume/syntect/compare/v4.7.0...v4.7.1) (2022-01-xx)
+
+- Remove 'plist-load' feature again due to semver violation. [#403](https://github.com/trishume/syntect/pull/403)
+
 ## [Version 4.7.0](https://github.com/trishume/syntect/compare/v4.6.0...v4.7.0) (2021-12-25)
 
 - Lazy-load syntaxes to significantly improve startup time
