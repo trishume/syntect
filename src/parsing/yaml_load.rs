@@ -868,7 +868,7 @@ mod tests {
         assert_eq!(defn.scope, Scope::new("source.c").unwrap());
         let exts_empty: Vec<String> = Vec::new();
         assert_eq!(defn.file_extensions, exts_empty);
-        assert_eq!(defn.hidden, false);
+        assert!(!defn.hidden);
         assert!(defn.variables.is_empty());
         let defn2: SyntaxDefinition =
             SyntaxDefinition::load_from_str("
@@ -909,7 +909,7 @@ mod tests {
         assert_eq!(defn2.scope, top_level_scope);
         let exts: Vec<String> = vec![String::from("c"), String::from("h")];
         assert_eq!(defn2.file_extensions, exts);
-        assert_eq!(defn2.hidden, true);
+        assert!(defn2.hidden);
         assert_eq!(defn2.variables.get("ident").unwrap(), "[QY]+");
 
         let n: Vec<Scope> = Vec::new();
@@ -918,7 +918,7 @@ mod tests {
         let main = &defn2.contexts["main"];
         assert_eq!(main.meta_content_scope, vec![top_level_scope]);
         assert_eq!(main.meta_scope, n);
-        assert_eq!(main.meta_include_prototype, true);
+        assert!(main.meta_include_prototype);
 
         assert_eq!(defn2.contexts["__main"].meta_content_scope, n);
         assert_eq!(defn2.contexts["__start"].meta_content_scope, vec![top_level_scope]);

@@ -82,7 +82,7 @@ fn main() {
             .unwrap_or_else(|| "base16-ocean.dark".to_string());
 
         let theme = ts.themes.get(&theme_file)
-            .map(|t| Cow::Borrowed(t))
+            .map(Cow::Borrowed)
             .unwrap_or_else(|| Cow::Owned(load_theme(&theme_file, matches.opt_present("cache-theme"))));
 
         for src in &matches.free[..] {
