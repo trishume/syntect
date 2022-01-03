@@ -273,7 +273,7 @@ pub fn highlighted_html_for_string(
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
     for line in LinesWithEndings::from(s) {
-        let regions = highlighter.highlight(line, ss);
+        let regions = highlighter.highlight_line(line, ss);
         append_highlighted_html_for_styled_line(
             &regions[..],
             IncludeBackground::IfDifferent(bg),
@@ -301,7 +301,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     let mut line = String::new();
     while highlighter.reader.read_line(&mut line)? > 0 {
         {
-            let regions = highlighter.highlight_lines.highlight(&line, ss);
+            let regions = highlighter.highlight_lines.highlight_line(&line, ss);
             append_highlighted_html_for_styled_line(
                 &regions[..],
                 IncludeBackground::IfDifferent(bg),
@@ -432,7 +432,7 @@ fn write_css_color(s: &mut String, c: Color) {
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
-/// let regions = h.highlight("5", &ps);
+/// let regions = h.highlight_line("5", &ps);
 /// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No);
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```
