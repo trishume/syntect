@@ -19,7 +19,7 @@
 //! [`parsing`]: parsing/index.html
 //! [`highlighting`]: highlighting/index.html
 
-#![doc(html_root_url = "https://docs.rs/syntect/4.7.1")]
+#![doc(html_root_url = "https://docs.rs/syntect/5.0.0")]
 
 #[macro_use]
 extern crate lazy_static;
