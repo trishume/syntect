@@ -9,6 +9,7 @@ Breaking changes
 - Rename `HighlightLines::highlight()` to `HighlightLines::highlight_line()` to make it clear that the function takes one line at a time
 - Make `plist` dependency (used for loading themes) optional via new `plist-load` feature
 - Remove obsolete `dump-load-rs` and `dump-create-rs` features that has been identical to `dump-load` and `dump-create` for two years
+- Remove deprecated items `ThemeSettings::highlight_foreground`, `ThemeSettings::selection_background`, `ClassedHTMLGenerator::new`, `ClassedHTMLGenerator::parse_html_for_line`, `html::css_for_theme`, `html::tokens_to_classed_html` and `html::tokens_to_classed_spans`
 
 Other changes
 
