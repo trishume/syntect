@@ -58,11 +58,6 @@ pub struct ClassedHTMLGenerator<'a> {
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
-    #[deprecated(since="4.2.0", note="Please use `new_with_class_style` instead")]
-    pub fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet) -> ClassedHTMLGenerator<'a> {
-        Self::new_with_class_style(syntax_reference, syntax_set, ClassStyle::Spaced)
-    }
-
     pub fn new_with_class_style(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
@@ -98,22 +93,6 @@ impl<'a> ClassedHTMLGenerator<'a> {
         self.html.push_str(formatted_line.as_str());
     }
 
-    /// Parse the line of code and update the internal HTML buffer with tagged HTML
-    ///
-    /// ## Warning
-    /// Due to an unfortunate oversight this function adds a newline after the HTML line,
-    /// and thus requires lines to be passed without newlines in them, and thus requires
-    /// usage of the `load_defaults_nonewlines` version of the default syntaxes.
-    ///
-    /// These versions of the syntaxes can have occasionally incorrect highlighting
-    /// but this function can't be changed without breaking compatibility so is deprecated.
-    #[deprecated(since="4.5.0", note="Please use `parse_html_for_line_which_includes_newline` instead")]
-    pub fn parse_html_for_line(&mut self, line: &str) {
-        self.parse_html_for_line_which_includes_newline(line);
-        // retain newline
-        self.html.push('\n');
-    }
-
     /// Close all open `<span>` tags and return the finished HTML string
     pub fn finalize(mut self) -> String {
         for _ in 0..self.open_spans {
@@ -121,11 +100,6 @@ impl<'a> ClassedHTMLGenerator<'a> {
         }
         self.html
     }
-}
-
-#[deprecated(since="4.2.0", note="Please use `css_for_theme_with_class_style` instead.")]
-pub fn css_for_theme(theme: &Theme) -> String {
-    css_for_theme_with_class_style(theme, ClassStyle::Spaced)
 }
 
 /// Create a complete CSS for a given theme. Can be used inline, or written to a CSS file.
@@ -371,26 +345,6 @@ pub fn line_tokens_to_classed_spans(
     }
     write!(s, "{}", Escape(&line[cur_index..line.len()])).unwrap();
     (s, span_delta)
-}
-
-/// Preserved for compatibility, always use `line_tokens_to_classed_spans`
-/// and keep a `ScopeStack` between lines for correct highlighting that won't
-/// sometimes crash.
-#[deprecated(since="4.6.0", note="Use `line_tokens_to_classed_spans` instead, this can panic and highlight incorrectly")]
-pub fn tokens_to_classed_spans(
-    line: &str,
-    ops: &[(usize, ScopeStackOp)],
-    style: ClassStyle,
-) -> (String, isize) {
-    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new())
-}
-
-#[deprecated(since="3.1.0", note="Use `line_tokens_to_classed_spans` instead to avoid incorrect highlighting and panics")]
-pub fn tokens_to_classed_html(line: &str,
-                              ops: &[(usize, ScopeStackOp)],
-                              style: ClassStyle)
-                              -> String {
-    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new()).0
 }
 
 /// Determines how background color attributes are generated

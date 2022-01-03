@@ -86,13 +86,6 @@ pub struct ThemeSettings {
     /// A color that will override the scope-based text color of the selection.
     pub selection_foreground: Option<Color>,
 
-    /// Deprecated!
-    ///
-    /// This property is not part of the recognized tmTheme format. It may be
-    /// removed in a future release.
-    #[deprecated]
-    pub selection_background: Option<Color>,
-
     /// Color of the selection regions border.
     pub selection_border: Option<Color>,
     /// The background color of a selection in a view that is not currently focused.
@@ -109,15 +102,6 @@ pub struct ThemeSettings {
     /// Color of the current guide’s parent guide level.
     /// Only used if the `indent_guide_options` setting is set to `draw_active`.
     pub stack_guide: Option<Color>,
-
-    /// Foreground color for regions added via `sublime.add_regions()`
-    /// with the `sublime.DRAW_OUTLINED` flag added.
-    ///
-    /// Deprecated!
-    /// This setting does not exist in any available documentation.
-    /// Use is discouraged, and it may be removed in a future release.
-    #[deprecated]
-    pub highlight_foreground: Option<Color>,
 
     /// The color of the shadow used when a text area can be horizontally scrolled.
     pub shadow: Option<Color>,
