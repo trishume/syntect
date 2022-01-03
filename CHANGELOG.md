@@ -1,23 +1,34 @@
 # Changelog
 
-## [Version 4.7.1](https://github.com/trishume/syntect/compare/v4.7.0...v4.7.1) (2022-01-xx)
+## [Version 5.0.0](https://github.com/trishume/syntect/compare/v4.6.0...v5.0.0) (2022-01-xx)
 
-- Remove 'plist-load' feature again due to semver violation. [#403](https://github.com/trishume/syntect/pull/403)
+Breaking changes
 
-## [Version 4.7.0](https://github.com/trishume/syntect/compare/v4.6.0...v4.7.0) (2021-12-25)
-
-- Lazy-load syntaxes to significantly improve startup time
-- Replace lazycell with once_cell to fix crash on lazy initialization
+- Lazy-load syntaxes to significantly improve startup time. This changes the binary format of syntax dump files.
 - Remove `ContextId::new()` from public API to support lazy-loading of syntaxes
+- Rename `HighlightLines::highlight()` to `HighlightLines::highlight_line()` to make it clear that the function takes one line at a time
+- Make `plist` dependency (used for loading themes) optional via new `plist-load` feature
+- Remove obsolete `dump-load-rs` and `dump-create-rs` features that has been identical to `dump-load` and `dump-create` for two years
+
+Other changes
+
+- Replace `lazycell` with `once_cell` to fix crash on lazy initialization
 - Add `ScopeRangeIterator`
 - Add CI check for Minimum Supported Rust Version. This is currently Rust 1.51.
-- Make 'plist' dependency (used for loading themes) optional via new 'plist-load' feature
 - Make looking up a syntax by extension use case-insensitive comparison
-- Make from_dump_file() ~15% faster
+- Make `from_dump_file()` ~15% faster
 - Blend alpha value on converting colors to ANSI color sequences
 - Fix sample code in documentation to avoid double newlines
 - Fix lots of build warnings and lints
-- Add Criterion benchmarks for a whole syntect pipeline and for from_dump_file()
+- Add Criterion benchmarks for a whole syntect pipeline and for `from_dump_file()`
+
+## [Version 4.7.1](https://github.com/trishume/syntect/compare/v4.7.0...v4.7.1) (2022-01-03)
+
+Yanked, please ignore.
+
+## [Version 4.7.0](https://github.com/trishume/syntect/compare/v4.6.0...v4.7.0) (2021-12-25)
+
+Yanked, please ignore.
 
 ## [Version 4.6.0](https://github.com/trishume/syntect/compare/v4.5.0...v4.6.0) (2021-08-01)
 
