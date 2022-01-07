@@ -238,7 +238,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [xi-editor](https://github.com/google/xi-editor), a text editor in Rust which uses `syntect` for highlighting.
 - [Zola](https://github.com/getzola/zola), a static site generator that uses `syntect` for highlighting code snippets.
 - [The Way](https://github.com/out-of-cheese-error/the-way), a code snippets manager for your terminal that uses `syntect`for highlighting.
-- [Broot](https://dystroy.org/broot), a terminal file manager, ises `syntect` for file previews
+- [Broot](https://dystroy.org/broot), a terminal file manager, uses `syntect` for file previews
 
 
 ## License and Acknowledgements
