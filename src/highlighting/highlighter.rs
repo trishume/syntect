@@ -370,7 +370,7 @@ impl<'a> Highlighter<'a> {
     }
 }
 
-#[cfg(all(feature = "assets", feature = "parsing", feature = "dump-load"))]
+#[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -251,7 +251,7 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
     }
 }
 
-#[cfg(all(feature = "assets", feature = "dump-load"))]
+#[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
 #[cfg(test)]
 mod tests {
     use super::*;

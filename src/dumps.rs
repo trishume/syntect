@@ -22,9 +22,9 @@ use std::fs::File;
 use std::io::{BufRead};
 #[cfg(feature = "dump-create")]
 use std::io::{BufWriter, Write};
-#[cfg(all(feature = "parsing", feature = "assets", feature = "dump-load"))]
+#[cfg(all(feature = "default-syntaxes"))]
 use crate::parsing::SyntaxSet;
-#[cfg(all(feature = "assets", feature = "dump-load"))]
+#[cfg(all(feature = "default-themes"))]
 use crate::highlighting::ThemeSet;
 use std::path::Path;
 #[cfg(feature = "dump-create")]
@@ -137,7 +137,7 @@ fn deserialize_from_reader_impl<T: DeserializeOwned, R: BufRead>(input: R, use_c
     }
 }
 
-#[cfg(all(feature = "parsing", feature = "assets", feature = "dump-load"))]
+#[cfg(feature = "default-syntaxes")]
 impl SyntaxSet {
     /// Instantiates a new syntax set from a binary dump of Sublime Text's default open source
     /// syntax definitions.
@@ -195,7 +195,7 @@ impl SyntaxSet {
     }
 }
 
-#[cfg(all(feature = "assets", feature = "dump-load"))]
+#[cfg(all(feature = "default-themes"))]
 impl ThemeSet {
     /// Loads the set of default themes
     /// Currently includes (these are the keys for the map):
@@ -210,7 +210,7 @@ impl ThemeSet {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(all(feature = "yaml-load", feature = "dump-create", feature = "dump-load"))]
+    #[cfg(all(feature = "yaml-load", feature = "dump-create", feature = "dump-load", feature = "parsing"))]
     #[test]
     fn can_dump_and_load() {
         use super::*;
@@ -246,7 +246,7 @@ mod tests {
         assert_eq!(bin1, bin2);
     }
 
-    #[cfg(all(feature = "assets", feature = "dump-load"))]
+    #[cfg(feature = "default-themes")]
     #[test]
     fn has_default_themes() {
         use crate::highlighting::ThemeSet;
