@@ -251,14 +251,15 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
     }
 }
 
-#[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::parsing::{SyntaxSet, ParseState, ScopeStack};
+    #[cfg(feature = "default-themes")]
     use crate::highlighting::ThemeSet;
     use std::str::FromStr;
 
+    #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
     fn can_highlight_lines() {
         let ss = SyntaxSet::load_defaults_nonewlines();
@@ -269,6 +270,7 @@ mod tests {
         assert!(ranges.len() > 4);
     }
 
+    #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
     fn can_highlight_file() {
         let ss = SyntaxSet::load_defaults_nonewlines();
@@ -279,6 +281,7 @@ mod tests {
             .unwrap();
     }
 
+    #[cfg(feature = "default-syntaxes")]
     #[test]
     fn can_find_regions() {
         let ss = SyntaxSet::load_defaults_nonewlines();
@@ -303,6 +306,7 @@ mod tests {
         assert_eq!(token_count, 5);
     }
 
+    #[cfg(feature = "default-syntaxes")]
     #[test]
     fn can_find_regions_with_trailing_newline() {
         let ss = SyntaxSet::load_defaults_newlines();
