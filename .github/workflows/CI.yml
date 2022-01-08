@@ -62,6 +62,12 @@ jobs:
     - name: Ensure highlight works without 'yaml-load'
       run: |
         cargo run --example synhtml --no-default-features --features html,default-syntaxes,default-themes,regex-onig -- examples/synhtml.rs
+    - name: Run tests with 'default-syntaxes' but without 'default-themes'
+      run: |
+        cargo test --lib --example synstats --no-default-features --features default-syntaxes,yaml-load,regex-onig
+    - name: Run tests without default features
+      run: |
+        cargo test --lib --no-default-features
     - name: make stuff
       run: |
         make assets
@@ -70,6 +76,3 @@ jobs:
     - name: Docs
       run: |
         cargo doc
-    - name: Run tests without default features
-      run: |
-        cargo test --lib --no-default-features
