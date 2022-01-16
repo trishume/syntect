@@ -597,7 +597,7 @@ impl SyntaxSetBuilder {
                         context.prototype = Some(*prototype_id);
                     }
                 }
-                Self::link_context(&mut context, syntax_index, &all_context_ids, &syntaxes);
+                Self::link_context(context, syntax_index, &all_context_ids, &syntaxes);
                 
                 if context.uses_backrefs {
                     found_more_backref_includes = true;
