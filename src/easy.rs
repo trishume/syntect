@@ -56,6 +56,11 @@ impl<'a> HighlightLines<'a> {
         }
     }
 
+    #[deprecated(since="5.0.0", note="Renamed to `highlight_line` to make it clear it should be passed a single line at a time")]
+    pub fn highlight<'b>(&mut self, line: &'b str, syntax_set: &SyntaxSet) -> Vec<(Style, &'b str)> {
+        self.highlight_line(line, syntax_set)
+    }
+
     /// Highlights a line of a file
     pub fn highlight_line<'b>(&mut self, line: &'b str, syntax_set: &SyntaxSet) -> Vec<(Style, &'b str)> {
         // println!("{}", self.highlight_state.path);
