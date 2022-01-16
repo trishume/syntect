@@ -135,14 +135,17 @@ impl SyntaxDefinition {
             top_level_scope,
         );
 
+        let mut file_extensions = Vec::new();
+        for extension_key in &["file_extensions", "hidden_file_extensions"] {
+            if let Ok(v) = get_key(h, extension_key, |x| x.as_vec()) {
+                file_extensions.extend(v.iter().filter_map(|y| y.as_str().map(|s| s.to_owned())))
+            }
+        }
+
         let defn = SyntaxDefinition {
             name: get_key(h, "name", |x| x.as_str()).unwrap_or_else(|_| fallback_name.unwrap_or("Unnamed")).to_owned(),
             scope: top_level_scope,
-            file_extensions: {
-                get_key(h, "file_extensions", |x| x.as_vec())
-                    .map(|v| v.iter().filter_map(|y| y.as_str()).map(|x| x.to_owned()).collect())
-                    .unwrap_or_else(|_| Vec::new())
-            },
+            file_extensions,
             // TODO maybe cache a compiled version of this Regex
             first_line_match: get_key(h, "first_line_match", |x| x.as_str())
                 .ok()
@@ -855,6 +858,7 @@ mod tests {
         name: C
         scope: source.c
         file_extensions: [c, h]
+        hidden_file_extensions: [k, l]
         hidden: true
         variables:
           ident: '[QY]+'
@@ -887,7 +891,7 @@ mod tests {
         assert_eq!(defn2.name, "C");
         let top_level_scope = Scope::new("source.c").unwrap();
         assert_eq!(defn2.scope, top_level_scope);
-        let exts: Vec<String> = vec![String::from("c"), String::from("h")];
+        let exts: Vec<String> = vec!["c", "h", "k", "l"].into_iter().map(String::from).collect();
         assert_eq!(defn2.file_extensions, exts);
         assert!(defn2.hidden);
         assert_eq!(defn2.variables.get("ident").unwrap(), "[QY]+");
