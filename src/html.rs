@@ -517,8 +517,8 @@ pub fn start_highlighted_html_snippet(t: &Theme) -> (String, Color) {
 }
 
 #[cfg(all(
-    feature = "assets",
-    feature = "dump-load"
+    feature = "default-syntaxes",
+    feature = "default-themes",
 ))]
 #[cfg(test)]
 mod tests {

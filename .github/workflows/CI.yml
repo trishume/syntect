@@ -61,7 +61,13 @@ jobs:
         cargo test --features default-fancy --no-default-features --release
     - name: Ensure highlight works without 'plist-load' and 'yaml-load' features
       run: |
-        cargo run --example synhtml --no-default-features --features html,assets,dump-load,dump-create,regex-onig -- examples/synhtml.rs
+        cargo run --example synhtml --no-default-features --features html,default-syntaxes,default-themes,regex-onig -- examples/synhtml.rs
+    - name: Run tests with 'default-syntaxes' but without 'default-themes'
+      run: |
+        cargo test --lib --example synstats --no-default-features --features default-syntaxes,yaml-load,regex-onig
+    - name: Run tests without default features
+      run: |
+        cargo test --lib --no-default-features
     - name: make stuff
       run: |
         make assets
@@ -70,10 +76,3 @@ jobs:
     - name: Docs
       run: |
         cargo doc
-    - name: Run tests without default features
-      run: |
-        cargo test --lib --no-default-features
-    - name: Run Xi tests
-      run: |
-        # Test the build configuration that Xi uses
-        cargo test --lib --no-default-features --features "assets dump-load"
