@@ -43,18 +43,10 @@ pretty_assertions = "0.6"
 
 [features]
 
-# If you enable two dump loading features or two creation features the build
-# will fail, choose one of each. If you are using both creation and loading,
-# your binary will be smaller if you choose the same one for each.
-
-# Legacy alias for `dump-load`
-dump-load-rs = ["dump-load"]
 # Dump loading using flate2
 dump-load = ["flate2", "bincode"]
 # Dump creation using flate2
 dump-create = ["flate2", "bincode"]
-# Legacy alias for `dump-create`
-dump-create-rs = ["dump-create"]
 
 regex-fancy = ["fancy-regex"]
 regex-onig = ["onig"]
