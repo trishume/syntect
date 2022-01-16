@@ -4,7 +4,6 @@ use super::settings::*;
 use super::super::LoadingError;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSet {
@@ -24,7 +23,7 @@ impl ThemeSet {
     /// This is god for enumerating before loading one with [`get_theme`](#method.get_theme)
     pub fn discover_theme_paths<P: AsRef<Path>>(folder: P) -> Result<Vec<PathBuf>, LoadingError> {
         let mut themes = Vec::new();
-        for entry in WalkDir::new(folder) {
+        for entry in crate::utils::walk_dir(folder) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
             if entry.path().extension().map_or(false, |e| e == "tmTheme") {
                 themes.push(entry.path().to_owned());

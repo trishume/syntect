@@ -40,6 +40,7 @@ pub mod highlighting;
 pub mod html;
 pub mod parsing;
 pub mod util;
+mod utils;
 
 use std::io::Error as IoError;
 use std::error::Error;
