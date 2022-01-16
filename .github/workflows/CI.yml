@@ -59,7 +59,7 @@ jobs:
       run: |
         # Run these tests in release mode since they're slow as heck otherwise
         cargo test --features default-fancy --no-default-features --release
-    - name: Ensure highlight works without 'yaml-load'
+    - name: Ensure highlight works without 'plist-load' and 'yaml-load' features
       run: |
         cargo run --example synhtml --no-default-features --features html,assets,dump-load,dump-create,regex-onig -- examples/synhtml.rs
     - name: make stuff
