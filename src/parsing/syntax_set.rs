@@ -9,8 +9,6 @@ use super::super::LoadingError;
 
 use std::collections::{HashMap, HashSet, BTreeSet};
 use std::path::Path;
-#[cfg(feature = "yaml-load")]
-use walkdir::WalkDir;
 use std::io::{self, BufRead, BufReader};
 use std::fs::File;
 use std::mem;
@@ -479,7 +477,7 @@ impl SyntaxSetBuilder {
         folder: P,
         lines_include_newline: bool
     ) -> Result<(), LoadingError> {
-        for entry in WalkDir::new(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
+        for entry in crate::utils::walk_dir(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 let syntax = load_syntax_file(entry.path(), lines_include_newline)?;

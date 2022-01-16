@@ -103,17 +103,23 @@ pub struct MatchPattern {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ContextReference {
+    #[non_exhaustive]
     Named(String),
+    #[non_exhaustive]
     ByScope {
         scope: Scope,
         sub_context: Option<String>,
     },
+    #[non_exhaustive]
     File {
         name: String,
         sub_context: Option<String>,
     },
+    #[non_exhaustive]
     Inline(String),
+    #[non_exhaustive]
     Direct(ContextId),
 }
 
