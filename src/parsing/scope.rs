@@ -49,6 +49,7 @@ pub struct Scope {
 
 /// Not all strings are valid scopes
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ParseScopeError {
     /// Due to a limitation of the current optimized internal representation
     /// scopes can be at most 8 atoms long

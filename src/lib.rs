@@ -49,6 +49,7 @@ use crate::highlighting::{ParseThemeError, SettingsError};
 
 /// Common error type used by syntax and theme loading
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum LoadingError {
     /// error finding all the files in a directory
     #[error("error finding all the files in a directory: {0}")]

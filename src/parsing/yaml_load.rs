@@ -9,6 +9,7 @@ use std::path::Path;
 use std::ops::DerefMut;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ParseSyntaxError {
     /// Invalid YAML file syntax, or at least something yaml_rust can't handle
     #[error("Invalid YAML file syntax: {0}")]

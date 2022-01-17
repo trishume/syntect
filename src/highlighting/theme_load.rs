@@ -12,6 +12,7 @@ use crate::parsing::ParseScopeError;
 use self::ParseThemeError::*;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ParseThemeError {
     #[error("Incorrect underline option")]
     IncorrectUnderlineOption,
