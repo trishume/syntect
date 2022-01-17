@@ -5,61 +5,37 @@ use yaml_rust::{YamlLoader, Yaml, ScanError};
 use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt;
 use std::path::Path;
 use std::ops::DerefMut;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ParseSyntaxError {
     /// Invalid YAML file syntax, or at least something yaml_rust can't handle
-    InvalidYaml(ScanError),
+    #[error("Invalid YAML file syntax: {0}")]
+    InvalidYaml(#[from] ScanError),
     /// The file must contain at least one YAML document
+    #[error("The file must contain at least one YAML document")]
     EmptyFile,
     /// Some keys are required for something to be a valid `.sublime-syntax`
+    #[error("Missing mandatory key in YAML file: {0}")]
     MissingMandatoryKey(&'static str),
     /// Invalid regex
-    RegexCompileError(String, Box<dyn Error + Send + Sync + 'static>),
+    #[error("Error while compiling regex '{0}': {1}")]
+    RegexCompileError(String, #[source] Box<dyn Error + Send + Sync + 'static>),
     /// A scope that syntect's scope implementation can't handle
+    #[error("Invalid scope: {0}")]
     InvalidScope(ParseScopeError),
     /// A reference to another file that is invalid
+    #[error("Invalid file reference")]
     BadFileRef,
     /// Syntaxes must have a context named "main"
+    #[error("Context 'main' is missing")]
     MainMissing,
     /// Some part of the YAML file is the wrong type (e.g a string but should be a list)
     /// Sorry this doesn't give you any way to narrow down where this is.
     /// Maybe use Sublime Text to figure it out.
+    #[error("Type mismatch")]
     TypeMismatch,
-}
-
-impl fmt::Display for ParseSyntaxError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::ParseSyntaxError::*;
-
-        match *self {
-            InvalidYaml(ref err) => write!(f, "Invalid YAML file syntax: {}", err),
-            EmptyFile => write!(f, "Empty file"),
-            MissingMandatoryKey(key) => write!(f, "Missing mandatory key in YAML file: {}", key),
-            RegexCompileError(ref regex, ref error) => {
-                write!(f, "Error while compiling regex '{}': {}", regex, error)
-            }
-            InvalidScope(_) => write!(f, "Invalid scope"),
-            BadFileRef => write!(f, "Invalid file reference"),
-            MainMissing => write!(f, "Context 'main' is missing"),
-            TypeMismatch => write!(f, "Type mismatch"),
-        }
-    }
-}
-
-impl Error for ParseSyntaxError {
-    fn cause(&self) -> Option<&dyn Error> {
-        use crate::ParseSyntaxError::*;
-
-        match self {
-            InvalidYaml(ref error) => Some(error),
-            RegexCompileError(_, error) => Some(error.as_ref()),
-            _ => None,
-        }
-    }
 }
 
 fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a Hash,

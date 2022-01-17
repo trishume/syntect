@@ -11,27 +11,34 @@ use crate::parsing::ParseScopeError;
 
 use self::ParseThemeError::*;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ParseThemeError {
+    #[error("Incorrect underline option")]
     IncorrectUnderlineOption,
+    #[error("Incorrect font style: {0}")]
     IncorrectFontStyle(String),
+    #[error("Incorrect color")]
     IncorrectColor,
+    #[error("Incorrect syntax")]
     IncorrectSyntax,
+    #[error("Incorrect settings")]
     IncorrectSettings,
+    #[error("Undefined settings")]
     UndefinedSettings,
+    #[error("Undefined scope settings: {0}")]
     UndefinedScopeSettings(String),
+    #[error("Color sheme scope is not object")]
     ColorShemeScopeIsNotObject,
+    #[error("Color sheme settings is not object")]
     ColorShemeSettingsIsNotObject,
+    #[error("Scope selector is not string: {0}")]
     ScopeSelectorIsNotString(String),
+    #[error("Duplicate settings")]
     DuplicateSettings,
-    ScopeParse(ParseScopeError),
+    #[error("Scope parse error: {0}")]
+    ScopeParse(#[from] ParseScopeError),
 }
 
-impl From<ParseScopeError> for ParseThemeError {
-    fn from(error: ParseScopeError) -> ParseThemeError {
-        ScopeParse(error)
-    }
-}
 
 impl FromStr for UnderlineOption {
     type Err = ParseThemeError;
