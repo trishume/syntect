@@ -79,7 +79,7 @@ const LATEX_REPLACE: [(&str, &str); 3] = [
 ///
 /// let mut h = HighlightLines::new(syntax, &ts.themes["InspiredGitHub"]);
 /// for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
-///     let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
+///     let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps);
 ///     let escaped = as_latex_escaped(&ranges[..]);
 ///     println!("{}", escaped);
 /// }

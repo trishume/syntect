@@ -34,7 +34,7 @@ use std::path::Path;
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
 /// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}";
 /// for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
-///     let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
+///     let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps);
 ///     let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
 ///     print!("{}", escaped);
 /// }
@@ -56,8 +56,13 @@ impl<'a> HighlightLines<'a> {
         }
     }
 
-    /// Highlights a line of a file
+    #[deprecated(since="5.0.0", note="Renamed to `highlight_line` to make it clear it should be passed a single line at a time")]
     pub fn highlight<'b>(&mut self, line: &'b str, syntax_set: &SyntaxSet) -> Vec<(Style, &'b str)> {
+        self.highlight_line(line, syntax_set)
+    }
+
+    /// Highlights a line of a file
+    pub fn highlight_line<'b>(&mut self, line: &'b str, syntax_set: &SyntaxSet) -> Vec<(Style, &'b str)> {
         // println!("{}", self.highlight_state.path);
         let ops = self.parse_state.parse_line(line, syntax_set);
         // use util::debug_print_ops;
@@ -108,7 +113,7 @@ impl<'a> HighlightFile<'a> {
     /// let mut line = String::new();
     /// while highlighter.reader.read_line(&mut line)? > 0 {
     ///     {
-    ///         let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line, &ss);
+    ///         let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight_line(&line, &ss);
     ///         print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
     ///     } // until NLL this scope is needed so we can clear the buffer after
     ///     line.clear(); // read_line appends so we need to clear between lines
@@ -132,7 +137,7 @@ impl<'a> HighlightFile<'a> {
     /// let mut highlighter = HighlightFile::new("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
     /// for maybe_line in highlighter.reader.lines() {
     ///     let line = maybe_line.unwrap();
-    ///     let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight(&line, &ss);
+    ///     let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight_line(&line, &ss);
     ///     println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
     /// }
     /// ```
@@ -266,7 +271,7 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
         let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
-        let ranges = h.highlight("pub struct Wow { hi: u64 }", &ss);
+        let ranges = h.highlight_line("pub struct Wow { hi: u64 }", &ss);
         assert!(ranges.len() > 4);
     }
 

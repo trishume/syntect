@@ -45,7 +45,7 @@ fn main() {
             let mut highlighter = HighlightFile::new(filename, &syntax_set, theme).unwrap();
 
             for line in contents {
-                for region in highlighter.highlight_lines.highlight(line, &syntax_set) {
+                for region in highlighter.highlight_lines.highlight_line(line, &syntax_set) {
                     regions.push(region);
                 }
             }
