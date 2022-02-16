@@ -13,9 +13,11 @@ pub trait ParseSettings: Sized {
 }
 
 /// An error parsing a settings file
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum SettingsError {
     /// Incorrect Plist syntax
+    #[error("Incorrect Plist syntax: {0}")]
     Plist(PlistError),
 }
 

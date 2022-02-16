@@ -102,7 +102,7 @@ fn load_syntax_file(p: &Path,
         lines_include_newline,
         p.file_stem().and_then(|x| x.to_str()),
     )
-    .map_err(|e| LoadingError::ParseSyntax(e, Some(format!("{}", p.display()))))
+    .map_err(|e| LoadingError::ParseSyntax(e, format!("{}", p.display())))
 }
 
 impl Clone for SyntaxSet {
