@@ -47,6 +47,21 @@ use std::io::Error as IoError;
 #[cfg(feature = "plist-load")]
 use crate::highlighting::{ParseThemeError, SettingsError};
 
+/// An error enum for all things that can go wrong within syntect.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    /// An error occurred while loading a syntax or theme
+    #[error("Loading error: {0}")]
+    LoadingError(#[from] LoadingError),
+    /// Formatting error
+    #[error("Formatting error: {0}")]
+    Fmt(#[from] std::fmt::Error),
+    /// IO Error
+    #[error("IO Error: {0}")]
+    Io(#[from] IoError),
+}
+
 /// Common error type used by syntax and theme loading
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
