@@ -1,4 +1,5 @@
 //! Rendering highlighted code as HTML+CSS
+use crate::Error;
 use crate::easy::{HighlightFile, HighlightLines};
 use crate::escape::Escape;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
@@ -9,7 +10,7 @@ use crate::parsing::{
 use crate::util::LinesWithEndings;
 use std::fmt::Write;
 
-use std::io::{self, BufRead};
+use std::io::{BufRead};
 use std::path::Path;
 
 /// Output HTML for a line of code with `<span>` elements using class names
@@ -268,7 +269,7 @@ pub fn highlighted_html_for_string(
     ss: &SyntaxSet,
     syntax: &SyntaxReference,
     theme: &Theme,
-) -> String {
+) -> Result<String, Error> {
     let mut highlighter = HighlightLines::new(syntax, theme);
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
@@ -278,10 +279,10 @@ pub fn highlighted_html_for_string(
             &regions[..],
             IncludeBackground::IfDifferent(bg),
             &mut output,
-        );
+        )?;
     }
     output.push_str("</pre>\n");
-    output
+    Ok(output)
 }
 
 /// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
@@ -294,7 +295,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     path: P,
     ss: &SyntaxSet,
     theme: &Theme,
-) -> io::Result<String> {
+) -> Result<String, Error> {
     let mut highlighter = HighlightFile::new(path, ss, theme)?;
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
@@ -306,7 +307,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
                 &regions[..],
                 IncludeBackground::IfDifferent(bg),
                 &mut output,
-            );
+            )?;
         }
         line.clear();
     }
@@ -433,13 +434,13 @@ fn write_css_color(s: &mut String, c: Color) {
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
 /// let regions = h.highlight_line("5", &ps);
-/// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No);
+/// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No).unwrap();
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```
-pub fn styled_line_to_highlighted_html(v: &[(Style, &str)], bg: IncludeBackground) -> String {
+pub fn styled_line_to_highlighted_html(v: &[(Style, &str)], bg: IncludeBackground) -> Result<String, Error> {
     let mut s: String = String::new();
-    append_highlighted_html_for_styled_line(v, bg, &mut s);
-    s
+    append_highlighted_html_for_styled_line(v, bg, &mut s)?;
+    Ok(s)
 }
 
 /// Like `styled_line_to_highlighted_html` but appends to a `String` for increased efficiency.
@@ -448,7 +449,7 @@ pub fn append_highlighted_html_for_styled_line(
     v: &[(Style, &str)],
     bg: IncludeBackground,
     s: &mut String,
-) {
+) -> Result<(), Error> {
     let mut prev_style: Option<&Style> = None;
     for &(ref style, text) in v.iter() {
         let unify_style = if let Some(ps) = prev_style {
@@ -457,40 +458,42 @@ pub fn append_highlighted_html_for_styled_line(
             false
         };
         if unify_style {
-            write!(s, "{}", Escape(text)).unwrap();
+            write!(s, "{}", Escape(text))?;
         } else {
             if prev_style.is_some() {
-                write!(s, "</span>").unwrap();
+                write!(s, "</span>")?;
             }
             prev_style = Some(style);
-            write!(s, "<span style=\"").unwrap();
+            write!(s, "<span style=\"")?;
             let include_bg = match bg {
                 IncludeBackground::Yes => true,
                 IncludeBackground::No => false,
                 IncludeBackground::IfDifferent(c) => (style.background != c),
             };
             if include_bg {
-                write!(s, "background-color:").unwrap();
+                write!(s, "background-color:")?;
                 write_css_color(s, style.background);
-                write!(s, ";").unwrap();
+                write!(s, ";")?;
             }
             if style.font_style.contains(FontStyle::UNDERLINE) {
-                write!(s, "text-decoration:underline;").unwrap();
+                write!(s, "text-decoration:underline;")?;
             }
             if style.font_style.contains(FontStyle::BOLD) {
-                write!(s, "font-weight:bold;").unwrap();
+                write!(s, "font-weight:bold;")?;
             }
             if style.font_style.contains(FontStyle::ITALIC) {
-                write!(s, "font-style:italic;").unwrap();
+                write!(s, "font-style:italic;")?;
             }
-            write!(s, "color:").unwrap();
+            write!(s, "color:")?;
             write_css_color(s, style.foreground);
-            write!(s, ";\">{}", Escape(text)).unwrap();
+            write!(s, ";\">{}", Escape(text))?;
         }
     }
     if prev_style.is_some() {
-        write!(s, "</span>").unwrap();
+        write!(s, "</span>")?;
     }
+
+    Ok(())
 }
 
 /// Returns a `<pre style="...">\n` tag with the correct background color for the given theme.
@@ -548,7 +551,7 @@ mod tests {
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();
 
-        let html2 = styled_line_to_highlighted_html(&regions[..], IncludeBackground::Yes);
+        let html2 = styled_line_to_highlighted_html(&regions[..], IncludeBackground::Yes).expect("#[cfg(test)]");
         println!("{}", html2);
         assert_eq!(html2, include_str!("../testdata/test1.html").trim_end());
     }
@@ -559,7 +562,7 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let s = include_str!("../testdata/highlight_test.erb");
         let syntax = ss.find_syntax_by_extension("erb").unwrap();
-        let html = highlighted_html_for_string(s, &ss, syntax, &ts.themes["base16-ocean.dark"]);
+        let html = highlighted_html_for_string(s, &ss, syntax, &ts.themes["base16-ocean.dark"]).expect("#[cfg(test)]");
         // println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test3.html"));
         let html2 = highlighted_html_for_file(
