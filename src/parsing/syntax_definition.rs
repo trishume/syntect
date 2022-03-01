@@ -163,7 +163,7 @@ impl<'a> Iterator for MatchIter<'a> {
                     Pattern::Include(ref ctx_ref) => {
                         let ctx_ptr = match *ctx_ref {
                             ContextReference::Direct(ref context_id) => {
-                                self.syntax_set.get_context(context_id)
+                                self.syntax_set.get_context(context_id).unwrap()
                             }
                             _ => return self.next(), // skip this and move onto the next one
                         };
@@ -205,7 +205,7 @@ impl ContextReference {
     /// find the pointed to context, panics if ref is not linked
     pub fn resolve<'a>(&self, syntax_set: &'a SyntaxSet) -> &'a Context {
         match *self {
-            ContextReference::Direct(ref context_id) => syntax_set.get_context(context_id),
+            ContextReference::Direct(ref context_id) => syntax_set.get_context(context_id).unwrap(),
             _ => panic!("Can only call resolve on linked references: {:?}", self),
         }
     }

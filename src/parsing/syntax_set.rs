@@ -1,3 +1,4 @@
+use super::ParsingError;
 use super::syntax_definition::*;
 use super::scope::*;
 
@@ -351,9 +352,15 @@ impl SyntaxSet {
     }
 
     #[inline(always)]
-    pub(crate) fn get_context(&self, context_id: &ContextId) -> &Context {
-        let syntax = &self.syntaxes[context_id.syntax_index];
-        &syntax.contexts()[context_id.context_index]
+    pub(crate) fn get_context(&self, context_id: &ContextId) -> Result<&Context, ParsingError> {
+        let syntax = &self
+            .syntaxes
+            .get(context_id.syntax_index)
+            .ok_or_else(|| ParsingError::MissingContext(*context_id))?;
+        syntax
+            .contexts()
+            .get(context_id.context_index)
+            .ok_or_else(|| ParsingError::MissingContext(*context_id))
     }
 
     fn first_line_cache(&self) -> &FirstLineCache {
@@ -909,7 +916,7 @@ mod tests {
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // unreachable!();
-        let main_context = ps.get_context(&syntax.context_ids()["main"]);
+        let main_context = ps.get_context(&syntax.context_ids()["main"]).expect("#[cfg(test)]");
         let count = syntax_definition::context_iter(&ps, main_context).count();
         assert_eq!(count, 109);
     }
@@ -929,7 +936,7 @@ mod tests {
 
         let syntax = cloned_syntax_set.find_syntax_by_extension("a").unwrap();
         let mut parse_state = ParseState::new(syntax);
-        let ops = parse_state.parse_line("a go_b b", &cloned_syntax_set);
+        let ops = parse_state.parse_line("a go_b b", &cloned_syntax_set).expect("#[cfg(test)]");
         let expected = (7, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -975,7 +982,7 @@ mod tests {
 
         let syntax = syntax_set.find_syntax_by_extension("c").unwrap();
         let mut parse_state = ParseState::new(syntax);
-        let ops = parse_state.parse_line("c go_a a go_b b", &syntax_set);
+        let ops = parse_state.parse_line("c go_a a go_b b", &syntax_set).expect("#[cfg(test)]");
         let expected = (14, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1023,7 +1030,7 @@ mod tests {
 
         let syntax = syntax_set.find_syntax_by_extension("z").unwrap();
         let mut parse_state = ParseState::new(syntax);
-        let ops = parse_state.parse_line("z go_x x leave_x z", &syntax_set);
+        let ops = parse_state.parse_line("z go_x x leave_x z", &syntax_set).unwrap();
         let expected_ops = vec![
             (0, ScopeStackOp::Push(Scope::new("source.z").unwrap())),
             (0, ScopeStackOp::Push(Scope::new("z").unwrap())),
@@ -1082,7 +1089,7 @@ mod tests {
             .map(|line| {
                 let syntax = syntax_set.find_syntax_by_extension("a").unwrap();
                 let mut parse_state = ParseState::new(syntax);
-                parse_state.parse_line(line, &syntax_set)
+                parse_state.parse_line(line, &syntax_set).expect("#[cfg(test)]")
             })
             .collect();
 
@@ -1150,7 +1157,7 @@ mod tests {
         assert_eq!(syntax.name, "C");
 
         let mut parse_state = ParseState::new(syntax);
-        let ops = parse_state.parse_line("c go_a a", &syntax_set);
+        let ops = parse_state.parse_line("c go_a a", &syntax_set).expect("msg");
         let expected = (7, ScopeStackOp::Push(Scope::new("a2").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1165,7 +1172,7 @@ mod tests {
         let syntax = syntax_set.find_syntax_by_extension("yaml").unwrap();
 
         let mut parse_state = ParseState::new(syntax);
-        let ops = parse_state.parse_line("# test\n", &syntax_set);
+        let ops = parse_state.parse_line("# test\n", &syntax_set).expect("#[cfg(test)]");
         let expected = (0, ScopeStackOp::Push(Scope::new("comment.line.number-sign.yaml").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1242,7 +1249,7 @@ mod tests {
                 // Skip special contexts
                 continue;
             }
-            let context = syntax_set.get_context(id);
+            let context = syntax_set.get_context(id).expect("#[cfg(test)]");
             if expected.contains(&name.as_str()) {
                 assert!(context.prototype.is_some(), "Expected context {} to have prototype", name);
             } else {

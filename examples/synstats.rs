@@ -133,7 +133,7 @@ fn count(ss: &SyntaxSet, path: &Path, stats: &mut Stats) {
     let mut stack = ScopeStack::new();
     while reader.read_line(&mut line).unwrap() > 0 {
         {
-            let ops = state.parse_line(&line, ss);
+            let ops = state.parse_line(&line, ss).unwrap();
             stats.chars += line.len();
             count_line(&ops, &line, &mut stack, stats);
         }

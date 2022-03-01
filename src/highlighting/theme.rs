@@ -31,7 +31,7 @@ pub struct ThemeSettings {
     /// Color of the caret.
     pub caret: Option<Color>,
     /// Color of the line the caret is in.
-    /// Only used when the `higlight_line` setting is set to `true`.
+    /// Only used when the `highlight_line` setting is set to `true`.
     pub line_highlight: Option<Color>,
 
     /// The color to use for the squiggly underline drawn under misspelled words.

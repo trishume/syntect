@@ -54,6 +54,10 @@ pub enum Error {
     /// An error occurred while loading a syntax or theme
     #[error("Loading error: {0}")]
     LoadingError(#[from] LoadingError),
+    /// An error occurred while parsing
+    #[cfg(feature = "parsing")]
+    #[error("Parsing error: {0}")]
+    ParsingError(#[from] crate::parsing::ParsingError),
     /// Formatting error
     #[error("Formatting error: {0}")]
     Fmt(#[from] std::fmt::Error),

@@ -87,8 +87,8 @@ impl<'a> ClassedHTMLGenerator<'a> {
     ///
     /// *Note:* This function requires `line` to include a newline at the end and
     /// also use of the `load_defaults_newlines` version of the syntaxes.
-    pub fn parse_html_for_line_which_includes_newline(&mut self, line: &str) {
-        let parsed_line = self.parse_state.parse_line(line, self.syntax_set);
+    pub fn parse_html_for_line_which_includes_newline(&mut self, line: &str) -> Result<(), Error>{
+        let parsed_line = self.parse_state.parse_line(line, self.syntax_set)?;
         let (formatted_line, delta) = line_tokens_to_classed_spans(
             line,
             parsed_line.as_slice(),
@@ -97,6 +97,8 @@ impl<'a> ClassedHTMLGenerator<'a> {
         );
         self.open_spans += delta;
         self.html.push_str(formatted_line.as_str());
+
+        Ok(())
     }
 
     /// Parse the line of code and update the internal HTML buffer with tagged HTML
@@ -110,7 +112,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
     /// but this function can't be changed without breaking compatibility so is deprecated.
     #[deprecated(since="4.5.0", note="Please use `parse_html_for_line_which_includes_newline` instead")]
     pub fn parse_html_for_line(&mut self, line: &str) {
-        self.parse_html_for_line_which_includes_newline(line);
+        self.parse_html_for_line_which_includes_newline(line).expect("Please use `parse_html_for_line_which_includes_newline` instead");
         // retain newline
         self.html.push('\n');
     }
@@ -274,7 +276,7 @@ pub fn highlighted_html_for_string(
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
     for line in LinesWithEndings::from(s) {
-        let regions = highlighter.highlight_line(line, ss);
+        let regions = highlighter.highlight_line(line, ss)?;
         append_highlighted_html_for_styled_line(
             &regions[..],
             IncludeBackground::IfDifferent(bg),
@@ -302,7 +304,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     let mut line = String::new();
     while highlighter.reader.read_line(&mut line)? > 0 {
         {
-            let regions = highlighter.highlight_lines.highlight_line(&line, ss);
+            let regions = highlighter.highlight_lines.highlight_line(&line, ss)?;
             append_highlighted_html_for_styled_line(
                 &regions[..],
                 IncludeBackground::IfDifferent(bg),
@@ -433,7 +435,7 @@ fn write_css_color(s: &mut String, c: Color) {
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
 /// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
-/// let regions = h.highlight_line("5", &ps);
+/// let regions = h.highlight_line("5", &ps).unwrap();
 /// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No).unwrap();
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```
@@ -535,7 +537,7 @@ mod tests {
         let syntax = ss.find_syntax_by_name("Markdown").unwrap();
         let mut state = ParseState::new(syntax);
         let line = "[w](t.co) *hi* **five**";
-        let ops = state.parse_line(line, &ss);
+        let ops = state.parse_line(line, &ss).expect("#[cfg(test)]");
         let mut stack = ScopeStack::new();
 
         // use util::debug_print_ops;
@@ -619,7 +621,7 @@ mod tests {
         let mut html_generator =
             ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
         for line in LinesWithEndings::from(current_code) {
-            html_generator.parse_html_for_line_which_includes_newline(line);
+            html_generator.parse_html_for_line_which_includes_newline(line).expect("#[cfg(test)]");
         }
         html_generator.finalize();
     }
@@ -633,7 +635,7 @@ mod tests {
         let mut html_generator =
             ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
         for line in LinesWithEndings::from(current_code) {
-            html_generator.parse_html_for_line_which_includes_newline(line);
+            html_generator.parse_html_for_line_which_includes_newline(line).expect("#[cfg(test)]");
         }
         let html = html_generator.finalize();
         assert_eq!(html, "<span class=\"source r\">x <span class=\"keyword operator arithmetic r\">+</span> y\n</span>");
@@ -650,7 +652,7 @@ mod tests {
             ClassStyle::SpacedPrefixed { prefix: "foo-" },
         );
         for line in LinesWithEndings::from(current_code) {
-            html_generator.parse_html_for_line_which_includes_newline(line);
+            html_generator.parse_html_for_line_which_includes_newline(line).expect("#[cfg(test)]");
         }
         let html = html_generator.finalize();
         assert_eq!(html, "<span class=\"foo-source foo-r\">x <span class=\"foo-keyword foo-operator foo-arithmetic foo-r\">+</span> y\n</span>");
@@ -668,7 +670,7 @@ fn main() {
         let mut html_generator =
             ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
         for line in LinesWithEndings::from(code) {
-            html_generator.parse_html_for_line_which_includes_newline(line);
+            html_generator.parse_html_for_line_which_includes_newline(line).expect("#[cfg(test)]");
         }
         let html = html_generator.finalize();
         assert_eq!(html, "<span class=\"source rust\"><span class=\"comment line double-slash rust\"><span class=\"punctuation definition comment rust\">//</span> Rust source\n</span><span class=\"meta function rust\"><span class=\"meta function rust\"><span class=\"storage type function rust\">fn</span> </span><span class=\"entity name function rust\">main</span></span><span class=\"meta function rust\"><span class=\"meta function parameters rust\"><span class=\"punctuation section parameters begin rust\">(</span></span><span class=\"meta function rust\"><span class=\"meta function parameters rust\"><span class=\"punctuation section parameters end rust\">)</span></span></span></span><span class=\"meta function rust\"> </span><span class=\"meta function rust\"><span class=\"meta block rust\"><span class=\"punctuation section block begin rust\">{</span>\n    <span class=\"support macro rust\">println!</span><span class=\"meta group rust\"><span class=\"punctuation section group begin rust\">(</span></span><span class=\"meta group rust\"><span class=\"string quoted double rust\"><span class=\"punctuation definition string begin rust\">&quot;</span>Hello World!<span class=\"punctuation definition string end rust\">&quot;</span></span></span><span class=\"meta group rust\"><span class=\"punctuation section group end rust\">)</span></span><span class=\"punctuation terminator rust\">;</span>\n</span><span class=\"meta block rust\"><span class=\"punctuation section block end rust\">}</span></span></span>\n</span>");
