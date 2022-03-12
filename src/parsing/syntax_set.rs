@@ -1024,10 +1024,16 @@ mod tests {
         let syntax = syntax_set.find_syntax_by_extension("z").unwrap();
         let mut parse_state = ParseState::new(syntax);
         let ops = parse_state.parse_line("z go_x x leave_x z", &syntax_set);
-        let expected_text_plain = (6, ScopeStackOp::Push(Scope::new("text.plain").unwrap()));
-        assert_ops_contain(&ops, &expected_text_plain);
-        let expected_text_plain_pop = (9, ScopeStackOp::Pop(1));
-        assert_ops_contain(&ops, &expected_text_plain_pop);
+        let expected_ops = vec![
+            (0, ScopeStackOp::Push(Scope::new("source.z").unwrap())),
+            (0, ScopeStackOp::Push(Scope::new("z").unwrap())),
+            (1, ScopeStackOp::Pop(1)),
+            (6, ScopeStackOp::Push(Scope::new("text.plain").unwrap())),
+            (9, ScopeStackOp::Pop(1)),
+            (17, ScopeStackOp::Push(Scope::new("z").unwrap())),
+            (18, ScopeStackOp::Pop(1)),
+        ];
+        assert_eq!(ops, expected_ops);
     }
 
     #[test]
