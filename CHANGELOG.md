@@ -4,6 +4,8 @@
 
 - Remove 'plist-load' feature again due to semver violation. [#403](https://github.com/trishume/syntect/pull/403)
 
+This version was removed from crates.io due to the semver violation issue.
+
 ## [Version 4.7.0](https://github.com/trishume/syntect/compare/v4.6.0...v4.7.0) (2021-12-25)
 
 - Lazy-load syntaxes to significantly improve startup time
@@ -17,7 +19,9 @@
 - Blend alpha value on converting colors to ANSI color sequences
 - Fix sample code in documentation to avoid double newlines
 - Fix lots of build warnings and lints
-- Add Criterion benchmarks for a whole syntect pipeline and for from_dump_file()
+- Add Criterion benchmarks for a whole syntect pipeline and for `from_dump_file()`
+
+This version was removed from crates.io due to the semver violation issue.
 
 ## [Version 4.6.0](https://github.com/trishume/syntect/compare/v4.5.0...v4.6.0) (2021-08-01)
 
