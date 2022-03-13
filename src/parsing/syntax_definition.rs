@@ -111,11 +111,18 @@ pub enum ContextReference {
     ByScope {
         scope: Scope,
         sub_context: Option<String>,
+        /// `true` if this reference by scope is part of an `embed` for which
+        /// there is an `escape`. In other words a reference for a context for
+        /// which there "always is a way out". Enables falling back to `Plain
+        /// Text` syntax in case the referenced scope is missing.
+        with_escape: bool,
     },
     #[non_exhaustive]
     File {
         name: String,
         sub_context: Option<String>,
+        /// Same semantics as for [`Self::ByScope::with_escape`].
+        with_escape: bool,
     },
     #[non_exhaustive]
     Inline(String),

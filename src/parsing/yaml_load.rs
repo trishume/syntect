@@ -207,7 +207,7 @@ impl SyntaxDefinition {
             if !is_special {
                 if let Ok(x) = get_key(map, "include", Some) {
                     let reference = SyntaxDefinition::parse_reference(
-                        x, state, contexts, namer)?;
+                        x, state, contexts, namer, false)?;
                     context.patterns.push(Pattern::Include(reference));
                 } else {
                     let pattern = SyntaxDefinition::parse_match_pattern(
@@ -228,7 +228,8 @@ impl SyntaxDefinition {
     fn parse_reference(y: &Yaml,
                        state: &mut ParserState<'_>,
                        contexts: &mut HashMap<String, Context>,
-                       namer: &mut ContextNamer)
+                       namer: &mut ContextNamer,
+                       with_escape: bool)
                        -> Result<ContextReference, ParseSyntaxError> {
         if let Some(s) = y.as_str() {
             let parts: Vec<&str> = s.split('#').collect();
@@ -243,6 +244,7 @@ impl SyntaxDefinition {
                         .build(&parts[0][6..])
                         .map_err(ParseSyntaxError::InvalidScope)?,
                     sub_context,
+                    with_escape,
                 })
             } else if parts[0].ends_with(".sublime-syntax") {
                 let stem = Path::new(parts[0])
@@ -252,6 +254,7 @@ impl SyntaxDefinition {
                 Ok(ContextReference::File {
                     name: stem.to_owned(),
                     sub_context,
+                    with_escape,
                 })
             } else {
                 Ok(ContextReference::Named(parts[0].to_owned()))
@@ -320,7 +323,7 @@ impl SyntaxDefinition {
                     namer,
                 )?;
                 MatchOperation::Push(vec![ContextReference::Inline(escape_context),
-                                          SyntaxDefinition::parse_reference(y, state, contexts, namer)?])
+                                          SyntaxDefinition::parse_reference(y, state, contexts, namer, true)?])
             } else {
                 return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
             }
@@ -375,10 +378,10 @@ impl SyntaxDefinition {
             y.as_vec()
                 .unwrap()
                 .iter()
-                .map(|x| SyntaxDefinition::parse_reference(x, state, contexts, namer))
+                .map(|x| SyntaxDefinition::parse_reference(x, state, contexts, namer, false))
                 .collect()
         } else {
-            let reference = SyntaxDefinition::parse_reference(y, state, contexts, namer)?;
+            let reference = SyntaxDefinition::parse_reference(y, state, contexts, namer, false)?;
             Ok(vec![reference])
         }
     }
@@ -912,10 +915,15 @@ mod tests {
                 // this is sadly necessary because Context is not Eq because of the Regex
                 let expected = MatchOperation::Push(vec![
                     Named("string".to_owned()),
-                    ByScope { scope: Scope::new("source.c").unwrap(), sub_context: Some("main".to_owned()) },
+                    ByScope {
+                        scope: Scope::new("source.c").unwrap(),
+                        sub_context: Some("main".to_owned()),
+                        with_escape: false,
+                    },
                     File {
                         name: "CSS".to_owned(),
-                        sub_context: Some("rule-list-body".to_owned())
+                        sub_context: Some("rule-list-body".to_owned()),
+                        with_escape: false,
                     },
                 ]);
                 assert_eq!(format!("{:?}", match_pat.operation),
@@ -952,7 +960,7 @@ mod tests {
                   pop: true
         "#,false, None).unwrap();
 
-        let def_with_embed = SyntaxDefinition::load_from_str(r#"
+        let mut def_with_embed = SyntaxDefinition::load_from_str(r#"
         name: C
         scope: source.c
         file_extensions: [c, h]
@@ -967,6 +975,23 @@ mod tests {
               embed_scope: source.css.embedded.html
               escape: (?i)(?=</style)
         "#,false, None).unwrap();
+
+        // We will soon do an `assert_eq!()`. But there is one difference we must expect, namely
+        // that for `def_with_embed`, the value of `ContextReference::ByScope::with_escape` will be
+        // `true`, whereas for `old_def` it will be `false`. So manually adjust `with_escape` to
+        // `false` so that `assert_eq!()` will work.
+        let def_with_embed_context = def_with_embed.contexts.get_mut("main").unwrap();
+        if let Pattern::Match(ref mut match_pattern) = def_with_embed_context.patterns[0] {
+            if let MatchOperation::Push(ref mut context_references) = match_pattern.operation {
+                if let ContextReference::ByScope {
+                    ref mut with_escape,
+                    ..
+                } = context_references[1]
+                {
+                    *with_escape = false;
+                }
+            }
+        }
 
         assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
     }
