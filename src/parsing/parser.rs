@@ -19,6 +19,17 @@ use std::i32;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
 use crate::parsing::syntax_set::{SyntaxSet, SyntaxReference};
+use crate::parsing::syntax_definition::ContextId;
+
+/// Errors that can occur while parsing.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ParsingError {
+    /// A context is missing. Usually caused by a syntax referencing a another
+    /// syntax that is not known to syntect. See e.g. <https://github.com/trishume/syntect/issues/421>
+    #[error("Missing context with ID '{0:?}'")]
+    MissingContext(ContextId),
+}
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
 ///
@@ -194,7 +205,11 @@ impl ParseState {
     /// [`ScopeStack::apply`]: struct.ScopeStack.html#method.apply
     /// [`SyntaxSet`]: struct.SyntaxSet.html
     /// [`ParseState`]: struct.ParseState.html
-    pub fn parse_line(&mut self, line: &str, syntax_set: &SyntaxSet) -> Vec<(usize, ScopeStackOp)> {
+    pub fn parse_line(
+        &mut self,
+        line: &str,
+        syntax_set: &SyntaxSet,
+    ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
         assert!(!self.stack.is_empty(),
                 "Somehow main context was popped from the stack");
         let mut match_start = 0;
@@ -202,7 +217,7 @@ impl ParseState {
 
         if self.first_line {
             let cur_level = &self.stack[self.stack.len() - 1];
-            let context = syntax_set.get_context(&cur_level.context);
+            let context = syntax_set.get_context(&cur_level.context)?;
             if !context.meta_content_scope.is_empty() {
                 res.push((0, ScopeStackOp::Push(context.meta_content_scope[0])));
             }
@@ -223,9 +238,9 @@ impl ParseState {
             &mut regions,
             &mut non_consuming_push_at,
             &mut res
-        ) {}
+        )? {}
 
-        res
+        Ok(res)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -238,7 +253,7 @@ impl ParseState {
         regions: &mut Region,
         non_consuming_push_at: &mut (usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
-    ) -> bool {
+    ) -> Result<bool, ParsingError> {
         let check_pop_loop = {
             let (pos, stack_depth) = *non_consuming_push_at;
             pos == *start && stack_depth == self.stack.len()
@@ -249,7 +264,7 @@ impl ParseState {
             self.proto_starts.pop();
         }
 
-        let best_match = self.find_best_match(line, *start, syntax_set, search_cache, regions, check_pop_loop);
+        let best_match = self.find_best_match(line, *start, syntax_set, search_cache, regions, check_pop_loop)?;
 
         if let Some(reg_match) = best_match {
             if reg_match.would_loop {
@@ -268,11 +283,11 @@ impl ParseState {
                 // unicode characters can be more than 1 byte.
                 if let Some((i, _)) = line[*start..].char_indices().nth(1) {
                     *start += i;
-                    return true;
+                    return Ok(true);
                 } else {
                     // End of line, no character to advance and no point trying
                     // any more patterns.
-                    return false;
+                    return Ok(false);
                 }
             }
 
@@ -301,13 +316,13 @@ impl ParseState {
 
             let level_context = {
                 let id = &self.stack[self.stack.len() - 1].context;
-                syntax_set.get_context(id)
+                syntax_set.get_context(id)?
             };
-            self.exec_pattern(line, &reg_match, level_context, syntax_set, ops);
+            self.exec_pattern(line, &reg_match, level_context, syntax_set, ops)?;
 
-            true
+            Ok(true)
         } else {
-            false
+            Ok(false)
         }
     }
 
@@ -319,9 +334,9 @@ impl ParseState {
         search_cache: &mut SearchCache,
         regions: &mut Region,
         check_pop_loop: bool,
-    ) -> Option<RegexMatch<'a>> {
+    ) -> Result<Option<RegexMatch<'a>>, ParsingError> {
         let cur_level = &self.stack[self.stack.len() - 1];
-        let context = syntax_set.get_context(&cur_level.context);
+        let context = syntax_set.get_context(&cur_level.context)?;
         let prototype = if let Some(ref p) = context.prototype {
             Some(p)
         } else {
@@ -346,7 +361,7 @@ impl ParseState {
         let mut pop_would_loop = false;
 
         for (from_with_proto, ctx, captures) in context_chain {
-            for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)) {
+            for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)?) {
                 let match_pat = pat_context.match_at(pat_index);
 
                 if let Some(match_region) = self.search(
@@ -381,13 +396,13 @@ impl ParseState {
                         if match_start == start && !pop_would_loop {
                             // We're not gonna find a better match after this,
                             // so as an optimization we can stop matching now.
-                            return best_match;
+                            return Ok(best_match);
                         }
                     }
                 }
             }
         }
-        best_match
+        Ok(best_match)
     }
 
     fn search(&self,
@@ -457,7 +472,7 @@ impl ParseState {
         level_context: &'a Context,
         syntax_set: &'a SyntaxSet,
         ops: &mut Vec<(usize, ScopeStackOp)>,
-    ) -> bool {
+    ) -> Result<bool, ParsingError> {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context;
         let pat = context.match_at(reg_match.pat_index);
@@ -612,7 +627,7 @@ impl ParseState {
         regions: &Region,
         pat: &MatchPattern,
         syntax_set: &SyntaxSet
-    ) -> bool {
+    ) -> Result<bool, ParsingError> {
         let (ctx_refs, old_proto_ids) = match pat.operation {
             MatchOperation::Push(ref ctx_refs) => (ctx_refs, None),
             MatchOperation::Set(ref ctx_refs) => {
@@ -623,9 +638,9 @@ impl ParseState {
             }
             MatchOperation::Pop => {
                 self.stack.pop();
-                return true;
+                return Ok(true);
             }
-            MatchOperation::None => return false,
+            MatchOperation::None => return Ok(false),
         };
         for (i, r) in ctx_refs.iter().enumerate() {
             let mut proto_ids = if i == 0 {
@@ -646,11 +661,11 @@ impl ParseState {
                 }
             }
             let context_id = r.id();
-            let context = syntax_set.get_context(&context_id);
+            let context = syntax_set.get_context(&context_id)?;
             let captures = {
                 let mut uses_backrefs = context.uses_backrefs;
                 if !proto_ids.is_empty() {
-                    uses_backrefs = uses_backrefs || proto_ids.iter().any(|id| syntax_set.get_context(id).uses_backrefs);
+                    uses_backrefs = uses_backrefs || proto_ids.iter().any(|id| syntax_set.get_context(id).unwrap().uses_backrefs);
                 }
                 if uses_backrefs {
                     Some((regions.clone(), line.to_owned()))
@@ -664,7 +679,7 @@ impl ParseState {
                 captures,
             });
         }
-        true
+        Ok(true)
     }
 }
 
@@ -1803,7 +1818,7 @@ contexts:
     }
 
     fn ops(state: &mut ParseState, line: &str, syntax_set: &SyntaxSet) -> Vec<(usize, ScopeStackOp)> {
-        let ops = state.parse_line(line, syntax_set);
+        let ops = state.parse_line(line, syntax_set).expect("#[cfg(test)]");
         debug_print_ops(line, &ops);
         ops
     }
