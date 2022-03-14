@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
 use std::ops::DerefMut;
+use std::string::FromUtf8Error;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -20,6 +21,9 @@ pub enum ParseSyntaxError {
     /// Some keys are required for something to be a valid `.sublime-syntax`
     #[error("Missing mandatory key in YAML file: {0}")]
     MissingMandatoryKey(&'static str),
+    /// Invalid UTF-8 was encountered, for example in a regex
+    #[error("Invalid UTF-8 was encountered: {0}")]
+    FromUtf8Error(#[from] FromUtf8Error),
     /// Invalid regex
     #[error("Error while compiling regex '{0}': {1}")]
     RegexCompileError(String, #[source] Box<dyn Error + Send + Sync + 'static>),
@@ -390,12 +394,12 @@ impl SyntaxDefinition {
         let regex = Self::resolve_variables(raw_regex, state);
         let regex = replace_posix_char_classes(regex);
         let regex = if state.lines_include_newline {
-            regex_for_newlines(regex)
+            regex_for_newlines(regex)?
         } else {
             // If the passed in strings don't include newlines (unlike Sublime) we can't match on
             // them using the original regex. So this tries to rewrite the regex in a way that
             // allows matching against lines without newlines (essentially replacing `\n` with `$`).
-            regex_for_no_newlines(regex)
+            regex_for_no_newlines(regex)?
         };
         Self::try_compile_regex(&regex)?;
         Ok(regex)
@@ -542,9 +546,9 @@ fn replace_posix_char_classes(regex: String) -> String {
 /// whole regex because that would also change the meaning of `^`. In
 /// fancy-regex, that also matches at the end of e.g. `test\n` which is
 /// different from onig. It would also change `.` to match more.
-fn regex_for_newlines(regex: String) -> String {
+fn regex_for_newlines(regex: String) -> Result<String, FromUtf8Error> {
     if !regex.contains('$') {
-        return regex;
+        return Ok(regex);
     }
 
     let rewriter = RegexRewriterForNewlines {
@@ -558,7 +562,7 @@ struct RegexRewriterForNewlines<'a> {
 }
 
 impl<'a> RegexRewriterForNewlines<'a> {
-    fn rewrite(mut self) -> String {
+    fn rewrite(mut self) -> Result<String, FromUtf8Error> {
         let mut result = Vec::new();
 
         while let Some(c) = self.parser.peek() {
@@ -585,7 +589,7 @@ impl<'a> RegexRewriterForNewlines<'a> {
                 }
             }
         }
-        String::from_utf8(result).unwrap()
+        String::from_utf8(result)
     }
 }
 
@@ -597,9 +601,9 @@ impl<'a> RegexRewriterForNewlines<'a> {
 ///
 /// Note that the rewrite is just an approximation and there's a couple of cases it can not handle,
 /// due to `$` being an anchor whereas `\n` matches a character.
-fn regex_for_no_newlines(regex: String) -> String {
+fn regex_for_no_newlines(regex: String) -> Result<String, FromUtf8Error> {
     if !regex.contains(r"\n") {
-        return regex;
+        return Ok(regex);
     }
 
     // A special fix to rewrite a pattern from the `Rd` syntax that the RegexRewriter can not
@@ -617,7 +621,7 @@ struct RegexRewriterForNoNewlines<'a> {
 }
 
 impl<'a> RegexRewriterForNoNewlines<'a> {
-    fn rewrite(mut self) -> String {
+    fn rewrite(mut self) -> Result<String, FromUtf8Error> {
         let mut result = Vec::new();
         while let Some(c) = self.parser.peek() {
             match c {
@@ -654,7 +658,7 @@ impl<'a> RegexRewriterForNoNewlines<'a> {
                 }
             }
         }
-        String::from_utf8(result).unwrap()
+        String::from_utf8(result)
     }
 }
 
@@ -1133,7 +1137,7 @@ mod tests {
     #[test]
     fn can_rewrite_regex_for_newlines() {
         fn rewrite(s: &str) -> String {
-            regex_for_newlines(s.to_string())
+            regex_for_newlines(s.to_string()).expect("#[test]")
         }
 
         assert_eq!(&rewrite(r"a"), r"a");
@@ -1157,7 +1161,7 @@ mod tests {
     #[test]
     fn can_rewrite_regex_for_no_newlines() {
         fn rewrite(s: &str) -> String {
-            regex_for_no_newlines(s.to_string())
+            regex_for_no_newlines(s.to_string()).expect("#[test]")
         }
 
         assert_eq!(&rewrite(r"a"), r"a");
