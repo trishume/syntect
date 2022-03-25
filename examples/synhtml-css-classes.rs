@@ -106,7 +106,7 @@ int main() {
     let css_dark_file = File::create(Path::new("theme-dark.css"))?;
     let mut css_dark_writer = BufWriter::new(&css_dark_file);
 
-    let css_dark = css_for_theme_with_class_style(dark_theme, ClassStyle::Spaced);
+    let css_dark = css_for_theme_with_class_style(dark_theme, ClassStyle::Spaced).unwrap();
     writeln!(css_dark_writer, "{}", css_dark)?;
 
     // create light color scheme css
@@ -114,7 +114,7 @@ int main() {
     let css_light_file = File::create(Path::new("theme-light.css"))?;
     let mut css_light_writer = BufWriter::new(&css_light_file);
 
-    let css_light = css_for_theme_with_class_style(light_theme, ClassStyle::Spaced);
+    let css_light = css_for_theme_with_class_style(light_theme, ClassStyle::Spaced).unwrap();
     writeln!(css_light_writer, "{}", css_light)?;
 
     Ok(())

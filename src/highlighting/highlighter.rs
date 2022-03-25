@@ -181,7 +181,7 @@ impl<'a, 'b> Iterator for RangedHighlightIterator<'a, 'b> {
                         m_caches.pop();
                     }
                 }
-            });
+            }).ok()?;
         }
         self.pos = end;
         self.index += 1;

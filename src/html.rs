@@ -94,7 +94,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
             parsed_line.as_slice(),
             self.style,
             &mut self.scope_stack,
-        );
+        )?;
         self.open_spans += delta;
         self.html.push_str(formatted_line.as_str());
 
@@ -128,11 +128,11 @@ impl<'a> ClassedHTMLGenerator<'a> {
 
 #[deprecated(since="4.2.0", note="Please use `css_for_theme_with_class_style` instead.")]
 pub fn css_for_theme(theme: &Theme) -> String {
-    css_for_theme_with_class_style(theme, ClassStyle::Spaced)
+    css_for_theme_with_class_style(theme, ClassStyle::Spaced).expect("Please use `css_for_theme_with_class_style` instead.")
 }
 
 /// Create a complete CSS for a given theme. Can be used inline, or written to a CSS file.
-pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> String {
+pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Result<String, Error> {
     let mut css = String::new();
 
     css.push_str("/*\n");
@@ -201,7 +201,7 @@ pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Strin
         css.push_str("}\n");
     }
 
-    css
+    Ok(css)
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -337,7 +337,7 @@ pub fn line_tokens_to_classed_spans(
     ops: &[(usize, ScopeStackOp)],
     style: ClassStyle,
     stack: &mut ScopeStack,
-) -> (String, isize) {
+) -> Result<(String, isize), Error> {
     let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
     let mut cur_index = 0;
     let mut span_delta = 0;
@@ -349,7 +349,7 @@ pub fn line_tokens_to_classed_spans(
     for &(i, ref op) in ops {
         if i > cur_index {
             span_empty = false;
-            write!(s, "{}", Escape(&line[cur_index..i])).unwrap();
+            write!(s, "{}", Escape(&line[cur_index..i]))?;
             cur_index = i
         }
         stack.apply_with_hook(op, |basic_op, _| match basic_op {
@@ -370,10 +370,10 @@ pub fn line_tokens_to_classed_spans(
                 span_delta -= 1;
                 span_empty = false;
             }
-        });
+        })?;
     }
-    write!(s, "{}", Escape(&line[cur_index..line.len()])).unwrap();
-    (s, span_delta)
+    write!(s, "{}", Escape(&line[cur_index..line.len()]))?;
+    Ok((s, span_delta))
 }
 
 /// Preserved for compatibility, always use `line_tokens_to_classed_spans`
@@ -385,7 +385,7 @@ pub fn tokens_to_classed_spans(
     ops: &[(usize, ScopeStackOp)],
     style: ClassStyle,
 ) -> (String, isize) {
-    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new())
+    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new()).expect("Use `line_tokens_to_classed_spans` instead, this can panic and highlight incorrectly")
 }
 
 #[deprecated(since="3.1.0", note="Use `line_tokens_to_classed_spans` instead to avoid incorrect highlighting and panics")]
@@ -393,7 +393,7 @@ pub fn tokens_to_classed_html(line: &str,
                               ops: &[(usize, ScopeStackOp)],
                               style: ClassStyle)
                               -> String {
-    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new()).0
+    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new()).expect("Use `line_tokens_to_classed_spans` instead to avoid incorrect highlighting and panics").0
 }
 
 /// Determines how background color attributes are generated
@@ -543,7 +543,7 @@ mod tests {
         // use util::debug_print_ops;
         // debug_print_ops(line, &ops);
 
-        let (html, _) = line_tokens_to_classed_spans(line, &ops[..], ClassStyle::Spaced, &mut stack);
+        let (html, _) = line_tokens_to_classed_spans(line, &ops[..], ClassStyle::Spaced, &mut stack).expect("#[cfg(test)]");
         println!("{}", html);
         assert_eq!(html, include_str!("../testdata/test2.html").trim_end());
 

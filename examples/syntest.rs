@@ -283,7 +283,7 @@ fn test_file(
             }
             let mut col: usize = 0;
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
-                stack.apply(op);
+                stack.apply(op).unwrap();
                 if s.is_empty() {
                     // in this case we don't care about blank tokens
                     continue;

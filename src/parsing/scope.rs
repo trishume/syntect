@@ -11,6 +11,14 @@ use std::mem;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error, Visitor};
 
+/// Scope related errors
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ScopeError {
+    #[error("Tried to restore cleared scopes, but none were cleared")]
+    NoClearedScopesToRestore,
+}
+
 /// Multiplier on the power of 2 for MatchPower. This is only useful if you compute your own
 /// [`MatchPower`] scores
 ///
@@ -219,6 +227,7 @@ impl Scope {
     /// I can't think of any reason you'd find this useful. It is used internally for turning a
     /// scope back into a string.
     pub fn atom_at(self, index: usize) -> u16 {
+        #[allow(clippy::panic)] // The below panic is too much of an edge-case for it to be worth propagating
         let shifted = if index < 4 {
             self.a >> ((3 - index) * 16)
         } else if index < 8 {
@@ -398,7 +407,7 @@ impl ScopeStack {
     /// Modifies this stack according to the operation given
     ///
     /// Use this to create a stack from a `Vec` of changes given by the parser.
-    pub fn apply(&mut self, op: &ScopeStackOp) {
+    pub fn apply(&mut self, op: &ScopeStackOp) -> Result<(), ScopeError> {
         self.apply_with_hook(op, |_,_|{})
     }
 
@@ -410,7 +419,7 @@ impl ScopeStack {
     /// [`apply`]: #method.apply
     /// [`BasicScopeStackOp`]: enum.BasicScopeStackOp.html
     #[inline]
-    pub fn apply_with_hook<F>(&mut self, op: &ScopeStackOp, mut hook: F)
+    pub fn apply_with_hook<F>(&mut self, op: &ScopeStackOp, mut hook: F) -> Result<(), ScopeError>
         where F: FnMut(BasicScopeStackOp, &[Scope])
     {
         match *op {
@@ -451,11 +460,13 @@ impl ScopeStack {
                             hook(BasicScopeStackOp::Push(*s), self.as_slice());
                         }
                     }
-                    None => panic!("tried to restore cleared scopes, but none were cleared"),
+                    None => return Err(ScopeError::NoClearedScopesToRestore),
                 }
             }
             ScopeStackOp::Noop => (),
         }
+
+        Ok(())
     }
 
     /// Prints out each scope in the stack separated by spaces

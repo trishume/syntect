@@ -31,6 +31,8 @@ jobs:
           --allow clippy::unknown_clippy_lints \
           --allow clippy::unnecessary_cast \
           --allow clippy::block_in_if_condition_stmt
+        # Prevent regressions of https://github.com/trishume/syntect/issues/98
+        cargo clippy --all-features --lib -- --deny clippy::panic
     - name: Run cargo check
       run: |
         cargo check --all-features --all-targets

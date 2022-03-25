@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
-use super::scope::*;
+use super::{scope::*, ParsingError};
 use super::regex::{Regex, Region};
 use regex_syntax::escape;
 use serde::{Serialize, Serializer};
@@ -192,29 +192,29 @@ pub fn context_iter<'a>(syntax_set: &'a SyntaxSet, context: &'a Context) -> Matc
 }
 
 impl Context {
-    /// Returns the match pattern at an index, panics if the thing isn't a match pattern
-    pub fn match_at(&self, index: usize) -> &MatchPattern {
+    /// Returns the match pattern at an index
+    pub fn match_at(&self, index: usize) -> Result<&MatchPattern, ParsingError> {
         match self.patterns[index] {
-            Pattern::Match(ref match_pat) => match_pat,
-            _ => panic!("bad index to match_at"),
+            Pattern::Match(ref match_pat) => Ok(match_pat),
+            _ => Err(ParsingError::BadMatchIndex(index)),
         }
     }
 }
 
 impl ContextReference {
-    /// find the pointed to context, panics if ref is not linked
-    pub fn resolve<'a>(&self, syntax_set: &'a SyntaxSet) -> &'a Context {
+    /// find the pointed to context
+    pub fn resolve<'a>(&self, syntax_set: &'a SyntaxSet) -> Result<&'a Context, ParsingError> {
         match *self {
-            ContextReference::Direct(ref context_id) => syntax_set.get_context(context_id).unwrap(),
-            _ => panic!("Can only call resolve on linked references: {:?}", self),
+            ContextReference::Direct(ref context_id) => syntax_set.get_context(context_id),
+            _ => Err(ParsingError::UnresolvedContextReference(self.clone())),
         }
     }
 
-    /// get the context ID this reference points to, panics if ref is not linked
-    pub fn id(&self) -> ContextId {
+    /// get the context ID this reference points to
+    pub fn id(&self) -> Result<ContextId, ParsingError> {
         match *self {
-            ContextReference::Direct(ref context_id) => *context_id,
-            _ => panic!("Can only get ContextId of linked references: {:?}", self),
+            ContextReference::Direct(ref context_id) => Ok(*context_id),
+             _ => Err(ParsingError::UnresolvedContextReference(self.clone())),
         }
     }
 }

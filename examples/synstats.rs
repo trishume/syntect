@@ -85,7 +85,7 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stack: &mut ScopeStack,
     let mut line_has_doc_comment = false;
     let mut line_has_code = false;
     for (s, op) in ScopeRegionIterator::new(ops, line) {
-        stack.apply(op);
+        stack.apply(op).unwrap();
         if s.is_empty() { // in this case we don't care about blank tokens
             continue;
         }
