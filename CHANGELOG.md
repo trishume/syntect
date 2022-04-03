@@ -10,12 +10,16 @@ Breaking changes
 - Make `plist` dependency (used for loading themes) optional via new `plist-load` feature
 - Remove obsolete `dump-load-rs` and `dump-create-rs` features that has been identical to `dump-load` and `dump-create` for two years
 - Remove deprecated items `ThemeSettings::highlight_foreground`, `ThemeSettings::selection_background`, `ClassedHTMLGenerator::new`, `ClassedHTMLGenerator::parse_html_for_line`, `html::css_for_theme`, `html::tokens_to_classed_html` and `html::tokens_to_classed_spans`
+- Mark all error enums as `#[non_exhaustive]`
 
 Other changes
 
+- Fall back to `Plain Text` if a referenced syntax is missing
+- Add support for `hidden_file_extensions` key in syntaxes.
+- Implement `Error` and `Display` for all error enums by using `thiserror`
 - Replace `lazycell` with `once_cell` to fix crash on lazy initialization
 - Add `ScopeRangeIterator`
-- Add CI check for Minimum Supported Rust Version. This is currently Rust 1.51.
+- Add CI check for Minimum Supported Rust Version. This is currently Rust 1.53.
 - Make looking up a syntax by extension use case-insensitive comparison
 - Make `from_dump_file()` ~15% faster
 - Blend alpha value on converting colors to ANSI color sequences
