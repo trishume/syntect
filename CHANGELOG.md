@@ -11,6 +11,19 @@ Breaking changes
 - Remove obsolete `dump-load-rs` and `dump-create-rs` features that has been identical to `dump-load` and `dump-create` for two years
 - Remove deprecated items `ThemeSettings::highlight_foreground`, `ThemeSettings::selection_background`, `ClassedHTMLGenerator::new`, `ClassedHTMLGenerator::parse_html_for_line`, `html::css_for_theme`, `html::tokens_to_classed_html` and `html::tokens_to_classed_spans`
 - Mark all error enums as `#[non_exhaustive]`
+- These functions have been changed to return a `Result` to allow propagation of errors:
+  - `html::ClassedHTMLGenerator::parse_html_for_line_which_includes_newline`
+  - `html::append_highlighted_html_for_styled_line`
+  - `html::css_for_theme_with_class_style`
+  - `html::highlighted_html_for_string`
+  - `html::line_tokens_to_classed_spans`
+  - `html::styled_line_to_highlighted_html`
+  - `parsing::ParseState::parse_line`
+  - `parsing::ScopeStack::apply`
+  - `parsing::ScopeStack::apply_with_hook`
+  - `parsing::syntax_definition::Context::match_at`
+  - `parsing::syntax_definition::ContextReference::id`
+  - `parsing::syntax_definition::ContextReference::resolve`
 
 Other changes
 
