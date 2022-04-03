@@ -486,12 +486,12 @@ mod tests {
         let indent_ctx = ps.metadata.metadata_for_scope(&rust_scopes);
 
         assert_eq!(indent_ctx.items.len(), 1, "failed to load rust metadata");
-        assert_eq!(indent_ctx.increase_indent("struct This {"), true);
-        assert_eq!(indent_ctx.increase_indent("struct This }"), false);
-        assert_eq!(indent_ctx.decrease_indent("     }"), true);
-        assert_eq!(indent_ctx.decrease_indent("struct This {"), false);
-        assert_eq!(indent_ctx.decrease_indent("struct This {}"), false);
-        assert_eq!(indent_ctx.increase_indent("struct This {}"), false);
+        assert!(indent_ctx.increase_indent("struct This {"));
+        assert!(!indent_ctx.increase_indent("struct This }"));
+        assert!(indent_ctx.decrease_indent("     }"));
+        assert!(!indent_ctx.decrease_indent("struct This {"));
+        assert!(!indent_ctx.decrease_indent("struct This {}"));
+        assert!(!indent_ctx.increase_indent("struct This {}"));
 
     }
 }

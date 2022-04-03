@@ -1,3 +1,4 @@
+use super::ParsingError;
 use super::syntax_definition::*;
 use super::scope::*;
 
@@ -9,8 +10,6 @@ use super::super::LoadingError;
 
 use std::collections::{HashMap, HashSet, BTreeSet};
 use std::path::Path;
-#[cfg(feature = "yaml-load")]
-use walkdir::WalkDir;
 use std::io::{self, BufRead, BufReader};
 use std::fs::File;
 use std::mem;
@@ -104,7 +103,7 @@ fn load_syntax_file(p: &Path,
         lines_include_newline,
         p.file_stem().and_then(|x| x.to_str()),
     )
-    .map_err(|e| LoadingError::ParseSyntax(e, Some(format!("{}", p.display()))))
+    .map_err(|e| LoadingError::ParseSyntax(e, format!("{}", p.display())))
 }
 
 impl Clone for SyntaxSet {
@@ -353,9 +352,15 @@ impl SyntaxSet {
     }
 
     #[inline(always)]
-    pub(crate) fn get_context(&self, context_id: &ContextId) -> &Context {
-        let syntax = &self.syntaxes[context_id.syntax_index];
-        &syntax.contexts()[context_id.context_index]
+    pub(crate) fn get_context(&self, context_id: &ContextId) -> Result<&Context, ParsingError> {
+        let syntax = &self
+            .syntaxes
+            .get(context_id.syntax_index)
+            .ok_or_else(|| ParsingError::MissingContext(*context_id))?;
+        syntax
+            .contexts()
+            .get(context_id.context_index)
+            .ok_or_else(|| ParsingError::MissingContext(*context_id))
     }
 
     fn first_line_cache(&self) -> &FirstLineCache {
@@ -479,7 +484,7 @@ impl SyntaxSetBuilder {
         folder: P,
         lines_include_newline: bool
     ) -> Result<(), LoadingError> {
-        for entry in WalkDir::new(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
+        for entry in crate::utils::walk_dir(folder).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
             if entry.path().extension().map_or(false, |e| e == "sublime-syntax") {
                 let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
@@ -599,7 +604,7 @@ impl SyntaxSetBuilder {
                         context.prototype = Some(*prototype_id);
                     }
                 }
-                Self::link_context(&mut context, syntax_index, &all_context_ids, &syntaxes);
+                Self::link_context(context, syntax_index, &all_context_ids, &syntaxes);
                 
                 if context.uses_backrefs {
                     found_more_backref_includes = true;
@@ -751,23 +756,15 @@ impl SyntaxSetBuilder {
                     all_context_ids[syntax_index].get(s)
                 }
             }
-            ByScope { scope, ref sub_context } => {
-                let context_name = sub_context.as_ref().map_or("main", |x| &**x);
-                syntaxes
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .find(|index_and_syntax| index_and_syntax.1.scope == scope)
-                    .and_then(|index_and_syntax| all_context_ids[index_and_syntax.0].get(context_name))
+            ByScope { scope, ref sub_context, with_escape } => {
+                Self::with_plain_text_fallback(all_context_ids, syntaxes, with_escape, Self::find_id(sub_context, all_context_ids, syntaxes, |index_and_syntax| {
+                    index_and_syntax.1.scope == scope
+                }))
             }
-            File { ref name, ref sub_context } => {
-                let context_name = sub_context.as_ref().map_or("main", |x| &**x);
-                syntaxes
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .find(|index_and_syntax| &index_and_syntax.1.name == name)
-                    .and_then(|index_and_syntax| all_context_ids[index_and_syntax.0].get(context_name))
+            File { ref name, ref sub_context, with_escape } => {
+                Self::with_plain_text_fallback(all_context_ids, syntaxes, with_escape, Self::find_id(sub_context, all_context_ids, syntaxes, |index_and_syntax| {
+                    &index_and_syntax.1.name == name
+                }))
             }
             Direct(_) => None,
         };
@@ -775,6 +772,47 @@ impl SyntaxSetBuilder {
             let mut new_ref = Direct(*context_id);
             mem::swap(context_ref, &mut new_ref);
         }
+    }
+
+    fn with_plain_text_fallback<'a>(
+        all_context_ids: &'a [HashMap<String, ContextId>],
+        syntaxes: &'a [SyntaxReference],
+        with_escape: bool,
+        context_id: Option<&'a ContextId>,
+    ) -> Option<&'a ContextId> {
+        context_id.or_else(|| {
+            if with_escape {
+                // If we keep this reference unresolved, syntect will crash
+                // when it encounters the reference. Rather than crashing,
+                // we instead fall back to "Plain Text". This seems to be
+                // how Sublime Text behaves. It should be a safe thing to do
+                // since `embed`s always includes an `escape` to get out of
+                // the `embed`.
+                Self::find_id(
+                    &None,
+                    all_context_ids,
+                    syntaxes,
+                    |index_and_syntax| index_and_syntax.1.name == "Plain Text",
+                )
+            } else {
+                None
+            }
+        })
+    }
+
+    fn find_id<'a>(
+        sub_context: &Option<String>,
+        all_context_ids: &'a [HashMap<String, ContextId>],
+        syntaxes: &'a [SyntaxReference],
+        predicate: impl FnMut(&(usize, &SyntaxReference)) -> bool,
+    ) -> Option<&'a ContextId> {
+        let context_name = sub_context.as_ref().map_or("main", |x| &**x);
+        syntaxes
+            .iter()
+            .enumerate()
+            .rev()
+            .find(predicate)
+            .and_then(|index_and_syntax| all_context_ids[index_and_syntax.0].get(context_name))
     }
 
     fn link_match_pat(
@@ -878,7 +916,7 @@ mod tests {
         // println!("{:#?}", syntax);
         assert_eq!(syntax.scope, rails_scope);
         // unreachable!();
-        let main_context = ps.get_context(&syntax.context_ids()["main"]);
+        let main_context = ps.get_context(&syntax.context_ids()["main"]).expect("#[cfg(test)]");
         let count = syntax_definition::context_iter(&ps, main_context).count();
         assert_eq!(count, 109);
     }
@@ -898,7 +936,7 @@ mod tests {
 
         let syntax = cloned_syntax_set.find_syntax_by_extension("a").unwrap();
         let mut parse_state = ParseState::new(syntax);
-        let ops = parse_state.parse_line("a go_b b", &cloned_syntax_set);
+        let ops = parse_state.parse_line("a go_b b", &cloned_syntax_set).expect("#[cfg(test)]");
         let expected = (7, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -944,9 +982,65 @@ mod tests {
 
         let syntax = syntax_set.find_syntax_by_extension("c").unwrap();
         let mut parse_state = ParseState::new(syntax);
-        let ops = parse_state.parse_line("c go_a a go_b b", &syntax_set);
+        let ops = parse_state.parse_line("c go_a a go_b b", &syntax_set).expect("#[cfg(test)]");
         let expected = (14, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn falls_back_to_plain_text_when_embedded_scope_is_missing() {
+        test_plain_text_fallback(r#"
+        name: Z
+        scope: source.z
+        file_extensions: [z]
+        contexts:
+          main:
+            - match: 'z'
+              scope: z
+            - match: 'go_x'
+              embed: scope:does.not.exist
+              escape: 'leave_x'
+        "#);
+    }
+
+    #[test]
+    fn falls_back_to_plain_text_when_embedded_file_is_missing() {
+        test_plain_text_fallback(r#"
+        name: Z
+        scope: source.z
+        file_extensions: [z]
+        contexts:
+          main:
+            - match: 'z'
+              scope: z
+            - match: 'go_x'
+              embed: DoesNotExist.sublime-syntax
+              escape: 'leave_x'
+        "#);
+    }
+
+    fn test_plain_text_fallback(syntax_definition: &str) {
+        let syntax =
+            SyntaxDefinition::load_from_str(syntax_definition, true, None).unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add_plain_text_syntax();
+        builder.add(syntax);
+        let syntax_set = builder.build();
+
+        let syntax = syntax_set.find_syntax_by_extension("z").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("z go_x x leave_x z", &syntax_set).unwrap();
+        let expected_ops = vec![
+            (0, ScopeStackOp::Push(Scope::new("source.z").unwrap())),
+            (0, ScopeStackOp::Push(Scope::new("z").unwrap())),
+            (1, ScopeStackOp::Pop(1)),
+            (6, ScopeStackOp::Push(Scope::new("text.plain").unwrap())),
+            (9, ScopeStackOp::Pop(1)),
+            (17, ScopeStackOp::Push(Scope::new("z").unwrap())),
+            (18, ScopeStackOp::Pop(1)),
+        ];
+        assert_eq!(ops, expected_ops);
     }
 
     #[test]
@@ -969,7 +1063,7 @@ mod tests {
 
         let unlinked_contexts : Vec<String> = syntax_set.find_unlinked_contexts().into_iter().collect();
         assert_eq!(unlinked_contexts.len(), 1);
-        assert_eq!(unlinked_contexts[0], "Syntax 'A' with scope 'source.a' has unresolved context reference ByScope { scope: <source.b>, sub_context: Some(\"main\") }");
+        assert_eq!(unlinked_contexts[0], "Syntax 'A' with scope 'source.a' has unresolved context reference ByScope { scope: <source.b>, sub_context: Some(\"main\"), with_escape: false }");
     }
 
     #[test]
@@ -995,7 +1089,7 @@ mod tests {
             .map(|line| {
                 let syntax = syntax_set.find_syntax_by_extension("a").unwrap();
                 let mut parse_state = ParseState::new(syntax);
-                parse_state.parse_line(line, &syntax_set)
+                parse_state.parse_line(line, &syntax_set).expect("#[cfg(test)]")
             })
             .collect();
 
@@ -1063,7 +1157,7 @@ mod tests {
         assert_eq!(syntax.name, "C");
 
         let mut parse_state = ParseState::new(syntax);
-        let ops = parse_state.parse_line("c go_a a", &syntax_set);
+        let ops = parse_state.parse_line("c go_a a", &syntax_set).expect("msg");
         let expected = (7, ScopeStackOp::Push(Scope::new("a2").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1078,7 +1172,7 @@ mod tests {
         let syntax = syntax_set.find_syntax_by_extension("yaml").unwrap();
 
         let mut parse_state = ParseState::new(syntax);
-        let ops = parse_state.parse_line("# test\n", &syntax_set);
+        let ops = parse_state.parse_line("# test\n", &syntax_set).expect("#[cfg(test)]");
         let expected = (0, ScopeStackOp::Push(Scope::new("comment.line.number-sign.yaml").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1155,7 +1249,7 @@ mod tests {
                 // Skip special contexts
                 continue;
             }
-            let context = syntax_set.get_context(id);
+            let context = syntax_set.get_context(id).expect("#[cfg(test)]");
             if expected.contains(&name.as_str()) {
                 assert!(context.prototype.is_some(), "Expected context {} to have prototype", name);
             } else {

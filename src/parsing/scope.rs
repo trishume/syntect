@@ -48,13 +48,16 @@ pub struct Scope {
 }
 
 /// Not all strings are valid scopes
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ParseScopeError {
     /// Due to a limitation of the current optimized internal representation
     /// scopes can be at most 8 atoms long
+    #[error("Too long scope. Scopes can be at most 8 atoms long.")]
     TooLong,
     /// The internal representation uses 16 bits per atom, so if all scopes ever
     /// used by the program have more than 2^16-2 atoms, things break
+    #[error("Too many atoms. Max 2^16-2 atoms allowed.")]
     TooManyAtoms,
 }
 

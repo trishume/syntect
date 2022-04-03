@@ -5,61 +5,38 @@ use yaml_rust::{YamlLoader, Yaml, ScanError};
 use yaml_rust::yaml::Hash;
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt;
 use std::path::Path;
 use std::ops::DerefMut;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ParseSyntaxError {
     /// Invalid YAML file syntax, or at least something yaml_rust can't handle
-    InvalidYaml(ScanError),
+    #[error("Invalid YAML file syntax: {0}")]
+    InvalidYaml(#[from] ScanError),
     /// The file must contain at least one YAML document
+    #[error("The file must contain at least one YAML document")]
     EmptyFile,
     /// Some keys are required for something to be a valid `.sublime-syntax`
+    #[error("Missing mandatory key in YAML file: {0}")]
     MissingMandatoryKey(&'static str),
     /// Invalid regex
-    RegexCompileError(String, Box<dyn Error + Send + Sync + 'static>),
+    #[error("Error while compiling regex '{0}': {1}")]
+    RegexCompileError(String, #[source] Box<dyn Error + Send + Sync + 'static>),
     /// A scope that syntect's scope implementation can't handle
+    #[error("Invalid scope: {0}")]
     InvalidScope(ParseScopeError),
     /// A reference to another file that is invalid
+    #[error("Invalid file reference")]
     BadFileRef,
     /// Syntaxes must have a context named "main"
+    #[error("Context 'main' is missing")]
     MainMissing,
     /// Some part of the YAML file is the wrong type (e.g a string but should be a list)
     /// Sorry this doesn't give you any way to narrow down where this is.
     /// Maybe use Sublime Text to figure it out.
+    #[error("Type mismatch")]
     TypeMismatch,
-}
-
-impl fmt::Display for ParseSyntaxError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::ParseSyntaxError::*;
-
-        match *self {
-            InvalidYaml(ref err) => write!(f, "Invalid YAML file syntax: {}", err),
-            EmptyFile => write!(f, "Empty file"),
-            MissingMandatoryKey(key) => write!(f, "Missing mandatory key in YAML file: {}", key),
-            RegexCompileError(ref regex, ref error) => {
-                write!(f, "Error while compiling regex '{}': {}", regex, error)
-            }
-            InvalidScope(_) => write!(f, "Invalid scope"),
-            BadFileRef => write!(f, "Invalid file reference"),
-            MainMissing => write!(f, "Context 'main' is missing"),
-            TypeMismatch => write!(f, "Type mismatch"),
-        }
-    }
-}
-
-impl Error for ParseSyntaxError {
-    fn cause(&self) -> Option<&dyn Error> {
-        use crate::ParseSyntaxError::*;
-
-        match self {
-            InvalidYaml(ref error) => Some(error),
-            RegexCompileError(_, error) => Some(error.as_ref()),
-            _ => None,
-        }
-    }
 }
 
 fn get_key<'a, R, F: FnOnce(&'a Yaml) -> Option<R>>(map: &'a Hash,
@@ -158,14 +135,17 @@ impl SyntaxDefinition {
             top_level_scope,
         );
 
+        let mut file_extensions = Vec::new();
+        for extension_key in &["file_extensions", "hidden_file_extensions"] {
+            if let Ok(v) = get_key(h, extension_key, |x| x.as_vec()) {
+                file_extensions.extend(v.iter().filter_map(|y| y.as_str().map(|s| s.to_owned())))
+            }
+        }
+
         let defn = SyntaxDefinition {
             name: get_key(h, "name", |x| x.as_str()).unwrap_or_else(|_| fallback_name.unwrap_or("Unnamed")).to_owned(),
             scope: top_level_scope,
-            file_extensions: {
-                get_key(h, "file_extensions", |x| x.as_vec())
-                    .map(|v| v.iter().filter_map(|y| y.as_str()).map(|x| x.to_owned()).collect())
-                    .unwrap_or_else(|_| Vec::new())
-            },
+            file_extensions,
             // TODO maybe cache a compiled version of this Regex
             first_line_match: get_key(h, "first_line_match", |x| x.as_str())
                 .ok()
@@ -230,7 +210,7 @@ impl SyntaxDefinition {
             if !is_special {
                 if let Ok(x) = get_key(map, "include", Some) {
                     let reference = SyntaxDefinition::parse_reference(
-                        x, state, contexts, namer)?;
+                        x, state, contexts, namer, false)?;
                     context.patterns.push(Pattern::Include(reference));
                 } else {
                     let pattern = SyntaxDefinition::parse_match_pattern(
@@ -251,7 +231,8 @@ impl SyntaxDefinition {
     fn parse_reference(y: &Yaml,
                        state: &mut ParserState<'_>,
                        contexts: &mut HashMap<String, Context>,
-                       namer: &mut ContextNamer)
+                       namer: &mut ContextNamer,
+                       with_escape: bool)
                        -> Result<ContextReference, ParseSyntaxError> {
         if let Some(s) = y.as_str() {
             let parts: Vec<&str> = s.split('#').collect();
@@ -266,6 +247,7 @@ impl SyntaxDefinition {
                         .build(&parts[0][6..])
                         .map_err(ParseSyntaxError::InvalidScope)?,
                     sub_context,
+                    with_escape,
                 })
             } else if parts[0].ends_with(".sublime-syntax") {
                 let stem = Path::new(parts[0])
@@ -275,6 +257,7 @@ impl SyntaxDefinition {
                 Ok(ContextReference::File {
                     name: stem.to_owned(),
                     sub_context,
+                    with_escape,
                 })
             } else {
                 Ok(ContextReference::Named(parts[0].to_owned()))
@@ -343,7 +326,7 @@ impl SyntaxDefinition {
                     namer,
                 )?;
                 MatchOperation::Push(vec![ContextReference::Inline(escape_context),
-                                          SyntaxDefinition::parse_reference(y, state, contexts, namer)?])
+                                          SyntaxDefinition::parse_reference(y, state, contexts, namer, true)?])
             } else {
                 return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
             }
@@ -398,10 +381,10 @@ impl SyntaxDefinition {
             y.as_vec()
                 .unwrap()
                 .iter()
-                .map(|x| SyntaxDefinition::parse_reference(x, state, contexts, namer))
+                .map(|x| SyntaxDefinition::parse_reference(x, state, contexts, namer, false))
                 .collect()
         } else {
-            let reference = SyntaxDefinition::parse_reference(y, state, contexts, namer)?;
+            let reference = SyntaxDefinition::parse_reference(y, state, contexts, namer, false)?;
             Ok(vec![reference])
         }
     }
@@ -868,13 +851,14 @@ mod tests {
         assert_eq!(defn.scope, Scope::new("source.c").unwrap());
         let exts_empty: Vec<String> = Vec::new();
         assert_eq!(defn.file_extensions, exts_empty);
-        assert_eq!(defn.hidden, false);
+        assert!(!defn.hidden);
         assert!(defn.variables.is_empty());
         let defn2: SyntaxDefinition =
             SyntaxDefinition::load_from_str("
         name: C
         scope: source.c
         file_extensions: [c, h]
+        hidden_file_extensions: [k, l]
         hidden: true
         variables:
           ident: '[QY]+'
@@ -907,9 +891,9 @@ mod tests {
         assert_eq!(defn2.name, "C");
         let top_level_scope = Scope::new("source.c").unwrap();
         assert_eq!(defn2.scope, top_level_scope);
-        let exts: Vec<String> = vec![String::from("c"), String::from("h")];
+        let exts: Vec<String> = vec!["c", "h", "k", "l"].into_iter().map(String::from).collect();
         assert_eq!(defn2.file_extensions, exts);
-        assert_eq!(defn2.hidden, true);
+        assert!(defn2.hidden);
         assert_eq!(defn2.variables.get("ident").unwrap(), "[QY]+");
 
         let n: Vec<Scope> = Vec::new();
@@ -918,7 +902,7 @@ mod tests {
         let main = &defn2.contexts["main"];
         assert_eq!(main.meta_content_scope, vec![top_level_scope]);
         assert_eq!(main.meta_scope, n);
-        assert_eq!(main.meta_include_prototype, true);
+        assert!(main.meta_include_prototype);
 
         assert_eq!(defn2.contexts["__main"].meta_content_scope, n);
         assert_eq!(defn2.contexts["__start"].meta_content_scope, vec![top_level_scope]);
@@ -935,10 +919,15 @@ mod tests {
                 // this is sadly necessary because Context is not Eq because of the Regex
                 let expected = MatchOperation::Push(vec![
                     Named("string".to_owned()),
-                    ByScope { scope: Scope::new("source.c").unwrap(), sub_context: Some("main".to_owned()) },
+                    ByScope {
+                        scope: Scope::new("source.c").unwrap(),
+                        sub_context: Some("main".to_owned()),
+                        with_escape: false,
+                    },
                     File {
                         name: "CSS".to_owned(),
-                        sub_context: Some("rule-list-body".to_owned())
+                        sub_context: Some("rule-list-body".to_owned()),
+                        with_escape: false,
                     },
                 ]);
                 assert_eq!(format!("{:?}", match_pat.operation),
@@ -975,7 +964,7 @@ mod tests {
                   pop: true
         "#,false, None).unwrap();
 
-        let def_with_embed = SyntaxDefinition::load_from_str(r#"
+        let mut def_with_embed = SyntaxDefinition::load_from_str(r#"
         name: C
         scope: source.c
         file_extensions: [c, h]
@@ -990,6 +979,23 @@ mod tests {
               embed_scope: source.css.embedded.html
               escape: (?i)(?=</style)
         "#,false, None).unwrap();
+
+        // We will soon do an `assert_eq!()`. But there is one difference we must expect, namely
+        // that for `def_with_embed`, the value of `ContextReference::ByScope::with_escape` will be
+        // `true`, whereas for `old_def` it will be `false`. So manually adjust `with_escape` to
+        // `false` so that `assert_eq!()` will work.
+        let def_with_embed_context = def_with_embed.contexts.get_mut("main").unwrap();
+        if let Pattern::Match(ref mut match_pattern) = def_with_embed_context.patterns[0] {
+            if let MatchOperation::Push(ref mut context_references) = match_pattern.operation {
+                if let ContextReference::ByScope {
+                    ref mut with_escape,
+                    ..
+                } = context_references[1]
+                {
+                    *with_escape = false;
+                }
+            }
+        }
 
         assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
     }

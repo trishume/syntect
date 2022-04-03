@@ -7,7 +7,7 @@ pub fn do_highlight(s: &str, syntax_set: &SyntaxSet, syntax: &SyntaxReference, t
     let mut h = HighlightLines::new(syntax, theme);
     let mut count = 0;
     for line in s.lines() {
-        let regions = h.highlight(line, syntax_set);
+        let regions = h.highlight_line(line, syntax_set).unwrap();
         count += regions.len();
     }
     count

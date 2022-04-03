@@ -40,103 +40,60 @@ pub mod highlighting;
 pub mod html;
 pub mod parsing;
 pub mod util;
+mod utils;
 
 use std::io::Error as IoError;
-use std::error::Error;
-use std::fmt;
 
-#[cfg(feature = "metadata")]
-use serde_json::Error as JsonError;
-#[cfg(all(feature = "yaml-load", feature = "parsing"))]
-use crate::parsing::ParseSyntaxError;
+#[cfg(feature = "plist-load")]
 use crate::highlighting::{ParseThemeError, SettingsError};
 
+/// An error enum for all things that can go wrong within syntect.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    /// An error occurred while loading a syntax or theme
+    #[error("Loading error: {0}")]
+    LoadingError(#[from] LoadingError),
+    /// An error occurred while parsing
+    #[cfg(feature = "parsing")]
+    #[error("Parsing error: {0}")]
+    ParsingError(#[from] crate::parsing::ParsingError),
+    /// Formatting error
+    #[error("Formatting error: {0}")]
+    Fmt(#[from] std::fmt::Error),
+    /// IO Error
+    #[error("IO Error: {0}")]
+    Io(#[from] IoError),
+}
+
 /// Common error type used by syntax and theme loading
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum LoadingError {
     /// error finding all the files in a directory
-    WalkDir(walkdir::Error),
+    #[error("error finding all the files in a directory: {0}")]
+    WalkDir(#[from] walkdir::Error),
     /// error reading a file
-    Io(IoError),
+    #[error("error reading a file: {0}")]
+    Io(#[from] IoError),
     /// a syntax file was invalid in some way
-    #[cfg(feature = "yaml-load")]
-    ParseSyntax(ParseSyntaxError, Option<String>),
+    #[cfg(all(feature = "yaml-load", feature = "parsing"))]
+    #[error("{1}: {0}")]
+    ParseSyntax(#[source] crate::parsing::ParseSyntaxError, String),
     /// a metadata file was invalid in some way
     #[cfg(feature = "metadata")]
-    ParseMetadata(JsonError),
+    #[error("Failed to parse JSON")]
+    ParseMetadata(#[from] serde_json::Error),
     /// a theme file was invalid in some way
-    ParseTheme(ParseThemeError),
+    #[cfg(feature = "plist-load")]
+    #[error("Invalid syntax theme")]
+    ParseTheme(#[from] ParseThemeError),
     /// a theme's Plist syntax was invalid in some way
-    ReadSettings(SettingsError),
+    #[cfg(feature = "plist-load")]
+    #[error("Invalid syntax theme settings")]
+    ReadSettings(#[from] SettingsError),
     /// A path given to a method was invalid.
     /// Possibly because it didn't reference a file or wasn't UTF-8.
+    #[error("Invalid path")]
     BadPath,
-}
-
-impl From<SettingsError> for LoadingError {
-    fn from(error: SettingsError) -> LoadingError {
-        LoadingError::ReadSettings(error)
-    }
-}
-
-impl From<IoError> for LoadingError {
-    fn from(error: IoError) -> LoadingError {
-        LoadingError::Io(error)
-    }
-}
-
-impl From<ParseThemeError> for LoadingError {
-    fn from(error: ParseThemeError) -> LoadingError {
-        LoadingError::ParseTheme(error)
-    }
-}
-
-#[cfg(feature = "metadata")]
-impl From<JsonError> for LoadingError {
-    fn from(src: JsonError) -> LoadingError {
-        LoadingError::ParseMetadata(src)
-    }
-}
-
-#[cfg(all(feature = "yaml-load", feature = "parsing"))]
-impl From<ParseSyntaxError> for LoadingError {
-    fn from(error: ParseSyntaxError) -> LoadingError {
-        LoadingError::ParseSyntax(error, None)
-    }
-}
-
-impl fmt::Display for LoadingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::LoadingError::*;
-
-        match *self {
-            WalkDir(ref error) => error.fmt(f),
-            Io(ref error) => error.fmt(f),
-            #[cfg(feature = "yaml-load")]
-            ParseSyntax(ref error, ref filename) => {
-                if let Some(ref file) = filename {
-                    write!(f, "{}: {}", file, error)
-                } else {
-                    error.fmt(f)
-                }
-            },
-            #[cfg(feature = "metadata")]
-            ParseMetadata(_) => write!(f, "Failed to parse JSON"),
-            ParseTheme(_) => write!(f, "Invalid syntax theme"),
-            ReadSettings(_) => write!(f, "Invalid syntax theme settings"),
-            BadPath => write!(f, "Invalid path"),
-        }
-    }
-}
-
-impl Error for LoadingError {
-    fn cause(&self) -> Option<&dyn Error> {
-        use crate::LoadingError::*;
-
-        match *self {
-            WalkDir(ref error) => Some(error),
-            Io(ref error) => Some(error),
-            _ => None,
-        }
-    }
 }

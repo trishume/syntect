@@ -80,7 +80,7 @@ let syntax = ps.find_syntax_by_extension("rs").unwrap();
 let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
 let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}";
 for line in LinesWithEndings::from(s) {
-    let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
+    let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
     let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
     print!("{}", escaped);
 }
@@ -237,7 +237,8 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [tokio-cassandra](https://github.com/nhellwig/tokio-cassandra), CQL shell in Rust, uses `syntect` for shell colouring.
 - [xi-editor](https://github.com/google/xi-editor), a text editor in Rust which uses `syntect` for highlighting.
 - [Zola](https://github.com/getzola/zola), a static site generator that uses `syntect` for highlighting code snippets.
-- [The Way](https://github.com/out-of-cheese-error/the-way), A code snippets manager for your terminal that uses `syntect`for highlighting.
+- [The Way](https://github.com/out-of-cheese-error/the-way), a code snippets manager for your terminal that uses `syntect`for highlighting.
+- [Broot](https://github.com/Canop/broot), a terminal file manager, uses `syntect` for file previews.
 
 
 ## License and Acknowledgements

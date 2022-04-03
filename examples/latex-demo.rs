@@ -13,7 +13,7 @@ fn main() {
 
     let mut h = HighlightLines::new(syntax, &ts.themes["InspiredGitHub"]);
     for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
-        let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
+        let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
         let escaped = as_latex_escaped(&ranges[..]);
         println!("\n{:?}", line);
         println!("\n{}", escaped);
