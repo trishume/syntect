@@ -25,10 +25,16 @@ use crate::parsing::syntax_definition::ContextId;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ParsingError {
+    #[error("Somehow main context was popped from the stack")]
+    MissingMainContext,
     /// A context is missing. Usually caused by a syntax referencing a another
     /// syntax that is not known to syntect. See e.g. <https://github.com/trishume/syntect/issues/421>
     #[error("Missing context with ID '{0:?}'")]
     MissingContext(ContextId),
+    #[error("Bad index to match_at: {0}")]
+    BadMatchIndex(usize),
+    #[error("Tried to use a ContextReference that has not bee resolved yet: {0:?}")]
+    UnresolvedContextReference(ContextReference),
 }
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
@@ -210,8 +216,9 @@ impl ParseState {
         line: &str,
         syntax_set: &SyntaxSet,
     ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
-        assert!(!self.stack.is_empty(),
-                "Somehow main context was popped from the stack");
+        if self.stack.is_empty() {
+            return Err(ParsingError::MissingMainContext)
+        }
         let mut match_start = 0;
         let mut res = Vec::new();
 
@@ -300,7 +307,7 @@ impl ParseState {
                 // check the next "pop" for loops. Otherwise leave the state,
                 // e.g. non-consuming "set" could also result in a loop.
                 let context = reg_match.context;
-                let match_pattern = context.match_at(reg_match.pat_index);
+                let match_pattern = context.match_at(reg_match.pat_index)?;
                 if let MatchOperation::Push(_) = match_pattern.operation {
                     *non_consuming_push_at = (match_end, self.stack.len() + 1);
                 }
@@ -362,7 +369,7 @@ impl ParseState {
 
         for (from_with_proto, ctx, captures) in context_chain {
             for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)?) {
-                let match_pat = pat_context.match_at(pat_index);
+                let match_pat = pat_context.match_at(pat_index)?;
 
                 if let Some(match_region) = self.search(
                     line, start, match_pat, captures, search_cache, regions
@@ -475,10 +482,10 @@ impl ParseState {
     ) -> Result<bool, ParsingError> {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context;
-        let pat = context.match_at(reg_match.pat_index);
+        let pat = context.match_at(reg_match.pat_index)?;
         // println!("running pattern {:?} on '{}' at {}, operation {:?}", pat.regex_str, line, match_start, pat.operation);
 
-        self.push_meta_ops(true, match_start, level_context, &pat.operation, syntax_set, ops);
+        self.push_meta_ops(true, match_start, level_context, &pat.operation, syntax_set, ops)?;
         for s in &pat.scope {
             // println!("pushing {:?} at {}", s, match_start);
             ops.push((match_start, ScopeStackOp::Push(*s)));
@@ -511,7 +518,7 @@ impl ParseState {
             // println!("popping at {}", match_end);
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
-        self.push_meta_ops(false, match_end, &*level_context, &pat.operation, syntax_set, ops);
+        self.push_meta_ops(false, match_end, &*level_context, &pat.operation, syntax_set, ops)?;
 
         self.perform_op(line, &reg_match.regions, pat, syntax_set)
     }
@@ -524,7 +531,7 @@ impl ParseState {
         match_op: &MatchOperation,
         syntax_set: &'a SyntaxSet,
         ops: &mut Vec<(usize, ScopeStackOp)>,
-    ) {
+    ) -> Result<(), ParsingError>{
         // println!("metas ops for {:?}, initial: {}",
         //          match_op,
         //          initial);
@@ -542,7 +549,7 @@ impl ParseState {
 
                 // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
                 if !initial && cur_context.clear_scopes != None {
-                    ops.push((index, ScopeStackOp::Restore));
+                    ops.push((index, ScopeStackOp::Restore))
                 }
             },
             // for some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
@@ -560,7 +567,7 @@ impl ParseState {
                     }
                     // add each context's meta scope
                     for r in context_refs.iter() {
-                        let ctx = r.resolve(syntax_set);
+                        let ctx = r.resolve(syntax_set)?;
 
                         if !is_set {
                             if let Some(clear_amount) = ctx.clear_scopes {
@@ -574,14 +581,14 @@ impl ParseState {
                     }
                 } else {
                     let repush = (is_set && (!cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty())) || context_refs.iter().any(|r| {
-                        let ctx = r.resolve(syntax_set);
+                        let ctx = r.resolve(syntax_set).unwrap();
 
                         !ctx.meta_content_scope.is_empty() || (ctx.clear_scopes.is_some() && is_set)
                     });
                     if repush {
                         // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
                         let mut num_to_pop : usize = context_refs.iter().map(|r| {
-                            let ctx = r.resolve(syntax_set);
+                            let ctx = r.resolve(syntax_set).unwrap();
                             ctx.meta_scope.len()
                         }).sum();
 
@@ -597,7 +604,7 @@ impl ParseState {
 
                         // now we push meta scope and meta context scope for each context pushed
                         for r in context_refs {
-                            let ctx = r.resolve(syntax_set);
+                            let ctx = r.resolve(syntax_set)?;
 
                             // for some reason, contrary to my reading of the docs, set does this after the token
                             if is_set {
@@ -618,6 +625,8 @@ impl ParseState {
             },
             MatchOperation::None => (),
         }
+
+        Ok(())
     }
 
     /// Returns true if the stack was changed
@@ -657,10 +666,10 @@ impl ParseState {
                 // referred to as the "target" of the push by sublimehq - see
                 // https://forum.sublimetext.com/t/dev-build-3111/19240/17 for more info
                 if let Some(ref p) = pat.with_prototype {
-                    proto_ids.push(p.id());
+                    proto_ids.push(p.id()?);
                 }
             }
-            let context_id = r.id();
+            let context_id = r.id()?;
             let context = syntax_set.get_context(&context_id)?;
             let captures = {
                 let mut uses_backrefs = context.uses_backrefs;
@@ -770,7 +779,7 @@ mod tests {
 
         let mut stack = ScopeStack::new();
         for &(_, ref op) in ops.iter() {
-            stack.apply(op);
+            stack.apply(op).expect("#[cfg(test)]");
         }
         assert_eq!(stack, test_stack);
     }
@@ -1827,7 +1836,7 @@ contexts:
         let mut states = Vec::new();
         let mut stack = ScopeStack::new();
         for &(_, ref op) in ops.iter() {
-            stack.apply(op);
+            stack.apply(op).expect("#[cfg(test)]");
             let scopes: Vec<String> = stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
             let stack_str = scopes.join(", ");
             states.push(stack_str);

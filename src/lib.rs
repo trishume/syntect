@@ -58,6 +58,9 @@ pub enum Error {
     #[cfg(feature = "parsing")]
     #[error("Parsing error: {0}")]
     ParsingError(#[from] crate::parsing::ParsingError),
+    /// Scope error
+    #[error("Scope error: {0}")]
+    ScopeError(#[from] crate::parsing::ScopeError),
     /// Formatting error
     #[error("Formatting error: {0}")]
     Fmt(#[from] std::fmt::Error),
