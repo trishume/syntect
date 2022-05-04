@@ -1,6 +1,6 @@
 # Changelog
 
-## [Version 5.0.0](https://github.com/trishume/syntect/compare/v4.6.0...v5.0.0) (2022-01-xx)
+## [Version 5.0.0](https://github.com/trishume/syntect/compare/v4.6.0...v5.0.0) (2022-05-03)
 
 Breaking changes
 
