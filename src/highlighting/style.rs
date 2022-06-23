@@ -1,6 +1,7 @@
 // Code based on [https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs](https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs)
 // released under the MIT license by @defuz
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 /// Foreground and background colors, with font style
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

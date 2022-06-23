@@ -21,8 +21,6 @@
 
 #![doc(html_root_url = "https://docs.rs/syntect/5.0.0")]
 
-#[macro_use]
-extern crate serde_derive;
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;

@@ -17,6 +17,7 @@ use std::mem;
 use super::regex::Regex;
 use crate::parsing::syntax_definition::ContextId;
 use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
 
 /// A syntax set holds multiple syntaxes that have been linked together.
 ///

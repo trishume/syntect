@@ -4,6 +4,7 @@ use super::settings::*;
 use super::super::LoadingError;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSet {

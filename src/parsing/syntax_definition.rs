@@ -9,7 +9,7 @@ use std::hash::Hash;
 use super::{scope::*, ParsingError};
 use super::regex::{Regex, Region};
 use regex_syntax::escape;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use crate::parsing::syntax_set::SyntaxSet;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
