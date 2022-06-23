@@ -189,13 +189,13 @@ pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Resul
 
         if let Some(fs) = i.style.font_style {
             if fs.contains(FontStyle::UNDERLINE) {
-                css.push_str(&"font-style: underline;\n".to_string());
+                css.push_str("font-style: underline;\n");
             }
             if fs.contains(FontStyle::BOLD) {
-                css.push_str(&"font-weight: bold;\n".to_string());
+                css.push_str("font-weight: bold;\n");
             }
             if fs.contains(FontStyle::ITALIC) {
-                css.push_str(&"font-style: italic;\n".to_string());
+                css.push_str("font-style: italic;\n");
             }
         }
         css.push_str("}\n");
