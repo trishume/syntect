@@ -7,8 +7,6 @@
 // you can tell it where to parse them from - the following will execute only 1 syntax test after
 // parsing the sublime-syntax files in the JavaScript folder:
 // cargo run --example syntest testdata/Packages/JavaScript/syntax_test_json.json testdata/Packages/JavaScript/
-#[macro_use]
-extern crate lazy_static;
 
 use syntect::easy::ScopeRegionIterator;
 use syntect::highlighting::ScopeSelectors;
@@ -22,6 +20,7 @@ use std::str::FromStr;
 use std::time::Instant;
 
 use getopts::Options;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use walkdir::{DirEntry, WalkDir};
 
@@ -37,24 +36,26 @@ pub enum SyntaxTestFileResult {
     Success(usize),
 }
 
-lazy_static! {
-    pub static ref SYNTAX_TEST_HEADER_PATTERN: Regex = Regex::new(
+pub static SYNTAX_TEST_HEADER_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
         r#"(?xm)
-            ^(?P<testtoken_start>\s*\S+)
-            \s+SYNTAX\sTEST\s+
-            "(?P<syntax_file>[^"]+)"
-            \s*(?P<testtoken_end>\S+)?$
-        "#
+        ^(?P<testtoken_start>\s*\S+)
+        \s+SYNTAX\sTEST\s+
+        "(?P<syntax_file>[^"]+)"
+        \s*(?P<testtoken_end>\S+)?$
+    "#,
     )
-    .unwrap();
-    pub static ref SYNTAX_TEST_ASSERTION_PATTERN: Regex = Regex::new(
+    .unwrap()
+});
+pub static SYNTAX_TEST_ASSERTION_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
         r#"(?xm)
-        \s*(?:
-            (?P<begin_of_token><-)|(?P<range>\^+)
-        )(.*)$"#
+    \s*(?:
+        (?P<begin_of_token><-)|(?P<range>\^+)
+    )(.*)$"#,
     )
-    .unwrap();
-}
+    .unwrap()
+});
 
 #[derive(Clone, Copy)]
 struct OutputOptions {

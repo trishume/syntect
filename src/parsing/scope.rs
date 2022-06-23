@@ -8,6 +8,7 @@ use std::u64;
 use std::cmp::{Ordering, min};
 use std::mem;
 
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error, Visitor};
 
@@ -25,14 +26,14 @@ pub enum ScopeError {
 /// [`MatchPower`]: struct.MatchPower.html
 pub const ATOM_LEN_BITS: u16 = 3;
 
-lazy_static! {
-    /// The global scope repo, exposed in case you want to minimize locking and unlocking.
-    ///
-    /// Ths shouldn't be necessary for you to use. See the [`ScopeRepository`] docs.
-    ///
-    /// [`ScopeRepository`]: struct.ScopeRepository.html
-    pub static ref SCOPE_REPO: Mutex<ScopeRepository> = Mutex::new(ScopeRepository::new());
-}
+/// The global scope repo, exposed in case you want to minimize locking and unlocking.
+///
+/// Ths shouldn't be necessary for you to use. See the [`ScopeRepository`] docs.
+///
+/// [`ScopeRepository`]: struct.ScopeRepository.html
+pub static SCOPE_REPO: Lazy<Mutex<ScopeRepository>> =
+    Lazy::new(|| Mutex::new(ScopeRepository::new()));
+
 
 /// A hierarchy of atoms with semi-standardized names used to accord semantic information to a
 /// specific piece of text.
