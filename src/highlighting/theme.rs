@@ -3,6 +3,7 @@
 
 use super::style::*;
 use super::selector::*;
+use serde::{Deserialize, Serialize};
 
 /// A theme parsed from a `.tmTheme` file.
 ///
