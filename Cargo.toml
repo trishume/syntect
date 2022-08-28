@@ -55,9 +55,9 @@ parsing = ["regex-syntax", "fnv", "dump-create", "dump-load"]
 # Support for .tmPreferenes metadata files (indentation, comment syntax, etc)
 metadata = ["parsing", "plist-load"]
 
-# Enables inclusion of the default theme packages.
-default-syntaxes = ["parsing", "dump-load"]
 # Enables inclusion of the default syntax packages.
+default-syntaxes = ["parsing", "dump-load"]
+# Enables inclusion of the default theme packages.
 default-themes = ["dump-load"]
 
 html = ["parsing"]
