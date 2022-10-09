@@ -35,7 +35,7 @@ pub struct StyleModifier {
 /// conversion if you're outputting a different color space from the theme. This can be a problem
 /// because some Sublime themes use sRGB and some don't. This is specified in an attribute syntect
 /// doesn't parse yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Color {
     /// Red component
     pub r: u8,
@@ -45,6 +45,25 @@ pub struct Color {
     pub b: u8,
     /// Alpha (transparency) component
     pub a: u8,
+}
+
+// More compact alternate debug representation by not using a separate line for each color field,
+// also adapts the default debug representation to match.
+impl std::fmt::Debug for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let Color { r, g, b, a } = self;
+        if f.alternate() {
+            // when formatted with "{:#?}"
+            write!(
+                f,
+                "Color {{ r/g/b/a: {: >3}/{: >3}/{: >3}/{: >3} }}",
+                r, g, b, a
+            )
+        } else {
+            // when formatted with "{:?}"
+            write!(f, "Color {{ r/g/b/a: {}/{}/{}/{} }}", r, g, b, a)
+        }
+    }
 }
 
 bitflags! {
