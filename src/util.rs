@@ -248,7 +248,7 @@ pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'
     // If necessary, split the token the split falls inside
     if !rest.is_empty() && rest_split_i > 0 {
         let mut rest_split_index = rest_split_i;
-        while !rest[0].1.is_boundary(rest_split_index) && rest_split_index > 0 {
+        while !rest[0].1.is_char_boundary(rest_split_index) && rest_split_index > 0 {
             rest_split_index -= 1;
         }
         let (sa, sb) = rest[0].1.split_at(rest_split_index);
