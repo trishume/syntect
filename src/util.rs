@@ -40,12 +40,12 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
     let mut s: String = String::new();
     for &(ref style, text) in v.iter() {
         if bg {
-            write!(s,
-                   "\x1b[48;2;{};{};{}m",
-                   style.background.r,
-                   style.background.g,
-                   style.background.b)
-                .unwrap();
+            write!(
+                s,
+                "\x1b[48;2;{};{};{}m",
+                style.background.r, style.background.g, style.background.b
+            )
+            .unwrap();
         }
         let fg = blend_fg_color(style.foreground, style.background);
         write!(s, "\x1b[38;2;{};{};{}m{}", fg.r, fg.g, fg.b, text).unwrap();
@@ -54,11 +54,7 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
     s
 }
 
-const LATEX_REPLACE: [(&str, &str); 3] = [
-    ("\\", "\\\\"),
-    ("{", "\\{"),
-    ("}", "\\}"),
-];
+const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\\}")];
 
 /// Formats the styled fragments using LaTeX textcolor directive.
 ///
@@ -108,11 +104,13 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
     let mut prev_style: Option<Style> = None;
     let mut content: String;
     fn textcolor(style: &Style, first: bool) -> String {
-        format!("{}\\textcolor[RGB]{{{},{},{}}}{{",
+        format!(
+            "{}\\textcolor[RGB]{{{},{},{}}}{{",
             if first { "" } else { "}" },
             style.foreground.r,
             style.foreground.b,
-            style.foreground.g)
+            style.foreground.g
+        )
     }
     for &(style, text) in v.iter() {
         if let Some(ps) = prev_style {
@@ -120,7 +118,7 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
                 " " => {
                     s.push(' ');
                     continue;
-                },
+                }
                 "\n" => continue,
                 _ => (),
             }
@@ -164,7 +162,6 @@ pub fn debug_print_ops(line: &str, ops: &[(usize, ScopeStackOp)]) {
     }
 }
 
-
 /// An iterator over the lines of a string, including the line endings.
 ///
 /// This is similar to the standard library's `lines` method on `str`, except
@@ -205,7 +202,8 @@ impl<'a> Iterator for LinesWithEndings<'a> {
         if self.input.is_empty() {
             return None;
         }
-        let split = self.input
+        let split = self
+            .input
             .find('\n')
             .map(|i| i + 1)
             .unwrap_or_else(|| self.input.len());
@@ -228,14 +226,18 @@ impl<'a> Iterator for LinesWithEndings<'a> {
 /// the `Vec<(Style, &str)>` returned by `highlight` methods. Look at the source
 /// code for `modify_range` for an example usage.
 #[allow(clippy::type_complexity)]
-pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'a str)>, Vec<(A, &'a str)>) {
+pub fn split_at<'a, A: Clone>(
+    v: &[(A, &'a str)],
+    split_i: usize,
+) -> (Vec<(A, &'a str)>, Vec<(A, &'a str)>) {
     // This function works by gradually reducing the problem into smaller sub-problems from the front
     let mut rest = v;
     let mut rest_split_i = split_i;
 
     // Consume all tokens before the split
     let mut before = Vec::new();
-    for tok in rest { // Use for instead of a while to avoid bounds checks
+    for tok in rest {
+        // Use for instead of a while to avoid bounds checks
         if tok.1.len() > rest_split_i {
             break;
         }
@@ -248,6 +250,9 @@ pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'
     // If necessary, split the token the split falls inside
     if !rest.is_empty() && rest_split_i > 0 {
         let mut rest_split_index = rest_split_i;
+        // Splitting in the middle of a multibyte character causes panic,
+        // so if index is in the middle of such a character,
+        // reduce the index by 1.
         while !rest[0].1.is_char_boundary(rest_split_index) && rest_split_index > 0 {
             rest_split_index -= 1;
         }
@@ -278,11 +283,15 @@ pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'
 /// let l2 = modify_range(l, 1..6, boldmod);
 /// assert_eq!(l2, &[(plain, "a"), (bold, "bc"), (bold, "def"), (plain, "ghi")]);
 /// ```
-pub fn modify_range<'a>(v: &[(Style, &'a str)], r: Range<usize>, modifier: StyleModifier) -> Vec<(Style, &'a str)> {
+pub fn modify_range<'a>(
+    v: &[(Style, &'a str)],
+    r: Range<usize>,
+    modifier: StyleModifier,
+) -> Vec<(Style, &'a str)> {
     let (mut result, in_and_after) = split_at(v, r.start);
     let (inside, mut after) = split_at(&in_and_after, r.end - r.start);
 
-    result.extend(inside.iter().map(|(style, s)| { (style.apply(modifier), *s)}));
+    result.extend(inside.iter().map(|(style, s)| (style.apply(modifier), *s)));
     result.append(&mut after);
     result
 }
@@ -314,24 +323,67 @@ mod tests {
     fn test_split_at() {
         let l: &[(u8, &str)] = &[];
         let (before, after) = split_at(l, 0); // empty
-        assert_eq!((&before[..], &after[..]), (&[][..],&[][..]));
+        assert_eq!((&before[..], &after[..]), (&[][..], &[][..]));
 
         let l = &[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")];
 
         let (before, after) = split_at(l, 0); // at start
-        assert_eq!((&before[..], &after[..]), (&[][..],&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..]));
+        assert_eq!(
+            (&before[..], &after[..]),
+            (&[][..], &[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..])
+        );
 
         let (before, after) = split_at(l, 4); // inside token
-        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "d")][..],&[(1u8, "ef"), (2u8, "ghi")][..]));
+        assert_eq!(
+            (&before[..], &after[..]),
+            (
+                &[(0u8, "abc"), (1u8, "d")][..],
+                &[(1u8, "ef"), (2u8, "ghi")][..]
+            )
+        );
 
         let (before, after) = split_at(l, 3); // between tokens
-        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc")][..],&[(1u8, "def"), (2u8, "ghi")][..]));
+        assert_eq!(
+            (&before[..], &after[..]),
+            (&[(0u8, "abc")][..], &[(1u8, "def"), (2u8, "ghi")][..])
+        );
 
         let (before, after) = split_at(l, 9); // just after last token
-        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
+        assert_eq!(
+            (&before[..], &after[..]),
+            (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..])
+        );
 
         let (before, after) = split_at(l, 10); // out of bounds
-        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
+        assert_eq!(
+            (&before[..], &after[..]),
+            (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..])
+        );
+
+        let l = &[(0u8, "こんにちは"), (1u8, "世界"), (2u8, "！")];
+
+        let (before, after) = split_at(l, 3);
+
+        assert_eq!(
+            (&before[..], &after[..]),
+            (
+                &[(0u8, "こ")][..],
+                &[(0u8, "んにちは"), (1u8, "世界"), (2u8, "！")][..]
+            )
+        );
+
+        //Splitting inside a multibyte character could cause panic,
+        //so if index is inside such a character,
+        //index is decreased by 1.
+        let (before, after) = split_at(l, 4);
+
+        assert_eq!(
+            (&before[..], &after[..]),
+            (
+                &[(0u8, "こ")][..],
+                &[(0u8, "んにちは"), (1u8, "世界"), (2u8, "！")][..]
+            )
+        );
     }
 
     #[test]
