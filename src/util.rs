@@ -249,6 +249,8 @@ pub fn split_at<'a, A: Clone>(
     let mut after = Vec::new();
     // If necessary, split the token the split falls inside
     if !rest.is_empty() && rest_split_i > 0 {
+        // Splitting in the middle of a multibyte character cause panic.
+        // To avoid it, this function may return Err.
         if !rest[0].1.is_char_boundary(rest_split_i) {
             return Err(std::fmt::Error);
         } else {
@@ -369,7 +371,7 @@ mod tests {
             )
         );
 
-        //Splitting inside a multibyte character returns Err
+        //Splitting in the middle of a multibyte character returns Err
         assert!(split_at(l, 4).is_err());
     }
 
