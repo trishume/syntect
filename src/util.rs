@@ -323,42 +323,24 @@ mod tests {
     fn test_split_at() {
         let l: &[(u8, &str)] = &[];
         let (before, after) = split_at(l, 0).unwrap(); // empty
-        assert_eq!((&before[..], &after[..]), (&[][..], &[][..]));
+        assert_eq!((&before[..], &after[..]), (&[][..],&[][..]));
 
         let l = &[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")];
 
         let (before, after) = split_at(l, 0).unwrap(); // at start
-        assert_eq!(
-            (&before[..], &after[..]),
-            (&[][..], &[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..])
-        );
+        assert_eq!((&before[..], &after[..]), (&[][..],&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..]));
 
         let (before, after) = split_at(l, 4).unwrap(); // inside token
-        assert_eq!(
-            (&before[..], &after[..]),
-            (
-                &[(0u8, "abc"), (1u8, "d")][..],
-                &[(1u8, "ef"), (2u8, "ghi")][..]
-            )
-        );
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "d")][..],&[(1u8, "ef"), (2u8, "ghi")][..]));
 
         let (before, after) = split_at(l, 3).unwrap(); // between tokens
-        assert_eq!(
-            (&before[..], &after[..]),
-            (&[(0u8, "abc")][..], &[(1u8, "def"), (2u8, "ghi")][..])
-        );
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc")][..],&[(1u8, "def"), (2u8, "ghi")][..]));
 
         let (before, after) = split_at(l, 9).unwrap(); // just after last token
-        assert_eq!(
-            (&before[..], &after[..]),
-            (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..])
-        );
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
 
         let (before, after) = split_at(l, 10).unwrap(); // out of bounds
-        assert_eq!(
-            (&before[..], &after[..]),
-            (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..])
-        );
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
 
         let l = &[(0u8, "こんにちは"), (1u8, "世界"), (2u8, "！")];
 
