@@ -45,7 +45,7 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
                    style.background.r,
                    style.background.g,
                    style.background.b)
-                   .unwrap();
+                .unwrap();
         }
         let fg = blend_fg_color(style.foreground, style.background);
         write!(s, "\x1b[38;2;{};{};{}m{}", fg.r, fg.g, fg.b, text).unwrap();
@@ -57,7 +57,7 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
 const LATEX_REPLACE: [(&str, &str); 3] = [
     ("\\", "\\\\"),
     ("{", "\\{"),
-    ("}", "\\}")
+    ("}", "\\}"),
 ];
 
 /// Formats the styled fragments using LaTeX textcolor directive.
@@ -238,7 +238,7 @@ pub fn split_at<'a, A: Clone>(
 
     // Consume all tokens before the split
     let mut before = Vec::new();
-    for tok in rest {// Use for instead of a while to avoid bounds checks
+    for tok in rest { // Use for instead of a while to avoid bounds checks
         if tok.1.len() > rest_split_i {
             break;
         }
@@ -325,13 +325,13 @@ mod tests {
         let l = &[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")];
 
         let (before, after) = split_at(l, 0); // at start
-        assert_eq!((&before[..], &after[..]), (&[][..], &[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..]));
+        assert_eq!((&before[..], &after[..]), (&[][..],&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..]));
 
         let (before, after) = split_at(l, 4); // inside token
-        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "d")][..], &[(1u8, "ef"), (2u8, "ghi")][..]));
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "d")][..],&[(1u8, "ef"), (2u8, "ghi")][..]));
 
         let (before, after) = split_at(l, 3); // between tokens
-        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc")][..], &[(1u8, "def"), (2u8, "ghi")][..]));
+        assert_eq!((&before[..], &after[..]), (&[(0u8, "abc")][..],&[(1u8, "def"), (2u8, "ghi")][..]));
 
         let (before, after) = split_at(l, 9); // just after last token
         assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
