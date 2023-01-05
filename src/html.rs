@@ -470,7 +470,7 @@ pub fn append_highlighted_html_for_styled_line(
             let include_bg = match bg {
                 IncludeBackground::Yes => true,
                 IncludeBackground::No => false,
-                IncludeBackground::IfDifferent(c) => (style.background != c),
+                IncludeBackground::IfDifferent(c) => style.background != c,
             };
             if include_bg {
                 write!(s, "background-color:")?;
