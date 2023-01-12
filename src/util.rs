@@ -228,7 +228,10 @@ impl<'a> Iterator for LinesWithEndings<'a> {
 /// the `Vec<(Style, &str)>` returned by `highlight` methods. Look at the source
 /// code for `modify_range` for an example usage.
 #[allow(clippy::type_complexity)]
-pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'a str)>, Vec<(A, &'a str)>) {
+pub fn split_at<'a, A: Clone>(
+    v: &[(A, &'a str)],
+    split_i: usize,
+) -> (Vec<(A, &'a str)>, Vec<(A, &'a str)>) {
     // This function works by gradually reducing the problem into smaller sub-problems from the front
     let mut rest = v;
     let mut rest_split_i = split_i;
@@ -247,7 +250,14 @@ pub fn split_at<'a, A: Clone>(v: &[(A, &'a str)], split_i: usize) -> (Vec<(A, &'
     let mut after = Vec::new();
     // If necessary, split the token the split falls inside
     if !rest.is_empty() && rest_split_i > 0 {
-        let (sa, sb) = rest[0].1.split_at(rest_split_i);
+        let mut rest_split_index = rest_split_i;
+        // Splitting in the middle of a multibyte character causes panic,
+        // so if index is in the middle of such a character,
+        // reduce the index by 1.
+        while !rest[0].1.is_char_boundary(rest_split_index) && rest_split_index > 0 {
+            rest_split_index -= 1;
+        }
+        let (sa, sb) = rest[0].1.split_at(rest_split_index);
         before.push((rest[0].0.clone(), sa));
         after.push((rest[0].0.clone(), sb));
         rest = &rest[1..];
@@ -328,6 +338,31 @@ mod tests {
 
         let (before, after) = split_at(l, 10); // out of bounds
         assert_eq!((&before[..], &after[..]), (&[(0u8, "abc"), (1u8, "def"), (2u8, "ghi")][..], &[][..]));
+
+        let l = &[(0u8, "こんにちは"), (1u8, "世界"), (2u8, "！")];
+
+        let (before, after) = split_at(l, 3);
+
+        assert_eq!(
+            (&before[..], &after[..]),
+            (
+                &[(0u8, "こ")][..],
+                &[(0u8, "んにちは"), (1u8, "世界"), (2u8, "！")][..]
+            )
+        );
+
+        //Splitting inside a multibyte character could cause panic,
+        //so if index is inside such a character,
+        //index is decreased by 1.
+        let (before, after) = split_at(l, 4);
+
+        assert_eq!(
+            (&before[..], &after[..]),
+            (
+                &[(0u8, "こ")][..],
+                &[(0u8, "んにちは"), (1u8, "世界"), (2u8, "！")][..]
+            )
+        );
     }
 
     #[test]
