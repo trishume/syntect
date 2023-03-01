@@ -21,7 +21,7 @@ impl ThemeSet {
 
     /// Returns all the themes found in a folder
     ///
-    /// This is god for enumerating before loading one with [`get_theme`](#method.get_theme)
+    /// This is good for enumerating before loading one with [`get_theme`](#method.get_theme)
     pub fn discover_theme_paths<P: AsRef<Path>>(folder: P) -> Result<Vec<PathBuf>, LoadingError> {
         let mut themes = Vec::new();
         for entry in crate::utils::walk_dir(folder) {
