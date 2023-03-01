@@ -26,7 +26,7 @@ impl ThemeSet {
         let mut themes = Vec::new();
         for entry in crate::utils::walk_dir(folder) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
-            if entry.path().extension().map_or(false, |e| e == "tmTheme") {
+            if entry.path().extension().map_or(false, |e| e.eq_ignore_ascii_case("tmTheme")) {
                 themes.push(entry.path().to_owned());
             }
         }
