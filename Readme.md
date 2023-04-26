@@ -226,6 +226,7 @@ Characters of comment:                 41099
 Below is a list of projects using Syntect, in approximate order by how long they've been using `syntect` (feel free to send PRs to add to this list):
 
 - [bat](https://github.com/sharkdp/bat), a `cat(1)` clone, uses `syntect` for syntax highlighting.
+- [Bolt](https://github.com/hiro-codes/bolt), a desktop application for building and testing APIs, uses `syntect` for syntax highlighting. 
 - [catmark](https://github.com/bestouff/catmark), a console markdown printer, uses `syntect` for code blocks.
 - [Cobalt](https://github.com/cobalt-org/cobalt.rs), a static site generator that uses `syntect` for highlighting code snippets.
 - [crowbook](https://github.com/lise-henry/crowbook), a Markdown book generator, uses `syntect` for code blocks.
