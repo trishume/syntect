@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// A theme parsed from a `.tmTheme` file.
 ///
 /// This contains additional fields useful for a theme list as well as `settings` for styling your editor.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Theme {
     pub name: Option<String>,
     pub author: Option<String>,
@@ -23,7 +23,7 @@ pub struct Theme {
 /// This essentially consists of the styles that aren't directly applied to the text being viewed.
 /// `ThemeSettings` are intended to be used to make the UI of the editor match the styling of the
 /// text itself.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ThemeSettings {
     /// The default color for text.
     pub foreground: Option<Color>,
@@ -110,7 +110,7 @@ pub struct ThemeSettings {
 
 /// A component of a theme meant to highlight a specific thing (e.g string literals)
 /// in a certain way.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ThemeItem {
     /// Target scope name.
     pub scope: ScopeSelectors,
@@ -118,7 +118,7 @@ pub struct ThemeItem {
     pub style: StyleModifier,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum UnderlineOption {
     None,
     Underline,
