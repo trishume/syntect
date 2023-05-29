@@ -25,7 +25,7 @@ use std::io::{BufWriter, Write};
 #[cfg(all(feature = "default-syntaxes"))]
 use crate::parsing::SyntaxSet;
 #[cfg(all(feature = "default-themes"))]
-use crate::highlighting::ThemeSet;
+use crate::highlighting::{Theme, ThemeDefaults, ThemeSet};
 use std::path::Path;
 #[cfg(feature = "dump-create")]
 use flate2::write::ZlibEncoder;
@@ -208,6 +208,64 @@ impl ThemeSet {
     }
 }
 
+#[cfg(feature = "default-themes")]
+impl Theme {
+    pub fn load_default(default: ThemeDefaults) -> Self {
+        use std::io;
+
+        use bincode::{
+            config::{DefaultOptions, Options},
+            Deserializer,
+        };
+        use serde::{
+            de::{MapAccess, Visitor},
+            Deserializer as _,
+        };
+
+        // Custom themedump visitor that only returns a single theme
+        #[derive(Clone, Copy)]
+        struct ThemedumpVisitor(ThemeDefaults);
+
+        impl<'de> Visitor<'de> for ThemedumpVisitor {
+            type Value = Theme;
+
+            fn expecting(&self, _formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                unreachable!("has to deserialize right");
+            }
+
+            fn visit_map<A>(
+                self,
+                mut map: A,
+            ) -> std::result::Result<Self::Value, <A as MapAccess<'de>>::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let theme = loop {
+                    let name: String = map.next_key()?.expect("`default` must be in dump");
+
+                    if name == self.0.as_theme_name() {
+                        break map.next_value()?;
+                    } else {
+                        let _: Theme = map.next_value()?;
+                    }
+                };
+
+                Ok(theme)
+            }
+        }
+
+        // Copied from the options used in `bincode::deserialize_from()`
+        let options = DefaultOptions::new()
+            .with_fixint_encoding()
+            .allow_trailing_bytes();
+        let bytes = include_bytes!("../assets/default.themedump");
+        let decoder = ZlibDecoder::new(io::Cursor::new(bytes));
+        Deserializer::with_reader(decoder, options)
+            .deserialize_map(ThemedumpVisitor(default))
+            .unwrap()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(all(feature = "yaml-load", feature = "dump-create", feature = "dump-load", feature = "parsing"))]
@@ -252,5 +310,24 @@ mod tests {
         use crate::highlighting::ThemeSet;
         let themes = ThemeSet::load_defaults();
         assert!(themes.themes.len() > 4);
+    }
+
+    #[cfg(feature = "default-themes")]
+    #[test]
+    fn load_single_default_theme() {
+        use crate::highlighting::{Theme, ThemeDefaults};
+
+        for &default in &[
+            ThemeDefaults::Base16OceanDark,
+            ThemeDefaults::Base16EightiesDark,
+            ThemeDefaults::Base16MochaDark,
+            ThemeDefaults::Base16OceanLight,
+            ThemeDefaults::InspiredGitHub,
+            ThemeDefaults::SolarizedDark,
+            ThemeDefaults::SolarizedLight,
+        ] {
+            // Ensure none of them panic
+            let _ = Theme::load_default(default);
+        }
     }
 }

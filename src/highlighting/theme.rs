@@ -131,3 +131,28 @@ impl Default for UnderlineOption {
         UnderlineOption::None
     }
 }
+
+#[derive(Clone, Copy)]
+pub enum ThemeDefaults {
+    Base16OceanDark,
+    Base16EightiesDark,
+    Base16MochaDark,
+    Base16OceanLight,
+    InspiredGitHub,
+    SolarizedDark,
+    SolarizedLight,
+}
+
+impl ThemeDefaults {
+    pub(crate) fn as_theme_name(self) -> &'static str {
+        match self {
+            Self::Base16OceanDark => "base16-ocean.dark",
+            Self::Base16EightiesDark => "base16-eighties.dark",
+            Self::Base16MochaDark => "base16-mocha.dark",
+            Self::Base16OceanLight => "base16-ocean.light",
+            Self::InspiredGitHub => "InspiredGitHub",
+            Self::SolarizedDark => "Solarized (dark)",
+            Self::SolarizedLight => "Solarized (light)",
+        }
+    }
+}
