@@ -15,7 +15,7 @@ jobs:
     name: Minimum supported rust version
     runs-on: ubuntu-20.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: stable minus 2 releases # MSRV policy = last three versions of stable
@@ -38,14 +38,14 @@ jobs:
     name: Documentation checks
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: RUSTDOCFLAGS='--deny warnings' cargo doc --no-deps --document-private-items --all-features
 
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         submodules: true
     - uses: dtolnay/rust-toolchain@stable
