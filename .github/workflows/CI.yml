@@ -8,7 +8,6 @@ on:
     branches: [ master ]
 
 env:
-  MIN_SUPPORTED_RUST_VERSION: "1.64" # MSRV policy = last three versions of stable
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -16,12 +15,10 @@ jobs:
     name: Minimum supported rust version
     runs-on: ubuntu-20.04
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: ${{ env.MIN_SUPPORTED_RUST_VERSION }}
-        default: true
-        profile: minimal
+        toolchain: stable minus 2 releases # MSRV policy = last three versions of stable
         components: clippy
     - name: Run cargo clippy
       run: |
@@ -41,16 +38,17 @@ jobs:
     name: Documentation checks
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: RUSTDOCFLAGS='--deny warnings' cargo doc --no-deps --document-private-items --all-features
 
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         submodules: true
+    - uses: dtolnay/rust-toolchain@stable
     - name: Build
       run: |
         cargo build
