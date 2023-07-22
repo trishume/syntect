@@ -599,7 +599,7 @@ impl SyntaxSetBuilder {
             }
 
             for context_id in all_context_ids[syntax_index].values() {
-                let mut context = &mut all_contexts[context_id.syntax_index][context_id.context_index];
+                let context = &mut all_contexts[context_id.syntax_index][context_id.context_index];
                 if let Some(prototype_id) = prototype {
                     if context.meta_include_prototype && !no_prototype.contains(context_id) {
                         context.prototype = Some(*prototype_id);
@@ -630,7 +630,7 @@ impl SyntaxSetBuilder {
                     if !context.uses_backrefs && context.patterns.iter().any(|pattern| {
                         matches!(pattern, Pattern::Include(ContextReference::Direct(id)) if all_contexts[id.syntax_index][id.context_index].uses_backrefs)
                     }) {
-                        let mut context = &mut all_contexts[syntax_index][context_index];
+                        let context = &mut all_contexts[syntax_index][context_index];
                         context.uses_backrefs = true;
                         // look for contexts including this context
                         found_more_backref_includes = true;
