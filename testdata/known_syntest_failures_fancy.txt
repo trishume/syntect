@@ -1,4 +1,5 @@
 loading syntax definitions from testdata/Packages
 FAILED testdata/Packages/C#/tests/syntax_test_Strings.cs: 38
 FAILED testdata/Packages/LaTeX/syntax_test_latex.tex: 1
+FAILED testdata/Packages/Markdown/syntax_test_markdown.md: 11
 exiting with code 1
