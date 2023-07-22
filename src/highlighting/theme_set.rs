@@ -1,10 +1,10 @@
-use super::theme::Theme;
+use super::super::LoadingError;
 #[cfg(feature = "plist-load")]
 use super::settings::*;
-use super::super::LoadingError;
+use super::theme::Theme;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSet {
@@ -26,7 +26,12 @@ impl ThemeSet {
         let mut themes = Vec::new();
         for entry in crate::utils::walk_dir(folder) {
             let entry = entry.map_err(LoadingError::WalkDir)?;
-            if entry.path().extension().map_or(false, |e| e == "tmTheme") {
+            if entry.path().is_file()
+                && entry
+                    .path()
+                    .extension()
+                    .map_or(false, |e| e.eq_ignore_ascii_case("tmTheme"))
+            {
                 themes.push(entry.path().to_owned());
             }
         }
@@ -43,7 +48,9 @@ impl ThemeSet {
 
     /// Loads a theme given a readable stream
     #[cfg(feature = "plist-load")]
-    pub fn load_from_reader<R: std::io::BufRead + std::io::Seek>(r: &mut R) -> Result<Theme, LoadingError> {
+    pub fn load_from_reader<R: std::io::BufRead + std::io::Seek>(
+        r: &mut R,
+    ) -> Result<Theme, LoadingError> {
         Ok(Theme::parse_settings(read_plist(r)?)?)
     }
 
@@ -61,8 +68,10 @@ impl ThemeSet {
         let paths = Self::discover_theme_paths(folder)?;
         for p in &paths {
             let theme = Self::get_theme(p)?;
-            let basename =
-                p.file_stem().and_then(|x| x.to_str()).ok_or(LoadingError::BadPath)?;
+            let basename = p
+                .file_stem()
+                .and_then(|x| x.to_str())
+                .ok_or(LoadingError::BadPath)?;
             self.themes.insert(basename.to_owned(), theme);
         }
 
@@ -70,10 +79,9 @@ impl ThemeSet {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::highlighting::{ThemeSet, Color};
+    use crate::highlighting::{Color, ThemeSet};
     #[cfg(feature = "plist-load")]
     #[test]
     fn can_parse_common_themes() {
@@ -85,20 +93,24 @@ mod tests {
 
         let theme = ThemeSet::get_theme("testdata/spacegray/base16-ocean.dark.tmTheme").unwrap();
         assert_eq!(theme.name.unwrap(), "Base16 Ocean Dark");
-        assert_eq!(theme.settings.selection.unwrap(),
-                   Color {
-                       r: 0x4f,
-                       g: 0x5b,
-                       b: 0x66,
-                       a: 0xff,
-                   });
-        assert_eq!(theme.scopes[0].style.foreground.unwrap(),
-                   Color {
-                       r: 0xc0,
-                       g: 0xc5,
-                       b: 0xce,
-                       a: 0xFF,
-                   });
+        assert_eq!(
+            theme.settings.selection.unwrap(),
+            Color {
+                r: 0x4f,
+                g: 0x5b,
+                b: 0x66,
+                a: 0xff,
+            }
+        );
+        assert_eq!(
+            theme.scopes[0].style.foreground.unwrap(),
+            Color {
+                r: 0xc0,
+                g: 0xc5,
+                b: 0xce,
+                a: 0xFF,
+            }
+        );
         // unreachable!();
     }
 }
