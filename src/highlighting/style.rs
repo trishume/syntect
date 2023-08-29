@@ -68,7 +68,7 @@ impl std::fmt::Debug for Color {
 
 bitflags! {
     /// The color-independent styling of a font - i.e. bold, italicized, and/or underlined
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Clone, Copy)]
     pub struct FontStyle: u8 {
         /// Bold font style
         const BOLD = 1;
@@ -78,7 +78,6 @@ bitflags! {
         const ITALIC = 4;
     }
 }
-
 
 impl Color {
     /// The color black (`#000000`)
