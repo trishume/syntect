@@ -41,6 +41,28 @@ jobs:
     - uses: actions/checkout@v3
     - run: RUSTDOCFLAGS='--deny warnings' cargo doc --no-deps --document-private-items --all-features
 
+  bat-tests:
+    name: Run bat syntax regression tests
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        path: 'syntect'
+    - uses: actions/checkout@v3
+      with:
+        repository: 'sharkdp/bat'
+        path: 'bat'
+        ref: master
+        submodules: true
+    - name: bat/tests/syntax-tests/regression_test.sh
+      run: |
+        cd bat
+        sed -i 's%\[dependencies.syntect\]%[dependencies.syntect]\npath = "../syntect"%' Cargo.toml
+        cargo build --release # Build bat so we can update the assets
+        PATH=target/release:$PATH ./assets/create.sh # Update assets with newly built bat
+        cargo build --release # Build bat using the newly updated assets
+        PATH=./target/release:$PATH tests/syntax-tests/regression_test.sh
+
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
