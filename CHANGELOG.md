@@ -1,5 +1,24 @@
 # Changelog
 
+## [Version 5.1.0](https://github.com/trishume/syntect/compare/v5.0.0...v5.1.0) (2023-08-01)
+
+### Improvements
+
+- Fix how `syntect::util::split_at()` handles multi-byte characters
+- Allow case insensitive search for .tmtheme paths
+- impl `PartialEq` for `Theme`
+
+### Dependencies
+
+- Upgrade `fancy-regex` to 0.11
+- Upgrade `regex-syntax` to 0.7
+- Replace `lazy_static` with `once_cell`
+
+### Other
+
+- Change MSRV policy to "last three stable versions"
+- Make `Debug` impl of `syntect::highlighting::Color` less verbose
+
 ## [Version 5.0.0](https://github.com/trishume/syntect/compare/v4.6.0...v5.0.0) (2022-05-03)
 
 Breaking changes
