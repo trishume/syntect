@@ -1,6 +1,5 @@
 // Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/theme.rs
 // released under the MIT license by @defuz
-
 use super::style::*;
 use super::selector::*;
 use serde::{Deserialize, Serialize};
@@ -118,16 +117,11 @@ pub struct ThemeItem {
     pub style: StyleModifier,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub enum UnderlineOption {
+    #[default]
     None,
     Underline,
     StippledUnderline,
     SquigglyUnderline,
-}
-
-impl Default for UnderlineOption {
-    fn default() -> UnderlineOption {
-        UnderlineOption::None
-    }
 }

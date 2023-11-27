@@ -439,7 +439,7 @@ impl ParseState {
 
         let (matched, can_cache) = match (match_pat.has_captures, captures) {
             (true, Some(captures)) => {
-                let &(ref region, ref s) = captures;
+                let (region, s) = captures;
                 let regex = match_pat.regex_with_refs(region, s);
                 let matched = regex.search(line, start, line.len(), Some(regions));
                 (matched, false)
@@ -518,18 +518,18 @@ impl ParseState {
             // println!("popping at {}", match_end);
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
-        self.push_meta_ops(false, match_end, &*level_context, &pat.operation, syntax_set, ops)?;
+        self.push_meta_ops(false, match_end, level_context, &pat.operation, syntax_set, ops)?;
 
         self.perform_op(line, &reg_match.regions, pat, syntax_set)
     }
 
-    fn push_meta_ops<'a>(
+    fn push_meta_ops(
         &self,
         initial: bool,
         index: usize,
         cur_context: &Context,
         match_op: &MatchOperation,
-        syntax_set: &'a SyntaxSet,
+        syntax_set: &SyntaxSet,
         ops: &mut Vec<(usize, ScopeStackOp)>,
     ) -> Result<(), ParsingError>{
         // println!("metas ops for {:?}, initial: {}",
@@ -548,7 +548,7 @@ impl ParseState {
                 }
 
                 // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
-                if !initial && cur_context.clear_scopes != None {
+                if !initial && cur_context.clear_scopes.is_some() {
                     ops.push((index, ScopeStackOp::Restore))
                 }
             },
@@ -561,7 +561,7 @@ impl ParseState {
                 let is_set = matches!(*match_op, MatchOperation::Set(_));
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
-                    if is_set && cur_context.clear_scopes != None {
+                    if is_set && cur_context.clear_scopes.is_some() {
                         // cleared scopes from the old context are restored immediately
                         ops.push((index, ScopeStackOp::Restore));
                     }
@@ -778,7 +778,7 @@ mod tests {
         test_stack.push(Scope::new("meta.function.parameters.ruby").unwrap());
 
         let mut stack = ScopeStack::new();
-        for &(_, ref op) in ops.iter() {
+        for (_, op) in ops.iter() {
             stack.apply(op).expect("#[cfg(test)]");
         }
         assert_eq!(stack, test_stack);
@@ -1835,7 +1835,7 @@ contexts:
     fn stack_states(ops: Vec<(usize, ScopeStackOp)>) -> Vec<String> {
         let mut states = Vec::new();
         let mut stack = ScopeStack::new();
-        for &(_, ref op) in ops.iter() {
+        for (_, op) in ops.iter() {
             stack.apply(op).expect("#[cfg(test)]");
             let scopes: Vec<String> = stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
             let stack_str = scopes.join(", ");

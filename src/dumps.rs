@@ -19,12 +19,12 @@ use bincode::deserialize_from;
 use bincode::serialize_into;
 use std::fs::File;
 #[cfg(feature = "dump-load")]
-use std::io::{BufRead};
+use std::io::BufRead;
 #[cfg(feature = "dump-create")]
 use std::io::{BufWriter, Write};
-#[cfg(all(feature = "default-syntaxes"))]
+#[cfg(feature = "default-syntaxes")]
 use crate::parsing::SyntaxSet;
-#[cfg(all(feature = "default-themes"))]
+#[cfg(feature = "default-themes")]
 use crate::highlighting::ThemeSet;
 use std::path::Path;
 #[cfg(feature = "dump-create")]
@@ -195,7 +195,7 @@ impl SyntaxSet {
     }
 }
 
-#[cfg(all(feature = "default-themes"))]
+#[cfg(feature = "default-themes")]
 impl ThemeSet {
     /// Loads the set of default themes
     /// Currently includes (these are the keys for the map):

@@ -189,7 +189,7 @@ fn test_file(
         return Err(SyntaxTestHeaderError::MalformedHeader);
     }
 
-    line = line.replace("\r", "");
+    line = line.replace('\r', "");
 
     // parse the syntax test header in the first line of the file
     let header_line = line.clone();
@@ -308,7 +308,7 @@ fn test_file(
         if reader.read_line(&mut line).unwrap() == 0 {
             break;
         }
-        line = line.replace("\r", "");
+        line = line.replace('\r', "");
     }
     let res = if assertion_failures > 0 {
         Ok(SyntaxTestFileResult::FailedAssertions(
@@ -369,7 +369,7 @@ fn main() {
     if !syntaxes_path.is_empty() {
         println!("loading syntax definitions from {}", syntaxes_path);
         let mut builder = SyntaxSetBuilder::new();
-        builder.add_from_folder(&syntaxes_path, true).unwrap(); // note that we load the version with newlines
+        builder.add_from_folder(syntaxes_path, true).unwrap(); // note that we load the version with newlines
         ss = builder.build();
     }
 

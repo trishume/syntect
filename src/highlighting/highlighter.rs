@@ -313,7 +313,7 @@ impl<'a> Highlighter<'a> {
 
         let mult_iter = self.multi_selectors
             .iter()
-            .filter_map(|&(ref sel, ref style)| sel.does_match(path).map(|score| (score, style)));
+            .filter_map(|(sel, style)| sel.does_match(path).map(|score| (score, style)));
         for (score, modif) in mult_iter {
             new_style.apply(modif, score);
         }
