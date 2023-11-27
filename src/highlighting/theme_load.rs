@@ -300,7 +300,7 @@ impl ParseSettings for Theme {
             _ => return Err(IncorrectSyntax),
         };
         let mut iter = items.into_iter();
-        let settings = match iter.next() {
+        let mut settings = match iter.next() {
             Some(Settings::Object(mut obj)) => {
                 match obj.remove("settings") {
                     Some(settings) => ThemeSettings::parse_settings(settings)?,
@@ -309,6 +309,20 @@ impl ParseSettings for Theme {
             }
             _ => return Err(UndefinedSettings),
         };
+        if let Some(Settings::Object(obj)) = obj.remove("gutterSettings") {
+            for (key, value) in obj {
+                let color = Color::parse_settings(value).ok();
+                match &key[..] {
+                    "background" => {
+                        settings.gutter = settings.gutter.or(color)
+                    }
+                    "foreground" => {
+                        settings.gutter_foreground = settings.gutter_foreground.or(color)
+                    }
+                    _ => (),
+                }
+            }
+        }
         let mut scopes = Vec::new();
         for json in iter {
             // TODO option to disable best effort parsing and bubble up warnings
