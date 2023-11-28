@@ -20,22 +20,6 @@ impl<'a> !core::marker::Sync for syntect::easy::HighlightFile<'a>
 impl<'a> core::marker::Unpin for syntect::easy::HighlightFile<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::HighlightFile<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::HighlightFile<'a>
-impl<T, U> core::convert::Into<U> for syntect::easy::HighlightFile<'a> where U: core::convert::From<T>
-pub fn syntect::easy::HighlightFile<'a>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::easy::HighlightFile<'a> where U: core::convert::Into<T>
-pub type syntect::easy::HighlightFile<'a>::Error = core::convert::Infallible
-pub fn syntect::easy::HighlightFile<'a>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::easy::HighlightFile<'a> where U: core::convert::TryFrom<T>
-pub type syntect::easy::HighlightFile<'a>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::easy::HighlightFile<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::easy::HighlightFile<'a> where T: 'static + core::marker::Sized
-pub fn syntect::easy::HighlightFile<'a>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::easy::HighlightFile<'a> where T: core::marker::Sized
-pub fn syntect::easy::HighlightFile<'a>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::easy::HighlightFile<'a> where T: core::marker::Sized
-pub fn syntect::easy::HighlightFile<'a>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::easy::HighlightFile<'a>
-pub fn syntect::easy::HighlightFile<'a>::from(t: T) -> T
 pub struct syntect::easy::HighlightLines<'a>
 impl<'a> syntect::easy::HighlightLines<'a>
 pub fn syntect::easy::HighlightLines<'a>::highlight<'b>(&mut self, line: &'b str, syntax_set: &syntect::parsing::SyntaxSet) -> alloc::vec::Vec<(syntect::highlighting::Style, &'b str)>
@@ -46,22 +30,6 @@ impl<'a> !core::marker::Sync for syntect::easy::HighlightLines<'a>
 impl<'a> core::marker::Unpin for syntect::easy::HighlightLines<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::HighlightLines<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::HighlightLines<'a>
-impl<T, U> core::convert::Into<U> for syntect::easy::HighlightLines<'a> where U: core::convert::From<T>
-pub fn syntect::easy::HighlightLines<'a>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::easy::HighlightLines<'a> where U: core::convert::Into<T>
-pub type syntect::easy::HighlightLines<'a>::Error = core::convert::Infallible
-pub fn syntect::easy::HighlightLines<'a>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::easy::HighlightLines<'a> where U: core::convert::TryFrom<T>
-pub type syntect::easy::HighlightLines<'a>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::easy::HighlightLines<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::easy::HighlightLines<'a> where T: 'static + core::marker::Sized
-pub fn syntect::easy::HighlightLines<'a>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::easy::HighlightLines<'a> where T: core::marker::Sized
-pub fn syntect::easy::HighlightLines<'a>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::easy::HighlightLines<'a> where T: core::marker::Sized
-pub fn syntect::easy::HighlightLines<'a>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::easy::HighlightLines<'a>
-pub fn syntect::easy::HighlightLines<'a>::from(t: T) -> T
 pub struct syntect::easy::ScopeRangeIterator<'a>
 impl<'a> syntect::easy::ScopeRangeIterator<'a>
 pub fn syntect::easy::ScopeRangeIterator<'a>::new(ops: &'a [(usize, syntect::parsing::ScopeStackOp)], line: &'a str) -> syntect::easy::ScopeRangeIterator<'a>
@@ -75,26 +43,6 @@ impl<'a> core::marker::Sync for syntect::easy::ScopeRangeIterator<'a>
 impl<'a> core::marker::Unpin for syntect::easy::ScopeRangeIterator<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::ScopeRangeIterator<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::ScopeRangeIterator<'a>
-impl<I> core::iter::traits::collect::IntoIterator for syntect::easy::ScopeRangeIterator<'a> where I: core::iter::traits::iterator::Iterator
-pub type syntect::easy::ScopeRangeIterator<'a>::IntoIter = I
-pub type syntect::easy::ScopeRangeIterator<'a>::Item = <I as core::iter::traits::iterator::Iterator>::Item
-pub fn syntect::easy::ScopeRangeIterator<'a>::into_iter(self) -> I
-impl<T, U> core::convert::Into<U> for syntect::easy::ScopeRangeIterator<'a> where U: core::convert::From<T>
-pub fn syntect::easy::ScopeRangeIterator<'a>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::easy::ScopeRangeIterator<'a> where U: core::convert::Into<T>
-pub type syntect::easy::ScopeRangeIterator<'a>::Error = core::convert::Infallible
-pub fn syntect::easy::ScopeRangeIterator<'a>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::easy::ScopeRangeIterator<'a> where U: core::convert::TryFrom<T>
-pub type syntect::easy::ScopeRangeIterator<'a>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::easy::ScopeRangeIterator<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::easy::ScopeRangeIterator<'a> where T: 'static + core::marker::Sized
-pub fn syntect::easy::ScopeRangeIterator<'a>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::easy::ScopeRangeIterator<'a> where T: core::marker::Sized
-pub fn syntect::easy::ScopeRangeIterator<'a>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::easy::ScopeRangeIterator<'a> where T: core::marker::Sized
-pub fn syntect::easy::ScopeRangeIterator<'a>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::easy::ScopeRangeIterator<'a>
-pub fn syntect::easy::ScopeRangeIterator<'a>::from(t: T) -> T
 pub struct syntect::easy::ScopeRegionIterator<'a>
 impl<'a> syntect::easy::ScopeRegionIterator<'a>
 pub fn syntect::easy::ScopeRegionIterator<'a>::new(ops: &'a [(usize, syntect::parsing::ScopeStackOp)], line: &'a str) -> syntect::easy::ScopeRegionIterator<'a>
@@ -108,26 +56,6 @@ impl<'a> core::marker::Sync for syntect::easy::ScopeRegionIterator<'a>
 impl<'a> core::marker::Unpin for syntect::easy::ScopeRegionIterator<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::ScopeRegionIterator<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::ScopeRegionIterator<'a>
-impl<I> core::iter::traits::collect::IntoIterator for syntect::easy::ScopeRegionIterator<'a> where I: core::iter::traits::iterator::Iterator
-pub type syntect::easy::ScopeRegionIterator<'a>::IntoIter = I
-pub type syntect::easy::ScopeRegionIterator<'a>::Item = <I as core::iter::traits::iterator::Iterator>::Item
-pub fn syntect::easy::ScopeRegionIterator<'a>::into_iter(self) -> I
-impl<T, U> core::convert::Into<U> for syntect::easy::ScopeRegionIterator<'a> where U: core::convert::From<T>
-pub fn syntect::easy::ScopeRegionIterator<'a>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::easy::ScopeRegionIterator<'a> where U: core::convert::Into<T>
-pub type syntect::easy::ScopeRegionIterator<'a>::Error = core::convert::Infallible
-pub fn syntect::easy::ScopeRegionIterator<'a>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::easy::ScopeRegionIterator<'a> where U: core::convert::TryFrom<T>
-pub type syntect::easy::ScopeRegionIterator<'a>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::easy::ScopeRegionIterator<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::easy::ScopeRegionIterator<'a> where T: 'static + core::marker::Sized
-pub fn syntect::easy::ScopeRegionIterator<'a>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::easy::ScopeRegionIterator<'a> where T: core::marker::Sized
-pub fn syntect::easy::ScopeRegionIterator<'a>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::easy::ScopeRegionIterator<'a> where T: core::marker::Sized
-pub fn syntect::easy::ScopeRegionIterator<'a>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::easy::ScopeRegionIterator<'a>
-pub fn syntect::easy::ScopeRegionIterator<'a>::from(t: T) -> T
 pub mod syntect::highlighting
 #[non_exhaustive] pub enum syntect::highlighting::ParseThemeError
 pub syntect::highlighting::ParseThemeError::ColorShemeScopeIsNotObject
@@ -157,24 +85,6 @@ impl core::marker::Sync for syntect::highlighting::ParseThemeError
 impl core::marker::Unpin for syntect::highlighting::ParseThemeError
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::ParseThemeError
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::ParseThemeError
-impl<T, U> core::convert::Into<U> for syntect::highlighting::ParseThemeError where U: core::convert::From<T>
-pub fn syntect::highlighting::ParseThemeError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::ParseThemeError where U: core::convert::Into<T>
-pub type syntect::highlighting::ParseThemeError::Error = core::convert::Infallible
-pub fn syntect::highlighting::ParseThemeError::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::ParseThemeError where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::ParseThemeError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::ParseThemeError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::string::ToString for syntect::highlighting::ParseThemeError where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::highlighting::ParseThemeError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::highlighting::ParseThemeError where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::ParseThemeError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::ParseThemeError where T: core::marker::Sized
-pub fn syntect::highlighting::ParseThemeError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::ParseThemeError where T: core::marker::Sized
-pub fn syntect::highlighting::ParseThemeError::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::ParseThemeError
-pub fn syntect::highlighting::ParseThemeError::from(t: T) -> T
 #[non_exhaustive] pub enum syntect::highlighting::SettingsError
 pub syntect::highlighting::SettingsError::Plist(plist::error::Error)
 impl core::convert::From<plist::error::Error> for syntect::highlighting::SettingsError
@@ -191,24 +101,6 @@ impl core::marker::Sync for syntect::highlighting::SettingsError
 impl core::marker::Unpin for syntect::highlighting::SettingsError
 impl !core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::SettingsError
 impl !core::panic::unwind_safe::UnwindSafe for syntect::highlighting::SettingsError
-impl<T, U> core::convert::Into<U> for syntect::highlighting::SettingsError where U: core::convert::From<T>
-pub fn syntect::highlighting::SettingsError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::SettingsError where U: core::convert::Into<T>
-pub type syntect::highlighting::SettingsError::Error = core::convert::Infallible
-pub fn syntect::highlighting::SettingsError::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::SettingsError where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::SettingsError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::SettingsError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::string::ToString for syntect::highlighting::SettingsError where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::highlighting::SettingsError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::highlighting::SettingsError where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::SettingsError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::SettingsError where T: core::marker::Sized
-pub fn syntect::highlighting::SettingsError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::SettingsError where T: core::marker::Sized
-pub fn syntect::highlighting::SettingsError::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::SettingsError
-pub fn syntect::highlighting::SettingsError::from(t: T) -> T
 pub enum syntect::highlighting::UnderlineOption
 pub syntect::highlighting::UnderlineOption::None
 pub syntect::highlighting::UnderlineOption::SquigglyUnderline
@@ -235,27 +127,6 @@ impl core::marker::Sync for syntect::highlighting::UnderlineOption
 impl core::marker::Unpin for syntect::highlighting::UnderlineOption
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::UnderlineOption
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::UnderlineOption
-impl<T, U> core::convert::Into<U> for syntect::highlighting::UnderlineOption where U: core::convert::From<T>
-pub fn syntect::highlighting::UnderlineOption::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::UnderlineOption where U: core::convert::Into<T>
-pub type syntect::highlighting::UnderlineOption::Error = core::convert::Infallible
-pub fn syntect::highlighting::UnderlineOption::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::UnderlineOption where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::UnderlineOption::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::UnderlineOption::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::UnderlineOption where T: core::clone::Clone
-pub type syntect::highlighting::UnderlineOption::Owned = T
-pub fn syntect::highlighting::UnderlineOption::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::UnderlineOption::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::UnderlineOption where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::UnderlineOption::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::UnderlineOption where T: core::marker::Sized
-pub fn syntect::highlighting::UnderlineOption::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::UnderlineOption where T: core::marker::Sized
-pub fn syntect::highlighting::UnderlineOption::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::UnderlineOption
-pub fn syntect::highlighting::UnderlineOption::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::UnderlineOption where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::Color
 pub syntect::highlighting::Color::a: u8
 pub syntect::highlighting::Color::b: u8
@@ -288,29 +159,6 @@ impl core::marker::Sync for syntect::highlighting::Color
 impl core::marker::Unpin for syntect::highlighting::Color
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::Color
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::Color
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::highlighting::Color where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::highlighting::Color::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::highlighting::Color where U: core::convert::From<T>
-pub fn syntect::highlighting::Color::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::Color where U: core::convert::Into<T>
-pub type syntect::highlighting::Color::Error = core::convert::Infallible
-pub fn syntect::highlighting::Color::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::Color where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::Color::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::Color::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::Color where T: core::clone::Clone
-pub type syntect::highlighting::Color::Owned = T
-pub fn syntect::highlighting::Color::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::Color::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::Color where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::Color::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::Color where T: core::marker::Sized
-pub fn syntect::highlighting::Color::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::Color where T: core::marker::Sized
-pub fn syntect::highlighting::Color::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::Color
-pub fn syntect::highlighting::Color::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::Color where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::FontStyle(_)
 impl syntect::highlighting::FontStyle
 pub const syntect::highlighting::FontStyle::BOLD: Self
@@ -413,29 +261,6 @@ impl core::marker::Sync for syntect::highlighting::FontStyle
 impl core::marker::Unpin for syntect::highlighting::FontStyle
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::FontStyle
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::FontStyle
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::highlighting::FontStyle where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::highlighting::FontStyle::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::highlighting::FontStyle where U: core::convert::From<T>
-pub fn syntect::highlighting::FontStyle::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::FontStyle where U: core::convert::Into<T>
-pub type syntect::highlighting::FontStyle::Error = core::convert::Infallible
-pub fn syntect::highlighting::FontStyle::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::FontStyle where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::FontStyle::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::FontStyle::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::FontStyle where T: core::clone::Clone
-pub type syntect::highlighting::FontStyle::Owned = T
-pub fn syntect::highlighting::FontStyle::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::FontStyle::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::FontStyle where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::FontStyle::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::FontStyle where T: core::marker::Sized
-pub fn syntect::highlighting::FontStyle::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::FontStyle where T: core::marker::Sized
-pub fn syntect::highlighting::FontStyle::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::FontStyle
-pub fn syntect::highlighting::FontStyle::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::FontStyle where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::HighlightIterator<'a, 'b>
 impl<'a, 'b> syntect::highlighting::HighlightIterator<'a, 'b>
 pub fn syntect::highlighting::HighlightIterator<'a, 'b>::new(state: &'a mut syntect::highlighting::HighlightState, changes: &'a [(usize, syntect::parsing::ScopeStackOp)], text: &'b str, highlighter: &'a syntect::highlighting::Highlighter<'_>) -> syntect::highlighting::HighlightIterator<'a, 'b>
@@ -449,26 +274,6 @@ impl<'a, 'b> core::marker::Sync for syntect::highlighting::HighlightIterator<'a,
 impl<'a, 'b> core::marker::Unpin for syntect::highlighting::HighlightIterator<'a, 'b>
 impl<'a, 'b> core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::HighlightIterator<'a, 'b>
 impl<'a, 'b> !core::panic::unwind_safe::UnwindSafe for syntect::highlighting::HighlightIterator<'a, 'b>
-impl<I> core::iter::traits::collect::IntoIterator for syntect::highlighting::HighlightIterator<'a, 'b> where I: core::iter::traits::iterator::Iterator
-pub type syntect::highlighting::HighlightIterator<'a, 'b>::IntoIter = I
-pub type syntect::highlighting::HighlightIterator<'a, 'b>::Item = <I as core::iter::traits::iterator::Iterator>::Item
-pub fn syntect::highlighting::HighlightIterator<'a, 'b>::into_iter(self) -> I
-impl<T, U> core::convert::Into<U> for syntect::highlighting::HighlightIterator<'a, 'b> where U: core::convert::From<T>
-pub fn syntect::highlighting::HighlightIterator<'a, 'b>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::HighlightIterator<'a, 'b> where U: core::convert::Into<T>
-pub type syntect::highlighting::HighlightIterator<'a, 'b>::Error = core::convert::Infallible
-pub fn syntect::highlighting::HighlightIterator<'a, 'b>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::HighlightIterator<'a, 'b> where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::HighlightIterator<'a, 'b>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::HighlightIterator<'a, 'b>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::highlighting::HighlightIterator<'a, 'b> where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::HighlightIterator<'a, 'b>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::HighlightIterator<'a, 'b> where T: core::marker::Sized
-pub fn syntect::highlighting::HighlightIterator<'a, 'b>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::HighlightIterator<'a, 'b> where T: core::marker::Sized
-pub fn syntect::highlighting::HighlightIterator<'a, 'b>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::HighlightIterator<'a, 'b>
-pub fn syntect::highlighting::HighlightIterator<'a, 'b>::from(t: T) -> T
 pub struct syntect::highlighting::HighlightState
 pub syntect::highlighting::HighlightState::path: syntect::parsing::ScopeStack
 impl syntect::highlighting::HighlightState
@@ -487,28 +292,6 @@ impl core::marker::Sync for syntect::highlighting::HighlightState
 impl core::marker::Unpin for syntect::highlighting::HighlightState
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::HighlightState
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::HighlightState
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::highlighting::HighlightState where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::highlighting::HighlightState::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::highlighting::HighlightState where U: core::convert::From<T>
-pub fn syntect::highlighting::HighlightState::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::HighlightState where U: core::convert::Into<T>
-pub type syntect::highlighting::HighlightState::Error = core::convert::Infallible
-pub fn syntect::highlighting::HighlightState::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::HighlightState where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::HighlightState::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::HighlightState::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::HighlightState where T: core::clone::Clone
-pub type syntect::highlighting::HighlightState::Owned = T
-pub fn syntect::highlighting::HighlightState::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::HighlightState::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::HighlightState where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::HighlightState::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::HighlightState where T: core::marker::Sized
-pub fn syntect::highlighting::HighlightState::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::HighlightState where T: core::marker::Sized
-pub fn syntect::highlighting::HighlightState::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::HighlightState
-pub fn syntect::highlighting::HighlightState::from(t: T) -> T
 pub struct syntect::highlighting::Highlighter<'a>
 impl<'a> syntect::highlighting::Highlighter<'a>
 pub fn syntect::highlighting::Highlighter<'a>::get_default(&self) -> syntect::highlighting::Style
@@ -522,22 +305,6 @@ impl<'a> core::marker::Sync for syntect::highlighting::Highlighter<'a>
 impl<'a> core::marker::Unpin for syntect::highlighting::Highlighter<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::Highlighter<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::highlighting::Highlighter<'a>
-impl<T, U> core::convert::Into<U> for syntect::highlighting::Highlighter<'a> where U: core::convert::From<T>
-pub fn syntect::highlighting::Highlighter<'a>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::Highlighter<'a> where U: core::convert::Into<T>
-pub type syntect::highlighting::Highlighter<'a>::Error = core::convert::Infallible
-pub fn syntect::highlighting::Highlighter<'a>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::Highlighter<'a> where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::Highlighter<'a>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::Highlighter<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::highlighting::Highlighter<'a> where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::Highlighter<'a>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::Highlighter<'a> where T: core::marker::Sized
-pub fn syntect::highlighting::Highlighter<'a>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::Highlighter<'a> where T: core::marker::Sized
-pub fn syntect::highlighting::Highlighter<'a>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::Highlighter<'a>
-pub fn syntect::highlighting::Highlighter<'a>::from(t: T) -> T
 pub struct syntect::highlighting::RangedHighlightIterator<'a, 'b>
 impl<'a, 'b> syntect::highlighting::RangedHighlightIterator<'a, 'b>
 pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::new(state: &'a mut syntect::highlighting::HighlightState, changes: &'a [(usize, syntect::parsing::ScopeStackOp)], text: &'b str, highlighter: &'a syntect::highlighting::Highlighter<'_>) -> syntect::highlighting::RangedHighlightIterator<'a, 'b>
@@ -551,26 +318,6 @@ impl<'a, 'b> core::marker::Sync for syntect::highlighting::RangedHighlightIterat
 impl<'a, 'b> core::marker::Unpin for syntect::highlighting::RangedHighlightIterator<'a, 'b>
 impl<'a, 'b> core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::RangedHighlightIterator<'a, 'b>
 impl<'a, 'b> !core::panic::unwind_safe::UnwindSafe for syntect::highlighting::RangedHighlightIterator<'a, 'b>
-impl<I> core::iter::traits::collect::IntoIterator for syntect::highlighting::RangedHighlightIterator<'a, 'b> where I: core::iter::traits::iterator::Iterator
-pub type syntect::highlighting::RangedHighlightIterator<'a, 'b>::IntoIter = I
-pub type syntect::highlighting::RangedHighlightIterator<'a, 'b>::Item = <I as core::iter::traits::iterator::Iterator>::Item
-pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::into_iter(self) -> I
-impl<T, U> core::convert::Into<U> for syntect::highlighting::RangedHighlightIterator<'a, 'b> where U: core::convert::From<T>
-pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::RangedHighlightIterator<'a, 'b> where U: core::convert::Into<T>
-pub type syntect::highlighting::RangedHighlightIterator<'a, 'b>::Error = core::convert::Infallible
-pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::RangedHighlightIterator<'a, 'b> where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::RangedHighlightIterator<'a, 'b>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::highlighting::RangedHighlightIterator<'a, 'b> where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::RangedHighlightIterator<'a, 'b> where T: core::marker::Sized
-pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::RangedHighlightIterator<'a, 'b> where T: core::marker::Sized
-pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::RangedHighlightIterator<'a, 'b>
-pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::from(t: T) -> T
 pub struct syntect::highlighting::ScopeSelector
 pub syntect::highlighting::ScopeSelector::excludes: alloc::vec::Vec<syntect::parsing::ScopeStack>
 pub syntect::highlighting::ScopeSelector::path: syntect::parsing::ScopeStack
@@ -601,29 +348,6 @@ impl core::marker::Sync for syntect::highlighting::ScopeSelector
 impl core::marker::Unpin for syntect::highlighting::ScopeSelector
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::ScopeSelector
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::ScopeSelector
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::highlighting::ScopeSelector where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::highlighting::ScopeSelector::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::highlighting::ScopeSelector where U: core::convert::From<T>
-pub fn syntect::highlighting::ScopeSelector::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::ScopeSelector where U: core::convert::Into<T>
-pub type syntect::highlighting::ScopeSelector::Error = core::convert::Infallible
-pub fn syntect::highlighting::ScopeSelector::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::ScopeSelector where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::ScopeSelector::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::ScopeSelector::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::ScopeSelector where T: core::clone::Clone
-pub type syntect::highlighting::ScopeSelector::Owned = T
-pub fn syntect::highlighting::ScopeSelector::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::ScopeSelector::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::ScopeSelector where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::ScopeSelector::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::ScopeSelector where T: core::marker::Sized
-pub fn syntect::highlighting::ScopeSelector::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::ScopeSelector where T: core::marker::Sized
-pub fn syntect::highlighting::ScopeSelector::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::ScopeSelector
-pub fn syntect::highlighting::ScopeSelector::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::ScopeSelector where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::ScopeSelectors
 pub syntect::highlighting::ScopeSelectors::selectors: alloc::vec::Vec<syntect::highlighting::ScopeSelector>
 impl syntect::highlighting::ScopeSelectors
@@ -651,29 +375,6 @@ impl core::marker::Sync for syntect::highlighting::ScopeSelectors
 impl core::marker::Unpin for syntect::highlighting::ScopeSelectors
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::ScopeSelectors
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::ScopeSelectors
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::highlighting::ScopeSelectors where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::highlighting::ScopeSelectors::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::highlighting::ScopeSelectors where U: core::convert::From<T>
-pub fn syntect::highlighting::ScopeSelectors::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::ScopeSelectors where U: core::convert::Into<T>
-pub type syntect::highlighting::ScopeSelectors::Error = core::convert::Infallible
-pub fn syntect::highlighting::ScopeSelectors::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::ScopeSelectors where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::ScopeSelectors::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::ScopeSelectors::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::ScopeSelectors where T: core::clone::Clone
-pub type syntect::highlighting::ScopeSelectors::Owned = T
-pub fn syntect::highlighting::ScopeSelectors::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::ScopeSelectors::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::ScopeSelectors where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::ScopeSelectors::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::ScopeSelectors where T: core::marker::Sized
-pub fn syntect::highlighting::ScopeSelectors::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::ScopeSelectors where T: core::marker::Sized
-pub fn syntect::highlighting::ScopeSelectors::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::ScopeSelectors
-pub fn syntect::highlighting::ScopeSelectors::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::ScopeSelectors where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::ScoredStyle
 pub syntect::highlighting::ScoredStyle::background: (syntect::parsing::MatchPower, syntect::highlighting::Color)
 pub syntect::highlighting::ScoredStyle::font_style: (syntect::parsing::MatchPower, syntect::highlighting::FontStyle)
@@ -692,28 +393,6 @@ impl core::marker::Sync for syntect::highlighting::ScoredStyle
 impl core::marker::Unpin for syntect::highlighting::ScoredStyle
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::ScoredStyle
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::ScoredStyle
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::highlighting::ScoredStyle where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::highlighting::ScoredStyle::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::highlighting::ScoredStyle where U: core::convert::From<T>
-pub fn syntect::highlighting::ScoredStyle::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::ScoredStyle where U: core::convert::Into<T>
-pub type syntect::highlighting::ScoredStyle::Error = core::convert::Infallible
-pub fn syntect::highlighting::ScoredStyle::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::ScoredStyle where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::ScoredStyle::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::ScoredStyle::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::ScoredStyle where T: core::clone::Clone
-pub type syntect::highlighting::ScoredStyle::Owned = T
-pub fn syntect::highlighting::ScoredStyle::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::ScoredStyle::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::ScoredStyle where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::ScoredStyle::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::ScoredStyle where T: core::marker::Sized
-pub fn syntect::highlighting::ScoredStyle::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::ScoredStyle where T: core::marker::Sized
-pub fn syntect::highlighting::ScoredStyle::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::ScoredStyle
-pub fn syntect::highlighting::ScoredStyle::from(t: T) -> T
 pub struct syntect::highlighting::Style
 pub syntect::highlighting::Style::background: syntect::highlighting::Color
 pub syntect::highlighting::Style::font_style: syntect::highlighting::FontStyle
@@ -743,29 +422,6 @@ impl core::marker::Sync for syntect::highlighting::Style
 impl core::marker::Unpin for syntect::highlighting::Style
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::Style
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::Style
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::highlighting::Style where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::highlighting::Style::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::highlighting::Style where U: core::convert::From<T>
-pub fn syntect::highlighting::Style::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::Style where U: core::convert::Into<T>
-pub type syntect::highlighting::Style::Error = core::convert::Infallible
-pub fn syntect::highlighting::Style::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::Style where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::Style::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::Style::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::Style where T: core::clone::Clone
-pub type syntect::highlighting::Style::Owned = T
-pub fn syntect::highlighting::Style::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::Style::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::Style where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::Style::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::Style where T: core::marker::Sized
-pub fn syntect::highlighting::Style::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::Style where T: core::marker::Sized
-pub fn syntect::highlighting::Style::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::Style
-pub fn syntect::highlighting::Style::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::Style where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::StyleModifier
 pub syntect::highlighting::StyleModifier::background: core::option::Option<syntect::highlighting::Color>
 pub syntect::highlighting::StyleModifier::font_style: core::option::Option<syntect::highlighting::FontStyle>
@@ -793,29 +449,6 @@ impl core::marker::Sync for syntect::highlighting::StyleModifier
 impl core::marker::Unpin for syntect::highlighting::StyleModifier
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::StyleModifier
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::StyleModifier
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::highlighting::StyleModifier where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::highlighting::StyleModifier::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::highlighting::StyleModifier where U: core::convert::From<T>
-pub fn syntect::highlighting::StyleModifier::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::StyleModifier where U: core::convert::Into<T>
-pub type syntect::highlighting::StyleModifier::Error = core::convert::Infallible
-pub fn syntect::highlighting::StyleModifier::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::StyleModifier where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::StyleModifier::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::StyleModifier::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::StyleModifier where T: core::clone::Clone
-pub type syntect::highlighting::StyleModifier::Owned = T
-pub fn syntect::highlighting::StyleModifier::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::StyleModifier::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::StyleModifier where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::StyleModifier::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::StyleModifier where T: core::marker::Sized
-pub fn syntect::highlighting::StyleModifier::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::StyleModifier where T: core::marker::Sized
-pub fn syntect::highlighting::StyleModifier::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::StyleModifier
-pub fn syntect::highlighting::StyleModifier::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::StyleModifier where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::Theme
 pub syntect::highlighting::Theme::author: core::option::Option<alloc::string::String>
 pub syntect::highlighting::Theme::name: core::option::Option<alloc::string::String>
@@ -839,27 +472,6 @@ impl core::marker::Sync for syntect::highlighting::Theme
 impl core::marker::Unpin for syntect::highlighting::Theme
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::Theme
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::Theme
-impl<T, U> core::convert::Into<U> for syntect::highlighting::Theme where U: core::convert::From<T>
-pub fn syntect::highlighting::Theme::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::Theme where U: core::convert::Into<T>
-pub type syntect::highlighting::Theme::Error = core::convert::Infallible
-pub fn syntect::highlighting::Theme::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::Theme where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::Theme::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::Theme::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::Theme where T: core::clone::Clone
-pub type syntect::highlighting::Theme::Owned = T
-pub fn syntect::highlighting::Theme::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::Theme::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::Theme where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::Theme::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::Theme where T: core::marker::Sized
-pub fn syntect::highlighting::Theme::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::Theme where T: core::marker::Sized
-pub fn syntect::highlighting::Theme::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::Theme
-pub fn syntect::highlighting::Theme::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::Theme where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::ThemeItem
 pub syntect::highlighting::ThemeItem::scope: syntect::highlighting::ScopeSelectors
 pub syntect::highlighting::ThemeItem::style: syntect::highlighting::StyleModifier
@@ -881,27 +493,6 @@ impl core::marker::Sync for syntect::highlighting::ThemeItem
 impl core::marker::Unpin for syntect::highlighting::ThemeItem
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::ThemeItem
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::ThemeItem
-impl<T, U> core::convert::Into<U> for syntect::highlighting::ThemeItem where U: core::convert::From<T>
-pub fn syntect::highlighting::ThemeItem::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::ThemeItem where U: core::convert::Into<T>
-pub type syntect::highlighting::ThemeItem::Error = core::convert::Infallible
-pub fn syntect::highlighting::ThemeItem::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::ThemeItem where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::ThemeItem::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::ThemeItem::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::ThemeItem where T: core::clone::Clone
-pub type syntect::highlighting::ThemeItem::Owned = T
-pub fn syntect::highlighting::ThemeItem::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::ThemeItem::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::ThemeItem where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::ThemeItem::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::ThemeItem where T: core::marker::Sized
-pub fn syntect::highlighting::ThemeItem::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::ThemeItem where T: core::marker::Sized
-pub fn syntect::highlighting::ThemeItem::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::ThemeItem
-pub fn syntect::highlighting::ThemeItem::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::ThemeItem where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::ThemeSet
 pub syntect::highlighting::ThemeSet::themes: alloc::collections::btree::map::BTreeMap<alloc::string::String, syntect::highlighting::Theme>
 impl syntect::highlighting::ThemeSet
@@ -926,23 +517,6 @@ impl core::marker::Sync for syntect::highlighting::ThemeSet
 impl core::marker::Unpin for syntect::highlighting::ThemeSet
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::ThemeSet
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::ThemeSet
-impl<T, U> core::convert::Into<U> for syntect::highlighting::ThemeSet where U: core::convert::From<T>
-pub fn syntect::highlighting::ThemeSet::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::ThemeSet where U: core::convert::Into<T>
-pub type syntect::highlighting::ThemeSet::Error = core::convert::Infallible
-pub fn syntect::highlighting::ThemeSet::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::ThemeSet where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::ThemeSet::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::ThemeSet::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::highlighting::ThemeSet where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::ThemeSet::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::ThemeSet where T: core::marker::Sized
-pub fn syntect::highlighting::ThemeSet::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::ThemeSet where T: core::marker::Sized
-pub fn syntect::highlighting::ThemeSet::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::ThemeSet
-pub fn syntect::highlighting::ThemeSet::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::ThemeSet where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::highlighting::ThemeSettings
 pub syntect::highlighting::ThemeSettings::accent: core::option::Option<syntect::highlighting::Color>
 pub syntect::highlighting::ThemeSettings::active_guide: core::option::Option<syntect::highlighting::Color>
@@ -992,27 +566,6 @@ impl core::marker::Sync for syntect::highlighting::ThemeSettings
 impl core::marker::Unpin for syntect::highlighting::ThemeSettings
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::ThemeSettings
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::ThemeSettings
-impl<T, U> core::convert::Into<U> for syntect::highlighting::ThemeSettings where U: core::convert::From<T>
-pub fn syntect::highlighting::ThemeSettings::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::highlighting::ThemeSettings where U: core::convert::Into<T>
-pub type syntect::highlighting::ThemeSettings::Error = core::convert::Infallible
-pub fn syntect::highlighting::ThemeSettings::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::highlighting::ThemeSettings where U: core::convert::TryFrom<T>
-pub type syntect::highlighting::ThemeSettings::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::highlighting::ThemeSettings::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::highlighting::ThemeSettings where T: core::clone::Clone
-pub type syntect::highlighting::ThemeSettings::Owned = T
-pub fn syntect::highlighting::ThemeSettings::clone_into(&self, target: &mut T)
-pub fn syntect::highlighting::ThemeSettings::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::highlighting::ThemeSettings where T: 'static + core::marker::Sized
-pub fn syntect::highlighting::ThemeSettings::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::highlighting::ThemeSettings where T: core::marker::Sized
-pub fn syntect::highlighting::ThemeSettings::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::highlighting::ThemeSettings where T: core::marker::Sized
-pub fn syntect::highlighting::ThemeSettings::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::highlighting::ThemeSettings
-pub fn syntect::highlighting::ThemeSettings::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::highlighting::ThemeSettings where T: for<'de> serde::de::Deserialize<'de>
 pub mod syntect::html
 #[non_exhaustive] pub enum syntect::html::ClassStyle
 pub syntect::html::ClassStyle::Spaced
@@ -1033,28 +586,6 @@ impl core::marker::Sync for syntect::html::ClassStyle
 impl core::marker::Unpin for syntect::html::ClassStyle
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::html::ClassStyle
 impl core::panic::unwind_safe::UnwindSafe for syntect::html::ClassStyle
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::html::ClassStyle where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::html::ClassStyle::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::html::ClassStyle where U: core::convert::From<T>
-pub fn syntect::html::ClassStyle::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::html::ClassStyle where U: core::convert::Into<T>
-pub type syntect::html::ClassStyle::Error = core::convert::Infallible
-pub fn syntect::html::ClassStyle::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::html::ClassStyle where U: core::convert::TryFrom<T>
-pub type syntect::html::ClassStyle::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::html::ClassStyle::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::html::ClassStyle where T: core::clone::Clone
-pub type syntect::html::ClassStyle::Owned = T
-pub fn syntect::html::ClassStyle::clone_into(&self, target: &mut T)
-pub fn syntect::html::ClassStyle::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::html::ClassStyle where T: 'static + core::marker::Sized
-pub fn syntect::html::ClassStyle::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::html::ClassStyle where T: core::marker::Sized
-pub fn syntect::html::ClassStyle::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::html::ClassStyle where T: core::marker::Sized
-pub fn syntect::html::ClassStyle::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::html::ClassStyle
-pub fn syntect::html::ClassStyle::from(t: T) -> T
 pub enum syntect::html::IncludeBackground
 pub syntect::html::IncludeBackground::IfDifferent(syntect::highlighting::Color)
 pub syntect::html::IncludeBackground::No
@@ -1074,28 +605,6 @@ impl core::marker::Sync for syntect::html::IncludeBackground
 impl core::marker::Unpin for syntect::html::IncludeBackground
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::html::IncludeBackground
 impl core::panic::unwind_safe::UnwindSafe for syntect::html::IncludeBackground
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::html::IncludeBackground where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::html::IncludeBackground::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::html::IncludeBackground where U: core::convert::From<T>
-pub fn syntect::html::IncludeBackground::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::html::IncludeBackground where U: core::convert::Into<T>
-pub type syntect::html::IncludeBackground::Error = core::convert::Infallible
-pub fn syntect::html::IncludeBackground::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::html::IncludeBackground where U: core::convert::TryFrom<T>
-pub type syntect::html::IncludeBackground::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::html::IncludeBackground::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::html::IncludeBackground where T: core::clone::Clone
-pub type syntect::html::IncludeBackground::Owned = T
-pub fn syntect::html::IncludeBackground::clone_into(&self, target: &mut T)
-pub fn syntect::html::IncludeBackground::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::html::IncludeBackground where T: 'static + core::marker::Sized
-pub fn syntect::html::IncludeBackground::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::html::IncludeBackground where T: core::marker::Sized
-pub fn syntect::html::IncludeBackground::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::html::IncludeBackground where T: core::marker::Sized
-pub fn syntect::html::IncludeBackground::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::html::IncludeBackground
-pub fn syntect::html::IncludeBackground::from(t: T) -> T
 pub struct syntect::html::ClassedHTMLGenerator<'a>
 impl<'a> syntect::html::ClassedHTMLGenerator<'a>
 pub fn syntect::html::ClassedHTMLGenerator<'a>::finalize(self) -> alloc::string::String
@@ -1108,22 +617,6 @@ impl<'a> !core::marker::Sync for syntect::html::ClassedHTMLGenerator<'a>
 impl<'a> core::marker::Unpin for syntect::html::ClassedHTMLGenerator<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::html::ClassedHTMLGenerator<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::html::ClassedHTMLGenerator<'a>
-impl<T, U> core::convert::Into<U> for syntect::html::ClassedHTMLGenerator<'a> where U: core::convert::From<T>
-pub fn syntect::html::ClassedHTMLGenerator<'a>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::html::ClassedHTMLGenerator<'a> where U: core::convert::Into<T>
-pub type syntect::html::ClassedHTMLGenerator<'a>::Error = core::convert::Infallible
-pub fn syntect::html::ClassedHTMLGenerator<'a>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::html::ClassedHTMLGenerator<'a> where U: core::convert::TryFrom<T>
-pub type syntect::html::ClassedHTMLGenerator<'a>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::html::ClassedHTMLGenerator<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::html::ClassedHTMLGenerator<'a> where T: 'static + core::marker::Sized
-pub fn syntect::html::ClassedHTMLGenerator<'a>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::html::ClassedHTMLGenerator<'a> where T: core::marker::Sized
-pub fn syntect::html::ClassedHTMLGenerator<'a>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::html::ClassedHTMLGenerator<'a> where T: core::marker::Sized
-pub fn syntect::html::ClassedHTMLGenerator<'a>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::html::ClassedHTMLGenerator<'a>
-pub fn syntect::html::ClassedHTMLGenerator<'a>::from(t: T) -> T
 pub fn syntect::html::append_highlighted_html_for_styled_line(v: &[(syntect::highlighting::Style, &str)], bg: syntect::html::IncludeBackground, s: &mut alloc::string::String) -> core::result::Result<(), syntect::Error>
 pub fn syntect::html::css_for_theme(theme: &syntect::highlighting::Theme) -> alloc::string::String
 pub fn syntect::html::css_for_theme_with_class_style(theme: &syntect::highlighting::Theme, style: syntect::html::ClassStyle) -> core::result::Result<alloc::string::String, syntect::Error>
@@ -1169,29 +662,6 @@ impl core::marker::Sync for syntect::parsing::syntax_definition::ContextReferenc
 impl core::marker::Unpin for syntect::parsing::syntax_definition::ContextReference
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::ContextReference
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::ContextReference
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::syntax_definition::ContextReference where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::ContextReference::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::syntax_definition::ContextReference where U: core::convert::From<T>
-pub fn syntect::parsing::syntax_definition::ContextReference::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::syntax_definition::ContextReference where U: core::convert::Into<T>
-pub type syntect::parsing::syntax_definition::ContextReference::Error = core::convert::Infallible
-pub fn syntect::parsing::syntax_definition::ContextReference::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::syntax_definition::ContextReference where U: core::convert::TryFrom<T>
-pub type syntect::parsing::syntax_definition::ContextReference::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::syntax_definition::ContextReference::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::syntax_definition::ContextReference where T: core::clone::Clone
-pub type syntect::parsing::syntax_definition::ContextReference::Owned = T
-pub fn syntect::parsing::syntax_definition::ContextReference::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::syntax_definition::ContextReference::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::syntax_definition::ContextReference where T: 'static + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::ContextReference::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::syntax_definition::ContextReference where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::ContextReference::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::syntax_definition::ContextReference where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::ContextReference::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::syntax_definition::ContextReference
-pub fn syntect::parsing::syntax_definition::ContextReference::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::syntax_definition::ContextReference where T: for<'de> serde::de::Deserialize<'de>
 pub enum syntect::parsing::syntax_definition::MatchOperation
 pub syntect::parsing::syntax_definition::MatchOperation::None
 pub syntect::parsing::syntax_definition::MatchOperation::Pop
@@ -1215,29 +685,6 @@ impl core::marker::Sync for syntect::parsing::syntax_definition::MatchOperation
 impl core::marker::Unpin for syntect::parsing::syntax_definition::MatchOperation
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::MatchOperation
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::MatchOperation
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::syntax_definition::MatchOperation where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchOperation::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::syntax_definition::MatchOperation where U: core::convert::From<T>
-pub fn syntect::parsing::syntax_definition::MatchOperation::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::syntax_definition::MatchOperation where U: core::convert::Into<T>
-pub type syntect::parsing::syntax_definition::MatchOperation::Error = core::convert::Infallible
-pub fn syntect::parsing::syntax_definition::MatchOperation::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::syntax_definition::MatchOperation where U: core::convert::TryFrom<T>
-pub type syntect::parsing::syntax_definition::MatchOperation::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::syntax_definition::MatchOperation::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::syntax_definition::MatchOperation where T: core::clone::Clone
-pub type syntect::parsing::syntax_definition::MatchOperation::Owned = T
-pub fn syntect::parsing::syntax_definition::MatchOperation::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::syntax_definition::MatchOperation::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::syntax_definition::MatchOperation where T: 'static + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchOperation::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::syntax_definition::MatchOperation where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchOperation::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::syntax_definition::MatchOperation where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchOperation::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::syntax_definition::MatchOperation
-pub fn syntect::parsing::syntax_definition::MatchOperation::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::syntax_definition::MatchOperation where T: for<'de> serde::de::Deserialize<'de>
 pub enum syntect::parsing::syntax_definition::Pattern
 pub syntect::parsing::syntax_definition::Pattern::Include(syntect::parsing::syntax_definition::ContextReference)
 pub syntect::parsing::syntax_definition::Pattern::Match(syntect::parsing::syntax_definition::MatchPattern)
@@ -1259,29 +706,6 @@ impl core::marker::Sync for syntect::parsing::syntax_definition::Pattern
 impl core::marker::Unpin for syntect::parsing::syntax_definition::Pattern
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::Pattern
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::Pattern
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::syntax_definition::Pattern where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::Pattern::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::syntax_definition::Pattern where U: core::convert::From<T>
-pub fn syntect::parsing::syntax_definition::Pattern::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::syntax_definition::Pattern where U: core::convert::Into<T>
-pub type syntect::parsing::syntax_definition::Pattern::Error = core::convert::Infallible
-pub fn syntect::parsing::syntax_definition::Pattern::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::syntax_definition::Pattern where U: core::convert::TryFrom<T>
-pub type syntect::parsing::syntax_definition::Pattern::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::syntax_definition::Pattern::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::syntax_definition::Pattern where T: core::clone::Clone
-pub type syntect::parsing::syntax_definition::Pattern::Owned = T
-pub fn syntect::parsing::syntax_definition::Pattern::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::syntax_definition::Pattern::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::syntax_definition::Pattern where T: 'static + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::Pattern::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::syntax_definition::Pattern where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::Pattern::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::syntax_definition::Pattern where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::Pattern::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::syntax_definition::Pattern
-pub fn syntect::parsing::syntax_definition::Pattern::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::syntax_definition::Pattern where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::syntax_definition::Context
 pub syntect::parsing::syntax_definition::Context::clear_scopes: core::option::Option<syntect::parsing::ClearAmount>
 pub syntect::parsing::syntax_definition::Context::meta_content_scope: alloc::vec::Vec<syntect::parsing::Scope>
@@ -1312,29 +736,6 @@ impl core::marker::Sync for syntect::parsing::syntax_definition::Context
 impl core::marker::Unpin for syntect::parsing::syntax_definition::Context
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::Context
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::Context
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::syntax_definition::Context where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::Context::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::syntax_definition::Context where U: core::convert::From<T>
-pub fn syntect::parsing::syntax_definition::Context::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::syntax_definition::Context where U: core::convert::Into<T>
-pub type syntect::parsing::syntax_definition::Context::Error = core::convert::Infallible
-pub fn syntect::parsing::syntax_definition::Context::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::syntax_definition::Context where U: core::convert::TryFrom<T>
-pub type syntect::parsing::syntax_definition::Context::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::syntax_definition::Context::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::syntax_definition::Context where T: core::clone::Clone
-pub type syntect::parsing::syntax_definition::Context::Owned = T
-pub fn syntect::parsing::syntax_definition::Context::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::syntax_definition::Context::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::syntax_definition::Context where T: 'static + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::Context::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::syntax_definition::Context where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::Context::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::syntax_definition::Context where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::Context::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::syntax_definition::Context
-pub fn syntect::parsing::syntax_definition::Context::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::syntax_definition::Context where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::syntax_definition::ContextId
 impl core::clone::Clone for syntect::parsing::syntax_definition::ContextId
 pub fn syntect::parsing::syntax_definition::ContextId::clone(&self) -> syntect::parsing::syntax_definition::ContextId
@@ -1357,29 +758,6 @@ impl core::marker::Sync for syntect::parsing::syntax_definition::ContextId
 impl core::marker::Unpin for syntect::parsing::syntax_definition::ContextId
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::ContextId
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::ContextId
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::syntax_definition::ContextId where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::ContextId::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::syntax_definition::ContextId where U: core::convert::From<T>
-pub fn syntect::parsing::syntax_definition::ContextId::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::syntax_definition::ContextId where U: core::convert::Into<T>
-pub type syntect::parsing::syntax_definition::ContextId::Error = core::convert::Infallible
-pub fn syntect::parsing::syntax_definition::ContextId::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::syntax_definition::ContextId where U: core::convert::TryFrom<T>
-pub type syntect::parsing::syntax_definition::ContextId::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::syntax_definition::ContextId::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::syntax_definition::ContextId where T: core::clone::Clone
-pub type syntect::parsing::syntax_definition::ContextId::Owned = T
-pub fn syntect::parsing::syntax_definition::ContextId::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::syntax_definition::ContextId::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::syntax_definition::ContextId where T: 'static + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::ContextId::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::syntax_definition::ContextId where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::ContextId::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::syntax_definition::ContextId where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::ContextId::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::syntax_definition::ContextId
-pub fn syntect::parsing::syntax_definition::ContextId::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::syntax_definition::ContextId where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::syntax_definition::MatchIter<'a>
 impl<'a> core::iter::traits::iterator::Iterator for syntect::parsing::syntax_definition::MatchIter<'a>
 pub type syntect::parsing::syntax_definition::MatchIter<'a>::Item = (&'a syntect::parsing::syntax_definition::Context, usize)
@@ -1391,26 +769,6 @@ impl<'a> core::marker::Sync for syntect::parsing::syntax_definition::MatchIter<'
 impl<'a> core::marker::Unpin for syntect::parsing::syntax_definition::MatchIter<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::MatchIter<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::MatchIter<'a>
-impl<I> core::iter::traits::collect::IntoIterator for syntect::parsing::syntax_definition::MatchIter<'a> where I: core::iter::traits::iterator::Iterator
-pub type syntect::parsing::syntax_definition::MatchIter<'a>::IntoIter = I
-pub type syntect::parsing::syntax_definition::MatchIter<'a>::Item = <I as core::iter::traits::iterator::Iterator>::Item
-pub fn syntect::parsing::syntax_definition::MatchIter<'a>::into_iter(self) -> I
-impl<T, U> core::convert::Into<U> for syntect::parsing::syntax_definition::MatchIter<'a> where U: core::convert::From<T>
-pub fn syntect::parsing::syntax_definition::MatchIter<'a>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::syntax_definition::MatchIter<'a> where U: core::convert::Into<T>
-pub type syntect::parsing::syntax_definition::MatchIter<'a>::Error = core::convert::Infallible
-pub fn syntect::parsing::syntax_definition::MatchIter<'a>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::syntax_definition::MatchIter<'a> where U: core::convert::TryFrom<T>
-pub type syntect::parsing::syntax_definition::MatchIter<'a>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::syntax_definition::MatchIter<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::parsing::syntax_definition::MatchIter<'a> where T: 'static + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchIter<'a>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::syntax_definition::MatchIter<'a> where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchIter<'a>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::syntax_definition::MatchIter<'a> where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchIter<'a>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::syntax_definition::MatchIter<'a>
-pub fn syntect::parsing::syntax_definition::MatchIter<'a>::from(t: T) -> T
 pub struct syntect::parsing::syntax_definition::MatchPattern
 pub syntect::parsing::syntax_definition::MatchPattern::captures: core::option::Option<syntect::parsing::syntax_definition::CaptureMapping>
 pub syntect::parsing::syntax_definition::MatchPattern::has_captures: bool
@@ -1440,29 +798,6 @@ impl core::marker::Sync for syntect::parsing::syntax_definition::MatchPattern
 impl core::marker::Unpin for syntect::parsing::syntax_definition::MatchPattern
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::MatchPattern
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::MatchPattern
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::syntax_definition::MatchPattern where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchPattern::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::syntax_definition::MatchPattern where U: core::convert::From<T>
-pub fn syntect::parsing::syntax_definition::MatchPattern::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::syntax_definition::MatchPattern where U: core::convert::Into<T>
-pub type syntect::parsing::syntax_definition::MatchPattern::Error = core::convert::Infallible
-pub fn syntect::parsing::syntax_definition::MatchPattern::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::syntax_definition::MatchPattern where U: core::convert::TryFrom<T>
-pub type syntect::parsing::syntax_definition::MatchPattern::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::syntax_definition::MatchPattern::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::syntax_definition::MatchPattern where T: core::clone::Clone
-pub type syntect::parsing::syntax_definition::MatchPattern::Owned = T
-pub fn syntect::parsing::syntax_definition::MatchPattern::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::syntax_definition::MatchPattern::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::syntax_definition::MatchPattern where T: 'static + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchPattern::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::syntax_definition::MatchPattern where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchPattern::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::syntax_definition::MatchPattern where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::MatchPattern::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::syntax_definition::MatchPattern
-pub fn syntect::parsing::syntax_definition::MatchPattern::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::syntax_definition::MatchPattern where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::syntax_definition::SyntaxDefinition
 pub syntect::parsing::syntax_definition::SyntaxDefinition::contexts: std::collections::hash::map::HashMap<alloc::string::String, syntect::parsing::syntax_definition::Context>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::file_extensions: alloc::vec::Vec<alloc::string::String>
@@ -1491,29 +826,6 @@ impl core::marker::Sync for syntect::parsing::syntax_definition::SyntaxDefinitio
 impl core::marker::Unpin for syntect::parsing::syntax_definition::SyntaxDefinition
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::SyntaxDefinition
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::SyntaxDefinition
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::syntax_definition::SyntaxDefinition where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::syntax_definition::SyntaxDefinition where U: core::convert::From<T>
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::syntax_definition::SyntaxDefinition where U: core::convert::Into<T>
-pub type syntect::parsing::syntax_definition::SyntaxDefinition::Error = core::convert::Infallible
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::syntax_definition::SyntaxDefinition where U: core::convert::TryFrom<T>
-pub type syntect::parsing::syntax_definition::SyntaxDefinition::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::syntax_definition::SyntaxDefinition where T: core::clone::Clone
-pub type syntect::parsing::syntax_definition::SyntaxDefinition::Owned = T
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::syntax_definition::SyntaxDefinition where T: 'static + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::syntax_definition::SyntaxDefinition where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::syntax_definition::SyntaxDefinition where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::syntax_definition::SyntaxDefinition
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::syntax_definition::SyntaxDefinition where T: for<'de> serde::de::Deserialize<'de>
 pub fn syntect::parsing::syntax_definition::context_iter<'a>(syntax_set: &'a syntect::parsing::SyntaxSet, context: &'a syntect::parsing::syntax_definition::Context) -> syntect::parsing::syntax_definition::MatchIter<'a>
 pub type syntect::parsing::syntax_definition::CaptureMapping = alloc::vec::Vec<(usize, alloc::vec::Vec<syntect::parsing::Scope>)>
 pub enum syntect::parsing::BasicScopeStackOp
@@ -1533,28 +845,6 @@ impl core::marker::Sync for syntect::parsing::BasicScopeStackOp
 impl core::marker::Unpin for syntect::parsing::BasicScopeStackOp
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::BasicScopeStackOp
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::BasicScopeStackOp
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::BasicScopeStackOp where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::BasicScopeStackOp::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::BasicScopeStackOp where U: core::convert::From<T>
-pub fn syntect::parsing::BasicScopeStackOp::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::BasicScopeStackOp where U: core::convert::Into<T>
-pub type syntect::parsing::BasicScopeStackOp::Error = core::convert::Infallible
-pub fn syntect::parsing::BasicScopeStackOp::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::BasicScopeStackOp where U: core::convert::TryFrom<T>
-pub type syntect::parsing::BasicScopeStackOp::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::BasicScopeStackOp::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::BasicScopeStackOp where T: core::clone::Clone
-pub type syntect::parsing::BasicScopeStackOp::Owned = T
-pub fn syntect::parsing::BasicScopeStackOp::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::BasicScopeStackOp::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::BasicScopeStackOp where T: 'static + core::marker::Sized
-pub fn syntect::parsing::BasicScopeStackOp::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::BasicScopeStackOp where T: core::marker::Sized
-pub fn syntect::parsing::BasicScopeStackOp::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::BasicScopeStackOp where T: core::marker::Sized
-pub fn syntect::parsing::BasicScopeStackOp::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::BasicScopeStackOp
-pub fn syntect::parsing::BasicScopeStackOp::from(t: T) -> T
 pub enum syntect::parsing::ClearAmount
 pub syntect::parsing::ClearAmount::All
 pub syntect::parsing::ClearAmount::TopN(usize)
@@ -1577,29 +867,6 @@ impl core::marker::Sync for syntect::parsing::ClearAmount
 impl core::marker::Unpin for syntect::parsing::ClearAmount
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ClearAmount
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ClearAmount
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::ClearAmount where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::ClearAmount::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::ClearAmount where U: core::convert::From<T>
-pub fn syntect::parsing::ClearAmount::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::ClearAmount where U: core::convert::Into<T>
-pub type syntect::parsing::ClearAmount::Error = core::convert::Infallible
-pub fn syntect::parsing::ClearAmount::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::ClearAmount where U: core::convert::TryFrom<T>
-pub type syntect::parsing::ClearAmount::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::ClearAmount::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::ClearAmount where T: core::clone::Clone
-pub type syntect::parsing::ClearAmount::Owned = T
-pub fn syntect::parsing::ClearAmount::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::ClearAmount::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::ClearAmount where T: 'static + core::marker::Sized
-pub fn syntect::parsing::ClearAmount::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::ClearAmount where T: core::marker::Sized
-pub fn syntect::parsing::ClearAmount::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::ClearAmount where T: core::marker::Sized
-pub fn syntect::parsing::ClearAmount::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::ClearAmount
-pub fn syntect::parsing::ClearAmount::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::ClearAmount where T: for<'de> serde::de::Deserialize<'de>
 #[non_exhaustive] pub enum syntect::parsing::ParseScopeError
 pub syntect::parsing::ParseScopeError::TooLong
 pub syntect::parsing::ParseScopeError::TooManyAtoms
@@ -1615,24 +882,6 @@ impl core::marker::Sync for syntect::parsing::ParseScopeError
 impl core::marker::Unpin for syntect::parsing::ParseScopeError
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ParseScopeError
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseScopeError
-impl<T, U> core::convert::Into<U> for syntect::parsing::ParseScopeError where U: core::convert::From<T>
-pub fn syntect::parsing::ParseScopeError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::ParseScopeError where U: core::convert::Into<T>
-pub type syntect::parsing::ParseScopeError::Error = core::convert::Infallible
-pub fn syntect::parsing::ParseScopeError::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::ParseScopeError where U: core::convert::TryFrom<T>
-pub type syntect::parsing::ParseScopeError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::ParseScopeError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::string::ToString for syntect::parsing::ParseScopeError where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::parsing::ParseScopeError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::parsing::ParseScopeError where T: 'static + core::marker::Sized
-pub fn syntect::parsing::ParseScopeError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::ParseScopeError where T: core::marker::Sized
-pub fn syntect::parsing::ParseScopeError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::ParseScopeError where T: core::marker::Sized
-pub fn syntect::parsing::ParseScopeError::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::ParseScopeError
-pub fn syntect::parsing::ParseScopeError::from(t: T) -> T
 #[non_exhaustive] pub enum syntect::parsing::ParseSyntaxError
 pub syntect::parsing::ParseSyntaxError::BadFileRef
 pub syntect::parsing::ParseSyntaxError::EmptyFile
@@ -1655,24 +904,6 @@ impl core::marker::Sync for syntect::parsing::ParseSyntaxError
 impl core::marker::Unpin for syntect::parsing::ParseSyntaxError
 impl !core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ParseSyntaxError
 impl !core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseSyntaxError
-impl<T, U> core::convert::Into<U> for syntect::parsing::ParseSyntaxError where U: core::convert::From<T>
-pub fn syntect::parsing::ParseSyntaxError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::ParseSyntaxError where U: core::convert::Into<T>
-pub type syntect::parsing::ParseSyntaxError::Error = core::convert::Infallible
-pub fn syntect::parsing::ParseSyntaxError::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::ParseSyntaxError where U: core::convert::TryFrom<T>
-pub type syntect::parsing::ParseSyntaxError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::ParseSyntaxError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::string::ToString for syntect::parsing::ParseSyntaxError where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::parsing::ParseSyntaxError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::parsing::ParseSyntaxError where T: 'static + core::marker::Sized
-pub fn syntect::parsing::ParseSyntaxError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::ParseSyntaxError where T: core::marker::Sized
-pub fn syntect::parsing::ParseSyntaxError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::ParseSyntaxError where T: core::marker::Sized
-pub fn syntect::parsing::ParseSyntaxError::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::ParseSyntaxError
-pub fn syntect::parsing::ParseSyntaxError::from(t: T) -> T
 #[non_exhaustive] pub enum syntect::parsing::ParsingError
 pub syntect::parsing::ParsingError::BadMatchIndex(usize)
 pub syntect::parsing::ParsingError::MissingContext(syntect::parsing::syntax_definition::ContextId)
@@ -1690,24 +921,6 @@ impl core::marker::Sync for syntect::parsing::ParsingError
 impl core::marker::Unpin for syntect::parsing::ParsingError
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ParsingError
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParsingError
-impl<T, U> core::convert::Into<U> for syntect::parsing::ParsingError where U: core::convert::From<T>
-pub fn syntect::parsing::ParsingError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::ParsingError where U: core::convert::Into<T>
-pub type syntect::parsing::ParsingError::Error = core::convert::Infallible
-pub fn syntect::parsing::ParsingError::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::ParsingError where U: core::convert::TryFrom<T>
-pub type syntect::parsing::ParsingError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::ParsingError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::string::ToString for syntect::parsing::ParsingError where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::parsing::ParsingError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::parsing::ParsingError where T: 'static + core::marker::Sized
-pub fn syntect::parsing::ParsingError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::ParsingError where T: core::marker::Sized
-pub fn syntect::parsing::ParsingError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::ParsingError where T: core::marker::Sized
-pub fn syntect::parsing::ParsingError::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::ParsingError
-pub fn syntect::parsing::ParsingError::from(t: T) -> T
 #[non_exhaustive] pub enum syntect::parsing::ScopeError
 pub syntect::parsing::ScopeError::NoClearedScopesToRestore
 impl core::convert::From<syntect::parsing::ScopeError> for syntect::Error
@@ -1722,24 +935,6 @@ impl core::marker::Sync for syntect::parsing::ScopeError
 impl core::marker::Unpin for syntect::parsing::ScopeError
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ScopeError
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ScopeError
-impl<T, U> core::convert::Into<U> for syntect::parsing::ScopeError where U: core::convert::From<T>
-pub fn syntect::parsing::ScopeError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::ScopeError where U: core::convert::Into<T>
-pub type syntect::parsing::ScopeError::Error = core::convert::Infallible
-pub fn syntect::parsing::ScopeError::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::ScopeError where U: core::convert::TryFrom<T>
-pub type syntect::parsing::ScopeError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::ScopeError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::string::ToString for syntect::parsing::ScopeError where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::parsing::ScopeError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::parsing::ScopeError where T: 'static + core::marker::Sized
-pub fn syntect::parsing::ScopeError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::ScopeError where T: core::marker::Sized
-pub fn syntect::parsing::ScopeError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::ScopeError where T: core::marker::Sized
-pub fn syntect::parsing::ScopeError::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::ScopeError
-pub fn syntect::parsing::ScopeError::from(t: T) -> T
 pub enum syntect::parsing::ScopeStackOp
 pub syntect::parsing::ScopeStackOp::Clear(syntect::parsing::ClearAmount)
 pub syntect::parsing::ScopeStackOp::Noop
@@ -1760,28 +955,6 @@ impl core::marker::Sync for syntect::parsing::ScopeStackOp
 impl core::marker::Unpin for syntect::parsing::ScopeStackOp
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ScopeStackOp
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ScopeStackOp
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::ScopeStackOp where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::ScopeStackOp::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::ScopeStackOp where U: core::convert::From<T>
-pub fn syntect::parsing::ScopeStackOp::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::ScopeStackOp where U: core::convert::Into<T>
-pub type syntect::parsing::ScopeStackOp::Error = core::convert::Infallible
-pub fn syntect::parsing::ScopeStackOp::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::ScopeStackOp where U: core::convert::TryFrom<T>
-pub type syntect::parsing::ScopeStackOp::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::ScopeStackOp::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::ScopeStackOp where T: core::clone::Clone
-pub type syntect::parsing::ScopeStackOp::Owned = T
-pub fn syntect::parsing::ScopeStackOp::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::ScopeStackOp::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::ScopeStackOp where T: 'static + core::marker::Sized
-pub fn syntect::parsing::ScopeStackOp::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::ScopeStackOp where T: core::marker::Sized
-pub fn syntect::parsing::ScopeStackOp::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::ScopeStackOp where T: core::marker::Sized
-pub fn syntect::parsing::ScopeStackOp::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::ScopeStackOp
-pub fn syntect::parsing::ScopeStackOp::from(t: T) -> T
 pub struct syntect::parsing::MatchPower(pub f64)
 impl core::cmp::Eq for syntect::parsing::MatchPower
 impl core::cmp::Ord for syntect::parsing::MatchPower
@@ -1801,28 +974,6 @@ impl core::marker::Sync for syntect::parsing::MatchPower
 impl core::marker::Unpin for syntect::parsing::MatchPower
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::MatchPower
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::MatchPower
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::MatchPower where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::MatchPower::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::MatchPower where U: core::convert::From<T>
-pub fn syntect::parsing::MatchPower::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::MatchPower where U: core::convert::Into<T>
-pub type syntect::parsing::MatchPower::Error = core::convert::Infallible
-pub fn syntect::parsing::MatchPower::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::MatchPower where U: core::convert::TryFrom<T>
-pub type syntect::parsing::MatchPower::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::MatchPower::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::MatchPower where T: core::clone::Clone
-pub type syntect::parsing::MatchPower::Owned = T
-pub fn syntect::parsing::MatchPower::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::MatchPower::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::MatchPower where T: 'static + core::marker::Sized
-pub fn syntect::parsing::MatchPower::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::MatchPower where T: core::marker::Sized
-pub fn syntect::parsing::MatchPower::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::MatchPower where T: core::marker::Sized
-pub fn syntect::parsing::MatchPower::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::MatchPower
-pub fn syntect::parsing::MatchPower::from(t: T) -> T
 pub struct syntect::parsing::ParseState
 impl syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::new(syntax: &syntect::parsing::SyntaxReference) -> syntect::parsing::ParseState
@@ -1841,28 +992,6 @@ impl !core::marker::Sync for syntect::parsing::ParseState
 impl core::marker::Unpin for syntect::parsing::ParseState
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ParseState
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseState
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::ParseState where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::ParseState::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::ParseState where U: core::convert::From<T>
-pub fn syntect::parsing::ParseState::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::ParseState where U: core::convert::Into<T>
-pub type syntect::parsing::ParseState::Error = core::convert::Infallible
-pub fn syntect::parsing::ParseState::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::ParseState where U: core::convert::TryFrom<T>
-pub type syntect::parsing::ParseState::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::ParseState::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::ParseState where T: core::clone::Clone
-pub type syntect::parsing::ParseState::Owned = T
-pub fn syntect::parsing::ParseState::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::ParseState::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::ParseState where T: 'static + core::marker::Sized
-pub fn syntect::parsing::ParseState::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::ParseState where T: core::marker::Sized
-pub fn syntect::parsing::ParseState::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::ParseState where T: core::marker::Sized
-pub fn syntect::parsing::ParseState::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::ParseState
-pub fn syntect::parsing::ParseState::from(t: T) -> T
 pub struct syntect::parsing::Regex
 impl syntect::parsing::Regex
 pub fn syntect::parsing::Regex::is_match(&self, text: &str) -> bool
@@ -1886,29 +1015,6 @@ impl core::marker::Sync for syntect::parsing::Regex
 impl core::marker::Unpin for syntect::parsing::Regex
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::Regex
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::Regex
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::Regex where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::Regex::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::Regex where U: core::convert::From<T>
-pub fn syntect::parsing::Regex::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::Regex where U: core::convert::Into<T>
-pub type syntect::parsing::Regex::Error = core::convert::Infallible
-pub fn syntect::parsing::Regex::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::Regex where U: core::convert::TryFrom<T>
-pub type syntect::parsing::Regex::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::Regex::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::Regex where T: core::clone::Clone
-pub type syntect::parsing::Regex::Owned = T
-pub fn syntect::parsing::Regex::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::Regex::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::Regex where T: 'static + core::marker::Sized
-pub fn syntect::parsing::Regex::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::Regex where T: core::marker::Sized
-pub fn syntect::parsing::Regex::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::Regex where T: core::marker::Sized
-pub fn syntect::parsing::Regex::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::Regex
-pub fn syntect::parsing::Regex::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::Regex where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::Region
 impl syntect::parsing::Region
 pub fn syntect::parsing::Region::new() -> Self
@@ -1929,28 +1035,6 @@ impl !core::marker::Sync for syntect::parsing::Region
 impl core::marker::Unpin for syntect::parsing::Region
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::Region
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::Region
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::Region where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::Region::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::Region where U: core::convert::From<T>
-pub fn syntect::parsing::Region::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::Region where U: core::convert::Into<T>
-pub type syntect::parsing::Region::Error = core::convert::Infallible
-pub fn syntect::parsing::Region::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::Region where U: core::convert::TryFrom<T>
-pub type syntect::parsing::Region::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::Region::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::Region where T: core::clone::Clone
-pub type syntect::parsing::Region::Owned = T
-pub fn syntect::parsing::Region::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::Region::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::Region where T: 'static + core::marker::Sized
-pub fn syntect::parsing::Region::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::Region where T: core::marker::Sized
-pub fn syntect::parsing::Region::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::Region where T: core::marker::Sized
-pub fn syntect::parsing::Region::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::Region
-pub fn syntect::parsing::Region::from(t: T) -> T
 pub struct syntect::parsing::Scope
 impl syntect::parsing::Scope
 pub fn syntect::parsing::Scope::atom_at(self, index: usize) -> u16
@@ -1991,31 +1075,6 @@ impl core::marker::Sync for syntect::parsing::Scope
 impl core::marker::Unpin for syntect::parsing::Scope
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::Scope
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::Scope
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::Scope where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::Scope::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::Scope where U: core::convert::From<T>
-pub fn syntect::parsing::Scope::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::Scope where U: core::convert::Into<T>
-pub type syntect::parsing::Scope::Error = core::convert::Infallible
-pub fn syntect::parsing::Scope::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::Scope where U: core::convert::TryFrom<T>
-pub type syntect::parsing::Scope::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::Scope::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::Scope where T: core::clone::Clone
-pub type syntect::parsing::Scope::Owned = T
-pub fn syntect::parsing::Scope::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::Scope::to_owned(&self) -> T
-impl<T> alloc::string::ToString for syntect::parsing::Scope where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::parsing::Scope::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::parsing::Scope where T: 'static + core::marker::Sized
-pub fn syntect::parsing::Scope::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::Scope where T: core::marker::Sized
-pub fn syntect::parsing::Scope::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::Scope where T: core::marker::Sized
-pub fn syntect::parsing::Scope::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::Scope
-pub fn syntect::parsing::Scope::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::Scope where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::ScopeRepository
 impl syntect::parsing::ScopeRepository
 pub fn syntect::parsing::ScopeRepository::atom_str(&self, atom_number: u16) -> &str
@@ -2028,22 +1087,6 @@ impl core::marker::Sync for syntect::parsing::ScopeRepository
 impl core::marker::Unpin for syntect::parsing::ScopeRepository
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ScopeRepository
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ScopeRepository
-impl<T, U> core::convert::Into<U> for syntect::parsing::ScopeRepository where U: core::convert::From<T>
-pub fn syntect::parsing::ScopeRepository::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::ScopeRepository where U: core::convert::Into<T>
-pub type syntect::parsing::ScopeRepository::Error = core::convert::Infallible
-pub fn syntect::parsing::ScopeRepository::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::ScopeRepository where U: core::convert::TryFrom<T>
-pub type syntect::parsing::ScopeRepository::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::ScopeRepository::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::parsing::ScopeRepository where T: 'static + core::marker::Sized
-pub fn syntect::parsing::ScopeRepository::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::ScopeRepository where T: core::marker::Sized
-pub fn syntect::parsing::ScopeRepository::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::ScopeRepository where T: core::marker::Sized
-pub fn syntect::parsing::ScopeRepository::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::ScopeRepository
-pub fn syntect::parsing::ScopeRepository::from(t: T) -> T
 pub struct syntect::parsing::ScopeStack
 pub syntect::parsing::ScopeStack::scopes: alloc::vec::Vec<syntect::parsing::Scope>
 impl syntect::parsing::ScopeStack
@@ -2084,31 +1127,6 @@ impl core::marker::Sync for syntect::parsing::ScopeStack
 impl core::marker::Unpin for syntect::parsing::ScopeStack
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ScopeStack
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ScopeStack
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::ScopeStack where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::ScopeStack::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::ScopeStack where U: core::convert::From<T>
-pub fn syntect::parsing::ScopeStack::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::ScopeStack where U: core::convert::Into<T>
-pub type syntect::parsing::ScopeStack::Error = core::convert::Infallible
-pub fn syntect::parsing::ScopeStack::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::ScopeStack where U: core::convert::TryFrom<T>
-pub type syntect::parsing::ScopeStack::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::ScopeStack::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::ScopeStack where T: core::clone::Clone
-pub type syntect::parsing::ScopeStack::Owned = T
-pub fn syntect::parsing::ScopeStack::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::ScopeStack::to_owned(&self) -> T
-impl<T> alloc::string::ToString for syntect::parsing::ScopeStack where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::parsing::ScopeStack::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::parsing::ScopeStack where T: 'static + core::marker::Sized
-pub fn syntect::parsing::ScopeStack::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::ScopeStack where T: core::marker::Sized
-pub fn syntect::parsing::ScopeStack::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::ScopeStack where T: core::marker::Sized
-pub fn syntect::parsing::ScopeStack::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::ScopeStack
-pub fn syntect::parsing::ScopeStack::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::ScopeStack where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::SyntaxDefinition
 pub syntect::parsing::SyntaxDefinition::contexts: std::collections::hash::map::HashMap<alloc::string::String, syntect::parsing::syntax_definition::Context>
 pub syntect::parsing::SyntaxDefinition::file_extensions: alloc::vec::Vec<alloc::string::String>
@@ -2137,29 +1155,6 @@ impl core::marker::Sync for syntect::parsing::syntax_definition::SyntaxDefinitio
 impl core::marker::Unpin for syntect::parsing::syntax_definition::SyntaxDefinition
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::SyntaxDefinition
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::SyntaxDefinition
-impl<Q, K> indexmap::equivalent::Equivalent<K> for syntect::parsing::syntax_definition::SyntaxDefinition where Q: core::cmp::Eq + core::marker::Sized, K: core::borrow::Borrow<Q> + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::equivalent(&self, key: &K) -> bool
-impl<T, U> core::convert::Into<U> for syntect::parsing::syntax_definition::SyntaxDefinition where U: core::convert::From<T>
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::syntax_definition::SyntaxDefinition where U: core::convert::Into<T>
-pub type syntect::parsing::syntax_definition::SyntaxDefinition::Error = core::convert::Infallible
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::syntax_definition::SyntaxDefinition where U: core::convert::TryFrom<T>
-pub type syntect::parsing::syntax_definition::SyntaxDefinition::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::syntax_definition::SyntaxDefinition where T: core::clone::Clone
-pub type syntect::parsing::syntax_definition::SyntaxDefinition::Owned = T
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::syntax_definition::SyntaxDefinition where T: 'static + core::marker::Sized
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::syntax_definition::SyntaxDefinition where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::syntax_definition::SyntaxDefinition where T: core::marker::Sized
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::syntax_definition::SyntaxDefinition
-pub fn syntect::parsing::syntax_definition::SyntaxDefinition::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::syntax_definition::SyntaxDefinition where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::SyntaxReference
 pub syntect::parsing::SyntaxReference::file_extensions: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::SyntaxReference::first_line_match: core::option::Option<alloc::string::String>
@@ -2180,27 +1175,6 @@ impl core::marker::Sync for syntect::parsing::SyntaxReference
 impl core::marker::Unpin for syntect::parsing::SyntaxReference
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::SyntaxReference
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::SyntaxReference
-impl<T, U> core::convert::Into<U> for syntect::parsing::SyntaxReference where U: core::convert::From<T>
-pub fn syntect::parsing::SyntaxReference::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::SyntaxReference where U: core::convert::Into<T>
-pub type syntect::parsing::SyntaxReference::Error = core::convert::Infallible
-pub fn syntect::parsing::SyntaxReference::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::SyntaxReference where U: core::convert::TryFrom<T>
-pub type syntect::parsing::SyntaxReference::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::SyntaxReference::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::SyntaxReference where T: core::clone::Clone
-pub type syntect::parsing::SyntaxReference::Owned = T
-pub fn syntect::parsing::SyntaxReference::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::SyntaxReference::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::SyntaxReference where T: 'static + core::marker::Sized
-pub fn syntect::parsing::SyntaxReference::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::SyntaxReference where T: core::marker::Sized
-pub fn syntect::parsing::SyntaxReference::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::SyntaxReference where T: core::marker::Sized
-pub fn syntect::parsing::SyntaxReference::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::SyntaxReference
-pub fn syntect::parsing::SyntaxReference::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::SyntaxReference where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::SyntaxSet
 impl syntect::parsing::SyntaxSet
 pub fn syntect::parsing::SyntaxSet::find_syntax_by_extension<'a>(&'a self, extension: &str) -> core::option::Option<&'a syntect::parsing::SyntaxReference>
@@ -2234,27 +1208,6 @@ impl core::marker::Sync for syntect::parsing::SyntaxSet
 impl core::marker::Unpin for syntect::parsing::SyntaxSet
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::SyntaxSet
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::SyntaxSet
-impl<T, U> core::convert::Into<U> for syntect::parsing::SyntaxSet where U: core::convert::From<T>
-pub fn syntect::parsing::SyntaxSet::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::SyntaxSet where U: core::convert::Into<T>
-pub type syntect::parsing::SyntaxSet::Error = core::convert::Infallible
-pub fn syntect::parsing::SyntaxSet::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::SyntaxSet where U: core::convert::TryFrom<T>
-pub type syntect::parsing::SyntaxSet::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::SyntaxSet::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::SyntaxSet where T: core::clone::Clone
-pub type syntect::parsing::SyntaxSet::Owned = T
-pub fn syntect::parsing::SyntaxSet::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::SyntaxSet::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::SyntaxSet where T: 'static + core::marker::Sized
-pub fn syntect::parsing::SyntaxSet::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::SyntaxSet where T: core::marker::Sized
-pub fn syntect::parsing::SyntaxSet::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::SyntaxSet where T: core::marker::Sized
-pub fn syntect::parsing::SyntaxSet::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::SyntaxSet
-pub fn syntect::parsing::SyntaxSet::from(t: T) -> T
-impl<T> serde::de::DeserializeOwned for syntect::parsing::SyntaxSet where T: for<'de> serde::de::Deserialize<'de>
 pub struct syntect::parsing::SyntaxSetBuilder
 impl syntect::parsing::SyntaxSetBuilder
 pub fn syntect::parsing::SyntaxSetBuilder::add(&mut self, syntax: syntect::parsing::syntax_definition::SyntaxDefinition)
@@ -2272,26 +1225,6 @@ impl core::marker::Sync for syntect::parsing::SyntaxSetBuilder
 impl core::marker::Unpin for syntect::parsing::SyntaxSetBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::SyntaxSetBuilder
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::SyntaxSetBuilder
-impl<T, U> core::convert::Into<U> for syntect::parsing::SyntaxSetBuilder where U: core::convert::From<T>
-pub fn syntect::parsing::SyntaxSetBuilder::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::parsing::SyntaxSetBuilder where U: core::convert::Into<T>
-pub type syntect::parsing::SyntaxSetBuilder::Error = core::convert::Infallible
-pub fn syntect::parsing::SyntaxSetBuilder::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::parsing::SyntaxSetBuilder where U: core::convert::TryFrom<T>
-pub type syntect::parsing::SyntaxSetBuilder::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::parsing::SyntaxSetBuilder::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for syntect::parsing::SyntaxSetBuilder where T: core::clone::Clone
-pub type syntect::parsing::SyntaxSetBuilder::Owned = T
-pub fn syntect::parsing::SyntaxSetBuilder::clone_into(&self, target: &mut T)
-pub fn syntect::parsing::SyntaxSetBuilder::to_owned(&self) -> T
-impl<T> core::any::Any for syntect::parsing::SyntaxSetBuilder where T: 'static + core::marker::Sized
-pub fn syntect::parsing::SyntaxSetBuilder::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::parsing::SyntaxSetBuilder where T: core::marker::Sized
-pub fn syntect::parsing::SyntaxSetBuilder::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::parsing::SyntaxSetBuilder where T: core::marker::Sized
-pub fn syntect::parsing::SyntaxSetBuilder::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::parsing::SyntaxSetBuilder
-pub fn syntect::parsing::SyntaxSetBuilder::from(t: T) -> T
 pub const syntect::parsing::ATOM_LEN_BITS: u16 = 3u16
 pub static syntect::parsing::SCOPE_REPO: once_cell::sync::Lazy<std::sync::mutex::Mutex<syntect::parsing::ScopeRepository>>
 pub mod syntect::util
@@ -2306,26 +1239,6 @@ impl<'a> core::marker::Sync for syntect::util::LinesWithEndings<'a>
 impl<'a> core::marker::Unpin for syntect::util::LinesWithEndings<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::util::LinesWithEndings<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::util::LinesWithEndings<'a>
-impl<I> core::iter::traits::collect::IntoIterator for syntect::util::LinesWithEndings<'a> where I: core::iter::traits::iterator::Iterator
-pub type syntect::util::LinesWithEndings<'a>::IntoIter = I
-pub type syntect::util::LinesWithEndings<'a>::Item = <I as core::iter::traits::iterator::Iterator>::Item
-pub fn syntect::util::LinesWithEndings<'a>::into_iter(self) -> I
-impl<T, U> core::convert::Into<U> for syntect::util::LinesWithEndings<'a> where U: core::convert::From<T>
-pub fn syntect::util::LinesWithEndings<'a>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::util::LinesWithEndings<'a> where U: core::convert::Into<T>
-pub type syntect::util::LinesWithEndings<'a>::Error = core::convert::Infallible
-pub fn syntect::util::LinesWithEndings<'a>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::util::LinesWithEndings<'a> where U: core::convert::TryFrom<T>
-pub type syntect::util::LinesWithEndings<'a>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::util::LinesWithEndings<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for syntect::util::LinesWithEndings<'a> where T: 'static + core::marker::Sized
-pub fn syntect::util::LinesWithEndings<'a>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::util::LinesWithEndings<'a> where T: core::marker::Sized
-pub fn syntect::util::LinesWithEndings<'a>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::util::LinesWithEndings<'a> where T: core::marker::Sized
-pub fn syntect::util::LinesWithEndings<'a>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::util::LinesWithEndings<'a>
-pub fn syntect::util::LinesWithEndings<'a>::from(t: T) -> T
 pub fn syntect::util::as_24_bit_terminal_escaped(v: &[(syntect::highlighting::Style, &str)], bg: bool) -> alloc::string::String
 pub fn syntect::util::as_latex_escaped(v: &[(syntect::highlighting::Style, &str)]) -> alloc::string::String
 pub fn syntect::util::debug_print_ops(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)])
@@ -2358,24 +1271,6 @@ impl core::marker::Sync for syntect::Error
 impl core::marker::Unpin for syntect::Error
 impl !core::panic::unwind_safe::RefUnwindSafe for syntect::Error
 impl !core::panic::unwind_safe::UnwindSafe for syntect::Error
-impl<T, U> core::convert::Into<U> for syntect::Error where U: core::convert::From<T>
-pub fn syntect::Error::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::Error where U: core::convert::Into<T>
-pub type syntect::Error::Error = core::convert::Infallible
-pub fn syntect::Error::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::Error where U: core::convert::TryFrom<T>
-pub type syntect::Error::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::Error::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::string::ToString for syntect::Error where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::Error::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::Error where T: 'static + core::marker::Sized
-pub fn syntect::Error::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::Error where T: core::marker::Sized
-pub fn syntect::Error::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::Error where T: core::marker::Sized
-pub fn syntect::Error::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::Error
-pub fn syntect::Error::from(t: T) -> T
 #[non_exhaustive] pub enum syntect::LoadingError
 pub syntect::LoadingError::BadPath
 pub syntect::LoadingError::Io(std::io::error::Error)
@@ -2404,21 +1299,3 @@ impl core::marker::Sync for syntect::LoadingError
 impl core::marker::Unpin for syntect::LoadingError
 impl !core::panic::unwind_safe::RefUnwindSafe for syntect::LoadingError
 impl !core::panic::unwind_safe::UnwindSafe for syntect::LoadingError
-impl<T, U> core::convert::Into<U> for syntect::LoadingError where U: core::convert::From<T>
-pub fn syntect::LoadingError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for syntect::LoadingError where U: core::convert::Into<T>
-pub type syntect::LoadingError::Error = core::convert::Infallible
-pub fn syntect::LoadingError::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for syntect::LoadingError where U: core::convert::TryFrom<T>
-pub type syntect::LoadingError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn syntect::LoadingError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::string::ToString for syntect::LoadingError where T: core::fmt::Display + core::marker::Sized
-pub fn syntect::LoadingError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for syntect::LoadingError where T: 'static + core::marker::Sized
-pub fn syntect::LoadingError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for syntect::LoadingError where T: core::marker::Sized
-pub fn syntect::LoadingError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for syntect::LoadingError where T: core::marker::Sized
-pub fn syntect::LoadingError::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for syntect::LoadingError
-pub fn syntect::LoadingError::from(t: T) -> T
