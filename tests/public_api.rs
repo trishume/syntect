@@ -11,6 +11,7 @@ fn public_api() {
 
     // Derive the public API from the rustdoc JSON
     let public_api = public_api::Builder::from_rustdoc_json(rustdoc_json)
+        .omit_blanket_impls(true)
         .build()
         .unwrap();
 
