@@ -226,7 +226,7 @@ pub(crate) fn substitute_backrefs_in_regex<F>(regex_str: &str, substituter: F) -
 
     let mut last_was_escape = false;
     for c in regex_str.chars() {
-        if last_was_escape && c.is_digit(10) {
+        if last_was_escape && c.is_ascii_digit() {
             let val = c.to_digit(10).unwrap() as usize;
             if let Some(sub) = substituter(val) {
                 reg_str.push_str(&sub);

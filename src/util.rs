@@ -132,7 +132,7 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
         }
         content = text.to_string();
         for &(old, new) in LATEX_REPLACE.iter() {
-            content = content.replace(&old, new);
+            content = content.replace(old, new);
         }
         write!(s, "{}", &content).unwrap();
         prev_style = Some(style);

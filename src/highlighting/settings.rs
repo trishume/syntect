@@ -4,8 +4,6 @@ use plist::Error as PlistError;
 use std::io::{Read, Seek};
 
 pub use serde_json::Value as Settings;
-pub use serde_json::Value::Array as SettingsArray;
-pub use serde_json::Value::Object as SettingsObject;
 
 pub trait ParseSettings: Sized {
     type Error;

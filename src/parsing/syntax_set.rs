@@ -357,11 +357,11 @@ impl SyntaxSet {
         let syntax = &self
             .syntaxes
             .get(context_id.syntax_index)
-            .ok_or_else(|| ParsingError::MissingContext(*context_id))?;
+            .ok_or(ParsingError::MissingContext(*context_id))?;
         syntax
             .contexts()
             .get(context_id.context_index)
-            .ok_or_else(|| ParsingError::MissingContext(*context_id))
+            .ok_or(ParsingError::MissingContext(*context_id))
     }
 
     fn first_line_cache(&self) -> &FirstLineCache {
@@ -590,12 +590,12 @@ impl SyntaxSetBuilder {
         }
 
         let mut found_more_backref_includes = true;
-        for (syntax_index, syntax) in syntaxes.iter().enumerate() {
+        for (syntax_index, _syntax) in syntaxes.iter().enumerate() {
             let mut no_prototype = HashSet::new();
             let prototype = all_context_ids[syntax_index].get("prototype");
             if let Some(prototype_id) = prototype {
                 // TODO: We could do this after parsing YAML, instead of here?
-                Self::recursively_mark_no_prototype(syntax, prototype_id, &all_context_ids[syntax_index], &all_contexts, &mut no_prototype);
+                Self::recursively_mark_no_prototype(prototype_id, &all_context_ids[syntax_index], &all_contexts, &mut no_prototype);
             }
 
             for context_id in all_context_ids[syntax_index].values() {
@@ -670,7 +670,6 @@ impl SyntaxSetBuilder {
     /// Anything recursively included by the prototype shouldn't include the prototype.
     /// This marks them as such.
     fn recursively_mark_no_prototype(
-        syntax: &SyntaxReference,
         context_id: &ContextId,
         syntax_context_ids: &HashMap<String, ContextId>,
         all_contexts: &[Vec<Context>],
@@ -696,11 +695,11 @@ impl SyntaxSetBuilder {
                             match context_ref {
                                 ContextReference::Inline(ref s) | ContextReference::Named(ref s) => {
                                     if let Some(i) = syntax_context_ids.get(s) {
-                                        Self::recursively_mark_no_prototype(syntax, i, syntax_context_ids, all_contexts, no_prototype);
+                                        Self::recursively_mark_no_prototype(i, syntax_context_ids, all_contexts, no_prototype);
                                     }
                                 },
                                 ContextReference::Direct(ref id) => {
-                                    Self::recursively_mark_no_prototype(syntax, id, syntax_context_ids, all_contexts, no_prototype);
+                                    Self::recursively_mark_no_prototype(id, syntax_context_ids, all_contexts, no_prototype);
                                 },
                                 _ => (),
                             }
@@ -711,11 +710,11 @@ impl SyntaxSetBuilder {
                     match reference {
                         ContextReference::Named(ref s) => {
                             if let Some(id) = syntax_context_ids.get(s) {
-                                Self::recursively_mark_no_prototype(syntax, id, syntax_context_ids, all_contexts, no_prototype);
+                                Self::recursively_mark_no_prototype(id, syntax_context_ids, all_contexts, no_prototype);
                             }
                         },
                         ContextReference::Direct(ref id) => {
-                            Self::recursively_mark_no_prototype(syntax, id, syntax_context_ids, all_contexts, no_prototype);
+                            Self::recursively_mark_no_prototype(id, syntax_context_ids, all_contexts, no_prototype);
                         },
                         _ => (),
                     }

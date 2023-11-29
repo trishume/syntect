@@ -148,11 +148,9 @@ impl From<LoadMetadata> for Metadata {
         }
 
         let scoped_metadata = scoped_metadata.into_iter()
-            .map(|r|
+            .flat_map(|r|
                  MetadataSet::from_raw(r)
-                     .map_err(|e| eprintln!("{}", e))
-                 )
-            .flatten()
+                     .map_err(|e| eprintln!("{}", e)))
             .collect();
         Metadata { scoped_metadata }
     }
@@ -205,8 +203,7 @@ impl Metadata {
             final_items.insert(item.selector_string.clone(), item);
         }
 
-        let scoped_metadata: Vec<MetadataSet> = final_items.into_iter()
-            .map(|(_k, v)| v)
+        let scoped_metadata: Vec<MetadataSet> = final_items.into_values()
             .collect();
 
         Metadata { scoped_metadata }
