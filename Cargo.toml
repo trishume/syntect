@@ -41,7 +41,7 @@ getopts = "0.2"
 pretty_assertions = "0.6"
 rustup-toolchain = "0.1.5"
 rustdoc-json = "0.8.8"
-public-api = "0.33.0"
+public-api = "0.33.1"
 expect-test = "1.4.1"
 
 [features]
