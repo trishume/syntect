@@ -108,7 +108,25 @@ mod tests {
                 r: 0xc0,
                 g: 0xc5,
                 b: 0xce,
-                a: 0xFF,
+                a: 0xff,
+            }
+        );
+        assert_eq!(
+            theme.settings.gutter_foreground.unwrap(),
+            Color {
+                r: 0x65,
+                g: 0x73,
+                b: 0x7e,
+                a: 0xff,
+            }
+        );
+        assert_eq!(
+            theme.settings.gutter.unwrap(),
+            Color {
+                r: 0x34,
+                g: 0x3d,
+                b: 0x46,
+                a: 0xff,
             }
         );
         // unreachable!();
