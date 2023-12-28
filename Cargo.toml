@@ -9,7 +9,7 @@ readme = "Readme.md"
 license = "MIT"
 version = "5.1.0" # remember to update html_root_url
 authors = ["Tristan Hume <tristan@thume.ca>"]
-edition = "2018"
+edition = "2021"
 exclude = [
     "testdata/*",
     "/scripts/*",
