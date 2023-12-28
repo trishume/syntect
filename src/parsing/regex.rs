@@ -1,5 +1,6 @@
 use once_cell::sync::OnceCell;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::{Deserialize, Deserializer};
+use serde::ser::{Serialize, Serializer};
 use std::error::Error;
 
 /// An abstraction for regex patterns.

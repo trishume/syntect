@@ -7,8 +7,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::str::FromStr;
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json;
+use serde::de::{Deserialize, Deserializer};
+use serde::ser::{Serialize, Serializer};
+use serde_derive::{Deserialize, Serialize};
 
 use super::regex::Regex;
 use super::scope::{MatchPower, Scope};

@@ -33,6 +33,9 @@ jobs:
     - name: Run cargo check
       run: |
         cargo check --all-features --all-targets
+        # Check that if some other crate in the downstream dependency tree
+        # enables serde's "derive" feature, syntect still builds.
+        cargo check --all-features --features serde/derive
 
   documentation:
     name: Documentation checks

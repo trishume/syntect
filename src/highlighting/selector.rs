@@ -2,7 +2,7 @@
 /// released under the MIT license by @defuz
 use crate::parsing::{Scope, ScopeStack, MatchPower, ParseScopeError};
 use std::str::FromStr;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 /// A single selector consisting of a stack to match and a possible stack to
 /// exclude from being matched.
