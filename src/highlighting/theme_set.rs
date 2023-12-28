@@ -2,7 +2,7 @@ use super::super::LoadingError;
 #[cfg(feature = "plist-load")]
 use super::settings::*;
 use super::theme::Theme;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 

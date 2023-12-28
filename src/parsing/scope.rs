@@ -9,8 +9,9 @@ use std::cmp::{Ordering, min};
 use std::mem;
 
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::{Error, Visitor};
+use serde::de::{Deserialize, Deserializer, Error, Visitor};
+use serde::ser::{Serialize, Serializer};
+use serde_derive::{Deserialize, Serialize};
 
 /// Scope related errors
 #[derive(Debug, thiserror::Error)]

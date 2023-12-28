@@ -34,7 +34,7 @@ use flate2::bufread::ZlibDecoder;
 #[cfg(feature = "dump-create")]
 use flate2::Compression;
 #[cfg(feature = "dump-create")]
-use serde::Serialize;
+use serde::ser::Serialize;
 #[cfg(feature = "dump-load")]
 use serde::de::DeserializeOwned;
 
