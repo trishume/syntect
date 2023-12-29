@@ -159,12 +159,11 @@ impl core::marker::Sync for syntect::highlighting::Color
 impl core::marker::Unpin for syntect::highlighting::Color
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::Color
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::Color
-pub struct syntect::highlighting::FontStyle(_)
+pub struct syntect::highlighting::FontStyle
 impl syntect::highlighting::FontStyle
 pub const syntect::highlighting::FontStyle::BOLD: Self
 pub const syntect::highlighting::FontStyle::ITALIC: Self
 pub const syntect::highlighting::FontStyle::UNDERLINE: Self
-impl syntect::highlighting::FontStyle
 pub const fn syntect::highlighting::FontStyle::all() -> Self
 pub const fn syntect::highlighting::FontStyle::bits(&self) -> u8
 pub const fn syntect::highlighting::FontStyle::complement(self) -> Self
@@ -172,9 +171,8 @@ pub const fn syntect::highlighting::FontStyle::contains(&self, other: Self) -> b
 pub const fn syntect::highlighting::FontStyle::difference(self, other: Self) -> Self
 pub const fn syntect::highlighting::FontStyle::empty() -> Self
 pub const fn syntect::highlighting::FontStyle::from_bits(bits: u8) -> core::option::Option<Self>
-pub const fn syntect::highlighting::FontStyle::from_bits_retain(bits: u8) -> Self
 pub const fn syntect::highlighting::FontStyle::from_bits_truncate(bits: u8) -> Self
-pub fn syntect::highlighting::FontStyle::from_name(name: &str) -> core::option::Option<Self>
+pub unsafe const fn syntect::highlighting::FontStyle::from_bits_unchecked(bits: u8) -> Self
 pub fn syntect::highlighting::FontStyle::insert(&mut self, other: Self)
 pub const fn syntect::highlighting::FontStyle::intersection(self, other: Self) -> Self
 pub const fn syntect::highlighting::FontStyle::intersects(&self, other: Self) -> bool
@@ -185,22 +183,15 @@ pub fn syntect::highlighting::FontStyle::set(&mut self, other: Self, value: bool
 pub const fn syntect::highlighting::FontStyle::symmetric_difference(self, other: Self) -> Self
 pub fn syntect::highlighting::FontStyle::toggle(&mut self, other: Self)
 pub const fn syntect::highlighting::FontStyle::union(self, other: Self) -> Self
-impl syntect::highlighting::FontStyle
-pub const fn syntect::highlighting::FontStyle::iter(&self) -> bitflags::iter::Iter<syntect::highlighting::FontStyle>
-pub const fn syntect::highlighting::FontStyle::iter_names(&self) -> bitflags::iter::IterNames<syntect::highlighting::FontStyle>
-impl bitflags::traits::Flags for syntect::highlighting::FontStyle
-pub type syntect::highlighting::FontStyle::Bits = u8
-pub const syntect::highlighting::FontStyle::FLAGS: &'static [bitflags::traits::Flag<syntect::highlighting::FontStyle>]
-pub fn syntect::highlighting::FontStyle::bits(&self) -> u8
-pub fn syntect::highlighting::FontStyle::from_bits_retain(bits: u8) -> syntect::highlighting::FontStyle
-impl bitflags::traits::PublicFlags for syntect::highlighting::FontStyle
-pub type syntect::highlighting::FontStyle::Internal = InternalBitFlags
-pub type syntect::highlighting::FontStyle::Primitive = u8
 impl core::clone::Clone for syntect::highlighting::FontStyle
 pub fn syntect::highlighting::FontStyle::clone(&self) -> syntect::highlighting::FontStyle
 impl core::cmp::Eq for syntect::highlighting::FontStyle
+impl core::cmp::Ord for syntect::highlighting::FontStyle
+pub fn syntect::highlighting::FontStyle::cmp(&self, other: &syntect::highlighting::FontStyle) -> core::cmp::Ordering
 impl core::cmp::PartialEq<syntect::highlighting::FontStyle> for syntect::highlighting::FontStyle
 pub fn syntect::highlighting::FontStyle::eq(&self, other: &syntect::highlighting::FontStyle) -> bool
+impl core::cmp::PartialOrd<syntect::highlighting::FontStyle> for syntect::highlighting::FontStyle
+pub fn syntect::highlighting::FontStyle::partial_cmp(&self, other: &syntect::highlighting::FontStyle) -> core::option::Option<core::cmp::Ordering>
 impl core::default::Default for syntect::highlighting::FontStyle
 pub fn syntect::highlighting::FontStyle::default() -> syntect::highlighting::FontStyle
 impl core::fmt::Binary for syntect::highlighting::FontStyle
@@ -219,10 +210,6 @@ impl core::iter::traits::collect::Extend<syntect::highlighting::FontStyle> for s
 pub fn syntect::highlighting::FontStyle::extend<T: core::iter::traits::collect::IntoIterator<Item = Self>>(&mut self, iterator: T)
 impl core::iter::traits::collect::FromIterator<syntect::highlighting::FontStyle> for syntect::highlighting::FontStyle
 pub fn syntect::highlighting::FontStyle::from_iter<T: core::iter::traits::collect::IntoIterator<Item = Self>>(iterator: T) -> Self
-impl core::iter::traits::collect::IntoIterator for syntect::highlighting::FontStyle
-pub type syntect::highlighting::FontStyle::IntoIter = bitflags::iter::Iter<syntect::highlighting::FontStyle>
-pub type syntect::highlighting::FontStyle::Item = syntect::highlighting::FontStyle
-pub fn syntect::highlighting::FontStyle::into_iter(self) -> Self::IntoIter
 impl core::marker::Copy for syntect::highlighting::FontStyle
 impl core::marker::StructuralEq for syntect::highlighting::FontStyle
 impl core::marker::StructuralPartialEq for syntect::highlighting::FontStyle
