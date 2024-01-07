@@ -1,0 +1,64 @@
+name: Release
+
+# To make a release:
+#
+# 1. Update Cargo.toml version and CHANGELOG.md on master
+# 2. Run workflow https://github.com/trishume/syntect/actions/workflows/Release.yml on master
+# 3. Done!
+
+on:
+  workflow_dispatch: # This workflow can only be triggered manually.
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Make sure regular CI passes before we make a release.
+  ci:
+    uses: ./.github/workflows/CI.yml
+
+  # After regular CI passes we publish to crates.io and push a git tag.
+  publish-and-tag:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment:
+      name: crates.io
+      url: https://crates.io/crates/syntect
+    permissions:
+      contents: write # So we can push a tag.
+    outputs:
+      VERSION: ${{ steps.version.outputs.VERSION }}
+      TAG_NAME: ${{ steps.version.outputs.TAG_NAME }}
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo publish -p syntect
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: version
+        id: version
+        run: |
+          version=$(cargo read-manifest --manifest-path Cargo.toml | jq --raw-output .version)
+          echo "VERSION=${version}" >> $GITHUB_OUTPUT
+          echo "TAG_NAME=v${version}" >> $GITHUB_OUTPUT
+      - name: push tag
+        run: |
+          git tag ${{ steps.version.outputs.TAG_NAME }}
+          git push origin ${{ steps.version.outputs.TAG_NAME }}
+
+  # Lastly, create a GitHub release. Note that the secret crates.io token is
+  # inaccessible to this job. That is good since we run some third party code.
+  release:
+    needs: publish-and-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # So we can create a release.
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo install parse-changelog@0.6.4 --locked
+      - name: create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$(parse-changelog CHANGELOG.md ${{ needs.publish-and-tag.outputs.VERSION }})"
+          title="${{ needs.publish-and-tag.outputs.TAG_NAME }}"
+          gh release create --title "$title" --notes "$notes" ${{ needs.publish-and-tag.outputs.TAG_NAME }}
