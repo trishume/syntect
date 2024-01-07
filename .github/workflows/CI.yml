@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call: # From .github/workflows/Release.yml
   workflow_dispatch:
   push:
     branches: [ master ]
