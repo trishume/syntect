@@ -21,6 +21,8 @@ jobs:
   # Make sure regular CI passes before we make a release.
   ci:
     uses: ./.github/workflows/CI.yml
+    with:
+      one_time_crates_io_token_secret: masked
 
   # After regular CI passes we publish to crates.io and push a git tag.
   publish-and-tag:
