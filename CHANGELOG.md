@@ -1,5 +1,16 @@
 # Changelog
 
+## [Version 5.2.0](https://github.com/trishume/syntect/compare/v5.1.0...v5.2.0) (2024-02-07)
+
+### Improvements
+
+- Eliminate syntect library's dependency on serde's "derive" feature. Increases build parallelism.
+- Add parsing of gutterSettings.
+
+### Dependencies
+
+- Update `regex-syntax` to 0.8.
+
 ## [Version 5.1.0](https://github.com/trishume/syntect/compare/v5.0.0...v5.1.0) (2023-08-01)
 
 ### Improvements
