@@ -1,8 +1,8 @@
 use super::regex::{Regex, Region};
 use super::scope::*;
 use super::syntax_definition::*;
-use yaml_rust::{YamlLoader, Yaml, ScanError};
-use yaml_rust::yaml::Hash;
+use yaml_rust2::{YamlLoader, Yaml, ScanError};
+use yaml_rust2::yaml::Hash;
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
