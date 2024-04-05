@@ -11,10 +11,9 @@
 //! mode.
 use syntect::highlighting::ThemeSet;
 use syntect::html::css_for_theme_with_class_style;
-use syntect::html::{ClassedHTMLGenerator, ClassStyle};
+use syntect::html::{ClassStyle, ClassedHTMLGenerator};
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
-
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -25,7 +24,7 @@ fn main() -> Result<(), std::io::Error> {
     // generate html
     let ss = SyntaxSet::load_defaults_newlines();
 
-    let html_file =  File::create(Path::new("synhtml-css-classes.html"))?;
+    let html_file = File::create(Path::new("synhtml-css-classes.html"))?;
     let mut html = BufWriter::new(&html_file);
 
     // write html header
@@ -33,7 +32,10 @@ fn main() -> Result<(), std::io::Error> {
     writeln!(html, "<html>")?;
     writeln!(html, "  <head>")?;
     writeln!(html, "    <title>synhtml-css-classes.rs</title>")?;
-    writeln!(html, "    <link rel=\"stylesheet\" href=\"synhtml-css-classes.css\">")?;
+    writeln!(
+        html,
+        "    <link rel=\"stylesheet\" href=\"synhtml-css-classes.css\">"
+    )?;
     writeln!(html, "  </head>")?;
     writeln!(html, "  <body>")?;
 
@@ -44,9 +46,12 @@ fn main() {
 }";
 
     let sr_rs = ss.find_syntax_by_extension("rs").unwrap();
-    let mut rs_html_generator = ClassedHTMLGenerator::new_with_class_style(sr_rs, &ss, ClassStyle::Spaced);
+    let mut rs_html_generator =
+        ClassedHTMLGenerator::new_with_class_style(sr_rs, &ss, ClassStyle::Spaced);
     for line in LinesWithEndings::from(code_rs) {
-        rs_html_generator.parse_html_for_line_which_includes_newline(line).unwrap();
+        rs_html_generator
+            .parse_html_for_line_which_includes_newline(line)
+            .unwrap();
     }
     let html_rs = rs_html_generator.finalize();
 
@@ -62,9 +67,12 @@ int main() {
 }";
 
     let sr_cpp = ss.find_syntax_by_extension("cpp").unwrap();
-    let mut cpp_html_generator = ClassedHTMLGenerator::new_with_class_style(sr_cpp, &ss, ClassStyle::Spaced);
+    let mut cpp_html_generator =
+        ClassedHTMLGenerator::new_with_class_style(sr_cpp, &ss, ClassStyle::Spaced);
     for line in LinesWithEndings::from(code_cpp) {
-        cpp_html_generator.parse_html_for_line_which_includes_newline(line).unwrap();
+        cpp_html_generator
+            .parse_html_for_line_which_includes_newline(line)
+            .unwrap();
     }
     let html_cpp = cpp_html_generator.finalize();
 

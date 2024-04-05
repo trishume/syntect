@@ -1,7 +1,7 @@
 // Code based on https://github.com/defuz/sublimate/blob/master/src/core/syntax/theme.rs
 // released under the MIT license by @defuz
-use super::style::*;
 use super::selector::*;
+use super::style::*;
 use serde_derive::{Deserialize, Serialize};
 
 /// A theme parsed from a `.tmTheme` file.

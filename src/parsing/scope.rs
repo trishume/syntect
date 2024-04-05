@@ -1,12 +1,12 @@
 // see DESIGN.md
+use std::cmp::{min, Ordering};
 use std::collections::HashMap;
-use std::u16;
-use std::sync::Mutex;
 use std::fmt;
-use std::str::FromStr;
-use std::u64;
-use std::cmp::{Ordering, min};
 use std::mem;
+use std::str::FromStr;
+use std::sync::Mutex;
+use std::u16;
+use std::u64;
 
 use once_cell::sync::Lazy;
 use serde::de::{Deserialize, Deserializer, Error, Visitor};
@@ -34,7 +34,6 @@ pub const ATOM_LEN_BITS: u16 = 3;
 /// [`ScopeRepository`]: struct.ScopeRepository.html
 pub static SCOPE_REPO: Lazy<Mutex<ScopeRepository>> =
     Lazy::new(|| Mutex::new(ScopeRepository::new()));
-
 
 /// A hierarchy of atoms with semi-standardized names used to accord semantic information to a
 /// specific piece of text.
@@ -171,7 +170,11 @@ impl ScopeRepository {
         if s.is_empty() {
             return Ok(Scope { a: 0, b: 0 });
         }
-        let parts: Vec<usize> = s.trim_end_matches('.').split('.').map(|a| self.atom_to_index(a)).collect();
+        let parts: Vec<usize> = s
+            .trim_end_matches('.')
+            .split('.')
+            .map(|a| self.atom_to_index(a))
+            .collect();
         if parts.len() > 8 {
             return Err(ParseScopeError::TooManyAtoms);
         }
@@ -229,7 +232,8 @@ impl Scope {
     /// I can't think of any reason you'd find this useful. It is used internally for turning a
     /// scope back into a string.
     pub fn atom_at(self, index: usize) -> u16 {
-        #[allow(clippy::panic)] // The below panic is too much of an edge-case for it to be worth propagating
+        #[allow(clippy::panic)]
+        // The below panic is too much of an edge-case for it to be worth propagating
         let shifted = if index < 4 {
             self.a >> ((3 - index) * 16)
         } else if index < 8 {
@@ -338,15 +342,20 @@ impl fmt::Debug for Scope {
 }
 
 impl Serialize for Scope {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         let s = self.build_string();
         serializer.serialize_str(&s)
     }
 }
 
 impl<'de> Deserialize<'de> for Scope {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
-
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
         struct ScopeVisitor;
 
         impl<'de> Visitor<'de> for ScopeVisitor {
@@ -356,7 +365,10 @@ impl<'de> Deserialize<'de> for Scope {
                 formatter.write_str("a string")
             }
 
-            fn visit_str<E>(self, v: &str) -> Result<Scope, E> where E: Error {
+            fn visit_str<E>(self, v: &str) -> Result<Scope, E>
+            where
+                E: Error,
+            {
                 Scope::new(v).map_err(|e| Error::custom(format!("Invalid scope: {:?}", e)))
             }
         }
@@ -383,7 +395,7 @@ impl ScopeStack {
     pub fn new() -> ScopeStack {
         ScopeStack {
             clear_stack: Vec::new(),
-            scopes: Vec::new()
+            scopes: Vec::new(),
         }
     }
 
@@ -392,7 +404,7 @@ impl ScopeStack {
     pub fn from_vec(v: Vec<Scope>) -> ScopeStack {
         ScopeStack {
             clear_stack: Vec::new(),
-            scopes: v
+            scopes: v,
         }
     }
 
@@ -410,7 +422,7 @@ impl ScopeStack {
     ///
     /// Use this to create a stack from a `Vec` of changes given by the parser.
     pub fn apply(&mut self, op: &ScopeStackOp) -> Result<(), ScopeError> {
-        self.apply_with_hook(op, |_,_|{})
+        self.apply_with_hook(op, |_, _| {})
     }
 
     /// Modifies this stack according to the operation given and calls the hook for each basic operation.
@@ -422,7 +434,8 @@ impl ScopeStack {
     /// [`BasicScopeStackOp`]: enum.BasicScopeStackOp.html
     #[inline]
     pub fn apply_with_hook<F>(&mut self, op: &ScopeStackOp, mut hook: F) -> Result<(), ScopeError>
-        where F: FnMut(BasicScopeStackOp, &[Scope])
+    where
+        F: FnMut(BasicScopeStackOp, &[Scope]),
     {
         match *op {
             ScopeStackOp::Push(scope) => {
@@ -454,17 +467,15 @@ impl ScopeStack {
                     hook(BasicScopeStackOp::Pop, self.as_slice());
                 }
             }
-            ScopeStackOp::Restore => {
-                match self.clear_stack.pop() {
-                    Some(ref mut to_push) => {
-                        for s in to_push {
-                            self.scopes.push(*s);
-                            hook(BasicScopeStackOp::Push(*s), self.as_slice());
-                        }
+            ScopeStackOp::Restore => match self.clear_stack.pop() {
+                Some(ref mut to_push) => {
+                    for s in to_push {
+                        self.scopes.push(*s);
+                        hook(BasicScopeStackOp::Push(*s), self.as_slice());
                     }
-                    None => return Err(ScopeError::NoClearedScopesToRestore),
                 }
-            }
+                None => return Err(ScopeError::NoClearedScopesToRestore),
+            },
             ScopeStackOp::Noop => (),
         }
 
@@ -582,10 +593,14 @@ mod tests {
     #[test]
     fn repo_works() {
         let mut repo = ScopeRepository::new();
-        assert_eq!(repo.build("source.php").unwrap(),
-                   repo.build("source.php").unwrap());
-        assert_eq!(repo.build("source.php.wow.hi.bob.troll.clock.5").unwrap(),
-                   repo.build("source.php.wow.hi.bob.troll.clock.5").unwrap());
+        assert_eq!(
+            repo.build("source.php").unwrap(),
+            repo.build("source.php").unwrap()
+        );
+        assert_eq!(
+            repo.build("source.php.wow.hi.bob.troll.clock.5").unwrap(),
+            repo.build("source.php.wow.hi.bob.troll.clock.5").unwrap()
+        );
         assert_eq!(repo.build("").unwrap(), repo.build("").unwrap());
         let s1 = repo.build("").unwrap();
         assert_eq!(repo.to_string(s1), "");
@@ -593,15 +608,19 @@ mod tests {
         assert_eq!(repo.to_string(s2), "source.php.wow");
         assert!(repo.build("source.php").unwrap() != repo.build("source.perl").unwrap());
         assert!(repo.build("source.php").unwrap() != repo.build("source.php.wagon").unwrap());
-        assert_eq!(repo.build("comment.line.").unwrap(),
-                   repo.build("comment.line").unwrap());
+        assert_eq!(
+            repo.build("comment.line.").unwrap(),
+            repo.build("comment.line").unwrap()
+        );
     }
 
     #[test]
     fn global_repo_works() {
         use std::str::FromStr;
-        assert_eq!(Scope::new("source.php").unwrap(),
-                   Scope::new("source.php").unwrap());
+        assert_eq!(
+            Scope::new("source.php").unwrap(),
+            Scope::new("source.php").unwrap()
+        );
         assert!(Scope::from_str("1.2.3.4.5.6.7.8").is_ok());
         assert!(Scope::from_str("1.2.3.4.5.6.7.8.9").is_err());
     }
@@ -634,37 +653,53 @@ mod tests {
     #[test]
     fn matching_works() {
         use std::str::FromStr;
-        assert_eq!(ScopeStack::from_str("string")
-                       .unwrap()
-                       .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
-                   Some(MatchPower(0o1u64 as f64)));
-        assert_eq!(ScopeStack::from_str("source")
-                       .unwrap()
-                       .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
-                   None);
-        assert_eq!(ScopeStack::from_str("a.b e.f")
-                       .unwrap()
-                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(MatchPower(0o202u64 as f64)));
-        assert_eq!(ScopeStack::from_str("c e.f")
-                       .unwrap()
-                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(MatchPower(0o210u64 as f64)));
-        assert_eq!(ScopeStack::from_str("c.d e.f")
-                       .unwrap()
-                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(MatchPower(0o220u64 as f64)));
-        assert_eq!(ScopeStack::from_str("a.b c e.f")
-                       .unwrap()
-                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(MatchPower(0o212u64 as f64)));
-        assert_eq!(ScopeStack::from_str("a c.d")
-                       .unwrap()
-                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   Some(MatchPower(0o021u64 as f64)));
-        assert_eq!(ScopeStack::from_str("a c.d.e")
-                       .unwrap()
-                       .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
-                   None);
+        assert_eq!(
+            ScopeStack::from_str("string")
+                .unwrap()
+                .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
+            Some(MatchPower(0o1u64 as f64))
+        );
+        assert_eq!(
+            ScopeStack::from_str("source")
+                .unwrap()
+                .does_match(ScopeStack::from_str("string.quoted").unwrap().as_slice()),
+            None
+        );
+        assert_eq!(
+            ScopeStack::from_str("a.b e.f")
+                .unwrap()
+                .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+            Some(MatchPower(0o202u64 as f64))
+        );
+        assert_eq!(
+            ScopeStack::from_str("c e.f")
+                .unwrap()
+                .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+            Some(MatchPower(0o210u64 as f64))
+        );
+        assert_eq!(
+            ScopeStack::from_str("c.d e.f")
+                .unwrap()
+                .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+            Some(MatchPower(0o220u64 as f64))
+        );
+        assert_eq!(
+            ScopeStack::from_str("a.b c e.f")
+                .unwrap()
+                .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+            Some(MatchPower(0o212u64 as f64))
+        );
+        assert_eq!(
+            ScopeStack::from_str("a c.d")
+                .unwrap()
+                .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+            Some(MatchPower(0o021u64 as f64))
+        );
+        assert_eq!(
+            ScopeStack::from_str("a c.d.e")
+                .unwrap()
+                .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
+            None
+        );
     }
 }

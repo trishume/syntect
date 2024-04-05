@@ -1,7 +1,7 @@
 use syntect::easy::HighlightLines;
+use syntect::highlighting::{Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
-use syntect::highlighting::{ThemeSet,Style};
-use syntect::util::{as_latex_escaped,LinesWithEndings};
+use syntect::util::{as_latex_escaped, LinesWithEndings};
 
 fn main() {
     // Load these once at the start of your program
@@ -12,7 +12,8 @@ fn main() {
     let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 
     let mut h = HighlightLines::new(syntax, &ts.themes["InspiredGitHub"]);
-    for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
+    for line in LinesWithEndings::from(s) {
+        // LinesWithEndings enables use of newlines mode
         let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
         let escaped = as_latex_escaped(&ranges[..]);
         println!("\n{:?}", line);
