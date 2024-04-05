@@ -1,8 +1,8 @@
-use criterion::{Bencher, Criterion, criterion_group, criterion_main};
-use syntect::parsing::{SyntaxSet, ScopeStack};
-use syntect::highlighting::{ThemeSet};
-use syntect::html::highlighted_html_for_string;
+use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use std::str::FromStr;
+use syntect::highlighting::ThemeSet;
+use syntect::html::highlighted_html_for_string;
+use syntect::parsing::{ScopeStack, SyntaxSet};
 
 mod highlight_utils;
 mod utils;
@@ -17,18 +17,14 @@ fn highlight_file(b: &mut Bencher, file: &str) {
     let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
     let s = std::fs::read_to_string(path).unwrap();
 
-    b.iter(|| {
-        highlight_utils::do_highlight(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
-    });
+    b.iter(|| highlight_utils::do_highlight(&s, &ss, syntax, &ts.themes["base16-ocean.dark"]));
 }
 
 fn stack_matching(b: &mut Bencher) {
     let s = "source.js meta.group.js meta.group.js meta.block.js meta.function-call.method.js meta.group.js meta.object-literal.js meta.block.js meta.function-call.method.js meta.group.js variable.other.readwrite.js";
     let stack = ScopeStack::from_str(s).unwrap();
     let selector = ScopeStack::from_str("source meta.function-call.method").unwrap();
-    b.iter(|| {
-        selector.does_match(stack.as_slice())
-    });
+    b.iter(|| selector.does_match(stack.as_slice()));
 }
 
 fn highlight_html(b: &mut Bencher) {
@@ -39,9 +35,7 @@ fn highlight_html(b: &mut Bencher) {
     let syntax = ss.find_syntax_for_file(path).unwrap().unwrap();
     let s = std::fs::read_to_string(path).unwrap();
 
-    b.iter(|| {
-        highlighted_html_for_string(&s, &ss, syntax, &ts.themes["base16-ocean.dark"])
-    });
+    b.iter(|| highlighted_html_for_string(&s, &ss, syntax, &ts.themes["base16-ocean.dark"]));
 }
 
 fn highlighting_benchmark(c: &mut Criterion) {

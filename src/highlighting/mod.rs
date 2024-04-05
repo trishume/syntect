@@ -16,6 +16,7 @@ mod theme;
 mod theme_load;
 mod theme_set;
 
+pub use self::highlighter::*;
 pub use self::selector::*;
 #[cfg(feature = "plist-load")]
 pub use self::settings::SettingsError;
@@ -23,5 +24,4 @@ pub use self::style::*;
 pub use self::theme::*;
 #[cfg(feature = "plist-load")]
 pub use self::theme_load::*;
-pub use self::highlighter::*;
 pub use self::theme_set::*;

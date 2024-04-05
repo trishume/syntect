@@ -1,24 +1,17 @@
-use criterion::{Bencher, Criterion, criterion_group, criterion_main};
-use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
+use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use syntect::highlighting::ThemeSet;
-
+use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 
 fn bench_load_internal_dump(b: &mut Bencher) {
-    b.iter(|| {
-        SyntaxSet::load_defaults_newlines()
-    });
+    b.iter(|| SyntaxSet::load_defaults_newlines());
 }
 
 fn bench_load_internal_themes(b: &mut Bencher) {
-    b.iter(|| {
-        ThemeSet::load_defaults()
-    });
+    b.iter(|| ThemeSet::load_defaults());
 }
 
 fn bench_load_theme(b: &mut Bencher) {
-    b.iter(|| {
-        ThemeSet::get_theme("testdata/spacegray/base16-ocean.dark.tmTheme")
-    });
+    b.iter(|| ThemeSet::get_theme("testdata/spacegray/base16-ocean.dark.tmTheme"));
 }
 
 fn bench_add_from_folder(b: &mut Bencher) {
@@ -38,7 +31,9 @@ fn bench_link_syntaxes(b: &mut Bencher) {
 
 fn bench_from_dump_file(b: &mut Bencher) {
     b.iter(|| {
-        let _: SyntaxSet = syntect::dumps::from_uncompressed_dump_file("assets/default_newlines.packdump").unwrap();
+        let _: SyntaxSet =
+            syntect::dumps::from_uncompressed_dump_file("assets/default_newlines.packdump")
+                .unwrap();
     })
 }
 

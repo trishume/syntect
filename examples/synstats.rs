@@ -6,15 +6,15 @@
 //! Another thing it does that other line count programs can't always
 //! do is properly count comments in embedded syntaxes. For example
 //! JS, CSS and Ruby comments embedded in ERB files.
-use syntect::parsing::{SyntaxSet, ParseState, ScopeStackOp, ScopeStack};
+use syntect::easy::ScopeRegionIterator;
 use syntect::highlighting::{ScopeSelector, ScopeSelectors};
-use syntect::easy::{ScopeRegionIterator};
+use syntect::parsing::{ParseState, ScopeStack, ScopeStackOp, SyntaxSet};
 
-use std::path::Path;
-use std::io::{BufRead, BufReader};
 use std::fs::File;
-use walkdir::{DirEntry, WalkDir};
+use std::io::{BufRead, BufReader};
+use std::path::Path;
 use std::str::FromStr;
+use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug)]
 struct Selectors {
@@ -28,9 +28,15 @@ impl Default for Selectors {
     fn default() -> Selectors {
         Selectors {
             comment: ScopeSelector::from_str("comment - comment.block.attribute").unwrap(),
-            doc_comment: ScopeSelectors::from_str("comment.line.documentation, comment.block.documentation").unwrap(),
+            doc_comment: ScopeSelectors::from_str(
+                "comment.line.documentation, comment.block.documentation",
+            )
+            .unwrap(),
             function: ScopeSelector::from_str("entity.name.function").unwrap(),
-            types: ScopeSelectors::from_str("entity.name.class, entity.name.struct, entity.name.enum, entity.name.type").unwrap(),
+            types: ScopeSelectors::from_str(
+                "entity.name.class, entity.name.struct, entity.name.enum, entity.name.type",
+            )
+            .unwrap(),
         }
     }
 }
@@ -57,28 +63,58 @@ fn print_stats(stats: &Stats) {
     println!("File count:                           {:>6}", stats.files);
     println!("Total characters:                     {:>6}", stats.chars);
     println!();
-    println!("Function count:                       {:>6}", stats.functions);
+    println!(
+        "Function count:                       {:>6}",
+        stats.functions
+    );
     println!("Type count (structs, enums, classes): {:>6}", stats.types);
     println!();
-    println!("Code lines (traditional SLOC):        {:>6}", stats.code_lines);
+    println!(
+        "Code lines (traditional SLOC):        {:>6}",
+        stats.code_lines
+    );
     println!("Total lines (w/ comments & blanks):   {:>6}", stats.lines);
-    println!("Comment lines (comment but no code):  {:>6}", stats.comment_lines);
-    println!("Blank lines (lines-blank-comment):    {:>6}", stats.lines-stats.code_lines-stats.comment_lines);
+    println!(
+        "Comment lines (comment but no code):  {:>6}",
+        stats.comment_lines
+    );
+    println!(
+        "Blank lines (lines-blank-comment):    {:>6}",
+        stats.lines - stats.code_lines - stats.comment_lines
+    );
     println!();
-    println!("Lines with a documentation comment:   {:>6}", stats.doc_comment_lines);
-    println!("Total words written in doc comments:  {:>6}", stats.doc_comment_words);
-    println!("Total words written in all comments:  {:>6}", stats.comment_words);
-    println!("Characters of comment:                {:>6}", stats.comment_chars);
+    println!(
+        "Lines with a documentation comment:   {:>6}",
+        stats.doc_comment_lines
+    );
+    println!(
+        "Total words written in doc comments:  {:>6}",
+        stats.doc_comment_words
+    );
+    println!(
+        "Total words written in all comments:  {:>6}",
+        stats.comment_words
+    );
+    println!(
+        "Characters of comment:                {:>6}",
+        stats.comment_chars
+    );
 }
 
 fn is_ignored(entry: &DirEntry) -> bool {
-    entry.file_name()
-         .to_str()
-         .map(|s| s.starts_with('.') && s.len() > 1 || s.ends_with(".md"))
-         .unwrap_or(false)
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| s.starts_with('.') && s.len() > 1 || s.ends_with(".md"))
+        .unwrap_or(false)
 }
 
-fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stack: &mut ScopeStack, stats: &mut Stats) {
+fn count_line(
+    ops: &[(usize, ScopeStackOp)],
+    line: &str,
+    stack: &mut ScopeStack,
+    stats: &mut Stats,
+) {
     stats.lines += 1;
 
     let mut line_has_comment = false;
@@ -86,12 +122,29 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stack: &mut ScopeStack,
     let mut line_has_code = false;
     for (s, op) in ScopeRegionIterator::new(ops, line) {
         stack.apply(op).unwrap();
-        if s.is_empty() { // in this case we don't care about blank tokens
+        if s.is_empty() {
+            // in this case we don't care about blank tokens
             continue;
         }
-        if stats.selectors.comment.does_match(stack.as_slice()).is_some() {
-            let words = s.split_whitespace().filter(|w| w.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '\'')).count();
-            if stats.selectors.doc_comment.does_match(stack.as_slice()).is_some() {
+        if stats
+            .selectors
+            .comment
+            .does_match(stack.as_slice())
+            .is_some()
+        {
+            let words = s
+                .split_whitespace()
+                .filter(|w| {
+                    w.chars()
+                        .all(|c| c.is_alphanumeric() || c == '.' || c == '\'')
+                })
+                .count();
+            if stats
+                .selectors
+                .doc_comment
+                .does_match(stack.as_slice())
+                .is_some()
+            {
                 line_has_doc_comment = true;
                 stats.doc_comment_words += words;
             }
@@ -101,7 +154,12 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stack: &mut ScopeStack,
         } else if !s.chars().all(|c| c.is_whitespace()) {
             line_has_code = true;
         }
-        if stats.selectors.function.does_match(stack.as_slice()).is_some() {
+        if stats
+            .selectors
+            .function
+            .does_match(stack.as_slice())
+            .is_some()
+        {
             stats.functions += 1;
         }
         if stats.selectors.types.does_match(stack.as_slice()).is_some() {
@@ -122,7 +180,7 @@ fn count_line(ops: &[(usize, ScopeStackOp)], line: &str, stack: &mut ScopeStack,
 fn count(ss: &SyntaxSet, path: &Path, stats: &mut Stats) {
     let syntax = match ss.find_syntax_for_file(path).unwrap_or(None) {
         Some(syntax) => syntax,
-        None => return
+        None => return,
     };
     stats.files += 1;
     let mut state = ParseState::new(syntax);
@@ -145,11 +203,7 @@ fn main() {
     let ss = SyntaxSet::load_defaults_newlines(); // note we load the version with newlines
 
     let args: Vec<String> = std::env::args().collect();
-    let path = if args.len() < 2 {
-        "."
-    } else {
-        &args[1]
-    };
+    let path = if args.len() < 2 { "." } else { &args[1] };
 
     println!("################## Files ###################");
     let mut stats = Stats::default();

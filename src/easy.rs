@@ -2,11 +2,11 @@
 //! files without caring about intermediate semantic representation
 //! and caching.
 
+use crate::highlighting::{HighlightIterator, HighlightState, Highlighter, Style, Theme};
+use crate::parsing::{ParseState, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet};
 use crate::Error;
-use crate::parsing::{ScopeStack, ParseState, SyntaxReference, SyntaxSet, ScopeStackOp};
-use crate::highlighting::{Highlighter, HighlightState, HighlightIterator, Theme, Style};
-use std::io::{self, BufReader};
 use std::fs::File;
+use std::io::{self, BufReader};
 use std::path::Path;
 // use util::debug_print_ops;
 
@@ -57,13 +57,25 @@ impl<'a> HighlightLines<'a> {
         }
     }
 
-    #[deprecated(since="5.0.0", note="Renamed to `highlight_line` to make it clear it should be passed a single line at a time")]
-    pub fn highlight<'b>(&mut self, line: &'b str, syntax_set: &SyntaxSet) -> Vec<(Style, &'b str)> {
-        self.highlight_line(line, syntax_set).expect("`highlight` is deprecated, use `highlight_line` instead")
+    #[deprecated(
+        since = "5.0.0",
+        note = "Renamed to `highlight_line` to make it clear it should be passed a single line at a time"
+    )]
+    pub fn highlight<'b>(
+        &mut self,
+        line: &'b str,
+        syntax_set: &SyntaxSet,
+    ) -> Vec<(Style, &'b str)> {
+        self.highlight_line(line, syntax_set)
+            .expect("`highlight` is deprecated, use `highlight_line` instead")
     }
 
     /// Highlights a line of a file
-    pub fn highlight_line<'b>(&mut self, line: &'b str, syntax_set: &SyntaxSet) -> Result<Vec<(Style, &'b str)>, Error> {
+    pub fn highlight_line<'b>(
+        &mut self,
+        line: &'b str,
+        syntax_set: &SyntaxSet,
+    ) -> Result<Vec<(Style, &'b str)>, Error> {
         // println!("{}", self.highlight_state.path);
         let ops = self.parse_state.parse_line(line, syntax_set)?;
         // use util::debug_print_ops;
@@ -142,13 +154,15 @@ impl<'a> HighlightFile<'a> {
     ///     println!("{}", as_24_bit_terminal_escaped(&regions[..], true));
     /// }
     /// ```
-    pub fn new<P: AsRef<Path>>(path_obj: P,
-                               ss: &SyntaxSet,
-                               theme: &'a Theme)
-                               -> io::Result<HighlightFile<'a>> {
+    pub fn new<P: AsRef<Path>>(
+        path_obj: P,
+        ss: &SyntaxSet,
+        theme: &'a Theme,
+    ) -> io::Result<HighlightFile<'a>> {
         let path: &Path = path_obj.as_ref();
         let f = File::open(path)?;
-        let syntax = ss.find_syntax_for_file(path)?
+        let syntax = ss
+            .find_syntax_for_file(path)?
             .unwrap_or_else(|| ss.find_syntax_plain_text());
 
         Ok(HighlightFile {
@@ -260,9 +274,9 @@ impl<'a> Iterator for ScopeRegionIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::{SyntaxSet, ParseState, ScopeStack};
     #[cfg(feature = "default-themes")]
     use crate::highlighting::ThemeSet;
+    use crate::parsing::{ParseState, ScopeStack, SyntaxSet};
     use std::str::FromStr;
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
@@ -272,7 +286,9 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
         let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
-        let ranges = h.highlight_line("pub struct Wow { hi: u64 }", &ss).expect("#[cfg(test)]");
+        let ranges = h
+            .highlight_line("pub struct Wow { hi: u64 }", &ss)
+            .expect("#[cfg(test)]");
         assert!(ranges.len() > 4);
     }
 
@@ -281,10 +297,12 @@ mod tests {
     fn can_highlight_file() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
-        HighlightFile::new("testdata/highlight_test.erb",
-                           &ss,
-                           &ts.themes["base16-ocean.dark"])
-            .unwrap();
+        HighlightFile::new(
+            "testdata/highlight_test.erb",
+            &ss,
+            &ts.themes["base16-ocean.dark"],
+        )
+        .unwrap();
     }
 
     #[cfg(feature = "default-syntaxes")]
@@ -299,11 +317,15 @@ mod tests {
         let mut token_count = 0;
         for (s, op) in ScopeRegionIterator::new(&ops, line) {
             stack.apply(op).expect("#[cfg(test)]");
-            if s.is_empty() { // in this case we don't care about blank tokens
+            if s.is_empty() {
+                // in this case we don't care about blank tokens
                 continue;
             }
             if token_count == 1 {
-                assert_eq!(stack, ScopeStack::from_str("source.ruby keyword.operator.assignment.ruby").unwrap());
+                assert_eq!(
+                    stack,
+                    ScopeStack::from_str("source.ruby keyword.operator.assignment.ruby").unwrap()
+                );
                 assert_eq!(s, "=");
             }
             token_count += 1;

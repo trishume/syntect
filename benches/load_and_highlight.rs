@@ -25,7 +25,7 @@ fn load_and_highlight_benchmark(c: &mut criterion::Criterion) {
         "highlight_test.erb",
         "InspiredGitHub.tmTheme",
         "Ruby.sublime-syntax",
-        "parser.rs"
+        "parser.rs",
     ] {
         group.bench_with_input(format!("\"{}\"", input), input, |b, s| run(b, s));
     }
