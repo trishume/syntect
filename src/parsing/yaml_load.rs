@@ -887,7 +887,6 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::syntax_definition::*;
     use crate::parsing::Scope;
 
     #[test]
