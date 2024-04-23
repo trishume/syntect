@@ -213,6 +213,7 @@ impl SyntaxSet {
     /// This uses regexes that come with some sublime syntax grammars for matching things like
     /// shebangs and mode lines like `-*- Mode: C -*-`
     pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
+        let s = s.strip_prefix("\u{feff}").unwrap_or(s); // Strip UTF-8 BOM
         let cache = self.first_line_cache();
         for &(ref reg, i) in cache.regexes.iter().rev() {
             if reg.search(s, 0, s.len(), None) {
@@ -1399,6 +1400,16 @@ mod tests {
 
         let rebuilt = ss.into_builder().build();
         assert_prototype_only_on(&["main"], &rebuilt, &rebuilt.syntaxes()[0]);
+    }
+
+    #[test]
+    fn find_syntax_set_from_line_with_bom() {
+        // Regression test for #529
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax_ref = syntax_set
+            .find_syntax_by_first_line("\u{feff}<?xml version=\"1.0\"?>")
+            .unwrap();
+        assert_eq!(syntax_ref.name, "XML");
     }
 
     fn assert_ops_contain(ops: &[(usize, ScopeStackOp)], expected: &(usize, ScopeStackOp)) {
