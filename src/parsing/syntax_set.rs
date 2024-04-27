@@ -13,6 +13,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::mem;
 use std::path::Path;
+use std::path::PathBuf;
 
 use super::regex::Regex;
 use crate::parsing::syntax_definition::ContextId;
@@ -83,6 +84,7 @@ pub(crate) struct LazyContexts {
 pub struct SyntaxSetBuilder {
     syntaxes: Vec<SyntaxDefinition>,
     path_syntaxes: Vec<(String, usize)>,
+    extends_syntaxes: Vec<(PathBuf, String)>,
     #[cfg(feature = "metadata")]
     raw_metadata: LoadMetadata,
 
@@ -102,6 +104,23 @@ fn load_syntax_file(
 
     SyntaxDefinition::load_from_str(
         &s,
+        lines_include_newline,
+        p.file_stem().and_then(|x| x.to_str()),
+    )
+    .map_err(|e| LoadingError::ParseSyntax(e, format!("{}", p.display())))
+}
+
+#[cfg(feature = "yaml-load")]
+fn load_syntax_file_with_extends(
+    p: &Path,
+    base_syntax: &SyntaxDefinition,
+    lines_include_newline: bool,
+) -> Result<SyntaxDefinition, LoadingError> {
+    let s = std::fs::read_to_string(p)?;
+
+    SyntaxDefinition::load_from_str_extended(
+        &s,
+        Some(base_syntax),
         lines_include_newline,
         p.file_stem().and_then(|x| x.to_str()),
     )
@@ -375,6 +394,7 @@ impl SyntaxSet {
         SyntaxSetBuilder {
             syntaxes: builder_syntaxes,
             path_syntaxes,
+            extends_syntaxes: Vec::new(),
             #[cfg(feature = "metadata")]
             existing_metadata: Some(metadata),
             #[cfg(feature = "metadata")]
@@ -516,6 +536,8 @@ impl SyntaxSetBuilder {
         folder: P,
         lines_include_newline: bool,
     ) -> Result<(), LoadingError> {
+        use super::ParseSyntaxError;
+
         for entry in crate::utils::walk_dir(folder).sort_by(|a, b| a.file_name().cmp(b.file_name()))
         {
             let entry = entry.map_err(LoadingError::WalkDir)?;
@@ -524,7 +546,27 @@ impl SyntaxSetBuilder {
                 .extension()
                 .map_or(false, |e| e == "sublime-syntax")
             {
-                let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
+                let syntax = match load_syntax_file(entry.path(), lines_include_newline) {
+                    Ok(syntax) => syntax,
+                    // We are extending another syntax, look it up in the set first
+                    Err(LoadingError::ParseSyntax(
+                        ParseSyntaxError::ExtendsNotFound { name, extends },
+                        _,
+                    )) => {
+                        if let Some(ix) = self
+                            .path_syntaxes
+                            .iter()
+                            .find(|(s, _)| s.ends_with(extends.as_str()))
+                            .map(|(_, ix)| *ix)
+                        {
+                            todo!("lookup {ix} and pass to {name}");
+                        }
+                        self.extends_syntaxes
+                            .push((entry.path().to_path_buf(), extends));
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                };
                 if let Some(path_str) = entry.path().to_str() {
                     // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
                     // can still be loaded the same way.
@@ -550,6 +592,45 @@ impl SyntaxSetBuilder {
         Ok(())
     }
 
+    fn resolve_extends(&mut self) {
+        let mut prev_len = usize::MAX;
+        // Loop while syntaxes are being resolved
+        while !self.extends_syntaxes.is_empty() && prev_len > self.extends_syntaxes.len() {
+            prev_len = self.extends_syntaxes.len();
+            // Split borrows to make the borrow cheker happy
+            let syntaxes = &mut self.syntaxes;
+            let paths = &mut self.path_syntaxes;
+            // Resolve syntaxes
+            self.extends_syntaxes.retain(|(path, extends)| {
+                let Some(ix) = paths
+                    .iter()
+                    .find(|(s, _)| s.ends_with(extends.as_str()))
+                    .map(|(_, ix)| *ix)
+                else {
+                    return true;
+                };
+                let base_syntax = &syntaxes[ix];
+                // FIXME: don't unwrap
+                let syntax = load_syntax_file_with_extends(path, base_syntax, false).unwrap();
+                if let Some(path_str) = path.to_str() {
+                    // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
+                    // can still be loaded the same way.
+                    let path = Path::new(path_str);
+                    let path_parts: Vec<_> = path.iter().map(|c| c.to_str().unwrap()).collect();
+                    paths.push((path_parts.join("/").to_string(), syntaxes.len()));
+                }
+                syntaxes.push(syntax);
+                false
+            });
+        }
+
+        if !self.extends_syntaxes.is_empty() {
+            dbg!(&self.path_syntaxes);
+            dbg!(&self.extends_syntaxes);
+            todo!("warn, unresolved syntaxes");
+        }
+    }
+
     /// Build a [`SyntaxSet`] from the syntaxes that have been added to this
     /// builder.
     ///
@@ -571,16 +652,20 @@ impl SyntaxSetBuilder {
     /// directly load the [`SyntaxSet`].
     ///
     /// [`SyntaxSet`]: struct.SyntaxSet.html
-    pub fn build(self) -> SyntaxSet {
+    pub fn build(mut self) -> SyntaxSet {
+        self.resolve_extends();
+
         #[cfg(not(feature = "metadata"))]
         let SyntaxSetBuilder {
             syntaxes: syntax_definitions,
             path_syntaxes,
+            extends_syntaxes: _,
         } = self;
         #[cfg(feature = "metadata")]
         let SyntaxSetBuilder {
             syntaxes: syntax_definitions,
             path_syntaxes,
+            extends_syntaxes: _,
             raw_metadata,
             existing_metadata,
         } = self;
