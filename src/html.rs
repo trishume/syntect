@@ -734,4 +734,21 @@ fn main() {
         let html = html_generator.finalize();
         assert_eq!(html, "<span class=\"source rust\"><span class=\"comment line double-slash rust\"><span class=\"punctuation definition comment rust\">//</span> Rust source\n</span><span class=\"meta function rust\"><span class=\"meta function rust\"><span class=\"storage type function rust\">fn</span> </span><span class=\"entity name function rust\">main</span></span><span class=\"meta function rust\"><span class=\"meta function parameters rust\"><span class=\"punctuation section parameters begin rust\">(</span></span><span class=\"meta function rust\"><span class=\"meta function parameters rust\"><span class=\"punctuation section parameters end rust\">)</span></span></span></span><span class=\"meta function rust\"> </span><span class=\"meta function rust\"><span class=\"meta block rust\"><span class=\"punctuation section block begin rust\">{</span>\n    <span class=\"support macro rust\">println!</span><span class=\"meta group rust\"><span class=\"punctuation section group begin rust\">(</span></span><span class=\"meta group rust\"><span class=\"string quoted double rust\"><span class=\"punctuation definition string begin rust\">&quot;</span>Hello World!<span class=\"punctuation definition string end rust\">&quot;</span></span></span><span class=\"meta group rust\"><span class=\"punctuation section group end rust\">)</span></span><span class=\"punctuation terminator rust\">;</span>\n</span><span class=\"meta block rust\"><span class=\"punctuation section block end rust\">}</span></span></span>\n</span>");
     }
+
+    #[test]
+    fn test_escape_css_identifier() {
+        assert_eq!(&escape_css_identifier("abc"), "abc");
+        assert_eq!(&escape_css_identifier("123"), "\\31 23");
+        assert_eq!(&escape_css_identifier("c++"), "c\\2b \\2b ");
+    }
+
+    /// See issue [syntect#308](<https://github.com/trishume/syntect/issues/308>).
+    #[test]
+    fn test_css_for_theme_with_class_style_issue_308() {
+        let theme_set = ThemeSet::load_defaults();
+        let theme = theme_set.themes.get("Solarized (dark)").unwrap();
+        let css = css_for_theme_with_class_style(theme, ClassStyle::Spaced).unwrap();
+        assert!(!css.contains(".c++"));
+        assert!(css.contains(".c\\2b \\2b "));
+    }
 }
