@@ -159,7 +159,8 @@ pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Resul
             css.push_str(".code {\n");
         }
         ClassStyle::SpacedPrefixed { prefix } => {
-            css.push_str(&format!(".{}code {{\n", prefix));
+            let class = escape_css_identifier(&format!("{}code", prefix));
+            css.push_str(&format!(".{} {{\n", class));
         }
     };
     if let Some(fgc) = theme.settings.foreground {
@@ -264,14 +265,33 @@ fn scope_to_selector(s: &mut String, scope: Scope, style: ClassStyle) {
         let atom = scope.atom_at(i as usize);
         let atom_s = repo.atom_str(atom);
         s.push('.');
+        let mut class = String::new();
         match style {
             ClassStyle::Spaced => {}
             ClassStyle::SpacedPrefixed { prefix } => {
-                s.push_str(prefix);
+                class.push_str(prefix);
             }
         }
-        s.push_str(atom_s);
+        class.push_str(atom_s);
+        s.push_str(&escape_css_identifier(&class));
     }
+}
+
+/// Escape special characters in a CSS identifier.
+///
+/// See <https://www.w3.org/International/questions/qa-escapes#css_identifiers>.
+fn escape_css_identifier(identifier: &str) -> String {
+    identifier.char_indices().fold(
+        String::with_capacity(identifier.len()),
+        |mut output, (i, c)| {
+            if c.is_ascii_alphabetic() || c == '-' || c == '_' || (i > 0 && c.is_ascii_digit()) {
+                output.push(c);
+            } else {
+                output.push_str(&format!("\\{:x} ", c as u32));
+            }
+            output
+        },
+    )
 }
 
 /// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
