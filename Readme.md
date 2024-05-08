@@ -242,6 +242,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [The Way](https://github.com/out-of-cheese-error/the-way), a code snippets manager for your terminal that uses `syntect`for highlighting.
 - [Broot](https://github.com/Canop/broot), a terminal file manager, uses `syntect` for file previews.
 - [Rusty Slider](https://ollej.github.io/rusty-slider/), a markdown slideshow presentation application, uses `syntect` for code blocks.
+- [BugStalker](https://github.com/godzie44/BugStalker/), modern debugger for Linux x86-64. Written in Rust for Rust programs.
 
 
 ## License and Acknowledgements
