@@ -243,7 +243,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [Broot](https://github.com/Canop/broot), a terminal file manager, uses `syntect` for file previews.
 - [Rusty Slider](https://ollej.github.io/rusty-slider/), a markdown slideshow presentation application, uses `syntect` for code blocks.
 - [BugStalker](https://github.com/godzie44/BugStalker/), modern debugger for Linux x86-64. Written in Rust for Rust programs.
-
+- [Yazi](https://github.com/sxyazi/yazi), blazing fast terminal file manager based on async I/O, uses `syntect` for text file previews.
 
 ## License and Acknowledgements
 
