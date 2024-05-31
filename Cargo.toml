@@ -7,15 +7,10 @@ keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
 categories = ["parser-implementations", "parsing", "text-processing"]
 readme = "Readme.md"
 license = "MIT"
-version = "5.2.0" # remember to update html_root_url
+version = "5.2.0"                                                                                                # remember to update html_root_url
 authors = ["Tristan Hume <tristan@thume.ca>"]
 edition = "2021"
-exclude = [
-    "testdata/*",
-    "/scripts/*",
-    "/Makefile",
-    "/codecov.yml"
-]
+exclude = ["testdata/*", "/scripts/*", "/Makefile", "/codecov.yml"]
 
 [dependencies]
 yaml-rust2 = { version = "0.8", optional = true, default_features = false }
@@ -35,7 +30,7 @@ once_cell = "1.8"
 thiserror = "1.0"
 
 [dev-dependencies]
-criterion = { version = "0.3", features = [ "html_reports" ] }
+criterion = { version = "0.3", features = ["html_reports"] }
 rayon = "1.0.0"
 regex = "1.0"
 getopts = "0.2"
@@ -71,9 +66,29 @@ plist-load = ["plist"]
 # Support for parsing .sublime-syntax files
 yaml-load = ["yaml-rust2", "parsing"]
 
-default-onig = ["parsing", "default-syntaxes", "default-themes", "html", "plist-load", "yaml-load", "dump-load", "dump-create", "regex-onig"]
+default-onig = [
+  "parsing",
+  "default-syntaxes",
+  "default-themes",
+  "html",
+  "plist-load",
+  "yaml-load",
+  "dump-load",
+  "dump-create",
+  "regex-onig",
+]
 # In order to switch to the fancy-regex engine, disable default features then add the default-fancy feature
-default-fancy = ["parsing", "default-syntaxes", "default-themes", "html", "plist-load", "yaml-load", "dump-load", "dump-create", "regex-fancy"]
+default-fancy = [
+  "parsing",
+  "default-syntaxes",
+  "default-themes",
+  "html",
+  "plist-load",
+  "yaml-load",
+  "dump-load",
+  "dump-create",
+  "regex-fancy",
+]
 default = ["default-onig"]
 
 # [profile.release]
