@@ -5,8 +5,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::ops::DerefMut;
 use std::path::Path;
-use yaml_rust::yaml::Hash;
-use yaml_rust::{ScanError, Yaml, YamlLoader};
+use yaml_rust2::{ScanError, Yaml, YamlLoader, yaml::Hash};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
