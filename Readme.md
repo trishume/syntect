@@ -243,6 +243,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [bingus-blog](https://git.slonk.ing/slonk/bingus-blog), a blog software written in Rust, uses `syntect` for fenced code blocks.
 - [BugStalker](https://github.com/godzie44/BugStalker/), modern debugger for Linux x86-64. Written in Rust for Rust programs.
 - [Yazi](https://github.com/sxyazi/yazi), blazing fast terminal file manager based on async I/O, uses `syntect` for text file previews.
+- [Pysyntect](https://github.com/spyder-ide/pysyntect), Python bindings for the Syntect library.
 
 
 ## License and Acknowledgements
