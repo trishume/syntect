@@ -226,7 +226,6 @@ Characters of comment:                 41099
 Below is a list of projects using Syntect, in approximate order by how long they've been using `syntect` (feel free to send PRs to add to this list):
 
 - [bat](https://github.com/sharkdp/bat), a `cat(1)` clone, uses `syntect` for syntax highlighting.
-- [Bolt](https://github.com/hiro-codes/bolt), a desktop application for building and testing APIs, uses `syntect` for syntax highlighting. 
 - [catmark](https://github.com/bestouff/catmark), a console markdown printer, uses `syntect` for code blocks.
 - [Cobalt](https://github.com/cobalt-org/cobalt.rs), a static site generator that uses `syntect` for highlighting code snippets.
 - [crowbook](https://github.com/lise-henry/crowbook), a Markdown book generator, uses `syntect` for code blocks.
@@ -236,7 +235,6 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [mdcat](https://github.com/lunaryorn/mdcat), a console markdown printer, uses `syntect` for code blocks.
 - [Scribe](https://github.com/jmacdonald/scribe), a Rust text editor framework which uses `syntect` for highlighting.
 - [syntect_server](https://github.com/sourcegraph/syntect_server), an HTTP server for syntax highlighting.
-- [tokio-cassandra](https://github.com/nhellwig/tokio-cassandra), CQL shell in Rust, uses `syntect` for shell colouring.
 - [xi-editor](https://github.com/google/xi-editor), a text editor in Rust which uses `syntect` for highlighting.
 - [Zola](https://github.com/getzola/zola), a static site generator that uses `syntect` for highlighting code snippets.
 - [The Way](https://github.com/out-of-cheese-error/the-way), a code snippets manager for your terminal that uses `syntect`for highlighting.
