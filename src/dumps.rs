@@ -123,7 +123,7 @@ fn serialize_to_writer_impl<T: Serialize, W: Write>(
     use_compression: bool,
 ) -> Result<()> {
     if use_compression {
-        let mut encoder = ZlibEncoder::new(output, Compression::best());
+        let mut encoder = std::io::BufWriter::new(ZlibEncoder::new(output, Compression::best()));
         serialize_into(&mut encoder, to_dump)
     } else {
         serialize_into(output, to_dump)
