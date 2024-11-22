@@ -55,8 +55,6 @@ pub struct SyntaxReference {
     pub scope: Scope,
     pub first_line_match: Option<String>,
     pub hidden: bool,
-    #[serde(serialize_with = "ordered_map")]
-    pub variables: HashMap<String, String>,
     #[serde(skip)]
     pub(crate) lazy_contexts: OnceCell<LazyContexts>,
     pub(crate) serialized_lazy_contexts: Vec<u8>,
@@ -65,6 +63,9 @@ pub struct SyntaxReference {
 /// The lazy-loaded parts of a [`SyntaxReference`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct LazyContexts {
+    // TODO: this changes the visiblity. Could expose a `.variables()` method that exposes the info
+    #[serde(serialize_with = "ordered_map")]
+    pub variables: HashMap<String, String>,
     #[serde(serialize_with = "ordered_map")]
     pub(crate) context_ids: HashMap<String, ContextId>,
     pub(crate) contexts: Vec<Context>,
@@ -347,7 +348,6 @@ impl SyntaxSet {
                 scope,
                 first_line_match,
                 hidden,
-                variables,
                 serialized_lazy_contexts,
                 ..
             } = syntax;
@@ -366,7 +366,7 @@ impl SyntaxSet {
                 scope,
                 first_line_match,
                 hidden,
-                variables,
+                variables: lazy_contexts.variables,
                 contexts: builder_contexts,
             };
             builder_syntaxes.push(syntax_definition);
@@ -585,6 +585,7 @@ impl SyntaxSetBuilder {
             existing_metadata,
         } = self;
 
+        let mut syntax_variables = Vec::new();
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
         let mut all_context_ids = Vec::new();
         let mut all_contexts = vec![Vec::new(); syntax_definitions.len()];
@@ -626,11 +627,11 @@ impl SyntaxSetBuilder {
                 scope,
                 first_line_match,
                 hidden,
-                variables,
                 lazy_contexts: OnceCell::new(),
                 serialized_lazy_contexts: Vec::new(), // initialized in the last step
             };
             syntaxes.push(syntax);
+            syntax_variables.push(variables);
             all_context_ids.push(context_ids);
         }
 
@@ -699,8 +700,9 @@ impl SyntaxSetBuilder {
         //  * the algorithms above
         //  * the borrow checker
         // makes it necessary to set these up as the last step.
-        for syntax in &mut syntaxes {
+        for (syntax, variables) in syntaxes.iter_mut().zip(syntax_variables.into_iter()) {
             let lazy_contexts = LazyContexts {
+                variables,
                 context_ids: all_context_ids.remove(0),
                 contexts: all_contexts.remove(0),
             };
