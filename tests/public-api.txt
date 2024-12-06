@@ -491,6 +491,8 @@ pub fn syntect::highlighting::ThemeSet::load_from_reader<R: std::io::BufRead + s
 pub fn syntect::highlighting::ThemeSet::new() -> syntect::highlighting::ThemeSet
 impl syntect::highlighting::ThemeSet
 pub fn syntect::highlighting::ThemeSet::load_defaults() -> syntect::highlighting::ThemeSet
+impl core::clone::Clone for syntect::highlighting::ThemeSet
+pub fn syntect::highlighting::ThemeSet::clone(&self) -> syntect::highlighting::ThemeSet
 impl core::default::Default for syntect::highlighting::ThemeSet
 pub fn syntect::highlighting::ThemeSet::default() -> syntect::highlighting::ThemeSet
 impl core::fmt::Debug for syntect::highlighting::ThemeSet

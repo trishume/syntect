@@ -6,7 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ThemeSet {
     // This is a `BTreeMap` because they're faster than hashmaps on small sets
     pub themes: BTreeMap<String, Theme>,
