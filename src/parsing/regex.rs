@@ -1,3 +1,4 @@
+use crate::parsing::ParseSyntaxError;
 use once_cell::sync::OnceCell;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
@@ -11,7 +12,7 @@ use std::error::Error;
 #[derive(Debug)]
 pub struct Regex {
     regex_str: String,
-    regex: OnceCell<regex_impl::Regex>,
+    regex: OnceCell<Result<regex_impl::Regex, String>>,
 }
 
 /// A region contains text positions for capture groups in a match result.
@@ -32,6 +33,16 @@ impl Regex {
         }
     }
 
+    pub fn check(&self) -> Result<(), ParseSyntaxError> {
+        match Self::try_compile(&self.regex_str) {
+            Some(error) => Err(ParseSyntaxError::RegexCompileError(
+                self.regex_str.to_string(),
+                error,
+            )),
+            None => Ok(()),
+        }
+    }
+
     /// Check whether the pattern compiles as a valid regex or not.
     pub fn try_compile(regex_str: &str) -> Option<Box<dyn Error + Send + Sync + 'static>> {
         regex_impl::Regex::new(regex_str).err()
@@ -44,9 +55,8 @@ impl Regex {
 
     /// Check if the regex matches the given text.
     pub fn is_match(&self, text: &str) -> bool {
-        self.regex().is_match(text)
+        self.is_match_failible(text).unwrap_or(false)
     }
-
     /// Search for the pattern in the given text from begin/end positions.
     ///
     /// If a region is passed, it is used for storing match group positions. The argument allows
@@ -61,13 +71,39 @@ impl Regex {
         end: usize,
         region: Option<&mut Region>,
     ) -> bool {
-        self.regex()
-            .search(text, begin, end, region.map(|r| &mut r.region))
+        self.search_failible(text, begin, end, region).unwrap_or(false)
     }
 
-    fn regex(&self) -> &regex_impl::Regex {
+    /// Check if the regex matches the given text.
+    pub fn is_match_failible<'t>(&self, text: &'t str) -> Result<bool, &str> {
+        match self.regex() {
+            Ok(r) => Ok(r.is_match(text)),
+            Err(e) => Err(e.as_str()),
+        }
+    }
+    /// Search for the pattern in the given text from begin/end positions.
+    ///
+    /// If a region is passed, it is used for storing match group positions. The argument allows
+    /// the [`Region`] to be reused between searches, which makes a significant performance
+    /// difference.
+    ///
+    /// [`Region`]: struct.Region.html
+    pub fn search_failible(
+        &self,
+        text: &str,
+        begin: usize,
+        end: usize,
+        region: Option<&mut Region>,
+    ) -> Result<bool, &str> {
+        match self.regex() {
+            Ok(r) => Ok(r.search(text, begin, end, region.map(|r| &mut r.region))),
+            Err(e) => Err(e.as_str()),
+        }
+    }
+
+    fn regex(&self) -> &Result<regex_impl::Regex, String> {
         self.regex.get_or_init(|| {
-            regex_impl::Regex::new(&self.regex_str).expect("regex string should be pre-tested")
+            regex_impl::Regex::new(&self.regex_str).map_err(|e| e.to_string())
         })
     }
 }

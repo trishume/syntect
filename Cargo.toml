@@ -1,8 +1,8 @@
 [package]
-name = "syntect"
-description = "library for high quality syntax highlighting and code intelligence using Sublime Text's grammars"
-documentation = "https://docs.rs/syntect"
-repository = "https://github.com/trishume/syntect"
+name = "syntect-5-no-panic"
+description = "temporary fork of Syntect"
+documentation = "https://docs.rs/syntect-5-no-panic"
+repository = "https://github.com/Canop/syntect"
 keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
 categories = ["parser-implementations", "parsing", "text-processing"]
 readme = "Readme.md"
