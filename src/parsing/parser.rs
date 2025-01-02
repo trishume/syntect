@@ -35,6 +35,8 @@ pub enum ParsingError {
     BadMatchIndex(usize),
     #[error("Tried to use a ContextReference that has not bee resolved yet: {0:?}")]
     UnresolvedContextReference(ContextReference),
+    #[error("Lazy syntax parsing failed: {0}")]
+    LazyParseSyntaxError(#[from] crate::parsing::ParseSyntaxError),
 }
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
@@ -63,6 +65,7 @@ pub struct ParseState {
     // See issue #101. Contains indices of frames pushed by `with_prototype`s.
     // Doesn't look at `with_prototype`s below top of stack.
     proto_starts: Vec<usize>,
+    ignore_errors: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -179,7 +182,7 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 impl ParseState {
     /// Creates a state from a syntax definition, keeping its own reference-counted point to the
     /// main context of the syntax
-    pub fn new(syntax: &SyntaxReference) -> ParseState {
+    pub fn new(syntax: &SyntaxReference, ignore_errors: bool) -> ParseState {
         let start_state = StateLevel {
             context: syntax.context_ids()["__start"],
             prototypes: Vec::new(),
@@ -189,6 +192,7 @@ impl ParseState {
             stack: vec![start_state],
             first_line: true,
             proto_starts: Vec::new(),
+            ignore_errors,
         }
     }
 
@@ -389,7 +393,7 @@ impl ParseState {
                 let match_pat = pat_context.match_at(pat_index)?;
 
                 if let Some(match_region) =
-                    self.search(line, start, match_pat, captures, search_cache, regions)
+                    self.search(line, start, match_pat, captures, search_cache, regions)?
                 {
                     let (match_start, match_end) = match_region.pos(0).unwrap();
 
@@ -437,7 +441,7 @@ impl ParseState {
         captures: Option<&(Region, String)>,
         search_cache: &mut SearchCache,
         regions: &mut Region,
-    ) -> Option<Region> {
+    ) -> Result<Option<Region>, ParsingError> {
         // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
         let match_ptr = match_pat as *const MatchPattern;
 
@@ -447,11 +451,11 @@ impl ParseState {
                 if match_start >= start {
                     // Cached match is valid, return it. Otherwise do another
                     // search below.
-                    return Some(region.clone());
+                    return Ok(Some(region.clone()));
                 }
             } else {
                 // Didn't find a match earlier, so no point trying to match it again
-                return None;
+                return Ok(None);
             }
         }
 
@@ -459,12 +463,14 @@ impl ParseState {
             (true, Some(captures)) => {
                 let (region, s) = captures;
                 let regex = match_pat.regex_with_refs(region, s);
-                let matched = regex.search(line, start, line.len(), Some(regions));
+                let matched =
+                    regex.search(line, start, line.len(), Some(regions), self.ignore_errors)?;
                 (matched, false)
             }
             _ => {
                 let regex = match_pat.regex();
-                let matched = regex.search(line, start, line.len(), Some(regions));
+                let matched =
+                    regex.search(line, start, line.len(), Some(regions), self.ignore_errors)?;
                 (matched, true)
             }
         };
@@ -481,12 +487,12 @@ impl ParseState {
             }
             if does_something {
                 // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
-                return Some(regions.clone());
+                return Ok(Some(regions.clone()));
             }
         } else if can_cache {
             search_cache.insert(match_pat, None);
         }
-        None
+        Ok(None)
     }
 
     /// Returns true if the stack was changed
@@ -751,7 +757,7 @@ mod tests {
         let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ss.find_syntax_by_name("Ruby on Rails").unwrap();
-            ParseState::new(syntax)
+            ParseState::new(syntax, false)
         };
 
         let ops1 = ops(&mut state, "module Bob::Wow::Troll::Five; 5; end", &ss);
@@ -787,7 +793,7 @@ mod tests {
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("YAML").unwrap();
-            ParseState::new(syntax)
+            ParseState::new(syntax, false)
         };
 
         assert_eq!(
@@ -819,7 +825,7 @@ mod tests {
         let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ss.find_syntax_by_name("HTML (Rails)").unwrap();
-            ParseState::new(syntax)
+            ParseState::new(syntax, false)
         };
 
         let ops = ops(&mut state, "<script>var lol = '<% def wow(", &ss);
@@ -845,7 +851,7 @@ mod tests {
         let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ss.find_syntax_by_name("Ruby on Rails").unwrap();
-            ParseState::new(syntax)
+            ParseState::new(syntax, false)
         };
 
         // For parsing HEREDOC, the "SQL" is captured at the beginning and then used in another
@@ -903,7 +909,7 @@ mod tests {
         let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ss.find_syntax_by_name("C").unwrap();
-            ParseState::new(syntax)
+            ParseState::new(syntax, false)
         };
 
         assert_eq!(
@@ -984,7 +990,7 @@ mod tests {
         let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ss.find_syntax_by_name("C").unwrap();
-            ParseState::new(syntax)
+            ParseState::new(syntax, false)
         };
 
         // test fix for issue #25
@@ -995,8 +1001,8 @@ mod tests {
     fn can_compare_parse_states() {
         let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let syntax = ss.find_syntax_by_name("Java").unwrap();
-        let mut state1 = ParseState::new(syntax);
-        let mut state2 = ParseState::new(syntax);
+        let mut state1 = ParseState::new(syntax, false);
+        let mut state2 = ParseState::new(syntax, false);
 
         assert_eq!(ops(&mut state1, "class Foo {", &ss).len(), 11);
         assert_eq!(ops(&mut state2, "class Fooo {", &ss).len(), 11);
@@ -1783,7 +1789,7 @@ contexts:
         let syntax_newlines = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
         let syntax_set = link(syntax_newlines);
 
-        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0], false);
         assert_eq!(
             ops(&mut state, "foo\n", &syntax_set),
             vec![
@@ -1824,7 +1830,7 @@ contexts:
         let syntax_newlines = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
         let syntax_set = link(syntax_newlines);
 
-        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0], false);
         assert_eq!(
             ops(&mut state, "// foo\n", &syntax_set),
             vec![
@@ -1931,7 +1937,7 @@ contexts:
         // check that each expected scope stack appears at least once while parsing the given test line
 
         let syntax_set = link(syntax);
-        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0], false);
         let ops = ops(&mut state, line, &syntax_set);
         expect_scope_stacks_for_ops(ops, expect);
     }
@@ -1955,7 +1961,7 @@ contexts:
         let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
         let syntax_set = link(syntax);
 
-        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0], false);
         ops(&mut state, line, &syntax_set)
     }
 

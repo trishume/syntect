@@ -4,9 +4,9 @@
 
 use crate::highlighting::{HighlightIterator, HighlightState, Highlighter, Style, Theme};
 use crate::parsing::{ParseState, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet};
-use crate::Error;
+use crate::{Error, LoadingError};
 use std::fs::File;
-use std::io::{self, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 // use util::debug_print_ops;
 
@@ -46,13 +46,27 @@ pub struct HighlightLines<'a> {
     highlight_state: HighlightState,
 }
 
+
+/// Options for highlighting operations
+#[derive(Debug, Clone, Copy, Default)]
+pub struct HighlightOptions {
+    /// If true, errors in parsing the syntax will have the minimal possible impact,
+    /// highlighting will proceed as if the error did not occur.
+    /// If false, errors will be propagated as errors.
+    pub ignore_errors: bool,
+}
+
 impl<'a> HighlightLines<'a> {
-    pub fn new(syntax: &SyntaxReference, theme: &'a Theme) -> HighlightLines<'a> {
+    pub fn new(
+        syntax: &SyntaxReference,
+        theme: &'a Theme,
+        options: HighlightOptions,
+    ) -> HighlightLines<'a> {
         let highlighter = Highlighter::new(theme);
         let highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         HighlightLines {
             highlighter,
-            parse_state: ParseState::new(syntax),
+            parse_state: ParseState::new(syntax, options.ignore_errors),
             highlight_state,
         }
     }
@@ -158,7 +172,8 @@ impl<'a> HighlightFile<'a> {
         path_obj: P,
         ss: &SyntaxSet,
         theme: &'a Theme,
-    ) -> io::Result<HighlightFile<'a>> {
+        options: HighlightOptions,
+    ) -> Result<HighlightFile<'a>, LoadingError> {
         let path: &Path = path_obj.as_ref();
         let f = File::open(path)?;
         let syntax = ss
@@ -167,7 +182,7 @@ impl<'a> HighlightFile<'a> {
 
         Ok(HighlightFile {
             reader: BufReader::new(f),
-            highlight_lines: HighlightLines::new(syntax, theme),
+            highlight_lines: HighlightLines::new(syntax, theme, options),
         })
     }
 }
@@ -285,7 +300,11 @@ mod tests {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
-        let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+        let mut h = HighlightLines::new(
+            syntax,
+            &ts.themes["base16-ocean.dark"],
+            HighlightOptions::default(),
+        );
         let ranges = h
             .highlight_line("pub struct Wow { hi: u64 }", &ss)
             .expect("#[cfg(test)]");
@@ -301,6 +320,7 @@ mod tests {
             "testdata/highlight_test.erb",
             &ss,
             &ts.themes["base16-ocean.dark"],
+            HighlightOptions::default(),
         )
         .unwrap();
     }
@@ -309,7 +329,7 @@ mod tests {
     #[test]
     fn can_find_regions() {
         let ss = SyntaxSet::load_defaults_nonewlines();
-        let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap());
+        let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap(), false);
         let line = "lol =5+2";
         let ops = state.parse_line(line, &ss).expect("#[cfg(test)]");
 
@@ -338,7 +358,7 @@ mod tests {
     #[test]
     fn can_find_regions_with_trailing_newline() {
         let ss = SyntaxSet::load_defaults_newlines();
-        let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap());
+        let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap(), false);
         let lines = ["# hello world\n", "lol=5+2\n"];
         let mut stack = ScopeStack::new();
 

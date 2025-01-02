@@ -397,7 +397,7 @@ mod tests {
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
-            ParseState::new(syntax)
+            ParseState::new(syntax, false)
         };
         let ts = ThemeSet::load_defaults();
         let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
@@ -438,7 +438,7 @@ mod tests {
             let syntax = ps
                 .find_syntax_by_scope(Scope::new("source.python").unwrap())
                 .unwrap();
-            ParseState::new(syntax)
+            ParseState::new(syntax, false)
         };
         let ts = ThemeSet::load_defaults();
         let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
@@ -609,7 +609,7 @@ mod tests {
         let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
-            ParseState::new(syntax)
+            ParseState::new(syntax, false)
         };
         let ts = ThemeSet::load_defaults();
         let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);

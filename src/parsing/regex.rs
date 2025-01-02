@@ -33,16 +33,6 @@ impl Regex {
         }
     }
 
-    pub fn check(&self) -> Result<(), ParseSyntaxError> {
-        match Self::try_compile(&self.regex_str) {
-            Some(error) => Err(ParseSyntaxError::RegexCompileError(
-                self.regex_str.to_string(),
-                error,
-            )),
-            None => Ok(()),
-        }
-    }
-
     /// Check whether the pattern compiles as a valid regex or not.
     pub fn try_compile(regex_str: &str) -> Option<Box<dyn Error + Send + Sync + 'static>> {
         regex_impl::Regex::new(regex_str).err()
@@ -54,9 +44,26 @@ impl Regex {
     }
 
     /// Check if the regex matches the given text.
-    pub fn is_match(&self, text: &str) -> bool {
-        self.is_match_failible(text).unwrap_or(false)
+    pub fn is_match<'t>(
+        &self,
+        text: &'t str,
+        ignore_errors: bool,
+    ) -> Result<bool, ParseSyntaxError> {
+        match self.is_match_failible(text) {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                if ignore_errors {
+                    Ok(false)
+                } else {
+                    Err(ParseSyntaxError::RegexCompileError(
+                        self.regex_str.to_string(),
+                        e.to_string().into(),
+                    ))
+                }
+            }
+        }
     }
+
     /// Search for the pattern in the given text from begin/end positions.
     ///
     /// If a region is passed, it is used for storing match group positions. The argument allows
@@ -70,11 +77,27 @@ impl Regex {
         begin: usize,
         end: usize,
         region: Option<&mut Region>,
-    ) -> bool {
-        self.search_failible(text, begin, end, region).unwrap_or(false)
+        ignore_errors: bool,
+    ) -> Result<bool, ParseSyntaxError> {
+        match self.search_failible(text, begin, end, region) {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                if ignore_errors {
+                    Ok(false)
+                } else {
+                    Err(ParseSyntaxError::RegexCompileError(
+                        self.regex_str.to_string(),
+                        e.to_string().into(),
+                    ))
+                }
+            }
+        }
     }
 
     /// Check if the regex matches the given text.
+    ///
+    /// In order to be called repetitively when in error, the error message is returned as a &str
+    /// without allocation
     pub fn is_match_failible<'t>(&self, text: &'t str) -> Result<bool, &str> {
         match self.regex() {
             Ok(r) => Ok(r.is_match(text)),
@@ -102,9 +125,8 @@ impl Regex {
     }
 
     fn regex(&self) -> &Result<regex_impl::Regex, String> {
-        self.regex.get_or_init(|| {
-            regex_impl::Regex::new(&self.regex_str).map_err(|e| e.to_string())
-        })
+        self.regex
+            .get_or_init(|| regex_impl::Regex::new(&self.regex_str).map_err(|e| e.to_string()))
     }
 }
 
@@ -308,7 +330,7 @@ mod tests {
         let regex = Regex::new(String::from(r"\w+"));
 
         assert!(regex.regex.get().is_none());
-        assert!(regex.is_match("test"));
+        assert!(regex.is_match("test", false).unwrap());
         assert!(regex.regex.get().is_some());
     }
 

@@ -1,5 +1,5 @@
 //! Rendering highlighted code as HTML+CSS
-use crate::easy::{HighlightFile, HighlightLines};
+use crate::easy::{HighlightFile, HighlightLines, HighlightOptions};
 use crate::escape::Escape;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
 use crate::parsing::{
@@ -72,7 +72,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         syntax_set: &'a SyntaxSet,
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
-        let parse_state = ParseState::new(syntax_reference);
+        let parse_state = ParseState::new(syntax_reference, true /* ignore errors */);
         let open_spans = 0;
         let html = String::new();
         let scope_stack = ScopeStack::new();
@@ -286,7 +286,7 @@ pub fn highlighted_html_for_string(
     syntax: &SyntaxReference,
     theme: &Theme,
 ) -> Result<String, Error> {
-    let mut highlighter = HighlightLines::new(syntax, theme);
+    let mut highlighter = HighlightLines::new(syntax, theme, HighlightOptions::default());
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
     for line in LinesWithEndings::from(s) {
@@ -312,7 +312,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     ss: &SyntaxSet,
     theme: &Theme,
 ) -> Result<String, Error> {
-    let mut highlighter = HighlightFile::new(path, ss, theme)?;
+    let mut highlighter = HighlightFile::new(path, ss, theme, HighlightOptions::default())?;
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
     let mut line = String::new();
@@ -562,7 +562,7 @@ mod tests {
     fn tokens() {
         let ss = SyntaxSet::load_defaults_newlines();
         let syntax = ss.find_syntax_by_name("Markdown").unwrap();
-        let mut state = ParseState::new(syntax);
+        let mut state = ParseState::new(syntax, false);
         let line = "[w](t.co) *hi* **five**";
         let ops = state.parse_line(line, &ss).expect("#[cfg(test)]");
         let mut stack = ScopeStack::new();
