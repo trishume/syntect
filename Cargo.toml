@@ -1,5 +1,5 @@
 [package]
-name = "syntect-5-no-panic"
+name = "syntect-no-panic"
 description = "temporary fork of Syntect"
 documentation = "https://docs.rs/syntect-5-no-panic"
 repository = "https://github.com/Canop/syntect"
