@@ -1,14 +1,14 @@
 [package]
 name = "syntect-no-panic"
 description = "temporary fork of Syntect"
-documentation = "https://docs.rs/syntect-5-no-panic"
+documentation = "https://docs.rs/syntect-no-panic"
 repository = "https://github.com/Canop/syntect"
 keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
 categories = ["parser-implementations", "parsing", "text-processing"]
 readme = "Readme.md"
 license = "MIT"
-version = "5.2.0" # remember to update html_root_url
-authors = ["Tristan Hume <tristan@thume.ca>"]
+version = "6.0.0" # based on https://github.com/trishume/syntect version 5.2.0
+authors = ["Tristan Hume <tristan@thume.ca>"] # Tristan isn't responsible of the things I added in the fork
 edition = "2021"
 exclude = [
     "testdata/*",
