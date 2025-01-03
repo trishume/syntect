@@ -46,7 +46,6 @@ pub struct HighlightLines<'a> {
     highlight_state: HighlightState,
 }
 
-
 /// Options for highlighting operations
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HighlightOptions {

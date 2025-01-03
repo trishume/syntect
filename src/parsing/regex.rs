@@ -49,7 +49,7 @@ impl Regex {
         text: &'t str,
         ignore_errors: bool,
     ) -> Result<bool, ParseSyntaxError> {
-        match self.is_match_failible(text) {
+        match self.is_match_fallible(text) {
             Ok(result) => Ok(result),
             Err(e) => {
                 if ignore_errors {
@@ -70,6 +70,8 @@ impl Regex {
     /// the [`Region`] to be reused between searches, which makes a significant performance
     /// difference.
     ///
+    /// Return an error if the regex pattern is invalid.
+    ///
     /// [`Region`]: struct.Region.html
     pub fn search(
         &self,
@@ -79,7 +81,7 @@ impl Regex {
         region: Option<&mut Region>,
         ignore_errors: bool,
     ) -> Result<bool, ParseSyntaxError> {
-        match self.search_failible(text, begin, end, region) {
+        match self.search_fallible(text, begin, end, region) {
             Ok(result) => Ok(result),
             Err(e) => {
                 if ignore_errors {
@@ -97,8 +99,10 @@ impl Regex {
     /// Check if the regex matches the given text.
     ///
     /// In order to be called repetitively when in error, the error message is returned as a &str
-    /// without allocation
-    pub fn is_match_failible<'t>(&self, text: &'t str) -> Result<bool, &str> {
+    /// without allocation.
+    ///
+    /// Return an error if the regex pattern is invalid.
+    pub fn is_match_fallible<'t>(&self, text: &'t str) -> Result<bool, &str> {
         match self.regex() {
             Ok(r) => Ok(r.is_match(text)),
             Err(e) => Err(e.as_str()),
@@ -111,7 +115,7 @@ impl Regex {
     /// difference.
     ///
     /// [`Region`]: struct.Region.html
-    pub fn search_failible(
+    pub fn search_fallible(
         &self,
         text: &str,
         begin: usize,
