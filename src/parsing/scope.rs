@@ -5,8 +5,6 @@ use std::fmt;
 use std::mem;
 use std::str::FromStr;
 use std::sync::Mutex;
-use std::u16;
-use std::u64;
 
 use once_cell::sync::Lazy;
 use serde::de::{Deserialize, Deserializer, Error, Visitor};
@@ -358,7 +356,7 @@ impl<'de> Deserialize<'de> for Scope {
     {
         struct ScopeVisitor;
 
-        impl<'de> Visitor<'de> for ScopeVisitor {
+        impl Visitor<'_> for ScopeVisitor {
             type Value = Scope;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

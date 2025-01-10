@@ -140,7 +140,7 @@ impl<'a, 'b> RangedHighlightIterator<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for RangedHighlightIterator<'a, 'b> {
+impl<'b> Iterator for RangedHighlightIterator<'_, 'b> {
     type Item = (Style, &'b str, Range<usize>);
 
     /// Yields the next token of text and the associated `Style` to render that text with.
@@ -225,7 +225,7 @@ impl<'a, 'b> HighlightIterator<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for HighlightIterator<'a, 'b> {
+impl<'b> Iterator for HighlightIterator<'_, 'b> {
     type Item = (Style, &'b str);
 
     /// Yields the next token of text and the associated `Style` to render that text with.

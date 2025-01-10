@@ -522,7 +522,7 @@ impl SyntaxSetBuilder {
             if entry
                 .path()
                 .extension()
-                .map_or(false, |e| e == "sublime-syntax")
+                .is_some_and(|e| e == "sublime-syntax")
             {
                 let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
                 if let Some(path_str) = entry.path().to_str() {
