@@ -7,7 +7,6 @@ Thumbs.db
 
 # cargo
 target/
-Cargo.lock
 
 # IDEA
 .idea/
