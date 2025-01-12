@@ -24,5 +24,5 @@ fn public_api() {
         .unwrap();
 
     // Assert that the public API looks correct
-    expect_test::expect_file!["public-api.txt"].assert_eq(&public_api.to_string());
+    insta::assert_snapshot!(public_api);
 }
