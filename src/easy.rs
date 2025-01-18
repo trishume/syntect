@@ -84,6 +84,20 @@ impl<'a> HighlightLines<'a> {
             HighlightIterator::new(&mut self.highlight_state, &ops[..], line, &self.highlighter);
         Ok(iter.collect())
     }
+
+    /// This starts again from a previous state, useful for highlighting a file incrementally for
+    /// which you've cached the highlight and parse state.
+    pub fn from_state(
+        theme: &'a Theme,
+        highlight_state: HighlightState,
+        parse_state: ParseState,
+    ) -> HighlightLines<'a> {
+        HighlightLines {
+            highlighter: Highlighter::new(theme),
+            parse_state,
+            highlight_state,
+        }
+    }
 }
 
 /// Convenience struct containing everything you need to highlight a file
