@@ -98,6 +98,11 @@ impl<'a> HighlightLines<'a> {
             highlight_state,
         }
     }
+
+    /// Returns the current highlight and parse states, useful for caching and incremental highlighting.
+    pub fn state(self) -> (HighlightState, ParseState) {
+        (self.highlight_state, self.parse_state)
+    }
 }
 
 /// Convenience struct containing everything you need to highlight a file
@@ -370,5 +375,39 @@ mod tests {
             let all_ops = ops.iter().map(|t| &t.1);
             assert_eq!(all_ops.count(), iterated_ops.len() - 1); // -1 because we want to ignore the NOOP
         }
+    }
+
+    #[cfg(feature = "default-syntaxes")]
+    #[test]
+    fn can_start_again_from_previous_state() {
+        let ss = SyntaxSet::load_defaults_nonewlines();
+        let ts = ThemeSet::load_defaults();
+        let mut highlighter = HighlightLines::new(
+            ss.find_syntax_by_extension("py").unwrap(),
+            &ts.themes["base16-ocean.dark"],
+        );
+
+        let lines = ["\"\"\"", "def foo():", "\"\"\""];
+
+        let highlighted_first_line = highlighter
+            .highlight_line(lines[0], &ss)
+            .expect("#[cfg(test)]");
+
+        let (highlight_state, parse_state) = highlighter.state();
+
+        let mut other_highlighter = HighlightLines::from_state(
+            &ts.themes["base16-ocean.dark"],
+            highlight_state,
+            parse_state,
+        );
+
+        let highlighted_second_line = other_highlighter
+            .highlight_line(lines[1], &ss)
+            .expect("#[cfg(test)]");
+
+        // Check that the second line is highlighted correctly (i.e. as a docstring)
+        // using the first line's previous state
+        assert!(highlighted_second_line.len() == 1);
+        assert!(highlighted_second_line[0].0 == highlighted_first_line[0].0);
     }
 }
