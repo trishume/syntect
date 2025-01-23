@@ -236,6 +236,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [mdcat](https://github.com/lunaryorn/mdcat), a console markdown printer, uses `syntect` for code blocks.
 - [Scribe](https://github.com/jmacdonald/scribe), a Rust text editor framework which uses `syntect` for highlighting.
 - [syntect_server](https://github.com/sourcegraph/syntect_server), an HTTP server for syntax highlighting.
+- [Television](https://github.com/alexpasmantier/television), a fast and versatile fuzzy finder TUI.
 - [tokio-cassandra](https://github.com/nhellwig/tokio-cassandra), CQL shell in Rust, uses `syntect` for shell colouring.
 - [xi-editor](https://github.com/google/xi-editor), a text editor in Rust which uses `syntect` for highlighting.
 - [Zola](https://github.com/getzola/zola), a static site generator that uses `syntect` for highlighting code snippets.
