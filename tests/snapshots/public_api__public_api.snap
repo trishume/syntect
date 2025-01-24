@@ -26,9 +26,11 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::HighlightFil
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::HighlightFile<'a>
 pub struct syntect::easy::HighlightLines<'a>
 impl<'a> syntect::easy::HighlightLines<'a>
+pub fn syntect::easy::HighlightLines<'a>::from_state(theme: &'a syntect::highlighting::Theme, highlight_state: syntect::highlighting::HighlightState, parse_state: syntect::parsing::ParseState) -> syntect::easy::HighlightLines<'a>
 pub fn syntect::easy::HighlightLines<'a>::highlight<'b>(&mut self, line: &'b str, syntax_set: &syntect::parsing::SyntaxSet) -> alloc::vec::Vec<(syntect::highlighting::Style, &'b str)>
 pub fn syntect::easy::HighlightLines<'a>::highlight_line<'b>(&mut self, line: &'b str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<alloc::vec::Vec<(syntect::highlighting::Style, &'b str)>, syntect::Error>
 pub fn syntect::easy::HighlightLines<'a>::new(syntax: &syntect::parsing::SyntaxReference, theme: &'a syntect::highlighting::Theme) -> syntect::easy::HighlightLines<'a>
+pub fn syntect::easy::HighlightLines<'a>::state(self) -> (syntect::highlighting::HighlightState, syntect::parsing::ParseState)
 impl<'a> !core::marker::Send for syntect::easy::HighlightLines<'a>
 impl<'a> !core::marker::Sync for syntect::easy::HighlightLines<'a>
 impl<'a> core::marker::Unpin for syntect::easy::HighlightLines<'a>
