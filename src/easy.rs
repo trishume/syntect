@@ -377,7 +377,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "default-syntaxes")]
+    #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
     fn can_start_again_from_previous_state() {
         let ss = SyntaxSet::load_defaults_nonewlines();
