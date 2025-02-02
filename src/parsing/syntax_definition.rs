@@ -241,6 +241,9 @@ where
 
         last_was_escape = c == '\\' && !last_was_escape;
     }
+    if last_was_escape {
+        reg_str.push('\\');
+    }
     reg_str
 }
 
