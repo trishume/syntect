@@ -4,11 +4,10 @@ use std::collections::HashMap;
 use std::fmt;
 use std::mem;
 use std::str::FromStr;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::u16;
 use std::u64;
 
-use once_cell::sync::Lazy;
 use serde::de::{Deserialize, Deserializer, Error, Visitor};
 use serde::ser::{Serialize, Serializer};
 use serde_derive::{Deserialize, Serialize};
@@ -29,11 +28,13 @@ pub const ATOM_LEN_BITS: u16 = 3;
 
 /// The global scope repo, exposed in case you want to minimize locking and unlocking.
 ///
-/// Ths shouldn't be necessary for you to use. See the [`ScopeRepository`] docs.
+/// This shouldn't be necessary for you to use. See the [`ScopeRepository`] docs.
 ///
 /// [`ScopeRepository`]: struct.ScopeRepository.html
-pub static SCOPE_REPO: Lazy<Mutex<ScopeRepository>> =
-    Lazy::new(|| Mutex::new(ScopeRepository::new()));
+pub fn scope_repo() -> &'static Mutex<ScopeRepository> {
+    static SCOPE_REPO: OnceLock<Mutex<ScopeRepository>> = OnceLock::new();
+    SCOPE_REPO.get_or_init(|| Mutex::new(ScopeRepository::new()))
+}
 
 /// A hierarchy of atoms with semi-standardized names used to accord semantic information to a
 /// specific piece of text.
@@ -73,12 +74,11 @@ pub enum ParseScopeError {
 /// The structure used to keep track of the mapping between scope atom numbers and their string
 /// names
 ///
-/// It is only exposed in case you want to lock [`SCOPE_REPO`] and then allocate a bunch of scopes
+/// It is only exposed in case you want to lock [`scope_repo()`] and then allocate a bunch of scopes
 /// at once without thrashing the lock. In general, you should just use [`Scope::new()`].
 ///
 /// Only [`Scope`]s created by the same repository have valid comparison results.
 ///
-/// [`SCOPE_REPO`]: struct.SCOPE_REPO.html
 /// [`Scope::new()`]: struct.Scope.html#method.new
 /// [`Scope`]: struct.Scope.html
 #[derive(Debug)]
@@ -223,7 +223,7 @@ impl Scope {
     ///
     /// Example: `Scope::new("meta.rails.controller")`
     pub fn new(s: &str) -> Result<Scope, ParseScopeError> {
-        let mut repo = SCOPE_REPO.lock().unwrap();
+        let mut repo = scope_repo().lock().unwrap();
         repo.build(s.trim())
     }
 
@@ -268,7 +268,7 @@ impl Scope {
     ///
     /// This requires locking a global repo and shouldn't be done frequently.
     pub fn build_string(self) -> String {
-        let repo = SCOPE_REPO.lock().unwrap();
+        let repo = scope_repo().lock().unwrap();
         repo.to_string(self)
     }
 

@@ -1,7 +1,7 @@
-use once_cell::sync::OnceCell;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 use std::error::Error;
+use std::sync::OnceLock;
 
 /// An abstraction for regex patterns.
 ///
@@ -11,7 +11,7 @@ use std::error::Error;
 #[derive(Debug)]
 pub struct Regex {
     regex_str: String,
-    regex: OnceCell<regex_impl::Regex>,
+    regex: OnceLock<regex_impl::Regex>,
 }
 
 /// A region contains text positions for capture groups in a match result.
@@ -28,7 +28,7 @@ impl Regex {
     pub fn new(regex_str: String) -> Self {
         Self {
             regex_str,
-            regex: OnceCell::new(),
+            regex: OnceLock::new(),
         }
     }
 
@@ -76,7 +76,7 @@ impl Clone for Regex {
     fn clone(&self) -> Self {
         Regex {
             regex_str: self.regex_str.clone(),
-            regex: OnceCell::new(),
+            regex: OnceLock::new(),
         }
     }
 }

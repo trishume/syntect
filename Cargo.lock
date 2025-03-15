@@ -818,7 +818,6 @@ dependencies = [
  "fnv",
  "getopts",
  "insta",
- "once_cell",
  "onig",
  "plist",
  "pretty_assertions",
