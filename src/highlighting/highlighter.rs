@@ -390,11 +390,12 @@ impl<'a> Highlighter<'a> {
 mod tests {
     use super::*;
     use crate::highlighting::{Color, FontStyle, Style, ThemeSet};
-    use crate::parsing::{ParseState, ScopeStack, SyntaxSet};
+    use crate::parsing::{ParseState, ScopeStack};
+    use crate::utils::testdata;
 
     #[test]
     fn can_parse() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ps = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)
@@ -433,7 +434,7 @@ mod tests {
 
     #[test]
     fn can_parse_with_highlight_state_from_cache() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ps = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ps
                 .find_syntax_by_scope(Scope::new("source.python").unwrap())
@@ -606,7 +607,7 @@ mod tests {
 
     #[test]
     fn test_ranges() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ps = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)
