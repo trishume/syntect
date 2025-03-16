@@ -79,6 +79,12 @@ default = ["default-onig"]
 # [profile.release]
 # debug = true
 
+[profile.dev.package]
+aho-corasick.opt-level = 2
+fancy-regex.opt-level = 2
+regex-automata.opt-level = 2
+regex-syntax.opt-level = 2
+
 [lib]
 bench = false
 
