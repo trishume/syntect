@@ -743,12 +743,12 @@ mod tests {
     use crate::parsing::ScopeStackOp::{Clear, Pop, Push, Restore};
     use crate::parsing::{Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder};
     use crate::util::debug_print_ops;
+    use crate::utils::testdata;
 
     const TEST_SYNTAX: &str = include_str!("../../testdata/parser_tests.sublime-syntax");
-
     #[test]
     fn can_parse_simple() {
-        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ss.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)
@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn can_parse_yaml() {
-        let ps = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ps = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ps.find_syntax_by_name("YAML").unwrap();
             ParseState::new(syntax)
@@ -816,7 +816,7 @@ mod tests {
 
     #[test]
     fn can_parse_includes() {
-        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ss.find_syntax_by_name("HTML (Rails)").unwrap();
             ParseState::new(syntax)
@@ -842,7 +842,7 @@ mod tests {
 
     #[test]
     fn can_parse_backrefs() {
-        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ss.find_syntax_by_name("Ruby on Rails").unwrap();
             ParseState::new(syntax)
@@ -900,7 +900,7 @@ mod tests {
 
     #[test]
     fn can_parse_preprocessor_rules() {
-        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ss.find_syntax_by_name("C").unwrap();
             ParseState::new(syntax)
@@ -981,7 +981,7 @@ mod tests {
 
     #[test]
     fn can_parse_issue25() {
-        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ss.find_syntax_by_name("C").unwrap();
             ParseState::new(syntax)
@@ -993,7 +993,7 @@ mod tests {
 
     #[test]
     fn can_compare_parse_states() {
-        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let ss = &*testdata::PACKAGES_SYN_SET;
         let syntax = ss.find_syntax_by_name("Java").unwrap();
         let mut state1 = ParseState::new(syntax);
         let mut state2 = ParseState::new(syntax);
