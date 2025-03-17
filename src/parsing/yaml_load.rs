@@ -95,7 +95,7 @@ impl SyntaxDefinition {
             return Err(ParseSyntaxError::EmptyFile);
         }
         let doc = &docs[0];
-        let mut scope_repo = SCOPE_REPO.lock().unwrap();
+        let mut scope_repo = scope_repo().lock().unwrap();
         SyntaxDefinition::parse_top_level(
             doc,
             scope_repo.deref_mut(),
