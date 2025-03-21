@@ -30,7 +30,7 @@ impl ThemeSet {
                 && entry
                     .path()
                     .extension()
-                    .map_or(false, |e| e.eq_ignore_ascii_case("tmTheme"))
+                    .is_some_and(|e| e.eq_ignore_ascii_case("tmTheme"))
             {
                 themes.push(entry.path().to_owned());
             }
