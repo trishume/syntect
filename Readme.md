@@ -248,6 +248,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [BugStalker](https://github.com/godzie44/BugStalker/), modern debugger for Linux x86-64. Written in Rust for Rust programs.
 - [Yazi](https://github.com/sxyazi/yazi), blazing fast terminal file manager based on async I/O, uses `syntect` for text file previews.
 - [CodeSnap.nvim](https://github.com/mistricky/codesnap.nvim), snapshot plugin for Neovim, that uses `syntect` for code syntax highlighting.
+- [code-to-pdf](https://github.com/Tommypop2/code-to-pdf), a tool that generates a syntax-highlighted PDF of a directory
 
 
 ## License and Acknowledgements
