@@ -259,9 +259,9 @@ impl<'a, 'b> syntect::highlighting::HighlightIterator<'a, 'b>
 pub fn syntect::highlighting::HighlightIterator<'a, 'b>::new(state: &'a mut syntect::highlighting::HighlightState, changes: &'a [(usize, syntect::parsing::ScopeStackOp)], text: &'b str, highlighter: &'a syntect::highlighting::Highlighter<'_>) -> syntect::highlighting::HighlightIterator<'a, 'b>
 impl<'a, 'b> core::fmt::Debug for syntect::highlighting::HighlightIterator<'a, 'b>
 pub fn syntect::highlighting::HighlightIterator<'a, 'b>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'a, 'b> core::iter::traits::iterator::Iterator for syntect::highlighting::HighlightIterator<'a, 'b>
-pub type syntect::highlighting::HighlightIterator<'a, 'b>::Item = (syntect::highlighting::Style, &'b str)
-pub fn syntect::highlighting::HighlightIterator<'a, 'b>::next(&mut self) -> core::option::Option<(syntect::highlighting::Style, &'b str)>
+impl<'b> core::iter::traits::iterator::Iterator for syntect::highlighting::HighlightIterator<'_, 'b>
+pub type syntect::highlighting::HighlightIterator<'_, 'b>::Item = (syntect::highlighting::Style, &'b str)
+pub fn syntect::highlighting::HighlightIterator<'_, 'b>::next(&mut self) -> core::option::Option<(syntect::highlighting::Style, &'b str)>
 impl<'a, 'b> core::marker::Send for syntect::highlighting::HighlightIterator<'a, 'b>
 impl<'a, 'b> core::marker::Sync for syntect::highlighting::HighlightIterator<'a, 'b>
 impl<'a, 'b> core::marker::Unpin for syntect::highlighting::HighlightIterator<'a, 'b>
@@ -303,9 +303,9 @@ impl<'a, 'b> syntect::highlighting::RangedHighlightIterator<'a, 'b>
 pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::new(state: &'a mut syntect::highlighting::HighlightState, changes: &'a [(usize, syntect::parsing::ScopeStackOp)], text: &'b str, highlighter: &'a syntect::highlighting::Highlighter<'_>) -> syntect::highlighting::RangedHighlightIterator<'a, 'b>
 impl<'a, 'b> core::fmt::Debug for syntect::highlighting::RangedHighlightIterator<'a, 'b>
 pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'a, 'b> core::iter::traits::iterator::Iterator for syntect::highlighting::RangedHighlightIterator<'a, 'b>
-pub type syntect::highlighting::RangedHighlightIterator<'a, 'b>::Item = (syntect::highlighting::Style, &'b str, core::ops::range::Range<usize>)
-pub fn syntect::highlighting::RangedHighlightIterator<'a, 'b>::next(&mut self) -> core::option::Option<(syntect::highlighting::Style, &'b str, core::ops::range::Range<usize>)>
+impl<'b> core::iter::traits::iterator::Iterator for syntect::highlighting::RangedHighlightIterator<'_, 'b>
+pub type syntect::highlighting::RangedHighlightIterator<'_, 'b>::Item = (syntect::highlighting::Style, &'b str, core::ops::range::Range<usize>)
+pub fn syntect::highlighting::RangedHighlightIterator<'_, 'b>::next(&mut self) -> core::option::Option<(syntect::highlighting::Style, &'b str, core::ops::range::Range<usize>)>
 impl<'a, 'b> core::marker::Send for syntect::highlighting::RangedHighlightIterator<'a, 'b>
 impl<'a, 'b> core::marker::Sync for syntect::highlighting::RangedHighlightIterator<'a, 'b>
 impl<'a, 'b> core::marker::Unpin for syntect::highlighting::RangedHighlightIterator<'a, 'b>
