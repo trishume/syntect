@@ -128,7 +128,7 @@ For more information on available features, see the features section in `Cargo.t
 
 Since 4.0 `syntect` offers an alternative pure-rust regex engine based on the [fancy-regex](https://github.com/fancy-regex/fancy-regex) engine which extends the awesome [regex crate](https://github.com/rust-lang/regex) with support for fancier regex features that Sublime syntaxes need like lookaheads.
 
-The advantage of `fancy-regex` is that it does not require the [onig crate](https://github.com/rust-onig/rust-onig) which requires building and linking the Oniguruma C library. Many users experience difficulty building the `onig` crate, especially on Windows and Webassembly.
+The advantage of `fancy-regex` is that it does not require the [onig crate](https://github.com/rust-onig/rust-onig) which requires building and linking the Oniguruma C library. Many users experience difficulty building the `onig` crate, especially on Windows and WebAssembly.
 
 As far as our tests can tell this new engine is just as correct, but it hasn't been tested as extensively in production. It also currently seems to be about **half the speed** of the default Oniguruma engine, although further testing and optimization (perhaps by you!) may eventually see it surpass Oniguruma's speed and become the default.
 
