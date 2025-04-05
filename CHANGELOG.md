@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Breaking changes
+
+- Replace `syntect::parsing::SCOPE_REPO` with the `scope_repo` function exposing the same functionality
+
+### Dependencies
+
+- Replace `once_cell` with `std::sync::{LazyLock, OnceLock}`
+
 ## [Version 5.2.0](https://github.com/trishume/syntect/compare/v5.1.0...v5.2.0) (2024-02-07)
 
 ### Improvements

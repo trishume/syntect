@@ -17,10 +17,10 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::str::FromStr;
+use std::sync::LazyLock;
 use std::time::Instant;
 
 use getopts::Options;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use walkdir::{DirEntry, WalkDir};
 
@@ -36,7 +36,7 @@ pub enum SyntaxTestFileResult {
     Success(usize),
 }
 
-pub static SYNTAX_TEST_HEADER_PATTERN: Lazy<Regex> = Lazy::new(|| {
+pub static SYNTAX_TEST_HEADER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?xm)
         ^(?P<testtoken_start>\s*\S+)
@@ -47,7 +47,7 @@ pub static SYNTAX_TEST_HEADER_PATTERN: Lazy<Regex> = Lazy::new(|| {
     )
     .unwrap()
 });
-pub static SYNTAX_TEST_ASSERTION_PATTERN: Lazy<Regex> = Lazy::new(|| {
+pub static SYNTAX_TEST_ASSERTION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?xm)
     \s*(?:
