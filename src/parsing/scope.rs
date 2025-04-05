@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::mem;
 use std::str::FromStr;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use std::u16;
 use std::u64;
 
@@ -32,8 +32,19 @@ pub const ATOM_LEN_BITS: u16 = 3;
 /// Ths shouldn't be necessary for you to use. See the [`ScopeRepository`] docs.
 ///
 /// [`ScopeRepository`]: struct.ScopeRepository.html
+#[deprecated = "\
+    Deprecated in anticipation of removal in the next semver-breaking release under the \
+    justification that it's incredibly niche functionality to expose. If you rely on this \
+    functionality then please express your particular use-case in the github issue: \
+    https://github.com/trishume/syntect/issues/575\
+"]
 pub static SCOPE_REPO: Lazy<Mutex<ScopeRepository>> =
     Lazy::new(|| Mutex::new(ScopeRepository::new()));
+
+pub(crate) fn lock_global_scope_repo() -> MutexGuard<'static, ScopeRepository> {
+    #[allow(deprecated)]
+    SCOPE_REPO.lock().unwrap()
+}
 
 /// A hierarchy of atoms with semi-standardized names used to accord semantic information to a
 /// specific piece of text.
@@ -223,7 +234,7 @@ impl Scope {
     ///
     /// Example: `Scope::new("meta.rails.controller")`
     pub fn new(s: &str) -> Result<Scope, ParseScopeError> {
-        let mut repo = SCOPE_REPO.lock().unwrap();
+        let mut repo = lock_global_scope_repo();
         repo.build(s.trim())
     }
 
@@ -268,7 +279,7 @@ impl Scope {
     ///
     /// This requires locking a global repo and shouldn't be done frequently.
     pub fn build_string(self) -> String {
-        let repo = SCOPE_REPO.lock().unwrap();
+        let repo = lock_global_scope_repo();
         repo.to_string(self)
     }
 
