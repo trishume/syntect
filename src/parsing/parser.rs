@@ -18,8 +18,6 @@ use crate::parsing::syntax_set::{SyntaxReference, SyntaxSet};
 use fnv::FnvHasher;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
-use std::i32;
-use std::usize;
 
 /// Errors that can occur while parsing.
 #[derive(Debug, thiserror::Error)]
