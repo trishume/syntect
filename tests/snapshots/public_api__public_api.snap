@@ -1219,7 +1219,7 @@ impl core::marker::Unpin for syntect::parsing::SyntaxSetBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::SyntaxSetBuilder
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::SyntaxSetBuilder
 pub const syntect::parsing::ATOM_LEN_BITS: u16 = 3u16
-pub static syntect::parsing::SCOPE_REPO: once_cell::sync::Lazy<std::sync::mutex::Mutex<syntect::parsing::ScopeRepository>>
+pub fn syntect::parsing::scope_repo() -> &'static std::sync::mutex::Mutex<syntect::parsing::ScopeRepository>
 pub mod syntect::util
 pub struct syntect::util::LinesWithEndings<'a>
 impl<'a> syntect::util::LinesWithEndings<'a>
