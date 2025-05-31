@@ -309,9 +309,10 @@ impl SyntaxDefinition {
         let mut has_captures = false;
         let operation = if get_key(map, "pop", Some).is_ok() {
             // Thanks @wbond for letting me know this is the correct way to check for captures
-            has_captures = state
-                .backref_regex
-                .search(&regex_str, 0, regex_str.len(), None);
+            has_captures =
+                state
+                    .backref_regex
+                    .search(&regex_str, 0, regex_str.len(), None, false)?;
             MatchOperation::Pop
         } else if let Ok(y) = get_key(map, "push", Some) {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
@@ -421,7 +422,7 @@ impl SyntaxDefinition {
     }
 
     fn parse_regex(raw_regex: &str, state: &ParserState<'_>) -> Result<String, ParseSyntaxError> {
-        let regex = Self::resolve_variables(raw_regex, state);
+        let regex = Self::resolve_variables(raw_regex, state)?;
         let regex = replace_posix_char_classes(regex);
         let regex = if state.lines_include_newline {
             regex_for_newlines(regex)
@@ -435,14 +436,20 @@ impl SyntaxDefinition {
         Ok(regex)
     }
 
-    fn resolve_variables(raw_regex: &str, state: &ParserState<'_>) -> String {
+    fn resolve_variables(
+        raw_regex: &str,
+        state: &ParserState<'_>,
+    ) -> Result<String, ParseSyntaxError> {
         let mut result = String::new();
         let mut index = 0;
         let mut region = Region::new();
-        while state
-            .variable_regex
-            .search(raw_regex, index, raw_regex.len(), Some(&mut region))
-        {
+        while state.variable_regex.search(
+            raw_regex,
+            index,
+            raw_regex.len(),
+            Some(&mut region),
+            false,
+        )? {
             let (begin, end) = region.pos(0).unwrap();
 
             result.push_str(&raw_regex[index..begin]);
@@ -454,7 +461,7 @@ impl SyntaxDefinition {
                 .get(var_name)
                 .map(String::as_ref)
                 .unwrap_or("");
-            let var_resolved = Self::resolve_variables(var_raw, state);
+            let var_resolved = Self::resolve_variables(var_raw, state)?;
             result.push_str(&var_resolved);
 
             index = end;
@@ -462,7 +469,7 @@ impl SyntaxDefinition {
         if index < raw_regex.len() {
             result.push_str(&raw_regex[index..]);
         }
-        result
+        Ok(result)
     }
 
     fn try_compile_regex(regex_str: &str) -> Result<(), ParseSyntaxError> {
