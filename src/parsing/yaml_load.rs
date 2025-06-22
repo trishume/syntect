@@ -403,7 +403,7 @@ impl SyntaxDefinition {
         namer: &mut ContextNamer,
     ) -> Result<Vec<ContextReference>, ParseSyntaxError> {
         // check for a push of multiple items
-        if y.as_vec().map_or(false, |v| {
+        if y.as_vec().is_some_and(|v| {
             !v.is_empty()
                 && (v[0].as_str().is_some()
                     || (v[0].as_vec().is_some() && v[0].as_vec().unwrap()[0].as_hash().is_some()))
@@ -613,7 +613,7 @@ struct RegexRewriterForNewlines<'a> {
     parser: Parser<'a>,
 }
 
-impl<'a> RegexRewriterForNewlines<'a> {
+impl RegexRewriterForNewlines<'_> {
     fn rewrite(mut self) -> String {
         let mut result = Vec::new();
 
@@ -672,7 +672,7 @@ struct RegexRewriterForNoNewlines<'a> {
     parser: Parser<'a>,
 }
 
-impl<'a> RegexRewriterForNoNewlines<'a> {
+impl RegexRewriterForNoNewlines<'_> {
     fn rewrite(mut self) -> String {
         let mut result = Vec::new();
         while let Some(c) = self.parser.peek() {
@@ -725,7 +725,7 @@ struct ConsumingCaptureIndexParser<'a> {
     parser: Parser<'a>,
 }
 
-impl<'a> ConsumingCaptureIndexParser<'a> {
+impl ConsumingCaptureIndexParser<'_> {
     /// Find capture groups which are not inside lookarounds.
     ///
     /// If, in a YAML syntax definition, a scope stack is applied to a capture group inside a
@@ -814,7 +814,7 @@ struct Parser<'a> {
     index: usize,
 }
 
-impl<'a> Parser<'a> {
+impl Parser<'_> {
     fn new(bytes: &[u8]) -> Parser {
         Parser { bytes, index: 0 }
     }
