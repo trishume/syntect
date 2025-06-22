@@ -10,7 +10,7 @@ use super::super::LoadingError;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::{BufRead, BufReader};
 use std::mem;
 use std::path::Path;
 
@@ -212,15 +212,21 @@ impl SyntaxSet {
     ///
     /// This uses regexes that come with some sublime syntax grammars for matching things like
     /// shebangs and mode lines like `-*- Mode: C -*-`
-    pub fn find_syntax_by_first_line<'a>(&'a self, s: &str) -> Option<&'a SyntaxReference> {
+    pub fn find_syntax_by_first_line<'a>(
+        &'a self,
+        s: &str,
+    ) -> Result<Option<&'a SyntaxReference>, LoadingError> {
         let s = s.strip_prefix("\u{feff}").unwrap_or(s); // Strip UTF-8 BOM
         let cache = self.first_line_cache();
         for &(ref reg, i) in cache.regexes.iter().rev() {
-            if reg.search(s, 0, s.len(), None) {
-                return Some(&self.syntaxes[i]);
+            let found = reg
+                .search(s, 0, s.len(), None, false /*ignore errors*/)
+                .map_err(|e| LoadingError::ParseSyntax(e, "regex parsing".to_string()))?;
+            if found {
+                return Ok(Some(&self.syntaxes[i]));
             }
         }
-        None
+        Ok(None)
     }
 
     /// Searches for a syntax by it's original file path when it was first loaded from disk
@@ -261,7 +267,7 @@ impl SyntaxSet {
     pub fn find_syntax_for_file<P: AsRef<Path>>(
         &self,
         path_obj: P,
-    ) -> io::Result<Option<&SyntaxReference>> {
+    ) -> Result<Option<&SyntaxReference>, LoadingError> {
         let path: &Path = path_obj.as_ref();
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
@@ -273,7 +279,7 @@ impl SyntaxSet {
             let f = File::open(path)?;
             let mut line_reader = BufReader::new(&f);
             line_reader.read_line(&mut line)?;
-            self.find_syntax_by_first_line(&line)
+            self.find_syntax_by_first_line(&line)?
         } else {
             None
         };
@@ -970,6 +976,7 @@ mod tests {
         assert_eq!(
             &ps.find_syntax_by_first_line("#!/usr/bin/env node")
                 .unwrap()
+                .unwrap()
                 .name,
             "JavaScript"
         );
@@ -981,6 +988,7 @@ mod tests {
         assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
         assert_eq!(
             &ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line")
+                .unwrap()
                 .unwrap()
                 .name,
             "C"
@@ -1018,7 +1026,10 @@ mod tests {
             &ps.find_syntax_for_file("Rakefile").unwrap().unwrap().name,
             "Ruby"
         );
-        assert!(&ps.find_syntax_by_first_line("derp derp hi lol").is_none());
+        assert!(&ps
+            .find_syntax_by_first_line("derp derp hi lol")
+            .unwrap()
+            .is_none());
         assert_eq!(
             &ps.find_syntax_by_path("Packages/Rust/Rust.sublime-syntax")
                 .unwrap()
@@ -1049,7 +1060,7 @@ mod tests {
         };
 
         let syntax = cloned_syntax_set.find_syntax_by_extension("a").unwrap();
-        let mut parse_state = ParseState::new(syntax);
+        let mut parse_state = ParseState::new(syntax, false);
         let ops = parse_state
             .parse_line("a go_b b", &cloned_syntax_set)
             .expect("#[cfg(test)]");
@@ -1102,7 +1113,7 @@ mod tests {
         let syntax_set = builder.build();
 
         let syntax = syntax_set.find_syntax_by_extension("c").unwrap();
-        let mut parse_state = ParseState::new(syntax);
+        let mut parse_state = ParseState::new(syntax, false);
         let ops = parse_state
             .parse_line("c go_a a go_b b", &syntax_set)
             .expect("#[cfg(test)]");
@@ -1155,7 +1166,7 @@ mod tests {
         let syntax_set = builder.build();
 
         let syntax = syntax_set.find_syntax_by_extension("z").unwrap();
-        let mut parse_state = ParseState::new(syntax);
+        let mut parse_state = ParseState::new(syntax, false);
         let ops = parse_state
             .parse_line("z go_x x leave_x z", &syntax_set)
             .unwrap();
@@ -1212,7 +1223,7 @@ mod tests {
             .par_iter()
             .map(|line| {
                 let syntax = syntax_set.find_syntax_by_extension("a").unwrap();
-                let mut parse_state = ParseState::new(syntax);
+                let mut parse_state = ParseState::new(syntax, false);
                 parse_state
                     .parse_line(line, &syntax_set)
                     .expect("#[cfg(test)]")
@@ -1303,10 +1314,13 @@ mod tests {
             .find_syntax_by_scope(Scope::new("source.a").unwrap())
             .unwrap();
         assert_eq!(syntax.name, "A improved");
-        syntax = syntax_set.find_syntax_by_first_line("syntax a").unwrap();
+        syntax = syntax_set
+            .find_syntax_by_first_line("syntax a")
+            .unwrap()
+            .unwrap();
         assert_eq!(syntax.name, "C");
 
-        let mut parse_state = ParseState::new(syntax);
+        let mut parse_state = ParseState::new(syntax, false);
         let ops = parse_state
             .parse_line("c go_a a", &syntax_set)
             .expect("msg");
@@ -1323,7 +1337,7 @@ mod tests {
         let syntax_set = SyntaxSet::load_defaults_newlines().into_builder().build();
         let syntax = syntax_set.find_syntax_by_extension("yaml").unwrap();
 
-        let mut parse_state = ParseState::new(syntax);
+        let mut parse_state = ParseState::new(syntax, false);
         let ops = parse_state
             .parse_line("# test\n", &syntax_set)
             .expect("#[cfg(test)]");
@@ -1408,6 +1422,7 @@ mod tests {
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax_ref = syntax_set
             .find_syntax_by_first_line("\u{feff}<?xml version=\"1.0\"?>")
+            .unwrap()
             .unwrap();
         assert_eq!(syntax_ref.name, "XML");
     }
