@@ -5,7 +5,7 @@ use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 mod utils;
 
 fn do_parse(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference) -> usize {
-    let mut state = ParseState::new(syntax);
+    let mut state = ParseState::new(syntax, false);
     let mut count = 0;
     for line in s.lines() {
         let ops = state.parse_line(line, ss).unwrap();

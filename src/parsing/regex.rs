@@ -1,3 +1,4 @@
+use crate::parsing::ParseSyntaxError;
 use once_cell::sync::OnceCell;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
@@ -11,7 +12,7 @@ use std::error::Error;
 #[derive(Debug)]
 pub struct Regex {
     regex_str: String,
-    regex: OnceCell<regex_impl::Regex>,
+    regex: OnceCell<Result<regex_impl::Regex, String>>,
 }
 
 /// A region contains text positions for capture groups in a match result.
@@ -43,8 +44,24 @@ impl Regex {
     }
 
     /// Check if the regex matches the given text.
-    pub fn is_match(&self, text: &str) -> bool {
-        self.regex().is_match(text)
+    pub fn is_match<'t>(
+        &self,
+        text: &'t str,
+        ignore_errors: bool,
+    ) -> Result<bool, ParseSyntaxError> {
+        match self.is_match_fallible(text) {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                if ignore_errors {
+                    Ok(false)
+                } else {
+                    Err(ParseSyntaxError::RegexCompileError(
+                        self.regex_str.to_string(),
+                        e.to_string().into(),
+                    ))
+                }
+            }
+        }
     }
 
     /// Search for the pattern in the given text from begin/end positions.
@@ -53,6 +70,8 @@ impl Regex {
     /// the [`Region`] to be reused between searches, which makes a significant performance
     /// difference.
     ///
+    /// Return an error if the regex pattern is invalid.
+    ///
     /// [`Region`]: struct.Region.html
     pub fn search(
         &self,
@@ -60,15 +79,58 @@ impl Regex {
         begin: usize,
         end: usize,
         region: Option<&mut Region>,
-    ) -> bool {
-        self.regex()
-            .search(text, begin, end, region.map(|r| &mut r.region))
+        ignore_errors: bool,
+    ) -> Result<bool, ParseSyntaxError> {
+        match self.search_fallible(text, begin, end, region) {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                if ignore_errors {
+                    Ok(false)
+                } else {
+                    Err(ParseSyntaxError::RegexCompileError(
+                        self.regex_str.to_string(),
+                        e.to_string().into(),
+                    ))
+                }
+            }
+        }
     }
 
-    fn regex(&self) -> &regex_impl::Regex {
-        self.regex.get_or_init(|| {
-            regex_impl::Regex::new(&self.regex_str).expect("regex string should be pre-tested")
-        })
+    /// Check if the regex matches the given text.
+    ///
+    /// In order to be called repetitively when in error, the error message is returned as a &str
+    /// without allocation.
+    ///
+    /// Return an error if the regex pattern is invalid.
+    pub fn is_match_fallible<'t>(&self, text: &'t str) -> Result<bool, &str> {
+        match self.regex() {
+            Ok(r) => Ok(r.is_match(text)),
+            Err(e) => Err(e.as_str()),
+        }
+    }
+    /// Search for the pattern in the given text from begin/end positions.
+    ///
+    /// If a region is passed, it is used for storing match group positions. The argument allows
+    /// the [`Region`] to be reused between searches, which makes a significant performance
+    /// difference.
+    ///
+    /// [`Region`]: struct.Region.html
+    pub fn search_fallible(
+        &self,
+        text: &str,
+        begin: usize,
+        end: usize,
+        region: Option<&mut Region>,
+    ) -> Result<bool, &str> {
+        match self.regex() {
+            Ok(r) => Ok(r.search(text, begin, end, region.map(|r| &mut r.region))),
+            Err(e) => Err(e.as_str()),
+        }
+    }
+
+    fn regex(&self) -> &Result<regex_impl::Regex, String> {
+        self.regex
+            .get_or_init(|| regex_impl::Regex::new(&self.regex_str).map_err(|e| e.to_string()))
     }
 }
 
@@ -272,7 +334,7 @@ mod tests {
         let regex = Regex::new(String::from(r"\w+"));
 
         assert!(regex.regex.get().is_none());
-        assert!(regex.is_match("test"));
+        assert!(regex.is_match("test", false).unwrap());
         assert!(regex.regex.get().is_some());
     }
 

@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::io::BufRead;
 use std::path::Path;
 use syntect::dumps::{dump_to_file, from_dump_file};
-use syntect::easy::HighlightFile;
+use syntect::easy::{HighlightFile, HighlightOptions};
 use syntect::highlighting::{Style, Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use syntect::util::as_24_bit_terminal_escaped;
@@ -111,7 +111,8 @@ fn main() {
                 println!("==> {} <==", src);
             }
 
-            let mut highlighter = HighlightFile::new(src, &ss, &theme).unwrap();
+            let mut highlighter =
+                HighlightFile::new(src, &ss, &theme, HighlightOptions::default()).unwrap();
 
             // We use read_line instead of `for line in highlighter.reader.lines()` because that
             // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
