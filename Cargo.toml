@@ -17,6 +17,10 @@ exclude = [
     "/codecov.yml"
 ]
 
+[package.metadata.docs.rs]
+# Toggle on extra features that aren't on by default
+features = ["metadata"]
+
 [dependencies]
 yaml-rust = { version = "0.4.5", optional = true }
 onig = { version = "6.5.1", optional = true, default-features = false }
