@@ -1,6 +1,7 @@
 // Code based on [https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs](https://github.com/defuz/sublimate/blob/master/src/core/syntax/scope.rs)
 // released under the MIT license by @defuz
 use serde_derive::{Deserialize, Serialize};
+use std::{fmt, ops};
 
 /// Foreground and background colors, with font style
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -66,131 +67,11 @@ impl std::fmt::Debug for Color {
 }
 
 /// The color-independent styling of a font - i.e. bold, italicized, and/or underlined
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct FontStyle {
     bits: u8,
 }
 
-impl core::fmt::Debug for FontStyle {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> core::fmt::Result {
-        #[allow(non_snake_case)]
-        trait __BitFlags {
-            #[inline]
-            fn BOLD(&self) -> bool {
-                false
-            }
-            #[inline]
-            fn UNDERLINE(&self) -> bool {
-                false
-            }
-            #[inline]
-            fn ITALIC(&self) -> bool {
-                false
-            }
-        }
-        #[allow(non_snake_case)]
-        impl __BitFlags for FontStyle {
-            #[allow(deprecated)]
-            #[inline]
-            fn BOLD(&self) -> bool {
-                if Self::BOLD.bits == 0 && self.bits != 0 {
-                    false
-                } else {
-                    self.bits & Self::BOLD.bits == Self::BOLD.bits
-                }
-            }
-            #[allow(deprecated)]
-            #[inline]
-            fn UNDERLINE(&self) -> bool {
-                if Self::UNDERLINE.bits == 0 && self.bits != 0 {
-                    false
-                } else {
-                    self.bits & Self::UNDERLINE.bits == Self::UNDERLINE.bits
-                }
-            }
-            #[allow(deprecated)]
-            #[inline]
-            fn ITALIC(&self) -> bool {
-                if Self::ITALIC.bits == 0 && self.bits != 0 {
-                    false
-                } else {
-                    self.bits & Self::ITALIC.bits == Self::ITALIC.bits
-                }
-            }
-        }
-        let mut first = true;
-        if <Self as __BitFlags>::BOLD(self) {
-            if !first {
-                f.write_str(" | ")?;
-            }
-            first = false;
-            f.write_str("BOLD")?;
-        }
-        if <Self as __BitFlags>::UNDERLINE(self) {
-            if !first {
-                f.write_str(" | ")?;
-            }
-            first = false;
-            f.write_str("UNDERLINE")?;
-        }
-        if <Self as __BitFlags>::ITALIC(self) {
-            if !first {
-                f.write_str(" | ")?;
-            }
-            first = false;
-            f.write_str("ITALIC")?;
-        }
-        let extra_bits = self.bits & !Self::all().bits();
-        if extra_bits != 0 {
-            if !first {
-                f.write_str(" | ")?;
-            }
-            first = false;
-            f.write_str("0x")?;
-            core::fmt::LowerHex::fmt(&extra_bits, f)?;
-        }
-        if first {
-            f.write_str("(empty)")?;
-        }
-        Ok(())
-    }
-}
-impl core::fmt::Binary for FontStyle {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> core::fmt::Result {
-        core::fmt::Binary::fmt(&self.bits, f)
-    }
-}
-impl core::fmt::Octal for FontStyle {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> core::fmt::Result {
-        core::fmt::Octal::fmt(&self.bits, f)
-    }
-}
-impl core::fmt::LowerHex for FontStyle {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> core::fmt::Result {
-        core::fmt::LowerHex::fmt(&self.bits, f)
-    }
-}
-impl core::fmt::UpperHex for FontStyle {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> core::fmt::Result {
-        core::fmt::UpperHex::fmt(&self.bits, f)
-    }
-}
-#[allow(dead_code)]
 impl FontStyle {
     /// Bold font style
     pub const BOLD: Self = Self { bits: 1 };
@@ -198,57 +79,40 @@ impl FontStyle {
     pub const UNDERLINE: Self = Self { bits: 2 };
     /// Italic font style
     pub const ITALIC: Self = Self { bits: 4 };
+
     /// Returns an empty set of flags.
-    #[inline]
     pub const fn empty() -> Self {
         Self { bits: 0 }
     }
+
     /// Returns the set containing all flags.
-    #[inline]
     pub const fn all() -> Self {
-        #[allow(non_snake_case)]
-        trait __BitFlags {
-            const BOLD: u8 = 0;
-            const UNDERLINE: u8 = 0;
-            const ITALIC: u8 = 0;
-        }
-        #[allow(non_snake_case)]
-        impl __BitFlags for FontStyle {
-            #[allow(deprecated)]
-            const BOLD: u8 = Self::BOLD.bits;
-            #[allow(deprecated)]
-            const UNDERLINE: u8 = Self::UNDERLINE.bits;
-            #[allow(deprecated)]
-            const ITALIC: u8 = Self::ITALIC.bits;
-        }
-        Self {
-            bits: <Self as __BitFlags>::BOLD | <Self as __BitFlags>::UNDERLINE
-                | <Self as __BitFlags>::ITALIC,
-        }
+        let bits = Self::BOLD.bits | Self::UNDERLINE.bits | Self::ITALIC.bits;
+        Self { bits }
     }
+
     /// Returns the raw value of the flags currently stored.
-    #[inline]
     pub const fn bits(&self) -> u8 {
         self.bits
     }
+
     /// Convert from underlying bit representation, unless that
     /// representation contains bits that do not correspond to a flag.
-    #[inline]
-    pub const fn from_bits(bits: u8) -> core::option::Option<Self> {
+    pub const fn from_bits(bits: u8) -> Option<Self> {
         if (bits & !Self::all().bits()) == 0 {
-            core::option::Option::Some(Self { bits })
+            Some(Self { bits })
         } else {
-            core::option::Option::None
+            None
         }
     }
+
     /// Convert from underlying bit representation, dropping any bits
     /// that do not correspond to flags.
-    #[inline]
     pub const fn from_bits_truncate(bits: u8) -> Self {
-        Self {
-            bits: bits & Self::all().bits,
-        }
+        let bits = bits & Self::all().bits;
+        Self { bits }
     }
+
     /// Convert from underlying bit representation, preserving all
     /// bits (even those not corresponding to a defined flag).
     ///
@@ -260,50 +124,47 @@ impl FontStyle {
     /// The caller of `from_bits_unchecked()` has to ensure that
     /// all bits correspond to a defined flag or that extra bits
     /// are valid for this bitflags type.
-    #[inline]
     pub const unsafe fn from_bits_unchecked(bits: u8) -> Self {
         Self { bits }
     }
+
     /// Returns `true` if no flags are currently stored.
-    #[inline]
     pub const fn is_empty(&self) -> bool {
         self.bits() == Self::empty().bits()
     }
+
     /// Returns `true` if all flags are currently set.
-    #[inline]
     pub const fn is_all(&self) -> bool {
-        Self::all().bits | self.bits == self.bits
+        self.bits() == Self::all().bits()
     }
+
     /// Returns `true` if there are flags common to both `self` and `other`.
-    #[inline]
     pub const fn intersects(&self, other: Self) -> bool {
-        !(Self {
-            bits: self.bits & other.bits,
-        })
-            .is_empty()
+        let bits = self.bits & other.bits;
+        !(Self { bits }).is_empty()
     }
+
     /// Returns `true` if all of the flags in `other` are contained within `self`.
-    #[inline]
     pub const fn contains(&self, other: Self) -> bool {
         (self.bits & other.bits) == other.bits
     }
+
     /// Inserts the specified flags in-place.
-    #[inline]
     pub fn insert(&mut self, other: Self) {
         self.bits |= other.bits;
     }
+
     /// Removes the specified flags in-place.
-    #[inline]
     pub fn remove(&mut self, other: Self) {
         self.bits &= !other.bits;
     }
+
     /// Toggles the specified flags in-place.
-    #[inline]
     pub fn toggle(&mut self, other: Self) {
         self.bits ^= other.bits;
     }
+
     /// Inserts or removes the specified flags depending on the passed value.
-    #[inline]
     pub fn set(&mut self, other: Self, value: bool) {
         if value {
             self.insert(other);
@@ -311,6 +172,7 @@ impl FontStyle {
             self.remove(other);
         }
     }
+
     /// Returns the intersection between the flags in `self` and
     /// `other`.
     ///
@@ -321,13 +183,12 @@ impl FontStyle {
     /// [`ops::BitAnd`]), as in `flags & other`.
     ///
     /// [`ops::BitAnd`]: https://doc.rust-lang.org/std/ops/trait.BitAnd.html
-    #[inline]
     #[must_use]
     pub const fn intersection(self, other: Self) -> Self {
-        Self {
-            bits: self.bits & other.bits,
-        }
+        let bits = self.bits & other.bits;
+        Self { bits }
     }
+
     /// Returns the union of between the flags in `self` and `other`.
     ///
     /// Specifically, the returned set contains all flags which are
@@ -339,13 +200,12 @@ impl FontStyle {
     /// [`ops::BitOr`]), as in `flags | other`.
     ///
     /// [`ops::BitOr`]: https://doc.rust-lang.org/std/ops/trait.BitOr.html
-    #[inline]
     #[must_use]
     pub const fn union(self, other: Self) -> Self {
-        Self {
-            bits: self.bits | other.bits,
-        }
+        let bits = self.bits | other.bits;
+        Self { bits }
     }
+
     /// Returns the difference between the flags in `self` and `other`.
     ///
     /// Specifically, the returned set contains all flags present in
@@ -358,13 +218,11 @@ impl FontStyle {
     /// [`ops::Sub`]), as in `flags - other`.
     ///
     /// [`ops::Sub`]: https://doc.rust-lang.org/std/ops/trait.Sub.html
-    #[inline]
-    #[must_use]
     pub const fn difference(self, other: Self) -> Self {
-        Self {
-            bits: self.bits & !other.bits,
-        }
+        let bits = self.bits & !other.bits;
+        Self { bits }
     }
+
     /// Returns the [symmetric difference][sym-diff] between the flags
     /// in `self` and `other`.
     ///
@@ -378,13 +236,12 @@ impl FontStyle {
     ///
     /// [sym-diff]: https://en.wikipedia.org/wiki/Symmetric_difference
     /// [`ops::BitXor`]: https://doc.rust-lang.org/std/ops/trait.BitXor.html
-    #[inline]
     #[must_use]
     pub const fn symmetric_difference(self, other: Self) -> Self {
-        Self {
-            bits: self.bits ^ other.bits,
-        }
+        let bits = self.bits ^ other.bits;
+        Self { bits }
     }
+
     /// Returns the complement of this set of flags.
     ///
     /// Specifically, the returned set contains all the flags which are
@@ -398,102 +255,153 @@ impl FontStyle {
     ///
     /// [`Self::all()`]: Self::all
     /// [`ops::Not`]: https://doc.rust-lang.org/std/ops/trait.Not.html
-    #[inline]
     #[must_use]
     pub const fn complement(self) -> Self {
         Self::from_bits_truncate(!self.bits)
     }
 }
-impl core::ops::BitOr for FontStyle {
-    type Output = Self;
-    /// Returns the union of the two sets of flags.
-    #[inline]
-    fn bitor(self, other: FontStyle) -> Self {
-        Self {
-            bits: self.bits | other.bits,
+
+impl fmt::Debug for FontStyle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut empty = true;
+
+        let pairs = [
+            (Self::BOLD, "BOLD"),
+            (Self::UNDERLINE, "UNDERLINE"),
+            (Self::ITALIC, "ITALIC"),
+        ];
+        for (flag, flag_str) in pairs {
+            if self.contains(flag) {
+                if !std::mem::take(&mut empty) {
+                    f.write_str(" | ")?;
+                }
+                f.write_str(flag_str)?;
+            }
         }
+
+        let extra_bits = self.bits & !Self::all().bits();
+        if extra_bits != 0 {
+            if !std::mem::take(&mut empty) {
+                f.write_str(" | ")?;
+            }
+            f.write_str("0x")?;
+            fmt::LowerHex::fmt(&extra_bits, f)?;
+        }
+
+        if empty {
+            f.write_str("(empty)")?;
+        }
+
+        Ok(())
     }
 }
-impl core::ops::BitOrAssign for FontStyle {
+
+impl fmt::Binary for FontStyle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Binary::fmt(&self.bits, f)
+    }
+}
+
+impl fmt::Octal for FontStyle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Octal::fmt(&self.bits, f)
+    }
+}
+
+impl fmt::LowerHex for FontStyle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::LowerHex::fmt(&self.bits, f)
+    }
+}
+
+impl fmt::UpperHex for FontStyle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::UpperHex::fmt(&self.bits, f)
+    }
+}
+
+impl ops::BitOr for FontStyle {
+    type Output = Self;
+    /// Returns the union of the two sets of flags.
+    fn bitor(self, other: FontStyle) -> Self {
+        let bits = self.bits | other.bits;
+        Self { bits }
+    }
+}
+
+impl ops::BitOrAssign for FontStyle {
     /// Adds the set of flags.
-    #[inline]
     fn bitor_assign(&mut self, other: Self) {
         self.bits |= other.bits;
     }
 }
-impl core::ops::BitXor for FontStyle {
+
+impl ops::BitXor for FontStyle {
     type Output = Self;
     /// Returns the left flags, but with all the right flags toggled.
-    #[inline]
     fn bitxor(self, other: Self) -> Self {
-        Self {
-            bits: self.bits ^ other.bits,
-        }
+        let bits = self.bits ^ other.bits;
+        Self { bits }
     }
 }
-impl core::ops::BitXorAssign for FontStyle {
+
+impl ops::BitXorAssign for FontStyle {
     /// Toggles the set of flags.
-    #[inline]
     fn bitxor_assign(&mut self, other: Self) {
         self.bits ^= other.bits;
     }
 }
-impl core::ops::BitAnd for FontStyle {
+
+impl ops::BitAnd for FontStyle {
     type Output = Self;
     /// Returns the intersection between the two sets of flags.
-    #[inline]
     fn bitand(self, other: Self) -> Self {
-        Self {
-            bits: self.bits & other.bits,
-        }
+        let bits = self.bits & other.bits;
+        Self { bits }
     }
 }
-impl core::ops::BitAndAssign for FontStyle {
+
+impl ops::BitAndAssign for FontStyle {
     /// Disables all flags disabled in the set.
-    #[inline]
     fn bitand_assign(&mut self, other: Self) {
         self.bits &= other.bits;
     }
 }
-impl core::ops::Sub for FontStyle {
+
+impl ops::Sub for FontStyle {
     type Output = Self;
     /// Returns the set difference of the two sets of flags.
-    #[inline]
     fn sub(self, other: Self) -> Self {
-        Self {
-            bits: self.bits & !other.bits,
-        }
+        let bits = self.bits & !other.bits;
+        Self { bits }
     }
 }
-impl core::ops::SubAssign for FontStyle {
+
+impl ops::SubAssign for FontStyle {
     /// Disables all flags enabled in the set.
-    #[inline]
     fn sub_assign(&mut self, other: Self) {
         self.bits &= !other.bits;
     }
 }
-impl core::ops::Not for FontStyle {
+
+impl ops::Not for FontStyle {
     type Output = Self;
     /// Returns the complement of this set of flags.
-    #[inline]
     fn not(self) -> Self {
         Self { bits: !self.bits } & Self::all()
     }
 }
-impl core::iter::Extend<FontStyle> for FontStyle {
-    fn extend<T: core::iter::IntoIterator<Item = Self>>(
-        &mut self,
-        iterator: T,
-    ) {
+
+impl Extend<FontStyle> for FontStyle {
+    fn extend<T: IntoIterator<Item = Self>>(&mut self, iterator: T) {
         for item in iterator {
             self.insert(item)
         }
     }
 }
-impl core::iter::FromIterator<FontStyle> for FontStyle {
-    fn from_iter<T: core::iter::IntoIterator<Item = Self>>(
-        iterator: T,
-    ) -> Self {
+
+impl FromIterator<FontStyle> for FontStyle {
+    fn from_iter<T: IntoIterator<Item = Self>>(iterator: T) -> Self {
         let mut result = Self::empty();
         result.extend(iterator);
         result
@@ -549,11 +457,5 @@ impl StyleModifier {
             background: other.background.or(self.background),
             font_style: other.font_style.or(self.font_style),
         }
-    }
-}
-
-impl Default for FontStyle {
-    fn default() -> FontStyle {
-        FontStyle::empty()
     }
 }
