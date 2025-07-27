@@ -51,7 +51,7 @@ pub struct Context {
     pub meta_scope: Vec<Scope>,
     pub meta_content_scope: Vec<Scope>,
     /// This being set false in the syntax file implies this field being set false,
-    /// but it can also be set falso for contexts that don't include the prototype for other reasons
+    /// but it can also be set false for contexts that don't include the prototype for other reasons
     pub meta_include_prototype: bool,
     pub clear_scopes: Option<ClearAmount>,
     /// This is filled in by the linker at link time
@@ -74,6 +74,27 @@ impl Context {
             patterns: Vec::new(),
             prototype: None,
         }
+    }
+
+    pub(crate) fn extend(&mut self, other: Context) {
+        let Context {
+            meta_scope,
+            meta_content_scope,
+            meta_include_prototype,
+            clear_scopes,
+            prototype,
+            uses_backrefs,
+            patterns,
+        } = other;
+        self.meta_scope.extend(meta_scope);
+        self.meta_content_scope.extend(meta_content_scope);
+        self.meta_include_prototype = meta_include_prototype;
+        self.clear_scopes = clear_scopes;
+        if self.prototype.is_none() || prototype.is_some() {
+            self.prototype = prototype;
+        }
+        self.uses_backrefs |= uses_backrefs;
+        self.patterns.extend(patterns);
     }
 }
 
