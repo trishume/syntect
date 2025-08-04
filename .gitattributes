@@ -30,4 +30,4 @@ testdata/*                              linguist-vendored
 *.png                         binary
 *.tex                                   diff=tex
 *.pdf                         binary    diff=astextplain
-*.snap                                  linguist-language=txt
+*.snap                                  linguist-language=Text
