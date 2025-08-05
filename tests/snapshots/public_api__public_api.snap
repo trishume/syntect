@@ -9,7 +9,6 @@ pub fn syntect::dumps::dump_to_file<T: serde::ser::Serialize, P: core::convert::
 pub fn syntect::dumps::dump_to_uncompressed_file<T: serde::ser::Serialize, P: core::convert::AsRef<std::path::Path>>(o: &T, path: P) -> bincode::error::Result<()>
 pub fn syntect::dumps::dump_to_writer<T: serde::ser::Serialize, W: std::io::Write>(to_dump: &T, output: W) -> bincode::error::Result<()>
 pub fn syntect::dumps::from_binary<T: serde::de::DeserializeOwned>(v: &[u8]) -> T
-pub fn syntect::dumps::from_dump_file<T: serde::de::DeserializeOwned, P: core::convert::AsRef<std::path::Path>>(path: P) -> bincode::error::Result<T>
 pub fn syntect::dumps::from_reader<T: serde::de::DeserializeOwned, R: std::io::BufRead>(input: R) -> bincode::error::Result<T>
 pub fn syntect::dumps::from_uncompressed_data<T: serde::de::DeserializeOwned>(v: &[u8]) -> bincode::error::Result<T>
 pub fn syntect::dumps::from_uncompressed_dump_file<T: serde::de::DeserializeOwned, P: core::convert::AsRef<std::path::Path>>(path: P) -> bincode::error::Result<T>
