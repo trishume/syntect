@@ -106,3 +106,17 @@ jobs:
     - name: Docs
       run: |
         cargo doc
+
+  check-feature-powerset:
+    name: Check feature powerset
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-hack
+    # Ensure that `cargo check` works across many different feature sets
+    - name: Check feature powerset
+      run: |
+        cargo hack --feature-powerset --depth=2 --features=regex-fancy --exclude-features=regex-onig check
