@@ -183,7 +183,7 @@ fn count(ss: &SyntaxSet, path: &Path, stats: &mut Stats) {
         None => return,
     };
     stats.files += 1;
-    let mut state = ParseState::new(syntax);
+    let mut state = ParseState::new(syntax, false);
 
     let f = File::open(path).unwrap();
     let mut reader = BufReader::new(f);
