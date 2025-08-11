@@ -15,6 +15,7 @@ fn public_api() {
         .build()
         .unwrap();
 
-    // Assert that the public API looks correct
-    insta::assert_snapshot!(public_api);
+    // Assert that the public API matches the latest snapshot.
+    // Run with env var `UPDATE_SNAPSHOTS=yes` to update the snapshot.
+    public_api.assert_eq_or_update("./tests/snapshots/public-api.txt");
 }
