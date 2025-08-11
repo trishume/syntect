@@ -1,7 +1,3 @@
----
-source: tests/public_api.rs
-expression: public_api
----
 pub mod syntect
 pub mod syntect::dumps
 pub fn syntect::dumps::dump_binary<T: serde::ser::Serialize>(o: &T) -> alloc::vec::Vec<u8>

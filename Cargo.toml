@@ -45,8 +45,7 @@ getopts = "0.2"
 pretty_assertions = "0.6"
 rustup-toolchain = "0.1.5"
 rustdoc-json = "0.9.7"
-public-api = "0.50.0"
-insta = "1.42.0"
+public-api = "0.50.1"
 serde_json = "1.0"
 
 [features]
