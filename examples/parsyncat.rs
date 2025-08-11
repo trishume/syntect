@@ -2,7 +2,7 @@
 //! Prints the highlighted output to stdout.
 
 use rayon::prelude::*;
-use syntect::easy::HighlightFile;
+use syntect::easy::{HighlightFile, HighlightOptions};
 use syntect::highlighting::{Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
@@ -44,7 +44,9 @@ fn main() {
         .map(|(filename, contents)| {
             let mut regions = Vec::new();
             let theme = &theme_set.themes["base16-ocean.dark"];
-            let mut highlighter = HighlightFile::new(filename, &syntax_set, theme).unwrap();
+            let mut highlighter =
+                HighlightFile::new(filename, &syntax_set, theme, HighlightOptions::default())
+                    .unwrap();
 
             for line in contents {
                 for region in highlighter

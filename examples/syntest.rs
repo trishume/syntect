@@ -212,7 +212,7 @@ fn test_file(
         .ok_or(SyntaxTestHeaderError::SyntaxDefinitionNotFound)?;
 
     // iterate over the lines of the file, testing them
-    let mut state = ParseState::new(syntax);
+    let mut state = ParseState::new(syntax, false);
     let mut stack = ScopeStack::new();
 
     let mut current_line_number = 1;
