@@ -270,8 +270,8 @@ fn test_file(
             }
             if out_opts.debug && !line_only_has_assertion {
                 println!(
-                    "-- debugging line {} -- scope stack: {:?}",
-                    current_line_number, stack
+                    "-- debugging line {} -- scope stack: {:?}, -- parse state: {:?}",
+                    current_line_number, stack, state
                 );
             }
             let ops = state.parse_line(&line, ss).unwrap();
