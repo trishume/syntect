@@ -944,13 +944,15 @@ impl FirstLineCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::{syntax_definition, ParseState, Scope};
+    use crate::{
+        parsing::{syntax_definition, ParseState, Scope},
+        utils::testdata,
+    };
     use std::collections::HashMap;
 
     #[test]
     fn can_load() {
-        let mut builder = SyntaxSetBuilder::new();
-        builder.add_from_folder("testdata/Packages", false).unwrap();
+        let mut builder = testdata::PACKAGES_SYN_SET.to_owned().into_builder();
 
         let cmake_dummy_syntax = SyntaxDefinition {
             name: "CMake".to_string(),
