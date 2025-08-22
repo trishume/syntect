@@ -228,10 +228,9 @@ mod tests {
     #[test]
     fn can_dump_and_load() {
         use super::*;
-        use crate::parsing::SyntaxSetBuilder;
-        let mut builder = SyntaxSetBuilder::new();
-        builder.add_from_folder("testdata/Packages", false).unwrap();
-        let ss = builder.build();
+        use crate::utils::testdata;
+
+        let ss = &*testdata::PACKAGES_SYN_SET;
 
         let bin = dump_binary(&ss);
         println!("{:?}", bin.len());
@@ -244,12 +243,9 @@ mod tests {
     fn dump_is_deterministic() {
         use super::*;
         use crate::parsing::SyntaxSetBuilder;
+        use crate::utils::testdata;
 
-        let mut builder1 = SyntaxSetBuilder::new();
-        builder1
-            .add_from_folder("testdata/Packages", false)
-            .unwrap();
-        let ss1 = builder1.build();
+        let ss1 = &*testdata::PACKAGES_SYN_SET;
         let bin1 = dump_binary(&ss1);
 
         let mut builder2 = SyntaxSetBuilder::new();
