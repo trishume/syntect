@@ -493,13 +493,13 @@ mod tests {
 
     #[test]
     fn load_raw() {
-        let comments_file: &str = "testdata/Packages/Go/Comments.tmPreferences";
+        let comments_file: &str = "testdata/Packages/Go/GoCommentRules.tmPreferences";
         assert!(Path::new(comments_file).exists());
 
         let r = RawMetadataEntry::load(comments_file);
         assert!(r.is_ok());
 
-        let indent_file: &str = "testdata/Packages/Go/Indentation Rules.tmPreferences";
+        let indent_file: &str = "testdata/Packages/Go/Indents/GoIndent.tmPreferences";
         assert!(Path::new(indent_file).exists());
 
         let r = RawMetadataEntry::load(indent_file).unwrap();
