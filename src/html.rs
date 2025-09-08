@@ -3,8 +3,8 @@ use crate::easy::{HighlightFile, HighlightLines};
 use crate::escape::Escape;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
 use crate::parsing::{
-    BasicScopeStackOp, ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet,
-    SCOPE_REPO,
+    lock_global_scope_repo, BasicScopeStackOp, ParseState, Scope, ScopeStack, ScopeStackOp,
+    SyntaxReference, SyntaxSet,
 };
 use crate::util::LinesWithEndings;
 use crate::Error;
@@ -242,7 +242,7 @@ pub enum ClassStyle {
 }
 
 fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
-    let repo = SCOPE_REPO.lock().unwrap();
+    let repo = lock_global_scope_repo();
     for i in 0..(scope.len()) {
         let atom = scope.atom_at(i as usize);
         let atom_s = repo.atom_str(atom);
@@ -260,7 +260,7 @@ fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
 }
 
 fn scope_to_selector(s: &mut String, scope: Scope, style: ClassStyle) {
-    let repo = SCOPE_REPO.lock().unwrap();
+    let repo = lock_global_scope_repo();
     for i in 0..(scope.len()) {
         let atom = scope.atom_at(i as usize);
         let atom_s = repo.atom_str(atom);
