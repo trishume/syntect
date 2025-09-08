@@ -1319,4 +1319,25 @@ mod tests {
         println!("{:?}", valid_indexes);
         assert_eq!(valid_indexes, [0, 1, 5, 6]);
     }
+
+    #[test]
+    fn error_loading_syntax_with_unescaped_backslash() {
+        let load_err = SyntaxDefinition::load_from_str(
+            r#"
+            name: Unescaped Backslash
+            scope: source.c
+            file_extensions: [test]
+            contexts:
+              main:
+                - match: '\'
+            "#,
+            false,
+            None,
+        )
+        .unwrap_err();
+        match load_err {
+            ParseSyntaxError::RegexCompileError(bad_regex, _) => assert_eq!(bad_regex, r"\"),
+            _ => panic!("Unexpected error: {load_err}"),
+        }
+    }
 }
