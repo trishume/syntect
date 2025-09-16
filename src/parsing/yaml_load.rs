@@ -32,6 +32,9 @@ pub enum ParseSyntaxError {
     /// Syntaxes must have a context named "main"
     #[error("Context 'main' is missing")]
     MainMissing,
+    /// This syntax extends another syntax which is not available
+    #[error("Syntax for {name} extends {extends}, but {extends} could not be found")]
+    ExtendsNotFound { name: String, extends: String },
     /// Some part of the YAML file is the wrong type (e.g a string but should be a list)
     /// Sorry this doesn't give you any way to narrow down where this is.
     /// Maybe use Sublime Text to figure it out.
@@ -87,6 +90,15 @@ impl SyntaxDefinition {
         lines_include_newline: bool,
         fallback_name: Option<&str>,
     ) -> Result<SyntaxDefinition, ParseSyntaxError> {
+        SyntaxDefinition::load_from_str_extended(s, None, lines_include_newline, fallback_name)
+    }
+
+    pub(crate) fn load_from_str_extended(
+        s: &str,
+        extends: Option<&SyntaxDefinition>,
+        lines_include_newline: bool,
+        fallback_name: Option<&str>,
+    ) -> Result<SyntaxDefinition, ParseSyntaxError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
             Err(e) => return Err(ParseSyntaxError::InvalidYaml(e)),
@@ -98,6 +110,7 @@ impl SyntaxDefinition {
         let mut scope_repo = lock_global_scope_repo();
         SyntaxDefinition::parse_top_level(
             doc,
+            extends,
             scope_repo.deref_mut(),
             lines_include_newline,
             fallback_name,
@@ -106,13 +119,18 @@ impl SyntaxDefinition {
 
     fn parse_top_level(
         doc: &Yaml,
+        extends: Option<&SyntaxDefinition>,
         scope_repo: &mut ScopeRepository,
         lines_include_newline: bool,
         fallback_name: Option<&str>,
     ) -> Result<SyntaxDefinition, ParseSyntaxError> {
         let h = doc.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
-        let mut variables = HashMap::new();
+        // Get variables from cloned syntax, will be overritten if the same is present as detailed
+        // in the spec
+        let mut variables = extends
+            .map(|syntax| syntax.variables.clone())
+            .unwrap_or_default();
         if let Ok(map) = get_key(h, "variables", |x| x.as_hash()) {
             for (key, value) in map.iter() {
                 if let (Some(key_str), Some(val_str)) = (key.as_str(), value.as_str()) {
@@ -120,6 +138,21 @@ impl SyntaxDefinition {
                 }
             }
         }
+
+        let name = get_key(h, "name", |x| x.as_str())
+            .unwrap_or_else(|_| fallback_name.unwrap_or("Unnamed"))
+            .to_owned();
+        // FIXME: extends is allowed to be a list also
+        let extends = match (get_key(h, "extends", |x| x.as_str()), extends) {
+            (Ok(base_syntax), None) => {
+                return Err(ParseSyntaxError::ExtendsNotFound {
+                    name,
+                    extends: base_syntax.to_string(),
+                })
+            }
+            (Ok(_), Some(base_syntax)) => Some(base_syntax),
+            (Err(_), _) => None,
+        };
         let contexts_hash = get_key(h, "contexts", |x| x.as_hash())?;
         let top_level_scope = scope_repo
             .build(get_key(h, "scope", |x| x.as_str())?)
@@ -132,7 +165,11 @@ impl SyntaxDefinition {
             lines_include_newline,
         };
 
-        let mut contexts = SyntaxDefinition::parse_contexts(contexts_hash, &mut state)?;
+        let mut contexts = SyntaxDefinition::parse_contexts(
+            contexts_hash,
+            extends.map(|syntax| &syntax.contexts),
+            &mut state,
+        )?;
         if !contexts.contains_key("main") {
             return Err(ParseSyntaxError::MainMissing);
         }
@@ -147,9 +184,7 @@ impl SyntaxDefinition {
         }
 
         let defn = SyntaxDefinition {
-            name: get_key(h, "name", |x| x.as_str())
-                .unwrap_or_else(|_| fallback_name.unwrap_or("Unnamed"))
-                .to_owned(),
+            name,
             scope: top_level_scope,
             file_extensions,
             // TODO maybe cache a compiled version of this Regex
@@ -166,9 +201,11 @@ impl SyntaxDefinition {
 
     fn parse_contexts(
         map: &Hash,
+        extends: Option<&HashMap<String, Context>>,
         state: &mut ParserState<'_>,
     ) -> Result<HashMap<String, Context>, ParseSyntaxError> {
-        let mut contexts = HashMap::new();
+        // FIXME: contexts need to be re-evaluated with the new values of the variables
+        let mut contexts = extends.cloned().unwrap_or_default();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
                 let is_prototype = name == "prototype";
@@ -194,13 +231,31 @@ impl SyntaxDefinition {
         is_prototype: bool,
         namer: &mut ContextNamer,
     ) -> Result<String, ParseSyntaxError> {
+        enum InsertMode {
+            Replace,
+            Prepend,
+            Append,
+        }
         let mut context = Context::new(!is_prototype);
         let name = namer.next();
+        let mut insert = InsertMode::Replace;
 
         for y in vec.iter() {
             let map = y.as_hash().ok_or(ParseSyntaxError::TypeMismatch)?;
 
             let mut is_special = false;
+            if let Ok(x) = get_key(map, "meta_prepend", |x| x.as_bool()) {
+                if x {
+                    insert = InsertMode::Prepend;
+                }
+                is_special = true;
+            }
+            if let Ok(x) = get_key(map, "meta_append", |x| x.as_bool()) {
+                if x {
+                    insert = InsertMode::Append;
+                }
+                is_special = true;
+            }
             if let Ok(x) = get_key(map, "meta_scope", |x| x.as_str()) {
                 context.meta_scope = str_to_scopes(x, state.scope_repo)?;
                 is_special = true;
@@ -237,7 +292,26 @@ impl SyntaxDefinition {
             }
         }
 
-        contexts.insert(name.clone(), context);
+        match insert {
+            InsertMode::Replace => {
+                contexts.insert(name.clone(), context);
+            }
+            InsertMode::Append => {
+                contexts
+                    .entry(name.clone())
+                    .and_modify(|ctx| ctx.extend(context.clone()))
+                    .or_insert(context);
+            }
+            InsertMode::Prepend => {
+                contexts
+                    .entry(name.clone())
+                    .and_modify(|ctx| {
+                        context.extend(ctx.clone());
+                        *ctx = context.clone();
+                    })
+                    .or_insert(context);
+            }
+        }
         Ok(name)
     }
 
