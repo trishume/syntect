@@ -1034,7 +1034,7 @@ mod tests {
             .get_context(&syntax.context_ids()["main"])
             .expect("#[cfg(test)]");
         let count = syntax_definition::context_iter(&ps, main_context).count();
-        assert_eq!(count, 109);
+        assert_eq!(count, 168);
     }
 
     #[test]
