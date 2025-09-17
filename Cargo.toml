@@ -22,7 +22,7 @@ exclude = [
 features = ["metadata"]
 
 [dependencies]
-yaml-rust = { version = "0.4.5", optional = true }
+yaml-rust = { package = "yaml-rust2", version = "0.10.4", optional = true, default-features = false }
 onig = { version = "6.5.1", optional = true, default-features = false }
 fancy-regex = { version = "0.11", optional = true }
 walkdir = "2.0"
