@@ -211,7 +211,9 @@ mod regex_impl {
 
     impl Regex {
         pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error + Send + Sync + 'static>> {
-            let result = fancy_regex::Regex::new(regex_str);
+            let result = fancy_regex::RegexBuilder::new(regex_str)
+                .oniguruma_mode(true)
+                .build();
             match result {
                 Ok(regex) => Ok(Regex { regex }),
                 Err(error) => Err(Box::new(error)),
