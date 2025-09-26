@@ -20,10 +20,10 @@ I consider this project mostly complete, I still maintain it and review PRs, but
 
 ## Getting Started
 
-`syntect` is [available on crates.io](https://crates.io/crates/syntect). You can install it by adding this line to your `Cargo.toml`:
+`syntect` is [available on crates.io](https://crates.io/crates/syntect). You can add it to your `Cargo.toml` with the following command
 
-```toml
-syntect = "5.0"
+```bash
+cargo add syntect
 ```
 
 After that take a look at the [documentation](https://docs.rs/syntect) and the [examples](https://github.com/trishume/syntect/tree/master/examples).
