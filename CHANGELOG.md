@@ -1,5 +1,80 @@
 # Changelog
 
+## [Version 5.3.0](https://github.com/trishume/syntect/compare/v5.2.0...v5.3.0) (UNRELEASED)
+
+### Improvements
+
+- Add `HighlightLines::from_state()` constructor [#569]
+
+### Fixes
+
+- Ignore UTF-8 BOM on syntax detection [#530]
+- Escape CSS class names [#539]
+- Avoid an infinite loop when a syntax definition continually pushes contexts without consuming any input [#597]
+- Return an error when a syntax definition contains an unescaped trailing backslash instead of panicking at runtime [#548]
+
+### Dependencies
+
+- Replace `bitflags` with a manual implementation [#590]
+- Update `public-api` to work with new lockfile versions [#591]
+- Update `thiserror` to v2 [#594]
+- Update `fancy-regex` to `0.16.2` [#596]
+- Bump `rust_onig` version to avoid build failures on newer GCC versions [#584]
+
+## Docs
+
+- Add various projects to the README showcase:
+  - `BugStalker` [#533]
+  - `Yazi` [#543]
+  - `bingus-blog` [#534]
+  - `CodeSnap.nvim` [#553]
+  - `television` [#571]
+  - `code-to-pdf` [#579]
+  - `Comrak` [#581]
+- Deprecate `syntect::parsing::SCOPE_REPO` for removal [#580]
+
+### Other
+
+- Format with `rustfmt` [#528]
+- Bump nightly toolchain version to fix a test build failure [#542]
+- Remove unused import in yaml load test [#531]
+- Use `BufWriter` to improve unoptimized serialization perf [#554]
+- Commit `Cargo.lock` to avoid flaky CI issues [#567]
+- Switch from `expect-test` to `insta` [#568] then later to `public-api`'s `snapshot-testing` support [#595]
+- Speed up unittest runtime [#577] [#598]
+- Fix new clippy lints [#585]
+- Use `cargo-hack` to check many different features in CI [#593]
+
+[#528]: https://github.com/trishume/syntect/pull/528
+[#530]: https://github.com/trishume/syntect/pull/530
+[#531]: https://github.com/trishume/syntect/pull/531
+[#533]: https://github.com/trishume/syntect/pull/533
+[#534]: https://github.com/trishume/syntect/pull/534
+[#539]: https://github.com/trishume/syntect/pull/539
+[#542]: https://github.com/trishume/syntect/pull/542
+[#543]: https://github.com/trishume/syntect/pull/543
+[#548]: https://github.com/trishume/syntect/pull/548
+[#553]: https://github.com/trishume/syntect/pull/553
+[#554]: https://github.com/trishume/syntect/pull/554
+[#567]: https://github.com/trishume/syntect/pull/567
+[#568]: https://github.com/trishume/syntect/pull/568
+[#569]: https://github.com/trishume/syntect/pull/569
+[#571]: https://github.com/trishume/syntect/pull/571
+[#577]: https://github.com/trishume/syntect/pull/577
+[#579]: https://github.com/trishume/syntect/pull/579
+[#580]: https://github.com/trishume/syntect/pull/580
+[#581]: https://github.com/trishume/syntect/pull/581
+[#584]: https://github.com/trishume/syntect/pull/584
+[#585]: https://github.com/trishume/syntect/pull/585
+[#590]: https://github.com/trishume/syntect/pull/590
+[#591]: https://github.com/trishume/syntect/pull/591
+[#593]: https://github.com/trishume/syntect/pull/593
+[#594]: https://github.com/trishume/syntect/pull/594
+[#595]: https://github.com/trishume/syntect/pull/595
+[#596]: https://github.com/trishume/syntect/pull/596
+[#597]: https://github.com/trishume/syntect/pull/597
+[#598]: https://github.com/trishume/syntect/pull/598
+
 ## [Version 5.2.0](https://github.com/trishume/syntect/compare/v5.1.0...v5.2.0) (2024-02-07)
 
 ### Improvements

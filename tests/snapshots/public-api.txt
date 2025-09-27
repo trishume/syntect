@@ -892,13 +892,13 @@ impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseScopeError
 pub syntect::parsing::ParseSyntaxError::BadFileRef
 pub syntect::parsing::ParseSyntaxError::EmptyFile
 pub syntect::parsing::ParseSyntaxError::InvalidScope(syntect::parsing::ParseScopeError)
-pub syntect::parsing::ParseSyntaxError::InvalidYaml(yaml_rust2::scanner::ScanError)
+pub syntect::parsing::ParseSyntaxError::InvalidYaml(yaml_rust::scanner::ScanError)
 pub syntect::parsing::ParseSyntaxError::MainMissing
 pub syntect::parsing::ParseSyntaxError::MissingMandatoryKey(&'static str)
 pub syntect::parsing::ParseSyntaxError::RegexCompileError(alloc::string::String, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync + 'static)>)
 pub syntect::parsing::ParseSyntaxError::TypeMismatch
-impl core::convert::From<yaml_rust2::scanner::ScanError> for syntect::parsing::ParseSyntaxError
-pub fn syntect::parsing::ParseSyntaxError::from(source: yaml_rust2::scanner::ScanError) -> Self
+impl core::convert::From<yaml_rust::scanner::ScanError> for syntect::parsing::ParseSyntaxError
+pub fn syntect::parsing::ParseSyntaxError::from(source: yaml_rust::scanner::ScanError) -> Self
 impl core::error::Error for syntect::parsing::ParseSyntaxError
 pub fn syntect::parsing::ParseSyntaxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for syntect::parsing::ParseSyntaxError
