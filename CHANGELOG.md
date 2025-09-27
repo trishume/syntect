@@ -1,6 +1,6 @@
 # Changelog
 
-## [Version 5.3.0](https://github.com/trishume/syntect/compare/v5.2.0...v5.3.0) (UNRELEASED)
+## [Version 5.3.0](https://github.com/trishume/syntect/compare/v5.2.0...v5.3.0)
 
 ### Improvements
 
