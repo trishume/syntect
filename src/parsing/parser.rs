@@ -1086,6 +1086,39 @@ contexts:
     }
 
     #[test]
+    fn can_parse_prototype_that_pops_multiple_context() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  prototype:
+    - match: "!"
+      pop: 2
+  bar:
+    - match: \bbaz\b
+      push: baz
+      scope: main.baz
+  foo:
+    - match: \bbar\b
+      push: bar
+      scope: test.bar
+    - match: \bgood\b
+      push: baz
+      scope: test.good
+  baz: []
+    
+  main:
+    - match: \bfoo\b
+      push: foo
+      scope: test.foo
+"#;
+
+        let line = "foo bar baz ! good";
+        let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(line, &expect, syntax);
+    }
+
+    #[test]
     fn can_parse_syntax_with_newline_in_character_class() {
         let syntax = r#"
 name: test
