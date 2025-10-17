@@ -668,7 +668,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_defini
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::ContextReference
 pub enum syntect::parsing::syntax_definition::MatchOperation
 pub syntect::parsing::syntax_definition::MatchOperation::None
-pub syntect::parsing::syntax_definition::MatchOperation::Pop
+pub syntect::parsing::syntax_definition::MatchOperation::Pop(usize)
 pub syntect::parsing::syntax_definition::MatchOperation::Push(alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
 pub syntect::parsing::syntax_definition::MatchOperation::Set(alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
 impl core::clone::Clone for syntect::parsing::syntax_definition::MatchOperation

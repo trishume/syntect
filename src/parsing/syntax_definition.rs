@@ -135,7 +135,7 @@ pub enum ContextReference {
 pub enum MatchOperation {
     Push(Vec<ContextReference>),
     Set(Vec<ContextReference>),
-    Pop,
+    Pop(usize),
     None,
 }
 
