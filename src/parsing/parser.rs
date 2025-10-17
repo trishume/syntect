@@ -405,7 +405,7 @@ impl ParseState {
                         let consuming = match_end > start;
                         pop_would_loop = check_pop_loop
                             && !consuming
-                            && matches!(match_pat.operation, MatchOperation::Pop);
+                            && matches!(match_pat.operation, MatchOperation::Pop(_));
 
                         let push_too_deep = matches!(match_pat.operation, MatchOperation::Push(_))
                             && self.stack.len() >= 100;
@@ -573,7 +573,7 @@ impl ParseState {
         //          initial);
         // println!("{:?}", cur_context.meta_scope);
         match *match_op {
-            MatchOperation::Pop => {
+            MatchOperation::Pop(_) => {
                 let v = if initial {
                     &cur_context.meta_content_scope
                 } else {
@@ -688,8 +688,10 @@ impl ParseState {
                 // was initially applied) is popped off.
                 (ctx_refs, self.stack.pop().map(|s| s.prototypes))
             }
-            MatchOperation::Pop => {
-                self.stack.pop();
+            MatchOperation::Pop(n) => {
+                for _ in 0..n {
+                    self.stack.pop();
+                }
                 return Ok(true);
             }
             MatchOperation::None => return Ok(false),

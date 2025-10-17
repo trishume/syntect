@@ -738,7 +738,7 @@ impl SyntaxSetBuilder {
                     let maybe_context_refs = match match_pat.operation {
                         MatchOperation::Push(ref context_refs)
                         | MatchOperation::Set(ref context_refs) => Some(context_refs),
-                        MatchOperation::Pop | MatchOperation::None => None,
+                        MatchOperation::Pop(_) | MatchOperation::None => None,
                     };
                     if let Some(context_refs) = maybe_context_refs {
                         for context_ref in context_refs.iter() {
@@ -908,7 +908,7 @@ impl SyntaxSetBuilder {
         let maybe_context_refs = match match_pat.operation {
             MatchOperation::Push(ref mut context_refs)
             | MatchOperation::Set(ref mut context_refs) => Some(context_refs),
-            MatchOperation::Pop | MatchOperation::None => None,
+            MatchOperation::Pop(_) | MatchOperation::None => None,
         };
         if let Some(context_refs) = maybe_context_refs {
             for context_ref in context_refs.iter_mut() {
