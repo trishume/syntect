@@ -405,7 +405,7 @@ impl ParseState {
                         let consuming = match_end > start;
                         pop_would_loop = check_pop_loop
                             && !consuming
-                            && matches!(match_pat.operation, MatchOperation::Pop);
+                            && matches!(match_pat.operation, MatchOperation::Pop(_));
 
                         let push_too_deep = matches!(match_pat.operation, MatchOperation::Push(_))
                             && self.stack.len() >= 100;
@@ -573,7 +573,7 @@ impl ParseState {
         //          initial);
         // println!("{:?}", cur_context.meta_scope);
         match *match_op {
-            MatchOperation::Pop => {
+            MatchOperation::Pop(_) => {
                 let v = if initial {
                     &cur_context.meta_content_scope
                 } else {
@@ -688,8 +688,10 @@ impl ParseState {
                 // was initially applied) is popped off.
                 (ctx_refs, self.stack.pop().map(|s| s.prototypes))
             }
-            MatchOperation::Pop => {
-                self.stack.pop();
+            MatchOperation::Pop(n) => {
+                for _ in 0..n {
+                    self.stack.pop();
+                }
                 return Ok(true);
             }
             MatchOperation::None => return Ok(false),
@@ -1079,6 +1081,39 @@ contexts:
 "#;
 
         let line = "foo!";
+        let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_prototype_that_pops_multiple_context() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  prototype:
+    - match: "!"
+      pop: 2
+  bar:
+    - match: \bbaz\b
+      push: baz
+      scope: main.baz
+  foo:
+    - match: \bbar\b
+      push: bar
+      scope: test.bar
+    - match: \bgood\b
+      push: baz
+      scope: test.good
+  baz: []
+    
+  main:
+    - match: \bfoo\b
+      push: foo
+      scope: test.foo
+"#;
+
+        let line = "foo bar baz ! good";
         let expect = ["<source.test>, <test.good>"];
         expect_scope_stacks(line, &expect, syntax);
     }

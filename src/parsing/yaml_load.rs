@@ -307,12 +307,17 @@ impl SyntaxDefinition {
         };
 
         let mut has_captures = false;
-        let operation = if get_key(map, "pop", Some).is_ok() {
+        let operation = if let Ok(y) = get_key(map, "pop", |y| {
+            y.as_i64().or(match y.as_bool() {
+                Some(true) => Some(1),
+                _ => None,
+            })
+        }) {
             // Thanks @wbond for letting me know this is the correct way to check for captures
             has_captures = state
                 .backref_regex
                 .search(&regex_str, 0, regex_str.len(), None);
-            MatchOperation::Pop
+            MatchOperation::Pop(y as usize)
         } else if let Ok(y) = get_key(map, "push", Some) {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
         } else if let Ok(y) = get_key(map, "set", Some) {
