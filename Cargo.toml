@@ -70,7 +70,7 @@ default-syntaxes = ["parsing", "dump-load"]
 default-themes = ["dump-load"]
 
 # Support for parsing .sublime-color-scheme files
-sublime-color-scheme = ["sublime-color-scheme"]
+sublime-color-scheme = ["dep:sublime-color-scheme"]
 
 html = ["parsing"]
 # Support for parsing .tmTheme files and .tmPreferences files
