@@ -820,7 +820,7 @@ struct Parser<'a> {
 }
 
 impl Parser<'_> {
-    fn new(bytes: &[u8]) -> Parser {
+    fn new(bytes: &[u8]) -> Parser<'_> {
         Parser { bytes, index: 0 }
     }
 
