@@ -51,14 +51,14 @@ serde_json = "1.0"
 [features]
 
 # Dump loading using flate2
-dump-load = ["flate2", "bincode"]
+dump-load = ["dep:flate2", "dep:bincode"]
 # Dump creation using flate2
-dump-create = ["flate2", "bincode"]
+dump-create = ["dep:flate2", "dep:bincode"]
 
-regex-fancy = ["fancy-regex"]
-regex-onig = ["onig"]
+regex-fancy = ["dep:fancy-regex"]
+regex-onig = ["dep:onig"]
 
-parsing = ["regex-syntax", "fnv", "dump-create", "dump-load"]
+parsing = ["dep:regex-syntax", "dep:fnv", "dump-create", "dump-load"]
 
 # Support for .tmPreferenes metadata files (indentation, comment syntax, etc)
 metadata = ["parsing", "plist-load", "dep:serde_json"]
@@ -70,9 +70,9 @@ default-themes = ["dump-load"]
 
 html = ["parsing"]
 # Support for parsing .tmTheme files and .tmPreferences files
-plist-load = ["plist", "dep:serde_json"]
+plist-load = ["dep:plist", "dep:serde_json"]
 # Support for parsing .sublime-syntax files
-yaml-load = ["yaml-rust", "parsing"]
+yaml-load = ["dep:yaml-rust", "parsing"]
 
 default-onig = ["parsing", "default-syntaxes", "default-themes", "html", "plist-load", "yaml-load", "dump-load", "dump-create", "regex-onig"]
 # In order to switch to the fancy-regex engine, disable default features then add the default-fancy feature
