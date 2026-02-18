@@ -973,7 +973,7 @@ pub fn syntect::parsing::MatchPower::cmp(&self, other: &Self) -> core::cmp::Orde
 impl core::cmp::PartialEq for syntect::parsing::MatchPower
 pub fn syntect::parsing::MatchPower::eq(&self, other: &syntect::parsing::MatchPower) -> bool
 impl core::cmp::PartialOrd for syntect::parsing::MatchPower
-pub fn syntect::parsing::MatchPower::partial_cmp(&self, other: &syntect::parsing::MatchPower) -> core::option::Option<core::cmp::Ordering>
+pub fn syntect::parsing::MatchPower::partial_cmp(&self, other: &Self) -> core::option::Option<core::cmp::Ordering>
 impl core::fmt::Debug for syntect::parsing::MatchPower
 pub fn syntect::parsing::MatchPower::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for syntect::parsing::MatchPower
