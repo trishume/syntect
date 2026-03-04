@@ -244,8 +244,8 @@ impl SyntaxDefinition {
                 if let Ok(x) = get_key(map, "include", Some) {
                     let reference =
                         SyntaxDefinition::parse_reference(x, state, contexts, namer, false)?;
-                    let apply_prototype = get_key(map, "apply_prototype", |x| x.as_bool())
-                        .unwrap_or(false);
+                    let apply_prototype =
+                        get_key(map, "apply_prototype", |x| x.as_bool()).unwrap_or(false);
                     if apply_prototype {
                         context
                             .patterns

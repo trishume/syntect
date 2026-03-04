@@ -563,7 +563,10 @@ impl ParseState {
     fn current_syntax_version(&self, syntax_set: &SyntaxSet) -> u32 {
         if let Some(level) = self.stack.last() {
             let syntax_index = level.context.syntax_index;
-            syntax_set.syntaxes().get(syntax_index).map_or(1, |s| s.version)
+            syntax_set
+                .syntaxes()
+                .get(syntax_index)
+                .map_or(1, |s| s.version)
         } else {
             1
         }
@@ -670,8 +673,8 @@ impl ParseState {
                                 // v2: set excludes parent meta_content_scope from matched text
                                 num_to_pop += cur_context.meta_scope.len();
                             } else {
-                                num_to_pop +=
-                                    cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
+                                num_to_pop += cur_context.meta_content_scope.len()
+                                    + cur_context.meta_scope.len();
                             }
                         }
 

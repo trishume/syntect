@@ -860,9 +860,7 @@ impl SyntaxSetBuilder {
                 }
 
                 // If child now has a main context but didn't have __start/__main, add them
-                if child.contexts.contains_key("main")
-                    && !child.contexts.contains_key("__start")
-                {
+                if child.contexts.contains_key("main") && !child.contexts.contains_key("__start") {
                     // Re-add initial contexts now that main is available
                     let mut scope_repo = crate::parsing::scope::lock_global_scope_repo();
                     let top_level_scope = child.scope;
@@ -996,10 +994,19 @@ impl SyntaxSetBuilder {
                         }
                     }
                 }
-                Pattern::Include(ref reference)
-                | Pattern::IncludeWithPrototype(ref reference) => match reference {
-                    ContextReference::Named(ref s) => {
-                        if let Some(id) = syntax_context_ids.get(s) {
+                Pattern::Include(ref reference) | Pattern::IncludeWithPrototype(ref reference) => {
+                    match reference {
+                        ContextReference::Named(ref s) => {
+                            if let Some(id) = syntax_context_ids.get(s) {
+                                Self::recursively_mark_no_prototype(
+                                    id,
+                                    syntax_context_ids,
+                                    all_contexts,
+                                    no_prototype,
+                                );
+                            }
+                        }
+                        ContextReference::Direct(ref id) => {
                             Self::recursively_mark_no_prototype(
                                 id,
                                 syntax_context_ids,
@@ -1007,17 +1014,9 @@ impl SyntaxSetBuilder {
                                 no_prototype,
                             );
                         }
+                        _ => (),
                     }
-                    ContextReference::Direct(ref id) => {
-                        Self::recursively_mark_no_prototype(
-                            id,
-                            syntax_context_ids,
-                            all_contexts,
-                            no_prototype,
-                        );
-                    }
-                    _ => (),
-                },
+                }
             }
         }
     }
@@ -1811,7 +1810,10 @@ mod tests {
             .parse_line("override\n", &ss)
             .expect("parse failed");
         // Should match child's 'override' keyword, not base's ident
-        let expected = (0, ScopeStackOp::Push(Scope::new("keyword.override").unwrap()));
+        let expected = (
+            0,
+            ScopeStackOp::Push(Scope::new("keyword.override").unwrap()),
+        );
         assert_ops_contain(&ops, &expected);
     }
 
@@ -1880,9 +1882,7 @@ mod tests {
         let syntax = ss.find_syntax_by_name("Child").unwrap();
         let mut parse_state = ParseState::new(syntax);
         // 'abc' should still match base's ident pattern (it comes first since child is appended)
-        let ops = parse_state
-            .parse_line("abc\n", &ss)
-            .expect("parse failed");
+        let ops = parse_state.parse_line("abc\n", &ss).expect("parse failed");
         let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1929,9 +1929,7 @@ mod tests {
         let syntax = ss.find_syntax_by_name("Child").unwrap();
         let mut parse_state = ParseState::new(syntax);
         // Lowercase should NOT match (child overrides ident to uppercase only)
-        let ops = parse_state
-            .parse_line("ABC\n", &ss)
-            .expect("parse failed");
+        let ops = parse_state.parse_line("ABC\n", &ss).expect("parse failed");
         let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
