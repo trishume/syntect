@@ -8,6 +8,7 @@ use crate::parsing::{
 };
 use crate::util::LinesWithEndings;
 use crate::Error;
+use std::collections::HashSet;
 use std::fmt::Write;
 
 use std::io::BufRead;
@@ -56,6 +57,8 @@ pub struct ClassedHTMLGenerator<'a> {
     scope_stack: ScopeStack,
     html: String,
     style: ClassStyle,
+    current_line: usize,
+    highlighted_lines: HashSet<usize>,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
@@ -72,6 +75,53 @@ impl<'a> ClassedHTMLGenerator<'a> {
         syntax_set: &'a SyntaxSet,
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
+        Self::new_with_class_style_and_highlighted_lines(
+            syntax_reference,
+            syntax_set,
+            style,
+            &[],
+        )
+    }
+
+    /// Like [`new_with_class_style`], but also marks the given lines (1-indexed)
+    /// with a `<span class="hl">` wrapper so they can be styled differently.
+    ///
+    /// The highlight wrapper correctly closes and reopens any scope spans that
+    /// cross line boundaries, keeping the HTML well-nested.
+    ///
+    /// The generated CSS from [`css_for_theme_with_class_style`] includes a
+    /// default `.hl` rule using the theme's `lineHighlight` color when
+    /// available.
+    ///
+    /// [`new_with_class_style`]: #method.new_with_class_style
+    /// [`css_for_theme_with_class_style`]: fn.css_for_theme_with_class_style.html
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use syntect::html::{ClassedHTMLGenerator, ClassStyle};
+    /// use syntect::parsing::SyntaxSet;
+    /// use syntect::util::LinesWithEndings;
+    ///
+    /// let code = "x <- 5\ny <- 6\nx + y\n";
+    ///
+    /// let syntax_set = SyntaxSet::load_defaults_newlines();
+    /// let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+    /// let mut html_generator = ClassedHTMLGenerator::new_with_class_style_and_highlighted_lines(
+    ///     syntax, &syntax_set, ClassStyle::Spaced, &[2],
+    /// );
+    /// for line in LinesWithEndings::from(code) {
+    ///     html_generator.parse_html_for_line_which_includes_newline(line).unwrap();
+    /// }
+    /// let output_html = html_generator.finalize();
+    /// assert!(output_html.contains("<span class=\"hl\">"));
+    /// ```
+    pub fn new_with_class_style_and_highlighted_lines(
+        syntax_reference: &'a SyntaxReference,
+        syntax_set: &'a SyntaxSet,
+        style: ClassStyle,
+        highlighted_lines: &[usize],
+    ) -> ClassedHTMLGenerator<'a> {
         let parse_state = ParseState::new(syntax_reference);
         let open_spans = 0;
         let html = String::new();
@@ -83,6 +133,8 @@ impl<'a> ClassedHTMLGenerator<'a> {
             scope_stack,
             html,
             style,
+            current_line: 0,
+            highlighted_lines: highlighted_lines.iter().copied().collect(),
         }
     }
 
@@ -91,6 +143,17 @@ impl<'a> ClassedHTMLGenerator<'a> {
     /// *Note:* This function requires `line` to include a newline at the end and
     /// also use of the `load_defaults_newlines` version of the syntaxes.
     pub fn parse_html_for_line_which_includes_newline(&mut self, line: &str) -> Result<(), Error> {
+        self.current_line += 1;
+        let is_highlighted = self.highlighted_lines.contains(&self.current_line);
+
+        if is_highlighted {
+            for _ in 0..self.open_spans {
+                self.html.push_str("</span>");
+            }
+            self.write_highlight_open();
+            self.reopen_scope_spans();
+        }
+
         let parsed_line = self.parse_state.parse_line(line, self.syntax_set)?;
         let (formatted_line, delta) = line_tokens_to_classed_spans(
             line,
@@ -99,9 +162,43 @@ impl<'a> ClassedHTMLGenerator<'a> {
             &mut self.scope_stack,
         )?;
         self.open_spans += delta;
-        self.html.push_str(formatted_line.as_str());
+
+        if is_highlighted {
+            if let Some(nl_pos) = formatted_line.rfind('\n') {
+                self.html.push_str(&formatted_line[..nl_pos]);
+                self.html.push_str(&formatted_line[nl_pos + 1..]);
+            } else {
+                self.html.push_str(&formatted_line);
+            }
+            for _ in 0..self.open_spans {
+                self.html.push_str("</span>");
+            }
+            self.html.push_str("</span>");
+            if formatted_line.contains('\n') {
+                self.html.push('\n');
+            }
+            self.reopen_scope_spans();
+        } else {
+            self.html.push_str(&formatted_line);
+        }
 
         Ok(())
+    }
+
+    fn write_highlight_open(&mut self) {
+        self.html.push_str("<span class=\"");
+        if let ClassStyle::SpacedPrefixed { prefix } = self.style {
+            self.html.push_str(prefix);
+        }
+        self.html.push_str("hl\">");
+    }
+
+    fn reopen_scope_spans(&mut self) {
+        for &scope in &self.scope_stack.scopes {
+            self.html.push_str("<span class=\"");
+            scope_to_classes(&mut self.html, scope, self.style);
+            self.html.push_str("\">");
+        }
     }
 
     /// Parse the line of code and update the internal HTML buffer with tagged HTML
@@ -176,6 +273,21 @@ pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Resul
         ));
     }
     css.push_str("}\n\n");
+
+    if let Some(lh) = theme.settings.line_highlight {
+        match style {
+            ClassStyle::Spaced => {
+                css.push_str(".hl {\n");
+            }
+            ClassStyle::SpacedPrefixed { prefix } => {
+                let class = escape_css_identifier(&format!("{}hl", prefix));
+                css.push_str(&format!(".{} {{\n", class));
+            }
+        };
+        css.push_str(" background-color: ");
+        write_css_color(&mut css, lh);
+        css.push_str(";\n}\n\n");
+    }
 
     for i in &theme.scopes {
         for scope_selector in &i.scope.selectors {
@@ -750,5 +862,137 @@ fn main() {
         let css = css_for_theme_with_class_style(theme, ClassStyle::Spaced).unwrap();
         assert!(!css.contains(".c++"));
         assert!(css.contains(".c\\2b \\2b "));
+    }
+
+    #[test]
+    fn test_highlighted_lines_single() {
+        let code = "x <- 5\ny <- 6\nx + y\n";
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+
+        let mut gen = ClassedHTMLGenerator::new_with_class_style_and_highlighted_lines(
+            syntax,
+            &syntax_set,
+            ClassStyle::Spaced,
+            &[2],
+        );
+        for line in LinesWithEndings::from(code) {
+            gen.parse_html_for_line_which_includes_newline(line)
+                .expect("#[cfg(test)]");
+        }
+        let html = gen.finalize();
+        assert!(html.contains("<span class=\"hl\">"));
+        assert_eq!(html.matches("<span class=\"hl\">").count(), 1);
+        assert!(html.contains("<span class=\"hl\"><span class=\"source r\">y"));
+    }
+
+    #[test]
+    fn test_highlighted_lines_multiple() {
+        let code = "x <- 5\ny <- 6\nx + y\n";
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+
+        let mut gen = ClassedHTMLGenerator::new_with_class_style_and_highlighted_lines(
+            syntax,
+            &syntax_set,
+            ClassStyle::Spaced,
+            &[1, 3],
+        );
+        for line in LinesWithEndings::from(code) {
+            gen.parse_html_for_line_which_includes_newline(line)
+                .expect("#[cfg(test)]");
+        }
+        let html = gen.finalize();
+        assert_eq!(html.matches("<span class=\"hl\">").count(), 2);
+    }
+
+    #[test]
+    fn test_highlighted_lines_prefixed() {
+        let code = "x + y\n";
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+
+        let mut gen = ClassedHTMLGenerator::new_with_class_style_and_highlighted_lines(
+            syntax,
+            &syntax_set,
+            ClassStyle::SpacedPrefixed { prefix: "syn-" },
+            &[1],
+        );
+        for line in LinesWithEndings::from(code) {
+            gen.parse_html_for_line_which_includes_newline(line)
+                .expect("#[cfg(test)]");
+        }
+        let html = gen.finalize();
+        assert!(html.contains("<span class=\"syn-hl\">"));
+    }
+
+    #[test]
+    fn test_highlighted_lines_none() {
+        let code = "x + y\n";
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+
+        let mut gen_plain =
+            ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
+        let mut gen_empty = ClassedHTMLGenerator::new_with_class_style_and_highlighted_lines(
+            syntax,
+            &syntax_set,
+            ClassStyle::Spaced,
+            &[],
+        );
+        for line in LinesWithEndings::from(code) {
+            gen_plain
+                .parse_html_for_line_which_includes_newline(line)
+                .expect("#[cfg(test)]");
+            gen_empty
+                .parse_html_for_line_which_includes_newline(line)
+                .expect("#[cfg(test)]");
+        }
+        assert_eq!(gen_plain.finalize(), gen_empty.finalize());
+    }
+
+    #[test]
+    fn test_highlighted_lines_cross_span_boundaries() {
+        let code = "// Rust source\nfn main() {\n    println!(\"Hello World!\");\n}\n";
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_extension("rs").unwrap();
+
+        let mut gen = ClassedHTMLGenerator::new_with_class_style_and_highlighted_lines(
+            syntax,
+            &syntax_set,
+            ClassStyle::Spaced,
+            &[3],
+        );
+        for line in LinesWithEndings::from(code) {
+            gen.parse_html_for_line_which_includes_newline(line)
+                .expect("#[cfg(test)]");
+        }
+        let html = gen.finalize();
+        assert!(html.contains("<span class=\"hl\">"));
+        assert_eq!(html.matches("<span class=\"hl\">").count(), 1);
+
+        let hl_start = html.find("<span class=\"hl\">").unwrap();
+        let hl_end = html[hl_start..].find("</span></span>").unwrap() + hl_start;
+        let hl_content = &html[hl_start..hl_end + "</span></span>".len()];
+        assert!(hl_content.contains("println!"));
+    }
+
+    #[test]
+    fn test_css_line_highlight() {
+        let theme_set = ThemeSet::load_defaults();
+        let theme = theme_set.themes.get("Solarized (dark)").unwrap();
+        let css = css_for_theme_with_class_style(theme, ClassStyle::Spaced).unwrap();
+        if theme.settings.line_highlight.is_some() {
+            assert!(css.contains(".hl {"));
+        }
+
+        let css_prefixed = css_for_theme_with_class_style(
+            theme,
+            ClassStyle::SpacedPrefixed { prefix: "syn-" },
+        )
+        .unwrap();
+        if theme.settings.line_highlight.is_some() {
+            assert!(css_prefixed.contains(".syn-hl {"));
+        }
     }
 }
