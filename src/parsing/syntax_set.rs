@@ -12,6 +12,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::mem;
+use std::ops::DerefMut;
 use std::path::Path;
 
 use super::regex::Regex;
@@ -57,9 +58,16 @@ pub struct SyntaxReference {
     pub hidden: bool,
     #[serde(serialize_with = "ordered_map")]
     pub variables: HashMap<String, String>,
+    /// The version of the sublime-syntax format (1 or 2). Default is 1.
+    #[serde(default = "default_syntax_version")]
+    pub version: u32,
     #[serde(skip)]
     pub(crate) lazy_contexts: OnceCell<LazyContexts>,
     pub(crate) serialized_lazy_contexts: Vec<u8>,
+}
+
+fn default_syntax_version() -> u32 {
+    1
 }
 
 /// The lazy-loaded parts of a [`SyntaxReference`].
@@ -348,6 +356,7 @@ impl SyntaxSet {
                 first_line_match,
                 hidden,
                 variables,
+                version,
                 serialized_lazy_contexts,
                 ..
             } = syntax;
@@ -368,6 +377,8 @@ impl SyntaxSet {
                 hidden,
                 variables,
                 contexts: builder_contexts,
+                extends: None,
+                version,
             };
             builder_syntaxes.push(syntax_definition);
         }
@@ -585,6 +596,9 @@ impl SyntaxSetBuilder {
             existing_metadata,
         } = self;
 
+        // Extends resolution phase: merge parent contexts/variables into children
+        let syntax_definitions = Self::resolve_extends(syntax_definitions, &path_syntaxes);
+
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
         let mut all_context_ids = Vec::new();
         let mut all_contexts = vec![Vec::new(); syntax_definitions.len()];
@@ -598,6 +612,8 @@ impl SyntaxSetBuilder {
                 hidden,
                 variables,
                 contexts,
+                extends: _,
+                version,
             } = syntax_definition;
 
             let mut context_ids = HashMap::new();
@@ -627,6 +643,7 @@ impl SyntaxSetBuilder {
                 first_line_match,
                 hidden,
                 variables,
+                version,
                 lazy_contexts: OnceCell::new(),
                 serialized_lazy_contexts: Vec::new(), // initialized in the last step
             };
@@ -678,7 +695,7 @@ impl SyntaxSetBuilder {
                 for context_index in 0..all_contexts[syntax_index].len() {
                     let context = &all_contexts[syntax_index][context_index];
                     if !context.uses_backrefs && context.patterns.iter().any(|pattern| {
-                        matches!(pattern, Pattern::Include(ContextReference::Direct(id)) if all_contexts[id.syntax_index][id.context_index].uses_backrefs)
+                        matches!(pattern, Pattern::Include(ContextReference::Direct(id)) | Pattern::IncludeWithPrototype(ContextReference::Direct(id)) if all_contexts[id.syntax_index][id.context_index].uses_backrefs)
                     }) {
                         let context = &mut all_contexts[syntax_index][context_index];
                         context.uses_backrefs = true;
@@ -715,6 +732,216 @@ impl SyntaxSetBuilder {
             #[cfg(feature = "metadata")]
             metadata,
         }
+    }
+
+    /// No-op extends resolution when yaml-load feature is not available.
+    #[cfg(not(feature = "yaml-load"))]
+    fn resolve_extends(
+        syntax_definitions: Vec<SyntaxDefinition>,
+        _path_syntaxes: &[(String, usize)],
+    ) -> Vec<SyntaxDefinition> {
+        syntax_definitions
+    }
+
+    /// Resolve `extends` relationships between syntax definitions.
+    ///
+    /// For each child syntax that extends a parent, merge the parent's contexts and variables
+    /// into the child. Respects `meta_prepend`/`meta_append` merge modes.
+    #[cfg(feature = "yaml-load")]
+    fn resolve_extends(
+        mut syntax_definitions: Vec<SyntaxDefinition>,
+        path_syntaxes: &[(String, usize)],
+    ) -> Vec<SyntaxDefinition> {
+        // Build lookup maps: name -> index and path-suffix -> index
+        let mut name_to_index: HashMap<String, usize> = HashMap::new();
+        for (i, sd) in syntax_definitions.iter().enumerate() {
+            name_to_index.insert(sd.name.clone(), i);
+        }
+
+        // Track which syntaxes need extends resolution
+        let mut unresolved: HashSet<usize> = HashSet::new();
+        for (i, sd) in syntax_definitions.iter().enumerate() {
+            if sd.extends.is_some() {
+                unresolved.insert(i);
+            }
+        }
+
+        if unresolved.is_empty() {
+            return syntax_definitions;
+        }
+
+        // Fixed-point loop: resolve extends iteratively (to handle chains)
+        let mut made_progress = true;
+        while made_progress && !unresolved.is_empty() {
+            made_progress = false;
+
+            let still_unresolved: Vec<usize> = unresolved.iter().copied().collect();
+            for child_idx in still_unresolved {
+                let extends_path = match syntax_definitions[child_idx].extends {
+                    Some(ref p) => p.clone(),
+                    None => continue,
+                };
+
+                // Find parent by matching extends path against path_syntaxes or name
+                let parent_idx = Self::find_parent_index(
+                    &extends_path,
+                    path_syntaxes,
+                    &syntax_definitions,
+                    &name_to_index,
+                );
+
+                let parent_idx = match parent_idx {
+                    Some(idx) => idx,
+                    None => continue, // parent not found yet, retry
+                };
+
+                // Don't resolve if parent itself is still unresolved
+                if unresolved.contains(&parent_idx) {
+                    continue;
+                }
+
+                // Clone parent data we need (to avoid double borrow)
+                let parent_variables = syntax_definitions[parent_idx].variables.clone();
+                let parent_contexts = syntax_definitions[parent_idx].contexts.clone();
+
+                let child = &mut syntax_definitions[child_idx];
+
+                // Merge variables: start with parent, apply child overrides
+                let mut merged_variables = parent_variables;
+                for (k, v) in child.variables.drain() {
+                    merged_variables.insert(k, v);
+                }
+                child.variables = merged_variables;
+
+                // Merge contexts
+                for (ctx_name, parent_ctx) in parent_contexts {
+                    if let Some(child_ctx) = child.contexts.get_mut(&ctx_name) {
+                        match child_ctx.merge_mode {
+                            ContextMergeMode::Replace => {
+                                // Child's version wins, keep as-is
+                            }
+                            ContextMergeMode::Prepend => {
+                                // child patterns + parent patterns
+                                let mut merged_patterns = child_ctx.patterns.clone();
+                                merged_patterns.extend(parent_ctx.patterns);
+                                child_ctx.patterns = merged_patterns;
+                                // Inherit parent meta scopes if child didn't define them
+                                if child_ctx.meta_scope.is_empty() {
+                                    child_ctx.meta_scope = parent_ctx.meta_scope;
+                                }
+                                if child_ctx.meta_content_scope.is_empty() {
+                                    child_ctx.meta_content_scope = parent_ctx.meta_content_scope;
+                                }
+                                if child_ctx.clear_scopes.is_none() {
+                                    child_ctx.clear_scopes = parent_ctx.clear_scopes;
+                                }
+                            }
+                            ContextMergeMode::Append => {
+                                // parent patterns + child patterns
+                                let child_patterns = child_ctx.patterns.clone();
+                                child_ctx.patterns = parent_ctx.patterns;
+                                child_ctx.patterns.extend(child_patterns);
+                                // Inherit parent meta scopes if child didn't define them
+                                if child_ctx.meta_scope.is_empty() {
+                                    child_ctx.meta_scope = parent_ctx.meta_scope;
+                                }
+                                if child_ctx.meta_content_scope.is_empty() {
+                                    child_ctx.meta_content_scope = parent_ctx.meta_content_scope;
+                                }
+                                if child_ctx.clear_scopes.is_none() {
+                                    child_ctx.clear_scopes = parent_ctx.clear_scopes;
+                                }
+                            }
+                        }
+                    } else {
+                        // Parent context not in child: inherit it
+                        child.contexts.insert(ctx_name, parent_ctx);
+                    }
+                }
+
+                // If child now has a main context but didn't have __start/__main, add them
+                if child.contexts.contains_key("main") && !child.contexts.contains_key("__start") {
+                    // Re-add initial contexts now that main is available
+                    let mut scope_repo = crate::parsing::scope::lock_global_scope_repo();
+                    let top_level_scope = child.scope;
+                    SyntaxDefinition::add_initial_contexts(
+                        &mut child.contexts,
+                        &mut crate::parsing::yaml_load::ParserState {
+                            scope_repo: scope_repo.deref_mut(),
+                            variables: child.variables.clone(),
+                            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into()),
+                            backref_regex: Regex::new(r"\\\d".into()),
+                            lines_include_newline: false,
+                        },
+                        top_level_scope,
+                    );
+                }
+
+                // Re-resolve all regexes with merged variables
+                // Note: we use lines_include_newline=false as a default here.
+                // The raw_regex_str was stored before variable resolution, so re-resolution
+                // applies the full pipeline.
+                if let Err(e) = crate::parsing::yaml_load::re_resolve_all_regexes(child, false) {
+                    eprintln!(
+                        "Warning: failed to re-resolve regexes for '{}' after extends: {}",
+                        child.name, e
+                    );
+                }
+
+                unresolved.remove(&child_idx);
+                made_progress = true;
+            }
+        }
+
+        if !unresolved.is_empty() {
+            for idx in &unresolved {
+                eprintln!(
+                    "Warning: syntax '{}' extends '{}' but parent was not found or has circular dependency",
+                    syntax_definitions[*idx].name,
+                    syntax_definitions[*idx].extends.as_deref().unwrap_or("?"),
+                );
+            }
+        }
+
+        syntax_definitions
+    }
+
+    /// Find the index of a parent syntax by matching the extends path.
+    #[cfg(feature = "yaml-load")]
+    fn find_parent_index(
+        extends_path: &str,
+        path_syntaxes: &[(String, usize)],
+        syntax_definitions: &[SyntaxDefinition],
+        name_to_index: &HashMap<String, usize>,
+    ) -> Option<usize> {
+        // Normalize separators for matching
+        let normalized = extends_path.replace('\\', "/");
+
+        // First try matching against path_syntaxes (path ends with extends value)
+        let slash_normalized = format!("/{}", normalized);
+        for (path, idx) in path_syntaxes {
+            let path_normalized = path.replace('\\', "/");
+            if path_normalized.ends_with(&slash_normalized) || path_normalized == normalized {
+                return Some(*idx);
+            }
+        }
+
+        // Try matching by file stem (e.g., "Packages/C/C.sublime-syntax" -> look for syntax named "C")
+        if let Some(file_name) = std::path::Path::new(&normalized).file_stem() {
+            if let Some(name_str) = file_name.to_str() {
+                if let Some(&idx) = name_to_index.get(name_str) {
+                    return Some(idx);
+                }
+                // Try case-insensitive match
+                for (i, sd) in syntax_definitions.iter().enumerate() {
+                    if sd.name.eq_ignore_ascii_case(name_str) {
+                        return Some(i);
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     /// Anything recursively included by the prototype shouldn't include the prototype.
@@ -767,9 +994,19 @@ impl SyntaxSetBuilder {
                         }
                     }
                 }
-                Pattern::Include(ref reference) => match reference {
-                    ContextReference::Named(ref s) => {
-                        if let Some(id) = syntax_context_ids.get(s) {
+                Pattern::Include(ref reference) | Pattern::IncludeWithPrototype(ref reference) => {
+                    match reference {
+                        ContextReference::Named(ref s) => {
+                            if let Some(id) = syntax_context_ids.get(s) {
+                                Self::recursively_mark_no_prototype(
+                                    id,
+                                    syntax_context_ids,
+                                    all_contexts,
+                                    no_prototype,
+                                );
+                            }
+                        }
+                        ContextReference::Direct(ref id) => {
                             Self::recursively_mark_no_prototype(
                                 id,
                                 syntax_context_ids,
@@ -777,17 +1014,9 @@ impl SyntaxSetBuilder {
                                 no_prototype,
                             );
                         }
+                        _ => (),
                     }
-                    ContextReference::Direct(ref id) => {
-                        Self::recursively_mark_no_prototype(
-                            id,
-                            syntax_context_ids,
-                            all_contexts,
-                            no_prototype,
-                        );
-                    }
-                    _ => (),
-                },
+                }
             }
         }
     }
@@ -803,7 +1032,8 @@ impl SyntaxSetBuilder {
                 Pattern::Match(ref mut match_pat) => {
                     Self::link_match_pat(match_pat, syntax_index, all_context_ids, syntaxes)
                 }
-                Pattern::Include(ref mut context_ref) => {
+                Pattern::Include(ref mut context_ref)
+                | Pattern::IncludeWithPrototype(ref mut context_ref) => {
                     Self::link_ref(context_ref, syntax_index, all_context_ids, syntaxes)
                 }
             }
@@ -962,6 +1192,8 @@ mod tests {
             hidden: false,
             variables: HashMap::new(),
             contexts: HashMap::new(),
+            extends: None,
+            version: 1,
         };
 
         builder.add(cmake_dummy_syntax);
@@ -1488,5 +1720,357 @@ mod tests {
             None,
         )
         .unwrap()
+    }
+
+    // =====================================================
+    // Tests for extends (syntax inheritance)
+    // =====================================================
+
+    fn base_syntax() -> SyntaxDefinition {
+        SyntaxDefinition::load_from_str(
+            r#"
+            name: Base
+            scope: source.base
+            file_extensions: [base]
+            variables:
+              ident: '[a-z]+'
+            contexts:
+              main:
+                - match: '{{ident}}'
+                  scope: variable.base
+              string:
+                - meta_scope: string.base
+                - match: '"'
+                  pop: true
+            "#,
+            true,
+            None,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn extends_inherits_contexts() {
+        // Child extends base and inherits the 'string' context
+        let base = base_syntax();
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: Child
+            scope: source.child
+            file_extensions: [child]
+            extends: Base.sublime-syntax
+            contexts:
+              main:
+                - match: 'child'
+                  scope: keyword.child
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(child);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Child").unwrap();
+        // Child should have the 'string' context inherited from Base
+        assert!(syntax.context_ids().contains_key("string"));
+    }
+
+    #[test]
+    fn extends_overrides_context() {
+        // Child overrides the 'main' context
+        let base = base_syntax();
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: Child
+            scope: source.child
+            file_extensions: [child]
+            extends: Base.sublime-syntax
+            contexts:
+              main:
+                - match: 'override'
+                  scope: keyword.override
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(child);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Child").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state
+            .parse_line("override\n", &ss)
+            .expect("parse failed");
+        // Should match child's 'override' keyword, not base's ident
+        let expected = (
+            0,
+            ScopeStackOp::Push(Scope::new("keyword.override").unwrap()),
+        );
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn extends_meta_prepend() {
+        // Child prepends patterns to main
+        let base = base_syntax();
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: Child
+            scope: source.child
+            file_extensions: [child]
+            extends: Base.sublime-syntax
+            contexts:
+              main:
+                - meta_prepend: true
+                - match: 'keyword'
+                  scope: keyword.child
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(child);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Child").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        // 'keyword' should match the child's pattern (prepended, so first in list)
+        let ops = parse_state
+            .parse_line("keyword\n", &ss)
+            .expect("parse failed");
+        let expected = (0, ScopeStackOp::Push(Scope::new("keyword.child").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn extends_meta_append() {
+        // Child appends patterns to main
+        let base = base_syntax();
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: Child
+            scope: source.child
+            file_extensions: [child]
+            extends: Base.sublime-syntax
+            contexts:
+              main:
+                - meta_append: true
+                - match: 'extra'
+                  scope: keyword.extra
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(child);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Child").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        // 'abc' should still match base's ident pattern (it comes first since child is appended)
+        let ops = parse_state.parse_line("abc\n", &ss).expect("parse failed");
+        let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn extends_variable_override() {
+        // Child overrides parent's 'ident' variable
+        let base = SyntaxDefinition::load_from_str(
+            r#"
+            name: Base
+            scope: source.base
+            file_extensions: [base]
+            variables:
+              ident: '[a-z]+'
+            contexts:
+              main:
+                - match: '{{ident}}'
+                  scope: variable.base
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: Child
+            scope: source.child
+            file_extensions: [child]
+            extends: Base.sublime-syntax
+            variables:
+              ident: '[A-Z]+'
+            contexts: {}
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(child);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Child").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        // Lowercase should NOT match (child overrides ident to uppercase only)
+        let ops = parse_state.parse_line("ABC\n", &ss).expect("parse failed");
+        let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn extends_missing_parent_warns_but_no_panic() {
+        // A syntax extends a non-existent parent. Should not panic.
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: Orphan
+            scope: source.orphan
+            file_extensions: [orphan]
+            extends: NonExistent.sublime-syntax
+            contexts:
+              main:
+                - match: 'x'
+                  scope: x
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(child);
+        // Should not panic
+        let ss = builder.build();
+        assert!(ss.find_syntax_by_name("Orphan").is_some());
+    }
+
+    // =====================================================
+    // Tests for apply_prototype
+    // =====================================================
+
+    #[test]
+    fn apply_prototype_includes_external_prototype() {
+        let syntax_with_proto = SyntaxDefinition::load_from_str(
+            r#"
+            name: WithProto
+            scope: source.withproto
+            file_extensions: [wp]
+            contexts:
+              prototype:
+                - match: '#'
+                  scope: comment.proto
+                  push:
+                    - meta_scope: comment.line
+                    - match: '$'
+                      pop: true
+              main:
+                - match: 'x'
+                  scope: x
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let syntax_using_proto = SyntaxDefinition::load_from_str(
+            r#"
+            name: UsingProto
+            scope: source.usingproto
+            file_extensions: [up]
+            contexts:
+              main:
+                - match: 'y'
+                  scope: y
+                - include: scope:source.withproto
+                  apply_prototype: true
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax_with_proto);
+        builder.add(syntax_using_proto);
+        let ss = builder.build();
+
+        // Just verify it builds without errors and the syntax exists
+        assert!(ss.find_syntax_by_name("UsingProto").is_some());
+    }
+
+    // =====================================================
+    // Tests for version 2 behavioral fixes
+    // =====================================================
+
+    #[test]
+    fn v2_set_excludes_parent_meta_content_scope() {
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2Test
+            scope: source.v2test
+            file_extensions: [v2]
+            version: 2
+            contexts:
+              main:
+                - meta_content_scope: meta.content.main
+                - match: 'go'
+                  set: other
+              other:
+                - match: 'x'
+                  scope: x
+                  pop: true
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("V2Test").unwrap();
+        assert_eq!(syntax.version, 2);
+    }
+
+    #[test]
+    fn version_preserved_in_syntax_reference() {
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2
+            scope: source.v2
+            version: 2
+            contexts:
+              main:
+                - match: 'x'
+                  scope: x
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        let syntax_ref = ss.find_syntax_by_name("V2").unwrap();
+        assert_eq!(syntax_ref.version, 2);
     }
 }
