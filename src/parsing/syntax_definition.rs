@@ -47,7 +47,7 @@ pub struct SyntaxDefinition {
     /// The syntax(es) this definition extends (e.g., "Packages/C/C.sublime-syntax").
     /// Can be a single path or a list of paths for multiple inheritance.
     #[serde(default)]
-    pub extends: Option<Vec<String>>,
+    pub extends: Vec<String>,
     /// The version of the sublime-syntax format (1 or 2). Default is 1.
     #[serde(default = "default_version")]
     pub version: u32,

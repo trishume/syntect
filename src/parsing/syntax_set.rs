@@ -377,7 +377,7 @@ impl SyntaxSet {
                 hidden,
                 variables,
                 contexts: builder_contexts,
-                extends: None,
+                extends: vec![],
                 version,
             };
             builder_syntaxes.push(syntax_definition);
@@ -761,7 +761,7 @@ impl SyntaxSetBuilder {
         // Track which syntaxes need extends resolution
         let mut unresolved: HashSet<usize> = HashSet::new();
         for (i, sd) in syntax_definitions.iter().enumerate() {
-            if sd.extends.is_some() {
+            if !sd.extends.is_empty() {
                 unresolved.insert(i);
             }
         }
@@ -777,10 +777,10 @@ impl SyntaxSetBuilder {
 
             let still_unresolved: Vec<usize> = unresolved.iter().copied().collect();
             for child_idx in still_unresolved {
-                let extends_paths = match syntax_definitions[child_idx].extends {
-                    Some(ref paths) => paths.clone(),
-                    None => continue,
-                };
+                let extends_paths = syntax_definitions[child_idx].extends.clone();
+                if extends_paths.is_empty() {
+                    continue;
+                }
 
                 // Find all parent indices; skip if any parent is not found or unresolved
                 let mut parent_indices = Vec::with_capacity(extends_paths.len());
@@ -911,11 +911,8 @@ impl SyntaxSetBuilder {
 
         if !unresolved.is_empty() {
             for idx in &unresolved {
-                let extends_str = syntax_definitions[*idx]
-                    .extends
-                    .as_ref()
-                    .map(|v| v.join(", "))
-                    .unwrap_or_else(|| "?".to_string());
+                let e = &syntax_definitions[*idx].extends;
+                let extends_str = if e.is_empty() { "?".to_string() } else { e.join(", ") };
                 eprintln!(
                     "Warning: syntax '{}' extends '{}' but parent was not found or has circular dependency",
                     syntax_definitions[*idx].name,
@@ -1213,7 +1210,7 @@ mod tests {
             hidden: false,
             variables: HashMap::new(),
             contexts: HashMap::new(),
-            extends: None,
+            extends: vec![],
             version: 1,
         };
 
@@ -2304,7 +2301,7 @@ mod tests {
 
         assert_eq!(
             child.extends,
-            Some(vec!["ExtA".to_owned(), "ExtB".to_owned()])
+            vec!["ExtA".to_owned(), "ExtB".to_owned()]
         );
 
         let mut builder = SyntaxSetBuilder::new();
