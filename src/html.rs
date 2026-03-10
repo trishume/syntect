@@ -75,12 +75,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         syntax_set: &'a SyntaxSet,
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
-        Self::new_with_class_style_and_highlighted_lines(
-            syntax_reference,
-            syntax_set,
-            style,
-            &[],
-        )
+        Self::new_with_class_style_and_highlighted_lines(syntax_reference, syntax_set, style, &[])
     }
 
     /// Like [`new_with_class_style`], but also marks the given lines (1-indexed)
@@ -986,11 +981,9 @@ fn main() {
             assert!(css.contains(".hl {"));
         }
 
-        let css_prefixed = css_for_theme_with_class_style(
-            theme,
-            ClassStyle::SpacedPrefixed { prefix: "syn-" },
-        )
-        .unwrap();
+        let css_prefixed =
+            css_for_theme_with_class_style(theme, ClassStyle::SpacedPrefixed { prefix: "syn-" })
+                .unwrap();
         if theme.settings.line_highlight.is_some() {
             assert!(css_prefixed.contains(".syn-hl {"));
         }
