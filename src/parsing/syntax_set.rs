@@ -912,7 +912,11 @@ impl SyntaxSetBuilder {
         if !unresolved.is_empty() {
             for idx in &unresolved {
                 let e = &syntax_definitions[*idx].extends;
-                let extends_str = if e.is_empty() { "?".to_string() } else { e.join(", ") };
+                let extends_str = if e.is_empty() {
+                    "?".to_string()
+                } else {
+                    e.join(", ")
+                };
                 eprintln!(
                     "Warning: syntax '{}' extends '{}' but parent was not found or has circular dependency",
                     syntax_definitions[*idx].name,
@@ -2299,10 +2303,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            child.extends,
-            vec!["ExtA".to_owned(), "ExtB".to_owned()]
-        );
+        assert_eq!(child.extends, vec!["ExtA".to_owned(), "ExtB".to_owned()]);
 
         let mut builder = SyntaxSetBuilder::new();
         builder.add(base);

@@ -153,15 +153,20 @@ impl SyntaxDefinition {
             }
         }
 
-        let extends = get_key(h, "extends", Some).ok().map(|y| {
-            if let Some(s) = y.as_str() {
-                vec![s.to_owned()]
-            } else if let Some(seq) = y.as_vec() {
-                seq.iter().filter_map(|v| v.as_str().map(|s| s.to_owned())).collect()
-            } else {
-                vec![]
-            }
-        }).unwrap_or_default();
+        let extends = get_key(h, "extends", Some)
+            .ok()
+            .map(|y| {
+                if let Some(s) = y.as_str() {
+                    vec![s.to_owned()]
+                } else if let Some(seq) = y.as_vec() {
+                    seq.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_owned()))
+                        .collect()
+                } else {
+                    vec![]
+                }
+            })
+            .unwrap_or_default();
 
         let defn = SyntaxDefinition {
             name: get_key(h, "name", |x| x.as_str())
@@ -1482,10 +1487,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(
-            defn.extends,
-            vec!["Packages/C/C.sublime-syntax".to_owned()]
-        );
+        assert_eq!(defn.extends, vec!["Packages/C/C.sublime-syntax".to_owned()]);
     }
 
     #[test]
@@ -1505,10 +1507,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(
-            defn.extends,
-            vec!["Packages/C/C.sublime-syntax".to_owned()]
-        );
+        assert_eq!(defn.extends, vec!["Packages/C/C.sublime-syntax".to_owned()]);
         assert!(!defn.contexts.contains_key("main"));
     }
 
