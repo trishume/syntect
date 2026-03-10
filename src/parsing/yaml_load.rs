@@ -61,6 +61,7 @@ pub(crate) struct ParserState<'a> {
     pub(crate) variable_regex: Regex,
     pub(crate) backref_regex: Regex,
     pub(crate) lines_include_newline: bool,
+    pub(crate) version: u32,
 }
 
 // `__start` must not include prototypes from the actual syntax definition,
@@ -124,16 +125,19 @@ impl SyntaxDefinition {
         let top_level_scope = scope_repo
             .build(get_key(h, "scope", |x| x.as_str())?)
             .map_err(ParseSyntaxError::InvalidScope)?;
+        let version = get_key(h, "version", |x| x.as_i64()).unwrap_or(1) as u32;
+
         let mut state = ParserState {
             scope_repo,
             variables,
             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into()),
             backref_regex: Regex::new(r"\\\d".into()),
             lines_include_newline,
+            version,
         };
 
         let mut contexts = SyntaxDefinition::parse_contexts(contexts_hash, &mut state)?;
-        let has_extends = get_key(h, "extends", |x| x.as_str()).is_ok();
+        let has_extends = get_key(h, "extends", Some).is_ok();
         if !contexts.contains_key("main") && !has_extends {
             return Err(ParseSyntaxError::MainMissing);
         }
@@ -149,11 +153,23 @@ impl SyntaxDefinition {
             }
         }
 
-        let extends = get_key(h, "extends", |x| x.as_str())
-            .ok()
-            .map(|s| s.to_owned());
-
-        let version = get_key(h, "version", |x| x.as_i64()).unwrap_or(1) as u32;
+        let extends = get_key(h, "extends", Some).ok().and_then(|y| {
+            if let Some(s) = y.as_str() {
+                Some(vec![s.to_owned()])
+            } else if let Some(seq) = y.as_vec() {
+                let paths: Vec<String> = seq
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_owned()))
+                    .collect();
+                if paths.is_empty() {
+                    None
+                } else {
+                    Some(paths)
+                }
+            } else {
+                None
+            }
+        });
 
         let defn = SyntaxDefinition {
             name: get_key(h, "name", |x| x.as_str())
@@ -363,6 +379,7 @@ impl SyntaxDefinition {
                 commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
                 embed_escape_context_yaml.push(Yaml::Hash(commands));
             }
+            let has_embed_scope = get_key(map, "embed_scope", Some).is_ok();
             if let Ok(v) = get_key(map, "escape", Some) {
                 let mut match_map = Hash::new();
                 match_map.insert(Yaml::String("match".to_string()), v.clone());
@@ -378,6 +395,12 @@ impl SyntaxDefinition {
                     false,
                     namer,
                 )?;
+                // In v2, embed_scope replaces the embedded syntax's scope
+                if state.version >= 2 && has_embed_scope {
+                    if let Some(ctx) = contexts.get_mut(&escape_context) {
+                        ctx.embed_scope_replaces = true;
+                    }
+                }
                 MatchOperation::Push(vec![
                     ContextReference::Inline(escape_context),
                     SyntaxDefinition::parse_reference(y, state, contexts, namer, true)?,
@@ -1467,7 +1490,10 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(defn.extends, Some("Packages/C/C.sublime-syntax".to_owned()));
+        assert_eq!(
+            defn.extends,
+            Some(vec!["Packages/C/C.sublime-syntax".to_owned()])
+        );
     }
 
     #[test]
@@ -1487,7 +1513,10 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(defn.extends, Some("Packages/C/C.sublime-syntax".to_owned()));
+        assert_eq!(
+            defn.extends,
+            Some(vec!["Packages/C/C.sublime-syntax".to_owned()])
+        );
         assert!(!defn.contexts.contains_key("main"));
     }
 

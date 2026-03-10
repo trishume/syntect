@@ -806,7 +806,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_defini
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::MatchPattern
 pub struct syntect::parsing::syntax_definition::SyntaxDefinition
 pub syntect::parsing::syntax_definition::SyntaxDefinition::contexts: std::collections::hash::map::HashMap<alloc::string::String, syntect::parsing::syntax_definition::Context>
-pub syntect::parsing::syntax_definition::SyntaxDefinition::extends: core::option::Option<alloc::string::String>
+pub syntect::parsing::syntax_definition::SyntaxDefinition::extends: core::option::Option<alloc::vec::Vec<alloc::string::String>>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::file_extensions: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::first_line_match: core::option::Option<alloc::string::String>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::hidden: bool
@@ -1144,7 +1144,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ScopeStack
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ScopeStack
 pub struct syntect::parsing::SyntaxDefinition
 pub syntect::parsing::SyntaxDefinition::contexts: std::collections::hash::map::HashMap<alloc::string::String, syntect::parsing::syntax_definition::Context>
-pub syntect::parsing::SyntaxDefinition::extends: core::option::Option<alloc::string::String>
+pub syntect::parsing::SyntaxDefinition::extends: core::option::Option<alloc::vec::Vec<alloc::string::String>>
 pub syntect::parsing::SyntaxDefinition::file_extensions: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::SyntaxDefinition::first_line_match: core::option::Option<alloc::string::String>
 pub syntect::parsing::SyntaxDefinition::hidden: bool

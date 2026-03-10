@@ -622,7 +622,7 @@ impl ParseState {
                         for (i, r) in context_refs.iter().enumerate() {
                             let ctx = r.resolve(syntax_set)?;
 
-                            if !is_set && i == last_idx {
+                            if i == last_idx {
                                 if let Some(clear_amount) = ctx.clear_scopes {
                                     ops.push((index, ScopeStackOp::Clear(clear_amount)));
                                 }
@@ -687,6 +687,7 @@ impl ParseState {
                         if version >= 2 {
                             // v2: For multiple push, only apply clear_scopes from last context
                             let last_idx = context_refs.len().saturating_sub(1);
+                            let mut prev_embed_scope_replaces = false;
                             for (i, r) in context_refs.iter().enumerate() {
                                 let ctx = r.resolve(syntax_set)?;
 
@@ -699,9 +700,15 @@ impl ParseState {
                                 for scope in ctx.meta_scope.iter() {
                                     ops.push((index, ScopeStackOp::Push(*scope)));
                                 }
-                                for scope in ctx.meta_content_scope.iter() {
-                                    ops.push((index, ScopeStackOp::Push(*scope)));
+                                // v2: if the previous context has embed_scope_replaces,
+                                // skip this context's meta_content_scope (the embedded
+                                // syntax's top-level scope is replaced by embed_scope)
+                                if !prev_embed_scope_replaces {
+                                    for scope in ctx.meta_content_scope.iter() {
+                                        ops.push((index, ScopeStackOp::Push(*scope)));
+                                    }
                                 }
+                                prev_embed_scope_replaces = ctx.embed_scope_replaces;
                             }
                         } else {
                             for r in context_refs {

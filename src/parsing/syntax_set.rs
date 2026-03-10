@@ -770,51 +770,73 @@ impl SyntaxSetBuilder {
             return syntax_definitions;
         }
 
-        // Fixed-point loop: resolve extends iteratively (to handle chains)
+        // Fixed-point loop: resolve extends iteratively (to handle chains and multiple parents)
         let mut made_progress = true;
         while made_progress && !unresolved.is_empty() {
             made_progress = false;
 
             let still_unresolved: Vec<usize> = unresolved.iter().copied().collect();
             for child_idx in still_unresolved {
-                let extends_path = match syntax_definitions[child_idx].extends {
-                    Some(ref p) => p.clone(),
+                let extends_paths = match syntax_definitions[child_idx].extends {
+                    Some(ref paths) => paths.clone(),
                     None => continue,
                 };
 
-                // Find parent by matching extends path against path_syntaxes or name
-                let parent_idx = Self::find_parent_index(
-                    &extends_path,
-                    path_syntaxes,
-                    &syntax_definitions,
-                    &name_to_index,
-                );
+                // Find all parent indices; skip if any parent is not found or unresolved
+                let mut parent_indices = Vec::with_capacity(extends_paths.len());
+                let mut all_parents_ready = true;
+                for extends_path in &extends_paths {
+                    let parent_idx = Self::find_parent_index(
+                        extends_path,
+                        path_syntaxes,
+                        &syntax_definitions,
+                        &name_to_index,
+                    );
+                    match parent_idx {
+                        Some(idx) if !unresolved.contains(&idx) => {
+                            parent_indices.push(idx);
+                        }
+                        _ => {
+                            all_parents_ready = false;
+                            break;
+                        }
+                    }
+                }
 
-                let parent_idx = match parent_idx {
-                    Some(idx) => idx,
-                    None => continue, // parent not found yet, retry
-                };
-
-                // Don't resolve if parent itself is still unresolved
-                if unresolved.contains(&parent_idx) {
+                if !all_parents_ready {
                     continue;
                 }
 
-                // Clone parent data we need (to avoid double borrow)
-                let parent_variables = syntax_definitions[parent_idx].variables.clone();
-                let parent_contexts = syntax_definitions[parent_idx].contexts.clone();
+                // Merge all parents left-to-right: later parent overrides earlier
+                let mut merged_variables: HashMap<String, String> = HashMap::new();
+                let mut merged_contexts: HashMap<String, Context> = HashMap::new();
+
+                for &parent_idx in &parent_indices {
+                    let parent_variables = syntax_definitions[parent_idx].variables.clone();
+                    let parent_contexts = syntax_definitions[parent_idx].contexts.clone();
+
+                    // Merge variables: later parent overrides earlier
+                    for (k, v) in parent_variables {
+                        merged_variables.insert(k, v);
+                    }
+
+                    // Merge contexts: later parent overrides earlier
+                    for (ctx_name, parent_ctx) in parent_contexts {
+                        merged_contexts.insert(ctx_name, parent_ctx);
+                    }
+                }
 
                 let child = &mut syntax_definitions[child_idx];
 
-                // Merge variables: start with parent, apply child overrides
-                let mut merged_variables = parent_variables;
-                for (k, v) in child.variables.drain() {
+                // Child variables override merged parent variables
+                let child_variables: HashMap<String, String> = child.variables.drain().collect();
+                for (k, v) in child_variables {
                     merged_variables.insert(k, v);
                 }
                 child.variables = merged_variables;
 
-                // Merge contexts
-                for (ctx_name, parent_ctx) in parent_contexts {
+                // Merge contexts: child applies merge_mode against merged parent result
+                for (ctx_name, parent_ctx) in merged_contexts {
                     if let Some(child_ctx) = child.contexts.get_mut(&ctx_name) {
                         match child_ctx.merge_mode {
                             ContextMergeMode::Replace => {
@@ -825,7 +847,6 @@ impl SyntaxSetBuilder {
                                 let mut merged_patterns = child_ctx.patterns.clone();
                                 merged_patterns.extend(parent_ctx.patterns);
                                 child_ctx.patterns = merged_patterns;
-                                // Inherit parent meta scopes if child didn't define them
                                 if child_ctx.meta_scope.is_empty() {
                                     child_ctx.meta_scope = parent_ctx.meta_scope;
                                 }
@@ -841,7 +862,6 @@ impl SyntaxSetBuilder {
                                 let child_patterns = child_ctx.patterns.clone();
                                 child_ctx.patterns = parent_ctx.patterns;
                                 child_ctx.patterns.extend(child_patterns);
-                                // Inherit parent meta scopes if child didn't define them
                                 if child_ctx.meta_scope.is_empty() {
                                     child_ctx.meta_scope = parent_ctx.meta_scope;
                                 }
@@ -861,7 +881,6 @@ impl SyntaxSetBuilder {
 
                 // If child now has a main context but didn't have __start/__main, add them
                 if child.contexts.contains_key("main") && !child.contexts.contains_key("__start") {
-                    // Re-add initial contexts now that main is available
                     let mut scope_repo = crate::parsing::scope::lock_global_scope_repo();
                     let top_level_scope = child.scope;
                     SyntaxDefinition::add_initial_contexts(
@@ -872,15 +891,12 @@ impl SyntaxSetBuilder {
                             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into()),
                             backref_regex: Regex::new(r"\\\d".into()),
                             lines_include_newline: false,
+                            version: child.version,
                         },
                         top_level_scope,
                     );
                 }
 
-                // Re-resolve all regexes with merged variables
-                // Note: we use lines_include_newline=false as a default here.
-                // The raw_regex_str was stored before variable resolution, so re-resolution
-                // applies the full pipeline.
                 if let Err(e) = crate::parsing::yaml_load::re_resolve_all_regexes(child, false) {
                     eprintln!(
                         "Warning: failed to re-resolve regexes for '{}' after extends: {}",
@@ -895,10 +911,15 @@ impl SyntaxSetBuilder {
 
         if !unresolved.is_empty() {
             for idx in &unresolved {
+                let extends_str = syntax_definitions[*idx]
+                    .extends
+                    .as_ref()
+                    .map(|v| v.join(", "))
+                    .unwrap_or_else(|| "?".to_string());
                 eprintln!(
                     "Warning: syntax '{}' extends '{}' but parent was not found or has circular dependency",
                     syntax_definitions[*idx].name,
-                    syntax_definitions[*idx].extends.as_deref().unwrap_or("?"),
+                    extends_str,
                 );
             }
         }
@@ -2072,5 +2093,266 @@ mod tests {
 
         let syntax_ref = ss.find_syntax_by_name("V2").unwrap();
         assert_eq!(syntax_ref.version, 2);
+    }
+
+    #[test]
+    fn v2_set_applies_clear_scopes() {
+        use crate::parsing::ParseState;
+
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2ClearScopes
+            scope: source.v2clearscopes
+            file_extensions: [v2cs]
+            version: 2
+            contexts:
+              main:
+                - match: 'go'
+                  set: cleared
+              cleared:
+                - clear_scopes: true
+                - match: 'x'
+                  scope: x
+                  pop: true
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("V2ClearScopes").unwrap();
+        let mut state = ParseState::new(syntax);
+        let ops = state.parse_line("gox\n", &ss).unwrap();
+
+        // After "go" sets to "cleared" which has clear_scopes: true,
+        // the source.v2clearscopes scope should be cleared before "x" is matched
+        let has_clear = ops
+            .iter()
+            .any(|(_, op)| matches!(op, ScopeStackOp::Clear(_)));
+        assert!(
+            has_clear,
+            "v2 set should apply clear_scopes; ops: {:?}",
+            ops
+        );
+    }
+
+    #[test]
+    fn v2_embed_scope_replaces_embedded_scope() {
+        use crate::parsing::ParseState;
+        use crate::parsing::ScopeStack;
+
+        let host = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2Host
+            scope: source.v2host
+            file_extensions: [v2host]
+            version: 2
+            contexts:
+              main:
+                - match: '<<'
+                  embed: scope:source.v2embedded
+                  embed_scope: meta.embedded.custom
+                  escape: '>>'
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let embedded = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2Embedded
+            scope: source.v2embedded
+            file_extensions: [v2emb]
+            version: 2
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.x
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(host);
+        builder.add(embedded);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("V2Host").unwrap();
+        let mut state = ParseState::new(syntax);
+        let ops = state.parse_line("<<x>>\n", &ss).unwrap();
+
+        // Build scope stack to check what scopes are active when "x" is matched
+        let mut scope_stack = ScopeStack::new();
+        let mut x_scopes = None;
+        for (idx, op) in &ops {
+            if *idx <= 2 {
+                scope_stack.apply(op).unwrap();
+            }
+            // After applying ops at index 2 (the "x"), capture scopes
+            if *idx > 2 && x_scopes.is_none() {
+                x_scopes = Some(scope_stack.clone());
+            }
+        }
+        let x_scopes = x_scopes.unwrap_or(scope_stack);
+        let scopes: Vec<_> = x_scopes.as_slice().to_vec();
+
+        // embed_scope should replace, not stack with, embedded syntax's scope
+        // So we should have: source.v2host, meta.embedded.custom, keyword.x
+        // but NOT source.v2embedded
+        let has_custom = scopes
+            .iter()
+            .any(|s| s.build_string() == "meta.embedded.custom");
+        let has_embedded_scope = scopes
+            .iter()
+            .any(|s| s.build_string() == "source.v2embedded");
+        assert!(
+            has_custom,
+            "should have embed_scope; scopes: {:?}",
+            scopes.iter().map(|s| s.build_string()).collect::<Vec<_>>()
+        );
+        assert!(
+            !has_embedded_scope,
+            "should NOT have embedded syntax scope; scopes: {:?}",
+            scopes.iter().map(|s| s.build_string()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn multiple_inheritance_extends_array() {
+        // Base syntax with a variable and main context
+        let base = SyntaxDefinition::load_from_str(
+            r#"
+            name: Base
+            scope: source.base
+            file_extensions: [base]
+            variables:
+              IDENT: '[a-z]+'
+            contexts:
+              main:
+                - match: '{{IDENT}}'
+                  scope: variable.base
+              helpers:
+                - match: 'help'
+                  scope: keyword.help
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+
+        // ExtA overrides IDENT and adds a context
+        let ext_a = SyntaxDefinition::load_from_str(
+            r#"
+            name: ExtA
+            scope: source.ext_a
+            extends: Base
+            variables:
+              IDENT: '[a-zA-Z]+'
+            contexts:
+              ext_a_ctx:
+                - match: 'aaa'
+                  scope: keyword.a
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+
+        // ExtB adds a different variable and context
+        let ext_b = SyntaxDefinition::load_from_str(
+            r#"
+            name: ExtB
+            scope: source.ext_b
+            extends: Base
+            variables:
+              NUM: '[0-9]+'
+            contexts:
+              ext_b_ctx:
+                - match: 'bbb'
+                  scope: keyword.b
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+
+        // Child extends both ExtA and ExtB
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: Child
+            scope: source.child
+            file_extensions: [child]
+            extends:
+              - ExtA
+              - ExtB
+            contexts:
+              child_ctx:
+                - match: 'ccc'
+                  scope: keyword.c
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            child.extends,
+            Some(vec!["ExtA".to_owned(), "ExtB".to_owned()])
+        );
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(ext_a);
+        builder.add(ext_b);
+        builder.add(child);
+        let ss = builder.build();
+
+        let child_ref = ss.find_syntax_by_name("Child").unwrap();
+
+        // Child should have contexts from both parents and itself
+        let context_ids = child_ref.context_ids();
+        assert!(
+            context_ids.contains_key("main"),
+            "should inherit main from Base"
+        );
+        assert!(
+            context_ids.contains_key("helpers"),
+            "should inherit helpers from Base"
+        );
+        assert!(
+            context_ids.contains_key("ext_a_ctx"),
+            "should inherit ext_a_ctx from ExtA"
+        );
+        assert!(
+            context_ids.contains_key("ext_b_ctx"),
+            "should inherit ext_b_ctx from ExtB"
+        );
+        assert!(
+            context_ids.contains_key("child_ctx"),
+            "should have own child_ctx"
+        );
+
+        // Variables: ExtB's NUM should be present, ExtA's IDENT override should be present
+        // (ExtA overrides Base's IDENT, then ExtB doesn't override it, so ExtA's wins)
+        // Actually, since ExtB extends Base too, it inherits IDENT from Base.
+        // Merge order: ExtA first, then ExtB. ExtB's IDENT is Base's '[a-z]+'.
+        // So the final IDENT depends on merge order: ExtB overrides ExtA's IDENT.
+        // But ExtB doesn't define IDENT itself, it inherits from Base.
+        // After resolving ExtB, its variables include Base's IDENT='[a-z]+' and NUM='[0-9]+'.
+        // After resolving ExtA, its variables include Base+ExtA IDENT='[a-zA-Z]+'.
+        // Child merges: ExtA first (IDENT='[a-zA-Z]+'), then ExtB (IDENT='[a-z]+', NUM='[0-9]+').
+        // So final IDENT = '[a-z]+' (from ExtB, which overrides ExtA).
+
+        // Verify the child syntax can be used without panicking
+        let syntax = ss.find_syntax_by_name("Child").unwrap();
+        let mut state = crate::parsing::ParseState::new(syntax);
+        let _ops = state.parse_line("hello\n", &ss).unwrap();
     }
 }
