@@ -770,6 +770,14 @@ impl SyntaxSetBuilder {
             return syntax_definitions;
         }
 
+        // Track root ancestor for each syntax (syntaxes with no extends are their own root)
+        let mut syntax_roots: HashMap<usize, usize> = HashMap::new();
+        for (i, sd) in syntax_definitions.iter().enumerate() {
+            if sd.extends.is_empty() {
+                syntax_roots.insert(i, i);
+            }
+        }
+
         // Fixed-point loop: resolve extends iteratively (to handle chains and multiple parents)
         let mut made_progress = true;
         while made_progress && !unresolved.is_empty() {
@@ -804,6 +812,41 @@ impl SyntaxSetBuilder {
                 }
 
                 if !all_parents_ready {
+                    continue;
+                }
+
+                // H & I: all parents must share the same version as the child
+                let child_version = syntax_definitions[child_idx].version;
+                let version_ok = parent_indices
+                    .iter()
+                    .all(|&pi| syntax_definitions[pi].version == child_version);
+                if !version_ok {
+                    eprintln!(
+                        "Warning: syntax '{}' has a version mismatch with one or more parents; \
+                         extends will not be applied",
+                        syntax_definitions[child_idx].name
+                    );
+                    unresolved.remove(&child_idx);
+                    syntax_roots.insert(child_idx, child_idx);
+                    made_progress = true;
+                    continue;
+                }
+
+                // G: for multiple parents, all must share the same root ancestor
+                let parent_roots: Vec<usize> = parent_indices
+                    .iter()
+                    .map(|&pi| *syntax_roots.get(&pi).unwrap_or(&pi))
+                    .collect();
+                let common_root = parent_roots[0];
+                if !parent_roots.iter().all(|&r| r == common_root) {
+                    eprintln!(
+                        "Warning: syntax '{}' extends parents that derive from different base syntaxes; \
+                         extends will not be applied",
+                        syntax_definitions[child_idx].name
+                    );
+                    unresolved.remove(&child_idx);
+                    syntax_roots.insert(child_idx, child_idx);
+                    made_progress = true;
                     continue;
                 }
 
@@ -904,6 +947,7 @@ impl SyntaxSetBuilder {
                     );
                 }
 
+                syntax_roots.insert(child_idx, common_root);
                 unresolved.remove(&child_idx);
                 made_progress = true;
             }
