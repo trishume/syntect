@@ -2613,9 +2613,10 @@ mod tests {
     }
 
     #[test]
-    fn v2_embed_escape_gets_meta_scope_of_embed_context() {
-        // Per Sublime docs (v2): escape pattern text gets the meta_content_scope of the embed
-        // context (i.e., the embed_scope). In v1 it does not.
+    fn v2_embed_escape_does_not_get_embed_scope() {
+        // Per Sublime docs: embed_scope applies to text "after the match and before the escape",
+        // so the escape text should NOT have the embed_scope (meta_content_scope).
+        // This is the same in both v1 and v2.
         use crate::parsing::{ParseState, ScopeStack};
 
         let host = SyntaxDefinition::load_from_str(
@@ -2671,12 +2672,10 @@ mod tests {
         }
         let scopes: Vec<String> = stack.as_slice().iter().map(|s| s.build_string()).collect();
 
-        // v2: escape text '>>' should see the embed_scope (meta.embedded.block)
-        // NOTE: This test is expected to FAIL if the v2 escape+meta_scope behavior is not
-        // yet correctly implemented.
+        // Escape text '>>' should NOT have the embed_scope (meta.embedded.block)
         assert!(
-            scopes.iter().any(|s| s == "meta.embedded.block"),
-            "v2: escape text '>>' should have meta.embedded.block; scopes: {:?}",
+            !scopes.iter().any(|s| s == "meta.embedded.block"),
+            "escape text '>>' should not have meta.embedded.block; scopes: {:?}",
             scopes
         );
     }

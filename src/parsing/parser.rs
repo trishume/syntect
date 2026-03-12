@@ -588,36 +588,24 @@ impl ParseState {
         // println!("{:?}", cur_context.meta_scope);
         match *match_op {
             MatchOperation::Pop(_) => {
-                if version >= 2 && cur_context.embed_scope_replaces {
-                    // v2 embed escape context: meta_content_scope applies to the escape text
-                    // itself; skip popping it before the text and pop both mcs+ms after.
-                    if !initial {
-                        let to_pop =
-                            cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
-                        if to_pop > 0 {
-                            ops.push((index, ScopeStackOp::Pop(to_pop)));
-                        }
+                if initial {
+                    // v2: if the context below has embed_scope_replaces, then
+                    // cur_context's meta_content_scope was never pushed (it was skipped
+                    // during the Push phase), so don't generate a Pop for it.
+                    let skip = version >= 2
+                        && self.stack.len() >= 2
+                        && syntax_set
+                            .get_context(&self.stack[self.stack.len() - 2].context)
+                            .map(|c| c.embed_scope_replaces)
+                            .unwrap_or(false);
+                    if !skip && !cur_context.meta_content_scope.is_empty() {
+                        ops.push((
+                            index,
+                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                        ));
                     }
-                } else {
-                    if initial {
-                        // v2: if the context below has embed_scope_replaces, then
-                        // cur_context's meta_content_scope was never pushed (it was skipped
-                        // during the Push phase), so don't generate a Pop for it.
-                        let skip = version >= 2
-                            && self.stack.len() >= 2
-                            && syntax_set
-                                .get_context(&self.stack[self.stack.len() - 2].context)
-                                .map(|c| c.embed_scope_replaces)
-                                .unwrap_or(false);
-                        if !skip && !cur_context.meta_content_scope.is_empty() {
-                            ops.push((
-                                index,
-                                ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
-                            ));
-                        }
-                    } else if !cur_context.meta_scope.is_empty() {
-                        ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
-                    }
+                } else if !cur_context.meta_scope.is_empty() {
+                    ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
                 }
 
                 // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
