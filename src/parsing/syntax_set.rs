@@ -1982,6 +1982,257 @@ mod tests {
         assert!(ss.find_syntax_by_name("Orphan").is_some());
     }
 
+    #[test]
+    fn extends_multiple_parents_must_share_common_base() {
+        // Per Sublime docs: all parents in `extends` list must derive from the same base syntax.
+        // If they don't, the child should be rejected.
+        let base1 = SyntaxDefinition::load_from_str(
+            r#"
+            name: Base1
+            scope: source.base1
+            file_extensions: [base1]
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.base1
+              base1_only_ctx:
+                - match: 'y'
+                  scope: keyword.base1.y
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let base2 = SyntaxDefinition::load_from_str(
+            r#"
+            name: Base2
+            scope: source.base2
+            file_extensions: [base2]
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.base2
+              base2_only_ctx:
+                - match: 'z'
+                  scope: keyword.base2.z
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let parent_a = SyntaxDefinition::load_from_str(
+            r#"
+            name: ParentA
+            scope: source.parenta
+            file_extensions: [parenta]
+            extends: Base1.sublime-syntax
+            contexts:
+              parent_a_ctx:
+                - match: 'a'
+                  scope: keyword.a
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let parent_b = SyntaxDefinition::load_from_str(
+            r#"
+            name: ParentB
+            scope: source.parentb
+            file_extensions: [parentb]
+            extends: Base2.sublime-syntax
+            contexts:
+              parent_b_ctx:
+                - match: 'b'
+                  scope: keyword.b
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: Child
+            scope: source.child_diffbase
+            file_extensions: [child_diffbase]
+            extends:
+              - ParentA.sublime-syntax
+              - ParentB.sublime-syntax
+            contexts:
+              child_ctx:
+                - match: 'c'
+                  scope: keyword.c
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base1);
+        builder.add(base2);
+        builder.add(parent_a);
+        builder.add(parent_b);
+        builder.add(child);
+        let ss = builder.build();
+
+        let child_ref = ss.find_syntax_by_name("Child").unwrap();
+        let context_ids = child_ref.context_ids();
+
+        // Per Sublime spec: a child whose parents derive from different bases should be rejected.
+        // Syntect currently silently merges both, so it will have contexts from both unrelated bases.
+        // This assertion reflects the CORRECT behavior and is EXPECTED TO FAIL until validation
+        // is implemented.
+        assert!(
+            !(context_ids.contains_key("base1_only_ctx")
+                && context_ids.contains_key("base2_only_ctx")),
+            "Child with parents from different bases should be rejected; \
+             found contexts from both unrelated bases: {:?}",
+            context_ids.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn extends_parents_and_base_must_have_same_version() {
+        // Per Sublime docs: all syntaxes in the inheritance chain must have the same version.
+        // Here: Base is v1, Parent is v2 extending Base — version mismatch, should be invalid.
+        let base = SyntaxDefinition::load_from_str(
+            r#"
+            name: BaseV1
+            scope: source.basev1
+            file_extensions: [basev1]
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.base
+              base_only_ctx:
+                - match: 'y'
+                  scope: keyword.base.y
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let parent = SyntaxDefinition::load_from_str(
+            r#"
+            name: ParentV2
+            scope: source.parentv2
+            file_extensions: [parentv2]
+            version: 2
+            extends: BaseV1.sublime-syntax
+            contexts:
+              parent_ctx:
+                - match: 'p'
+                  scope: keyword.parent
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(parent);
+        let ss = builder.build();
+
+        let parent_ref = ss.find_syntax_by_name("ParentV2").unwrap();
+        let context_ids = parent_ref.context_ids();
+
+        // Per Sublime spec: a v2 syntax extending a v1 base is invalid (version mismatch).
+        // The extends should not be applied. Syntect currently silently merges regardless,
+        // so it will contain base_only_ctx from the v1 base.
+        // This assertion reflects the CORRECT behavior and is EXPECTED TO FAIL until validation
+        // is implemented.
+        assert!(
+            !context_ids.contains_key("base_only_ctx"),
+            "ParentV2 (v2) should not inherit from BaseV1 (v1) due to version mismatch; \
+             found base_only_ctx in parent's contexts: {:?}",
+            context_ids.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn extends_source_and_parent_must_have_same_version() {
+        // Per Sublime docs: the source syntax must share the same version as its parents.
+        // Here: Base (v1), Parent (v1 extends Base), Child (v2 extends Parent) — mismatch.
+        let base = SyntaxDefinition::load_from_str(
+            r#"
+            name: SharedBase
+            scope: source.sharedbase
+            file_extensions: [sharedbase]
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.base
+              shared_ctx:
+                - match: 'y'
+                  scope: keyword.base.shared
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let parent = SyntaxDefinition::load_from_str(
+            r#"
+            name: ParentV1
+            scope: source.parentv1
+            file_extensions: [parentv1]
+            extends: SharedBase.sublime-syntax
+            contexts:
+              parent_ctx:
+                - match: 'p'
+                  scope: keyword.parent
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: ChildV2
+            scope: source.childv2
+            file_extensions: [childv2]
+            version: 2
+            extends: ParentV1.sublime-syntax
+            contexts:
+              child_ctx:
+                - match: 'c'
+                  scope: keyword.child
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(parent);
+        builder.add(child);
+        let ss = builder.build();
+
+        let child_ref = ss.find_syntax_by_name("ChildV2").unwrap();
+        let context_ids = child_ref.context_ids();
+
+        // Per Sublime spec: a v2 syntax extending a v1 parent is invalid (version mismatch).
+        // The extends should not be applied. Syntect currently silently merges regardless,
+        // so it will contain parent_ctx and shared_ctx from the v1 hierarchy.
+        // This assertion reflects the CORRECT behavior and is EXPECTED TO FAIL until validation
+        // is implemented.
+        assert!(
+            !context_ids.contains_key("parent_ctx"),
+            "ChildV2 (v2) should not inherit from ParentV1 (v1) due to version mismatch; \
+             found parent_ctx in child's contexts: {:?}",
+            context_ids.keys().collect::<Vec<_>>()
+        );
+    }
+
     // =====================================================
     // Tests for apply_prototype
     // =====================================================
@@ -2222,6 +2473,358 @@ mod tests {
             !has_embedded_scope,
             "should NOT have embedded syntax scope; scopes: {:?}",
             scopes.iter().map(|s| s.build_string()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn v2_set_does_not_apply_parent_meta_content_scope_to_matched_text() {
+        // Per Sublime docs (v2): set action does NOT apply the parent context's
+        // meta_content_scope to the matched text. In v1 it does.
+        use crate::parsing::{ParseState, ScopeStack};
+
+        fn scopes_at_pos(ops: &[(usize, ScopeStackOp)], pos: usize) -> Vec<String> {
+            let mut stack = ScopeStack::new();
+            for (idx, op) in ops {
+                if *idx <= pos {
+                    stack.apply(op).unwrap();
+                }
+            }
+            stack.as_slice().iter().map(|s| s.build_string()).collect()
+        }
+
+        // v2 syntax: main has meta_content_scope, 'go' triggers set: other
+        let v2_syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2SetMCS
+            scope: source.v2setmcs
+            file_extensions: [v2setmcs]
+            version: 2
+            contexts:
+              main:
+                - meta_content_scope: meta.content.main
+                - match: 'go'
+                  set: other
+              other:
+                - match: 'x'
+                  scope: x
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(v2_syntax);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("V2SetMCS").unwrap();
+        let mut state = ParseState::new(syntax);
+        // "go" is at positions [0, 2); check at position 0 (inside the matched text)
+        let ops = state.parse_line("go\n", &ss).unwrap();
+        let v2_scopes = scopes_at_pos(&ops, 0);
+
+        // v2: the matched text 'go' should NOT have meta.content.main
+        // NOTE: This test is expected to FAIL if the v2 behavior is not yet correctly implemented.
+        assert!(
+            !v2_scopes.iter().any(|s| s == "meta.content.main"),
+            "v2: matched text 'go' should NOT have meta.content.main; scopes: {:?}",
+            v2_scopes
+        );
+
+        // v1 syntax: same structure, version 1
+        let v1_syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: V1SetMCS
+            scope: source.v1setmcs
+            file_extensions: [v1setmcs]
+            contexts:
+              main:
+                - meta_content_scope: meta.content.main
+                - match: 'go'
+                  set: other
+              other:
+                - match: 'x'
+                  scope: x
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder2 = SyntaxSetBuilder::new();
+        builder2.add(v1_syntax);
+        let ss2 = builder2.build();
+
+        let syntax2 = ss2.find_syntax_by_name("V1SetMCS").unwrap();
+        let mut state2 = ParseState::new(syntax2);
+        let ops2 = state2.parse_line("go\n", &ss2).unwrap();
+        let v1_scopes = scopes_at_pos(&ops2, 0);
+
+        // v1: the matched text 'go' SHOULD have meta.content.main
+        assert!(
+            v1_scopes.iter().any(|s| s == "meta.content.main"),
+            "v1: matched text 'go' SHOULD have meta.content.main; scopes: {:?}",
+            v1_scopes
+        );
+    }
+
+    #[test]
+    fn v2_embed_escape_gets_meta_scope_of_embed_context() {
+        // Per Sublime docs (v2): escape pattern text gets the meta_content_scope of the embed
+        // context (i.e., the embed_scope). In v1 it does not.
+        use crate::parsing::{ParseState, ScopeStack};
+
+        let host = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2EmbedMeta
+            scope: source.v2embedmeta
+            file_extensions: [v2em]
+            version: 2
+            contexts:
+              main:
+                - match: '<<'
+                  embed: scope:source.v2em_embedded
+                  embed_scope: meta.embedded.block
+                  escape: '>>'
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let embedded = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2EmbedMetaEmbedded
+            scope: source.v2em_embedded
+            file_extensions: [v2eme]
+            version: 2
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.x
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(host);
+        builder.add(embedded);
+        let ss = builder.build();
+
+        // "<<x>>" — '<<' at [0,2], 'x' at [2,3], '>>' at [3,5]
+        let syntax = ss.find_syntax_by_name("V2EmbedMeta").unwrap();
+        let mut state = ParseState::new(syntax);
+        let ops = state.parse_line("<<x>>\n", &ss).unwrap();
+
+        // Build scope stack at position 3 (start of '>>' escape text)
+        let mut stack = ScopeStack::new();
+        for (idx, op) in &ops {
+            if *idx <= 3 {
+                stack.apply(op).unwrap();
+            }
+        }
+        let scopes: Vec<String> = stack.as_slice().iter().map(|s| s.build_string()).collect();
+
+        // v2: escape text '>>' should see the embed_scope (meta.embedded.block)
+        // NOTE: This test is expected to FAIL if the v2 escape+meta_scope behavior is not
+        // yet correctly implemented.
+        assert!(
+            scopes.iter().any(|s| s == "meta.embedded.block"),
+            "v2: escape text '>>' should have meta.embedded.block; scopes: {:?}",
+            scopes
+        );
+    }
+
+    #[test]
+    fn v2_push_multiple_clear_scopes_only_last_applies() {
+        // Per Sublime docs (v2): when pushing multiple contexts, only the last (topmost) context's
+        // clear_scopes is applied. In v1, each context's clear_scopes is applied individually.
+        use crate::parsing::ParseState;
+
+        let v2_syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2MultiClear
+            scope: source.v2multiclear
+            file_extensions: [v2mc]
+            version: 2
+            contexts:
+              main:
+                - meta_scope: source.v2multiclear
+                - match: 'go'
+                  push:
+                    - ctx_a
+                    - ctx_b
+              ctx_a:
+                - clear_scopes: 1
+                - meta_scope: ctx.a
+                - match: 'x'
+                  pop: 2
+              ctx_b:
+                - clear_scopes: 2
+                - meta_scope: ctx.b
+                - match: 'x'
+                  pop: 1
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(v2_syntax);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("V2MultiClear").unwrap();
+        let mut state = ParseState::new(syntax);
+        let ops = state.parse_line("go\n", &ss).unwrap();
+
+        // Count Clear ops in the result
+        let clear_ops: Vec<_> = ops
+            .iter()
+            .filter(|(_, op)| matches!(op, ScopeStackOp::Clear(_)))
+            .collect();
+
+        // v2: only ctx_b's clear_scopes (TopN(2)) should apply — exactly ONE Clear op
+        assert_eq!(
+            clear_ops.len(),
+            1,
+            "v2: push [ctx_a, ctx_b] should produce exactly ONE Clear op (from ctx_b only); \
+             got: {:?}",
+            clear_ops
+        );
+
+        // That one Clear should be from ctx_b (TopN(2)), not ctx_a (TopN(1))
+        assert!(
+            matches!(clear_ops[0].1, ScopeStackOp::Clear(ClearAmount::TopN(2))),
+            "v2: the single Clear should be TopN(2) from ctx_b; got: {:?}",
+            clear_ops[0].1
+        );
+
+        // v1: both ctx_a and ctx_b apply their clear_scopes — two Clear ops
+        let v1_syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: V1MultiClear
+            scope: source.v1multiclear
+            file_extensions: [v1mc]
+            contexts:
+              main:
+                - meta_scope: source.v1multiclear
+                - match: 'go'
+                  push:
+                    - ctx_a
+                    - ctx_b
+              ctx_a:
+                - clear_scopes: 1
+                - meta_scope: ctx.a
+                - match: 'x'
+                  pop: 2
+              ctx_b:
+                - clear_scopes: 2
+                - meta_scope: ctx.b
+                - match: 'x'
+                  pop: 1
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder2 = SyntaxSetBuilder::new();
+        builder2.add(v1_syntax);
+        let ss2 = builder2.build();
+
+        let syntax2 = ss2.find_syntax_by_name("V1MultiClear").unwrap();
+        let mut state2 = ParseState::new(syntax2);
+        let ops2 = state2.parse_line("go\n", &ss2).unwrap();
+
+        let v1_clear_ops: Vec<_> = ops2
+            .iter()
+            .filter(|(_, op)| matches!(op, ScopeStackOp::Clear(_)))
+            .collect();
+
+        // v1: both ctx_a's clear_scopes and ctx_b's clear_scopes should produce TWO Clear ops
+        assert_eq!(
+            v1_clear_ops.len(),
+            2,
+            "v1: push [ctx_a, ctx_b] should produce TWO Clear ops (one per context); \
+             got: {:?}",
+            v1_clear_ops
+        );
+    }
+
+    #[test]
+    fn v2_capture_group_ordering_applies_scopes_in_text_order() {
+        // Capture group scopes should be applied in text position order, not capture-number order.
+        // The code sorts captures by (start_pos, -length) so outer/earlier captures come first.
+        use crate::parsing::ParseState;
+
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: CaptureOrder
+            scope: source.captureorder
+            file_extensions: [co]
+            version: 2
+            contexts:
+              main:
+                - match: '(a(b))'
+                  captures:
+                    1: outer.scope
+                    2: inner.scope
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("CaptureOrder").unwrap();
+        let mut state = ParseState::new(syntax);
+        // "ab" — capture 1 (outer) matches [0,2], capture 2 (inner) matches [1,2]
+        let ops = state.parse_line("ab\n", &ss).unwrap();
+
+        let outer_scope = Scope::new("outer.scope").unwrap();
+        let inner_scope = Scope::new("inner.scope").unwrap();
+
+        let outer_push_idx = ops.iter().position(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if *s == outer_scope)
+        });
+        let inner_push_idx = ops.iter().position(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if *s == inner_scope)
+        });
+
+        assert!(
+            outer_push_idx.is_some(),
+            "outer.scope should be pushed; ops: {:?}",
+            ops
+        );
+        assert!(
+            inner_push_idx.is_some(),
+            "inner.scope should be pushed; ops: {:?}",
+            ops
+        );
+
+        // outer.scope (starts at pos 0) must be pushed before inner.scope (starts at pos 1)
+        assert!(
+            outer_push_idx.unwrap() < inner_push_idx.unwrap(),
+            "outer.scope (byte pos 0) should be pushed before inner.scope (byte pos 1) in ops; \
+             outer at ops[{}], inner at ops[{}]",
+            outer_push_idx.unwrap(),
+            inner_push_idx.unwrap()
+        );
+
+        // Also verify the byte positions are in text order
+        let (outer_byte_pos, _) = ops[outer_push_idx.unwrap()];
+        let (inner_byte_pos, _) = ops[inner_push_idx.unwrap()];
+        assert!(
+            outer_byte_pos <= inner_byte_pos,
+            "outer.scope byte pos ({}) should be <= inner.scope byte pos ({})",
+            outer_byte_pos,
+            inner_byte_pos
         );
     }
 
