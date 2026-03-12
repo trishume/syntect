@@ -2834,12 +2834,12 @@ mod tests {
         let outer_scope = Scope::new("outer.scope").unwrap();
         let inner_scope = Scope::new("inner.scope").unwrap();
 
-        let outer_push_idx = ops.iter().position(|(_, op)| {
-            matches!(op, ScopeStackOp::Push(s) if *s == outer_scope)
-        });
-        let inner_push_idx = ops.iter().position(|(_, op)| {
-            matches!(op, ScopeStackOp::Push(s) if *s == inner_scope)
-        });
+        let outer_push_idx = ops
+            .iter()
+            .position(|(_, op)| matches!(op, ScopeStackOp::Push(s) if *s == outer_scope));
+        let inner_push_idx = ops
+            .iter()
+            .position(|(_, op)| matches!(op, ScopeStackOp::Push(s) if *s == inner_scope));
 
         assert!(
             outer_push_idx.is_some(),

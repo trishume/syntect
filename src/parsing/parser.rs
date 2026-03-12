@@ -635,7 +635,10 @@ impl ParseState {
                 if initial {
                     // v2: pop parent's meta_content_scope so matched text does not see it
                     if is_set && version >= 2 && !cur_context.meta_content_scope.is_empty() {
-                        ops.push((index, ScopeStackOp::Pop(cur_context.meta_content_scope.len())));
+                        ops.push((
+                            index,
+                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                        ));
                     }
                     if is_set && cur_context.clear_scopes.is_some() {
                         // cleared scopes from the old context are restored immediately
