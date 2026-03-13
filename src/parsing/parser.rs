@@ -86,6 +86,7 @@ struct BranchPoint {
     stack_depth: usize,
     non_consuming_push_at_snapshot: (usize, usize),
     first_line_snapshot: bool,
+    with_prototype: Option<ContextReference>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -606,6 +607,7 @@ impl ParseState {
                     stack_depth: self.stack.len(),
                     non_consuming_push_at_snapshot: *non_consuming_push_at,
                     first_line_snapshot: self.first_line,
+                    with_prototype: pat.with_prototype.clone(),
                 };
                 self.branch_points.push(bp);
                 // Synthesize a Push of the first alternative
@@ -744,6 +746,7 @@ impl ParseState {
         self.branch_points[bp_index].ops_snapshot_len = ops.len();
 
         // Push the next alternative (like a Push operation)
+        let with_prototype = self.branch_points[bp_index].with_prototype.clone();
         let context_id = next_alt.id()?;
         let context = syntax_set.get_context(&context_id)?;
         let captures = if context.uses_backrefs {
@@ -751,11 +754,31 @@ impl ParseState {
         } else {
             None
         };
+
+        // Build prototype IDs from with_prototype (if any)
+        let proto_ids = match with_prototype {
+            Some(ref p) => vec![p.id()?],
+            None => Vec::new(),
+        };
+
         self.stack.push(StateLevel {
             context: context_id,
-            prototypes: Vec::new(),
+            prototypes: proto_ids,
             captures,
         });
+
+        // Emit meta scope ops for the new context.
+        // We directly push meta_scope and meta_content_scope rather than using
+        // push_meta_ops, because there was no "initial" phase to pair with.
+        if let Some(clear_amount) = context.clear_scopes {
+            ops.push((match_start_pos, ScopeStackOp::Clear(clear_amount)));
+        }
+        for scope in context.meta_scope.iter() {
+            ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
+        }
+        for scope in context.meta_content_scope.iter() {
+            ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
+        }
 
         Ok(true)
     }
@@ -2507,5 +2530,95 @@ contexts:
         let ops = ops(&mut state, "xyz", &ss);
         // Should not panic, and should eventually move past the input
         assert!(!ops.is_empty(), "Expected some ops, got empty");
+    }
+
+    #[test]
+    fn branch_fail_emits_meta_content_scope() {
+        // The second alternative has meta_content_scope; after backtracking,
+        // content inside it should have that scope applied.
+        let syntax_str = r#"
+scope: source.meta-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: bp
+      branch: [try-special, fallback-ctx]
+
+  try-special:
+    - match: 'SPECIAL'
+      scope: keyword.meta-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+
+  fallback-ctx:
+    - meta_content_scope: meta.fallback.meta-test
+    - match: '\w+'
+      scope: variable.meta-test
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let ops = ops(&mut state, "hello", &ss);
+        let states = stack_states(ops);
+        // After backtracking to fallback-ctx, "hello" should have meta.fallback scope
+        assert!(
+            states.iter().any(|s| s.contains("meta.fallback")),
+            "Expected meta.fallback.meta-test scope after backtrack, got: {:?}",
+            states
+        );
+        assert!(
+            states.iter().any(|s| s.contains("variable.meta-test")),
+            "Expected variable.meta-test scope, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_fail_applies_with_prototype() {
+        // The branch pattern has with_prototype; after backtracking to the second
+        // alternative, the prototype should still be active.
+        let syntax_str = r#"
+scope: source.proto-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: bp
+      branch: [try-num, fallback-word]
+      with_prototype:
+        - match: '#'
+          scope: comment.proto-test
+          pop: true
+
+  try-num:
+    - match: '\d+'
+      scope: constant.numeric.proto-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+
+  fallback-word:
+    - match: '\w+'
+      scope: variable.proto-test
+    - match: ';'
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        // "abc#" — 'abc' matches fallback-word, '#' should trigger the prototype
+        let ops = ops(&mut state, "abc#", &ss);
+        let states = stack_states(ops);
+        assert!(
+            states.iter().any(|s| s.contains("variable.proto-test")),
+            "Expected variable.proto-test scope, got: {:?}",
+            states
+        );
+        assert!(
+            states.iter().any(|s| s.contains("comment.proto-test")),
+            "Expected comment.proto-test from with_prototype after backtrack, got: {:?}",
+            states
+        );
     }
 }
