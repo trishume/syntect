@@ -3018,9 +3018,10 @@ mod tests {
         };
 
         let syntax_definitions = vec![syntax];
-        let path_syntaxes = vec![
-            ("Packages/Test/syntaxes/Child.sublime-syntax".to_string(), 0usize),
-        ];
+        let path_syntaxes = vec![(
+            "Packages/Test/syntaxes/Child.sublime-syntax".to_string(),
+            0usize,
+        )];
         let mut name_to_index = HashMap::new();
         name_to_index.insert("Child".to_string(), 0);
 
@@ -3049,7 +3050,11 @@ mod tests {
             &syntax_definitions,
             &name_to_index,
         );
-        assert_eq!(result, Some(0), "bare filename should match via name lookup");
+        assert_eq!(
+            result,
+            Some(0),
+            "bare filename should match via name lookup"
+        );
 
         // A non-matching relative path should return None
         let result = SyntaxSetBuilder::find_parent_index(
