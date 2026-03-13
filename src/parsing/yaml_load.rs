@@ -362,6 +362,15 @@ impl SyntaxDefinition {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
         } else if let Ok(y) = get_key(map, "set", Some) {
             MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
+        } else if let Ok(y) = get_key(map, "branch", |x| x.as_vec()) {
+            let branch_point = get_key(map, "branch_point", |x| x.as_str())?;
+            let alternatives: Vec<ContextReference> = y
+                .iter()
+                .map(|item| SyntaxDefinition::parse_reference(item, state, contexts, namer, false))
+                .collect::<Result<_, _>>()?;
+            MatchOperation::Branch(branch_point.to_owned(), alternatives)
+        } else if let Ok(y) = get_key(map, "fail", |x| x.as_str()) {
+            MatchOperation::Fail(y.to_owned())
         } else if let Ok(y) = get_key(map, "embed", Some) {
             // Same as push so we translate it to what it would be
             let mut embed_escape_context_yaml = vec![];

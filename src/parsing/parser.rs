@@ -61,6 +61,31 @@ pub struct ParseState {
     // See issue #101. Contains indices of frames pushed by `with_prototype`s.
     // Doesn't look at `with_prototype`s below top of stack.
     proto_starts: Vec<usize>,
+    /// Active branch points for backtracking support.
+    branch_points: Vec<BranchPoint>,
+    /// Line counter for 128-line branch point expiry.
+    line_number: usize,
+}
+
+/// Snapshot of parser state at a branch point, used for backtracking.
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct BranchPoint {
+    name: String,
+    /// Index of the next alternative to try (0 = first alt already tried).
+    next_alternative: usize,
+    alternatives: Vec<ContextReference>,
+    stack_snapshot: Vec<StateLevel>,
+    proto_starts_snapshot: Vec<usize>,
+    /// Character position to rewind to.
+    match_start: usize,
+    /// Line number when the branch was created (for 128-line limit).
+    line_number: usize,
+    /// Length of ops vec at snapshot time — truncation point on fail.
+    ops_snapshot_len: usize,
+    /// Stack depth at creation — if stack shrinks below this, branch is invalid.
+    stack_depth: usize,
+    non_consuming_push_at_snapshot: (usize, usize),
+    first_line_snapshot: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -187,6 +212,8 @@ impl ParseState {
             stack: vec![start_state],
             first_line: true,
             proto_starts: Vec::new(),
+            branch_points: Vec::new(),
+            line_number: 0,
         }
     }
 
@@ -217,6 +244,13 @@ impl ParseState {
         if self.stack.is_empty() {
             return Err(ParsingError::MissingMainContext);
         }
+
+        // Prune branch points older than 128 lines
+        let cur_line = self.line_number;
+        self.branch_points
+            .retain(|bp| cur_line.saturating_sub(bp.line_number) <= 128);
+        self.line_number += 1;
+
         let mut match_start = 0;
         let mut res = Vec::new();
 
@@ -310,15 +344,36 @@ impl ParseState {
 
             let match_end = reg_match.regions.pos(0).unwrap().1;
 
+            // Check if this is a Fail operation — handle before advancing start
+            let context = reg_match.context;
+            let match_pattern = context.match_at(reg_match.pat_index)?;
+            if let MatchOperation::Fail(_) = match_pattern.operation {
+                let level_context = {
+                    let id = &self.stack[self.stack.len() - 1].context;
+                    syntax_set.get_context(id)?
+                };
+                return self.exec_pattern(
+                    line,
+                    &reg_match,
+                    level_context,
+                    syntax_set,
+                    start,
+                    non_consuming_push_at,
+                    ops,
+                    search_cache,
+                );
+            }
+
             let consuming = match_end > *start;
             if !consuming {
                 // The match doesn't consume any characters. If this is a
                 // "push", remember the position and stack size so that we can
                 // check the next "pop" for loops. Otherwise leave the state,
                 // e.g. non-consuming "set" could also result in a loop.
-                let context = reg_match.context;
-                let match_pattern = context.match_at(reg_match.pat_index)?;
-                if let MatchOperation::Push(_) = match_pattern.operation {
+                if matches!(
+                    match_pattern.operation,
+                    MatchOperation::Push(_) | MatchOperation::Branch(_, _)
+                ) {
                     *non_consuming_push_at = (match_end, self.stack.len() + 1);
                 }
             }
@@ -335,7 +390,16 @@ impl ParseState {
                 let id = &self.stack[self.stack.len() - 1].context;
                 syntax_set.get_context(id)?
             };
-            self.exec_pattern(line, &reg_match, level_context, syntax_set, ops)?;
+            self.exec_pattern(
+                line,
+                &reg_match,
+                level_context,
+                syntax_set,
+                start,
+                non_consuming_push_at,
+                ops,
+                search_cache,
+            )?;
 
             Ok(true)
         } else {
@@ -407,8 +471,10 @@ impl ParseState {
                             && !consuming
                             && matches!(match_pat.operation, MatchOperation::Pop(_));
 
-                        let push_too_deep = matches!(match_pat.operation, MatchOperation::Push(_))
-                            && self.stack.len() >= 100;
+                        let push_too_deep = matches!(
+                            match_pat.operation,
+                            MatchOperation::Push(_) | MatchOperation::Branch(_, _)
+                        ) && self.stack.len() >= 100;
 
                         if push_too_deep {
                             return Ok(None);
@@ -475,7 +541,7 @@ impl ParseState {
             // this is necessary to avoid infinite looping on dumb patterns
             let does_something = match match_pat.operation {
                 MatchOperation::None => match_start != match_end,
-                MatchOperation::Push(_) => self.stack.len() < 100,
+                MatchOperation::Push(_) | MatchOperation::Branch(_, _) => self.stack.len() < 100,
                 _ => true,
             };
             if can_cache && does_something {
@@ -491,44 +557,83 @@ impl ParseState {
         None
     }
 
-    /// Returns true if the stack was changed
+    /// Returns true if the stack was changed.
+    /// For `Fail` operations, returns `Ok(true)` if backtracking was performed
+    /// (caller should continue parsing from the rewound position).
     fn exec_pattern<'a>(
         &mut self,
         line: &str,
         reg_match: &RegexMatch<'a>,
         level_context: &'a Context,
         syntax_set: &'a SyntaxSet,
+        start: &mut usize,
+        non_consuming_push_at: &mut (usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
+        search_cache: &mut SearchCache,
     ) -> Result<bool, ParsingError> {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context;
         let pat = context.match_at(reg_match.pat_index)?;
-        // println!("running pattern {:?} on '{}' at {}, operation {:?}", pat.regex_str, line, match_start, pat.operation);
 
-        self.push_meta_ops(
-            true,
-            match_start,
-            level_context,
-            &pat.operation,
-            syntax_set,
-            ops,
-        )?;
+        // Handle Fail: attempt backtracking
+        if let MatchOperation::Fail(ref name) = pat.operation {
+            return self.handle_fail(
+                name,
+                start,
+                non_consuming_push_at,
+                ops,
+                search_cache,
+                syntax_set,
+            );
+        }
+
+        // For Branch, we need to snapshot state before executing, then synthesize a Push.
+        let is_branch = matches!(pat.operation, MatchOperation::Branch(_, _));
+        let synthetic_op;
+
+        if is_branch {
+            if let MatchOperation::Branch(ref name, ref alternatives) = pat.operation {
+                // Snapshot current state
+                let bp = BranchPoint {
+                    name: name.clone(),
+                    next_alternative: 1, // 0 is about to be pushed
+                    alternatives: alternatives.clone(),
+                    stack_snapshot: self.stack.clone(),
+                    proto_starts_snapshot: self.proto_starts.clone(),
+                    match_start: *start, // position before this match's advance
+                    line_number: self.line_number.saturating_sub(1), // current line (already incremented)
+                    ops_snapshot_len: ops.len(),
+                    stack_depth: self.stack.len(),
+                    non_consuming_push_at_snapshot: *non_consuming_push_at,
+                    first_line_snapshot: self.first_line,
+                };
+                self.branch_points.push(bp);
+                // Synthesize a Push of the first alternative
+                synthetic_op = MatchOperation::Push(vec![alternatives[0].clone()]);
+            } else {
+                unreachable!()
+            }
+        } else {
+            synthetic_op = pat.operation.clone();
+        }
+
+        let op_to_use = if is_branch {
+            &synthetic_op
+        } else {
+            &pat.operation
+        };
+
+        self.push_meta_ops(true, match_start, level_context, op_to_use, syntax_set, ops)?;
         for s in &pat.scope {
-            // println!("pushing {:?} at {}", s, match_start);
             ops.push((match_start, ScopeStackOp::Push(*s)));
         }
         if let Some(ref capture_map) = pat.captures {
-            // captures could appear in an arbitrary order, have to produce ops in right order
-            // ex: ((bob)|(hi))* could match hibob in wrong order, and outer has to push first
-            // we don't have to handle a capture matching multiple times, Sublime doesn't
             let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
             for &(cap_index, ref scopes) in capture_map.iter() {
                 if let Some((cap_start, cap_end)) = reg_match.regions.pos(cap_index) {
-                    // marking up empty captures causes pops to be sorted wrong
                     if cap_start == cap_end {
                         continue;
                     }
-                    // println!("capture {:?} at {:?}-{:?}", scopes[0], cap_start, cap_end);
                     for scope in scopes.iter() {
                         map.push((
                             (cap_start, -((cap_end - cap_start) as i32)),
@@ -544,19 +649,115 @@ impl ParseState {
             }
         }
         if !pat.scope.is_empty() {
-            // println!("popping at {}", match_end);
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
-        self.push_meta_ops(
-            false,
-            match_end,
-            level_context,
-            &pat.operation,
-            syntax_set,
-            ops,
-        )?;
+        self.push_meta_ops(false, match_end, level_context, op_to_use, syntax_set, ops)?;
 
-        self.perform_op(line, &reg_match.regions, pat, syntax_set)
+        if is_branch {
+            // Execute the synthetic Push through perform_op
+            let synthetic_pat = MatchPattern::new(
+                pat.has_captures,
+                pat.regex.regex_str().to_string(),
+                pat.scope.clone(),
+                pat.captures.clone(),
+                synthetic_op,
+                pat.with_prototype.clone(),
+            );
+            self.perform_op(line, &reg_match.regions, &synthetic_pat, syntax_set)
+        } else {
+            self.perform_op(line, &reg_match.regions, pat, syntax_set)
+        }
+    }
+
+    /// Handle a `fail` operation by rewinding to the named branch point.
+    /// Returns Ok(true) if backtracking happened (caller should continue from rewound position).
+    /// Returns Ok(false) if the fail had no effect.
+    fn handle_fail(
+        &mut self,
+        name: &str,
+        start: &mut usize,
+        non_consuming_push_at: &mut (usize, usize),
+        ops: &mut Vec<(usize, ScopeStackOp)>,
+        search_cache: &mut SearchCache,
+        syntax_set: &SyntaxSet,
+    ) -> Result<bool, ParsingError> {
+        // Find the branch point by name (most recent first)
+        let bp_index = self.branch_points.iter().rposition(|bp| bp.name == name);
+        let bp_index = match bp_index {
+            Some(i) => i,
+            None => return Ok(false), // No such branch point, fail is no-op
+        };
+
+        let cur_line = self.line_number.saturating_sub(1);
+        let bp = &self.branch_points[bp_index];
+
+        // Check validity: not >128 lines old
+        if cur_line.saturating_sub(bp.line_number) > 128 {
+            self.branch_points.remove(bp_index);
+            return Ok(false);
+        }
+
+        // Check validity: stack depth still >= branch's stack_depth
+        if self.stack.len() < bp.stack_depth {
+            self.branch_points.remove(bp_index);
+            return Ok(false);
+        }
+
+        // Check if there are more alternatives
+        if bp.next_alternative >= bp.alternatives.len() {
+            self.branch_points.remove(bp_index);
+            return Ok(false); // All alternatives exhausted
+        }
+
+        // Valid: rewind state
+        let next_alt_index = bp.next_alternative;
+        let next_alt = bp.alternatives[next_alt_index].clone();
+        let match_start_pos = bp.match_start;
+
+        // Restore snapshots
+        self.stack = bp.stack_snapshot.clone();
+        self.proto_starts = bp.proto_starts_snapshot.clone();
+        self.first_line = bp.first_line_snapshot;
+        *non_consuming_push_at = bp.non_consuming_push_at_snapshot;
+
+        // Truncate ops back to snapshot point
+        // For same-line backtracking, we can truncate ops directly.
+        // For cross-line, ops from previous lines are already returned,
+        // so we truncate to 0 (best effort).
+        let snapshot_len = bp.ops_snapshot_len;
+        if snapshot_len <= ops.len() {
+            ops.truncate(snapshot_len);
+        } else {
+            // Cross-line: can't undo previously returned ops, truncate current line's ops
+            ops.clear();
+        }
+
+        // Rewind position
+        *start = match_start_pos;
+
+        // Clear search cache since we're rewinding
+        search_cache.clear();
+
+        // Increment next_alternative on the branch point
+        self.branch_points[bp_index].next_alternative = next_alt_index + 1;
+        // Update ops_snapshot_len since ops may have been truncated
+        self.branch_points[bp_index].ops_snapshot_len = ops.len();
+
+        // Push the next alternative (like a Push operation)
+        let context_id = next_alt.id()?;
+        let context = syntax_set.get_context(&context_id)?;
+        let captures = if context.uses_backrefs {
+            None // No captures available at rewind time
+        } else {
+            None
+        };
+        self.stack.push(StateLevel {
+            context: context_id,
+            prototypes: Vec::new(),
+            captures,
+        });
+
+        Ok(true)
     }
 
     /// Get the syntax version for the current parse state
@@ -750,7 +951,24 @@ impl ParseState {
                     }
                 }
             }
-            MatchOperation::None => (),
+            MatchOperation::None | MatchOperation::Fail(_) => (),
+            MatchOperation::Branch(_, ref context_refs) => {
+                // Branch acts like Push for meta ops purposes.
+                // We only push the first (or current) alternative, but the meta ops
+                // are generated based on the context refs passed here. Since at exec time
+                // we transform Branch into a single-element Push before calling push_meta_ops,
+                // this arm handles the case where push_meta_ops is called with the original
+                // Branch operation (which shouldn't happen in practice, but for safety).
+                let synthetic = MatchOperation::Push(context_refs.clone());
+                return self.push_meta_ops(
+                    initial,
+                    index,
+                    cur_context,
+                    &synthetic,
+                    syntax_set,
+                    ops,
+                );
+            }
         }
 
         Ok(())
@@ -776,9 +994,16 @@ impl ParseState {
                 for _ in 0..n {
                     self.stack.pop();
                 }
+                // Invalidate branch points whose stack depth is now above current stack
+                self.branch_points
+                    .retain(|bp| bp.stack_depth <= self.stack.len());
                 return Ok(true);
             }
             MatchOperation::None => return Ok(false),
+            MatchOperation::Branch(_, _) | MatchOperation::Fail(_) => {
+                // Branch and Fail are handled in exec_pattern, not here
+                return Ok(false);
+            }
         };
         for (i, r) in ctx_refs.iter().enumerate() {
             let mut proto_ids = if i == 0 {
@@ -2144,5 +2369,143 @@ contexts:
             states.push(stack_str);
         }
         states
+    }
+
+    const BRANCH_SYNTAX: &str = r#"
+scope: source.branch-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: stmt
+      branch: [let-stmt, generic-stmt]
+
+  let-stmt:
+    - match: 'let'
+      scope: keyword.declaration.branch-test
+      set: let-assign
+    - match: '(?=\S)'
+      fail: stmt
+
+  let-assign:
+    - match: '='
+      scope: keyword.operator.assignment.branch-test
+      set: let-value
+    - match: '(?=\S)'
+      fail: stmt
+
+  let-value:
+    - match: '\w+'
+      scope: constant.other.branch-test
+    - match: ';'
+      scope: punctuation.terminator.branch-test
+      pop: true
+
+  generic-stmt:
+    - match: '[^;]+'
+      scope: string.unquoted.branch-test
+    - match: ';'
+      scope: punctuation.terminator.branch-test
+      pop: true
+"#;
+
+    #[test]
+    fn branch_first_alternative_succeeds() {
+        // "let = foo;" should parse as a let-statement (first alternative)
+        let syntax = SyntaxDefinition::load_from_str(BRANCH_SYNTAX, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let ops = ops(&mut state, "let = foo;", &ss);
+        let states = stack_states(ops);
+        // Should contain keyword.declaration and keyword.operator.assignment
+        assert!(
+            states.iter().any(|s| s.contains("keyword.declaration")),
+            "Expected keyword.declaration scope, got: {:?}",
+            states
+        );
+        assert!(
+            states
+                .iter()
+                .any(|s| s.contains("keyword.operator.assignment")),
+            "Expected keyword.operator.assignment scope, got: {:?}",
+            states
+        );
+        assert!(
+            states.iter().any(|s| s.contains("constant.other")),
+            "Expected constant.other scope, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_fail_backtracks_to_second_alternative() {
+        // "hello;" is not a let-statement, should fail and use generic-stmt
+        let syntax = SyntaxDefinition::load_from_str(BRANCH_SYNTAX, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let ops = ops(&mut state, "hello;", &ss);
+        let states = stack_states(ops);
+        // Should contain string.unquoted (generic-stmt), not keyword.declaration
+        assert!(
+            states.iter().any(|s| s.contains("string.unquoted")),
+            "Expected string.unquoted scope, got: {:?}",
+            states
+        );
+        assert!(
+            !states.iter().any(|s| s.contains("keyword.declaration")),
+            "Should NOT contain keyword.declaration scope, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_fail_after_partial_match() {
+        // "let hello;" — starts like a let-stmt ('let' matches) but no '=' follows, so fail
+        let syntax = SyntaxDefinition::load_from_str(BRANCH_SYNTAX, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let ops = ops(&mut state, "let hello;", &ss);
+        let states = stack_states(ops);
+        // After backtracking, should use generic-stmt
+        assert!(
+            states.iter().any(|s| s.contains("string.unquoted")),
+            "Expected string.unquoted scope after backtrack, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_all_alternatives_exhausted() {
+        // Test with a syntax where all alternatives fail — should not panic
+        let syntax_str = r#"
+scope: source.exhaust-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: bp
+      branch: [alt-a, alt-b]
+    - match: '\S+'
+      scope: fallback.exhaust-test
+
+  alt-a:
+    - match: 'AAA'
+      scope: alt-a.exhaust-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+
+  alt-b:
+    - match: 'BBB'
+      scope: alt-b.exhaust-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        // "xyz" matches neither AAA nor BBB
+        let ops = ops(&mut state, "xyz", &ss);
+        // Should not panic, and should eventually move past the input
+        assert!(!ops.is_empty(), "Expected some ops, got empty");
     }
 }

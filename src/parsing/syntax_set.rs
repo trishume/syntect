@@ -439,9 +439,10 @@ impl SyntaxSet {
         for pattern in context.patterns.iter() {
             let maybe_refs_to_check = match pattern {
                 Pattern::Match(match_pat) => match &match_pat.operation {
-                    MatchOperation::Push(context_refs) => Some(context_refs),
-                    MatchOperation::Set(context_refs) => Some(context_refs),
-                    _ => None,
+                    MatchOperation::Push(context_refs)
+                    | MatchOperation::Set(context_refs)
+                    | MatchOperation::Branch(_, context_refs) => Some(context_refs),
+                    MatchOperation::Pop(_) | MatchOperation::None | MatchOperation::Fail(_) => None,
                 },
                 _ => None,
             };
@@ -1030,8 +1031,11 @@ impl SyntaxSetBuilder {
                 Pattern::Match(ref match_pat) => {
                     let maybe_context_refs = match match_pat.operation {
                         MatchOperation::Push(ref context_refs)
-                        | MatchOperation::Set(ref context_refs) => Some(context_refs),
-                        MatchOperation::Pop(_) | MatchOperation::None => None,
+                        | MatchOperation::Set(ref context_refs)
+                        | MatchOperation::Branch(_, ref context_refs) => Some(context_refs),
+                        MatchOperation::Pop(_) | MatchOperation::None | MatchOperation::Fail(_) => {
+                            None
+                        }
                     };
                     if let Some(context_refs) = maybe_context_refs {
                         for context_ref in context_refs.iter() {
@@ -1203,8 +1207,9 @@ impl SyntaxSetBuilder {
     ) {
         let maybe_context_refs = match match_pat.operation {
             MatchOperation::Push(ref mut context_refs)
-            | MatchOperation::Set(ref mut context_refs) => Some(context_refs),
-            MatchOperation::Pop(_) | MatchOperation::None => None,
+            | MatchOperation::Set(ref mut context_refs)
+            | MatchOperation::Branch(_, ref mut context_refs) => Some(context_refs),
+            MatchOperation::Pop(_) | MatchOperation::None | MatchOperation::Fail(_) => None,
         };
         if let Some(context_refs) = maybe_context_refs {
             for context_ref in context_refs.iter_mut() {
