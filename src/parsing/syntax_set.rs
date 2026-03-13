@@ -2999,4 +2999,65 @@ mod tests {
         let mut state = crate::parsing::ParseState::new(syntax);
         let _ops = state.parse_line("hello\n", &ss).unwrap();
     }
+
+    #[cfg(feature = "yaml-load")]
+    #[test]
+    fn find_parent_index_resolves_relative_paths() {
+        // Simulates a syntax loaded from "Packages/Test/syntaxes/Child.sublime-syntax"
+        // being extended via the relative path "syntaxes/Child.sublime-syntax".
+        let syntax = SyntaxDefinition {
+            name: "Child".to_string(),
+            file_extensions: vec![],
+            scope: Scope::new("source.child").unwrap(),
+            first_line_match: None,
+            hidden: false,
+            variables: HashMap::new(),
+            contexts: HashMap::new(),
+            extends: vec![],
+            version: 1,
+        };
+
+        let syntax_definitions = vec![syntax];
+        let path_syntaxes = vec![
+            ("Packages/Test/syntaxes/Child.sublime-syntax".to_string(), 0usize),
+        ];
+        let mut name_to_index = HashMap::new();
+        name_to_index.insert("Child".to_string(), 0);
+
+        // Relative path should match via suffix matching
+        let result = SyntaxSetBuilder::find_parent_index(
+            "syntaxes/Child.sublime-syntax",
+            &path_syntaxes,
+            &syntax_definitions,
+            &name_to_index,
+        );
+        assert_eq!(result, Some(0), "relative path should match via suffix");
+
+        // Absolute path should also match
+        let result = SyntaxSetBuilder::find_parent_index(
+            "Packages/Test/syntaxes/Child.sublime-syntax",
+            &path_syntaxes,
+            &syntax_definitions,
+            &name_to_index,
+        );
+        assert_eq!(result, Some(0), "absolute path should match via suffix");
+
+        // Just the filename (without extension) should match via name lookup
+        let result = SyntaxSetBuilder::find_parent_index(
+            "Child.sublime-syntax",
+            &path_syntaxes,
+            &syntax_definitions,
+            &name_to_index,
+        );
+        assert_eq!(result, Some(0), "bare filename should match via name lookup");
+
+        // A non-matching relative path should return None
+        let result = SyntaxSetBuilder::find_parent_index(
+            "other/NonExistent.sublime-syntax",
+            &path_syntaxes,
+            &syntax_definitions,
+            &name_to_index,
+        );
+        assert_eq!(result, None, "non-matching path should return None");
+    }
 }
