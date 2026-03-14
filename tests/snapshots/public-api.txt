@@ -668,6 +668,9 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_defini
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::ContextReference
 pub enum syntect::parsing::syntax_definition::MatchOperation
 pub syntect::parsing::syntax_definition::MatchOperation::Branch(alloc::string::String, alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
+pub syntect::parsing::syntax_definition::MatchOperation::Embed
+pub syntect::parsing::syntax_definition::MatchOperation::Embed::contexts: alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>
+pub syntect::parsing::syntax_definition::MatchOperation::Embed::escape: syntect::parsing::syntax_definition::EscapeInfo
 pub syntect::parsing::syntax_definition::MatchOperation::Fail(alloc::string::String)
 pub syntect::parsing::syntax_definition::MatchOperation::None
 pub syntect::parsing::syntax_definition::MatchOperation::Pop(usize)
@@ -685,7 +688,7 @@ impl serde_core::ser::Serialize for syntect::parsing::syntax_definition::MatchOp
 pub fn syntect::parsing::syntax_definition::MatchOperation::serialize<__S>(&self, __serializer: __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl<'de> serde_core::de::Deserialize<'de> for syntect::parsing::syntax_definition::MatchOperation
 pub fn syntect::parsing::syntax_definition::MatchOperation::deserialize<__D>(__deserializer: __D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
-impl core::marker::Freeze for syntect::parsing::syntax_definition::MatchOperation
+impl !core::marker::Freeze for syntect::parsing::syntax_definition::MatchOperation
 impl core::marker::Send for syntect::parsing::syntax_definition::MatchOperation
 impl core::marker::Sync for syntect::parsing::syntax_definition::MatchOperation
 impl core::marker::Unpin for syntect::parsing::syntax_definition::MatchOperation
@@ -765,6 +768,28 @@ impl core::marker::Sync for syntect::parsing::syntax_definition::ContextId
 impl core::marker::Unpin for syntect::parsing::syntax_definition::ContextId
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::ContextId
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::ContextId
+pub struct syntect::parsing::syntax_definition::EscapeInfo
+pub syntect::parsing::syntax_definition::EscapeInfo::escape_captures: core::option::Option<syntect::parsing::syntax_definition::CaptureMapping>
+pub syntect::parsing::syntax_definition::EscapeInfo::escape_regex: syntect::parsing::Regex
+pub syntect::parsing::syntax_definition::EscapeInfo::has_captures: bool
+impl core::clone::Clone for syntect::parsing::syntax_definition::EscapeInfo
+pub fn syntect::parsing::syntax_definition::EscapeInfo::clone(&self) -> syntect::parsing::syntax_definition::EscapeInfo
+impl core::cmp::Eq for syntect::parsing::syntax_definition::EscapeInfo
+impl core::cmp::PartialEq for syntect::parsing::syntax_definition::EscapeInfo
+pub fn syntect::parsing::syntax_definition::EscapeInfo::eq(&self, other: &syntect::parsing::syntax_definition::EscapeInfo) -> bool
+impl core::fmt::Debug for syntect::parsing::syntax_definition::EscapeInfo
+pub fn syntect::parsing::syntax_definition::EscapeInfo::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for syntect::parsing::syntax_definition::EscapeInfo
+impl serde_core::ser::Serialize for syntect::parsing::syntax_definition::EscapeInfo
+pub fn syntect::parsing::syntax_definition::EscapeInfo::serialize<__S>(&self, __serializer: __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for syntect::parsing::syntax_definition::EscapeInfo
+pub fn syntect::parsing::syntax_definition::EscapeInfo::deserialize<__D>(__deserializer: __D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl !core::marker::Freeze for syntect::parsing::syntax_definition::EscapeInfo
+impl core::marker::Send for syntect::parsing::syntax_definition::EscapeInfo
+impl core::marker::Sync for syntect::parsing::syntax_definition::EscapeInfo
+impl core::marker::Unpin for syntect::parsing::syntax_definition::EscapeInfo
+impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::EscapeInfo
+impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::EscapeInfo
 pub struct syntect::parsing::syntax_definition::MatchIter<'a>
 impl<'a> core::fmt::Debug for syntect::parsing::syntax_definition::MatchIter<'a>
 pub fn syntect::parsing::syntax_definition::MatchIter<'a>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
