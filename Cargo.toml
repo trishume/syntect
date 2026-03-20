@@ -7,8 +7,7 @@ keywords = ["syntax", "highlighting", "highlighter", "colouring", "parsing"]
 categories = ["parser-implementations", "parsing", "text-processing"]
 readme = "Readme.md"
 license = "MIT"
-# remember to update html_root_url when updating the version
-version = "5.3.0"                                                   # remember to update html_root_url
+version = "5.3.0" # remember to update html_root_url
 authors = ["Tristan Hume <tristan@thume.ca>"]
 edition = "2021"
 exclude = ["testdata/*", "/scripts/*", "/Makefile", "/codecov.yml"]
