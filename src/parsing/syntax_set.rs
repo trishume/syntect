@@ -1961,7 +1961,10 @@ mod tests {
         let syntax = ss.find_syntax_by_name("Child").unwrap();
         let mut parse_state = ParseState::new(syntax);
         // 'abc' should still match base's ident pattern (it comes first since child is appended)
-        let ops = parse_state.parse_line("abc\n", &ss).expect("parse failed").ops;
+        let ops = parse_state
+            .parse_line("abc\n", &ss)
+            .expect("parse failed")
+            .ops;
         let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -2008,7 +2011,10 @@ mod tests {
         let syntax = ss.find_syntax_by_name("Child").unwrap();
         let mut parse_state = ParseState::new(syntax);
         // Lowercase should NOT match (child overrides ident to uppercase only)
-        let ops = parse_state.parse_line("ABC\n", &ss).expect("parse failed").ops;
+        let ops = parse_state
+            .parse_line("ABC\n", &ss)
+            .expect("parse failed")
+            .ops;
         let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
         assert_ops_contain(&ops, &expected);
     }

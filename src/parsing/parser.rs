@@ -2740,9 +2740,7 @@ contexts:
 
         // Line 1: triggers the branch, tries try-ctx first.
         // try-ctx consumes the newline and stays active.
-        let out1 = state
-            .parse_line("TRY\n", &ss)
-            .expect("parse line 1 failed");
+        let out1 = state.parse_line("TRY\n", &ss).expect("parse line 1 failed");
         // replayed is empty on line 1 (no cross-line fail yet)
         assert!(
             out1.replayed.is_empty(),
