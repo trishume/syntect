@@ -391,15 +391,20 @@ impl<'de> Deserialize<'de> for Scope {
 
 /// Wrapper to get around the fact Rust `f64` doesn't implement `Ord` and there is no non-NaN
 /// float type
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct MatchPower(pub f64);
 
 impl Eq for MatchPower {}
 
-#[allow(clippy::derive_ord_xor_partial_ord)] // The code works, so let's keep using it
 impl Ord for MatchPower {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        self.0.partial_cmp(&other.0).unwrap()
+    }
+}
+
+impl PartialOrd for MatchPower {
+    fn partial_cmp(&self, other: &MatchPower) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 

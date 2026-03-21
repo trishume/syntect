@@ -588,13 +588,24 @@ impl ParseState {
         // println!("{:?}", cur_context.meta_scope);
         match *match_op {
             MatchOperation::Pop(_) => {
-                let v = if initial {
-                    &cur_context.meta_content_scope
-                } else {
-                    &cur_context.meta_scope
-                };
-                if !v.is_empty() {
-                    ops.push((index, ScopeStackOp::Pop(v.len())));
+                if initial {
+                    // v2: if the context below has embed_scope_replaces, then
+                    // cur_context's meta_content_scope was never pushed (it was skipped
+                    // during the Push phase), so don't generate a Pop for it.
+                    let skip = version >= 2
+                        && self.stack.len() >= 2
+                        && syntax_set
+                            .get_context(&self.stack[self.stack.len() - 2].context)
+                            .map(|c| c.embed_scope_replaces)
+                            .unwrap_or(false);
+                    if !skip && !cur_context.meta_content_scope.is_empty() {
+                        ops.push((
+                            index,
+                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                        ));
+                    }
+                } else if !cur_context.meta_scope.is_empty() {
+                    ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
                 }
 
                 // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
@@ -610,6 +621,13 @@ impl ParseState {
                 let is_set = matches!(*match_op, MatchOperation::Set(_));
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
+                    // v2: pop parent's meta_content_scope so matched text does not see it
+                    if is_set && version >= 2 && !cur_context.meta_content_scope.is_empty() {
+                        ops.push((
+                            index,
+                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                        ));
+                    }
                     if is_set && cur_context.clear_scopes.is_some() {
                         // cleared scopes from the old context are restored immediately
                         ops.push((index, ScopeStackOp::Restore));
@@ -622,7 +640,7 @@ impl ParseState {
                         for (i, r) in context_refs.iter().enumerate() {
                             let ctx = r.resolve(syntax_set)?;
 
-                            if !is_set && i == last_idx {
+                            if i == last_idx {
                                 if let Some(clear_amount) = ctx.clear_scopes {
                                     ops.push((index, ScopeStackOp::Clear(clear_amount)));
                                 }
@@ -687,6 +705,7 @@ impl ParseState {
                         if version >= 2 {
                             // v2: For multiple push, only apply clear_scopes from last context
                             let last_idx = context_refs.len().saturating_sub(1);
+                            let mut prev_embed_scope_replaces = false;
                             for (i, r) in context_refs.iter().enumerate() {
                                 let ctx = r.resolve(syntax_set)?;
 
@@ -699,9 +718,15 @@ impl ParseState {
                                 for scope in ctx.meta_scope.iter() {
                                     ops.push((index, ScopeStackOp::Push(*scope)));
                                 }
-                                for scope in ctx.meta_content_scope.iter() {
-                                    ops.push((index, ScopeStackOp::Push(*scope)));
+                                // v2: if the previous context has embed_scope_replaces,
+                                // skip this context's meta_content_scope (the embedded
+                                // syntax's top-level scope is replaced by embed_scope)
+                                if !prev_embed_scope_replaces {
+                                    for scope in ctx.meta_content_scope.iter() {
+                                        ops.push((index, ScopeStackOp::Push(*scope)));
+                                    }
                                 }
+                                prev_embed_scope_replaces = ctx.embed_scope_replaces;
                             }
                         } else {
                             for r in context_refs {

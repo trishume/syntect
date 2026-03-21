@@ -44,9 +44,10 @@ pub struct SyntaxDefinition {
     pub variables: HashMap<String, String>,
     #[serde(serialize_with = "ordered_map")]
     pub contexts: HashMap<String, Context>,
-    /// The syntax this definition extends (e.g., "Packages/C/C.sublime-syntax")
+    /// The syntax(es) this definition extends (e.g., "Packages/C/C.sublime-syntax").
+    /// Can be a single path or a list of paths for multiple inheritance.
     #[serde(default)]
-    pub extends: Option<String>,
+    pub extends: Vec<String>,
     /// The version of the sublime-syntax format (1 or 2). Default is 1.
     #[serde(default = "default_version")]
     pub version: u32,
@@ -87,6 +88,11 @@ pub struct Context {
     /// How this context should be merged with a parent context during extends resolution.
     #[serde(skip)]
     pub(crate) merge_mode: ContextMergeMode,
+
+    /// When true, this context's `meta_content_scope` (from embed_scope) should replace
+    /// the embedded syntax's top-level scope rather than stacking with it. (v2 behavior)
+    #[serde(default)]
+    pub(crate) embed_scope_replaces: bool,
 }
 
 impl Context {
@@ -100,6 +106,7 @@ impl Context {
             patterns: Vec::new(),
             prototype: None,
             merge_mode: ContextMergeMode::default(),
+            embed_scope_replaces: false,
         }
     }
 }
