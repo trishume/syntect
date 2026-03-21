@@ -1,8 +1,4 @@
-use std::{
-    error::Error,
-    fmt::Display,
-    io::Error as IoError,
-};
+use std::{error::Error, fmt::Display, io::Error as IoError};
 
 use syntect::{
     parsing::{ParseScopeError, ParseSyntaxError},
