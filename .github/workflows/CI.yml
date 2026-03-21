@@ -69,6 +69,10 @@ jobs:
         cargo build --release # Build bat so we can update the assets
         PATH=target/release:$PATH ./assets/create.sh # Update assets with newly built bat
         cargo build --release # Build bat using the newly updated assets
+        # Regenerate the expected highlighted output so the regression test
+        # compares two runs of the *same* syntect, not our build against an
+        # old baseline committed in the bat repo.
+        PATH=./target/release:$PATH tests/syntax-tests/update.sh
         PATH=./target/release:$PATH tests/syntax-tests/regression_test.sh
 
   build-and-test:
