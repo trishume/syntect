@@ -3927,4 +3927,255 @@ contexts:
             final_scopes
         );
     }
+
+    #[test]
+    fn nested_embed_outer_escape_wins() {
+        // Inner embed's escape must not fire before outer embed's escape.
+        // The outer escape at position 3 ("END") should take precedence over
+        // the inner escape at position 5 ("zzz"), truncating the search region.
+        let syntax = r#"
+name: NestedEmbed
+scope: source.nested-embed
+contexts:
+  main:
+    - match: 'OUTER'
+      embed: mid
+      escape: 'END'
+      escape_captures:
+        0: keyword.escape.outer
+    - match: '.'
+      scope: main.char
+
+  mid:
+    - match: 'INNER'
+      embed: deep
+      escape: 'zzz'
+      escape_captures:
+        0: keyword.escape.inner
+    - match: '.'
+      scope: mid.char
+
+  deep:
+    - match: '.'
+      scope: deep.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: enter outer embed, then inner embed
+        let out1 = state.parse_line("OUTERINNER\n", &ss).expect("line 1");
+        debug_print_ops("OUTERINNER\n", &out1.ops);
+
+        // Line 2: "xxENDzzzAFTER" — outer escape "END" at pos 2 must fire before
+        // inner escape "zzz" at pos 5. After outer escape fires, we're back in main.
+        let out2 = state.parse_line("xxENDzzzAFTER\n", &ss).expect("line 2");
+        let states = stack_states(out2.ops);
+        println!("states: {:?}", states);
+
+        // The outer escape scope must appear
+        assert!(
+            states.iter().any(|s| s.contains("keyword.escape.outer")),
+            "outer escape must fire, got: {:?}",
+            states
+        );
+        // The inner escape scope must NOT appear (outer wins)
+        assert!(
+            !states.iter().any(|s| s.contains("keyword.escape.inner")),
+            "inner escape must not fire when outer escape is earlier, got: {:?}",
+            states
+        );
+        // After the outer escape, "zzzAFTER" should be parsed in main context
+        assert!(
+            states.iter().any(|s| s.contains("main.char")),
+            "after outer escape we should be in main, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn embed_escape_with_backref_at_parse_time() {
+        // The escape pattern uses \1 to backreference the opening delimiter.
+        // Verify that the resolved regex correctly matches at parse time.
+        let syntax = r#"
+name: BackrefEscape
+scope: source.backref-escape
+contexts:
+  main:
+    - match: '(<<|>>)'
+      scope: punctuation.open
+      embed: inner
+      escape: '\1'
+      escape_captures:
+        0: punctuation.close
+    - match: '.'
+      scope: main.char
+
+  inner:
+    - match: '.'
+      scope: inner.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
+        let ss = link(syntax);
+
+        // Test 1: "<<" opens, ">>" should NOT close it, "<<" should close it
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let out1 = state.parse_line("<<>>stuff<<after\n", &ss).expect("line 1");
+        let states = stack_states(out1.ops);
+        println!("backref states: {:?}", states);
+
+        // The opening << should push punctuation.open
+        assert!(
+            states.iter().any(|s| s.contains("punctuation.open")),
+            "expected punctuation.open, got: {:?}",
+            states
+        );
+        // ">>" should be parsed as inner.char (not as escape)
+        assert!(
+            states.iter().any(|s| s.contains("inner.char")),
+            ">> should be inner.char since escape is <<, got: {:?}",
+            states
+        );
+        // "<<" at pos 9 should fire as escape (punctuation.close)
+        assert!(
+            states.iter().any(|s| s.contains("punctuation.close")),
+            "matching << should trigger escape, got: {:?}",
+            states
+        );
+        // After escape, "after" should be in main
+        assert!(
+            states.iter().any(|s| s.contains("main.char")),
+            "after escape we should be in main, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn embed_escape_cross_line() {
+        // Embed on line 1, content on line 2, escape on line 3.
+        // Verifies that escape_stack persists across parse_line calls.
+        let syntax = r#"
+name: CrossLineEscape
+scope: source.cross-line-escape
+contexts:
+  main:
+    - match: 'BEGIN'
+      scope: keyword.begin
+      embed: body
+      escape: 'STOP'
+      escape_captures:
+        0: keyword.stop
+    - match: '.'
+      scope: main.char
+
+  body:
+    - match: '.'
+      scope: body.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: embed begins
+        let out1 = state.parse_line("BEGIN\n", &ss).expect("line 1");
+        let states1 = stack_states(out1.ops);
+        assert!(
+            states1.iter().any(|s| s.contains("keyword.begin")),
+            "line 1 should have keyword.begin, got: {:?}",
+            states1
+        );
+
+        // Line 2: content inside the embed
+        let out2 = state.parse_line("hello\n", &ss).expect("line 2");
+        let states2 = stack_states(out2.ops);
+        assert!(
+            states2.iter().any(|s| s.contains("body.char")),
+            "line 2 should be body content, got: {:?}",
+            states2
+        );
+
+        // Line 3: escape fires
+        let out3 = state.parse_line("STOPafter\n", &ss).expect("line 3");
+        let states3 = stack_states(out3.ops);
+        assert!(
+            states3.iter().any(|s| s.contains("keyword.stop")),
+            "line 3 should have escape keyword.stop, got: {:?}",
+            states3
+        );
+        assert!(
+            states3.iter().any(|s| s.contains("main.char")),
+            "after escape on line 3, should be in main, got: {:?}",
+            states3
+        );
+    }
+
+    #[test]
+    fn embed_inside_branch_then_fail_restores_escape_stack() {
+        // An embed inside a branch alternative pushes to escape_stack.
+        // When fail fires, the escape_stack must be restored (the embed's
+        // escape entry must be removed). The fallback alternative stays on
+        // the stack (no pop) so any stale escape entry would survive to
+        // the next line, where it would incorrectly fire.
+        let syntax = r#"
+name: EmbedBranchFail
+scope: source.embed-branch
+contexts:
+  main:
+    - match: 'START'
+      branch_point: bp
+      branch: [try-embed, fallback]
+    - match: '.'
+      scope: main.char
+
+  try-embed:
+    - match: 'EMB'
+      embed: embedded
+      escape: 'ESC'
+      escape_captures:
+        0: keyword.escape
+
+  fallback:
+    # No pop — stays on the stack so a stale escape entry would persist
+    - match: '\w+'
+      scope: fallback.matched
+    - match: '\n'
+
+  embedded:
+    - match: 'FAIL'
+      fail: bp
+    - match: '.'
+      scope: embedded.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // "START" triggers branch, tries try-embed first.
+        // "EMB" enters the embed (pushing escape entry for "ESC").
+        // "FAIL" fires `fail: bp`, which must restore escape_stack and
+        // replay under fallback alternative.
+        let out = state
+            .parse_line("STARTEMBFAIL\n", &ss)
+            .expect("parse failed");
+        let states = stack_states(out.ops);
+        println!("embed+branch+fail states: {:?}", states);
+
+        // After backtracking, fallback should match
+        assert!(
+            states.iter().any(|s| s.contains("fallback.matched")),
+            "fallback should match after fail, got: {:?}",
+            states
+        );
+
+        // Parse another line — "ESC" must NOT trigger the escape (it was
+        // from a reverted branch). Without proper escape_stack restoration,
+        // the stale escape entry would fire here.
+        let out2 = state.parse_line("xESCy\n", &ss).expect("line 2");
+        let states2 = stack_states(out2.ops);
+        assert!(
+            !states2.iter().any(|s| s.contains("keyword.escape")),
+            "stale escape must not fire after branch revert, got: {:?}",
+            states2
+        );
+    }
 }
