@@ -405,7 +405,7 @@ mod tests {
 
         let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         let line = "module Bob::Wow::Troll::Five; 5; end";
-        let ops = state.parse_line(line, &ps).expect("#[cfg(test)]").ops;
+        let ops = state.parse_line(line, ps).expect("#[cfg(test)]").ops;
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();
         // println!("{:#?}", regions);
@@ -447,7 +447,7 @@ mod tests {
         // We start by parsing a python multiline-comment: """
         let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         let line = r#"""""#;
-        let ops = state.parse_line(line, &ps).expect("#[cfg(test)]").ops;
+        let ops = state.parse_line(line, ps).expect("#[cfg(test)]").ops;
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         assert_eq!(1, iter.count());
         let path = highlight_state.path;
@@ -455,7 +455,7 @@ mod tests {
         // We then parse the next line with a highlight state built from the previous state
         let mut highlight_state = HighlightState::new(&highlighter, path);
         let line = "multiline comment";
-        let ops = state.parse_line(line, &ps).expect("#[cfg(test)]").ops;
+        let ops = state.parse_line(line, ps).expect("#[cfg(test)]").ops;
         let iter = HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str)> = iter.collect();
 
@@ -617,7 +617,7 @@ mod tests {
 
         let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
         let line = "module Bob::Wow::Troll::Five; 5; end";
-        let ops = state.parse_line(line, &ps).expect("#[cfg(test)]").ops;
+        let ops = state.parse_line(line, ps).expect("#[cfg(test)]").ops;
         let iter = RangedHighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter);
         let regions: Vec<(Style, &str, Range<usize>)> = iter.collect();
         // println!("{:#?}", regions);

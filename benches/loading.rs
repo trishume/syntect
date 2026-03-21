@@ -3,11 +3,11 @@ use syntect::highlighting::ThemeSet;
 use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 
 fn bench_load_internal_dump(b: &mut Bencher) {
-    b.iter(|| SyntaxSet::load_defaults_newlines());
+    b.iter(SyntaxSet::load_defaults_newlines);
 }
 
 fn bench_load_internal_themes(b: &mut Bencher) {
-    b.iter(|| ThemeSet::load_defaults());
+    b.iter(ThemeSet::load_defaults);
 }
 
 fn bench_load_theme(b: &mut Bencher) {

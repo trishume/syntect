@@ -9,7 +9,7 @@ fn do_parse(s: &str, ss: &SyntaxSet, syntax: &SyntaxReference) -> usize {
     let mut count = 0;
     for line in s.lines() {
         let ops = state.parse_line(line, ss).unwrap();
-        count += ops.len();
+        count += ops.ops.len();
     }
     count
 }

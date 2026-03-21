@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fmt::Display,
-    io::{Error as IoError, ErrorKind},
+    io::Error as IoError,
 };
 
 use syntect::{
@@ -27,7 +27,7 @@ fn loading_error_parse_syntax_display() {
 
 #[test]
 fn loading_error_io_source() {
-    let io_error_source = IoError::new(ErrorKind::Other, "this is an error string");
+    let io_error_source = IoError::other("this is an error string");
     assert_display(
         LoadingError::Io(io_error_source).source().unwrap(),
         "this is an error string",

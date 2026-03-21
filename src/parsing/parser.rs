@@ -1171,7 +1171,7 @@ mod tests {
             ParseState::new(syntax)
         };
 
-        let ops1 = ops(&mut state, "module Bob::Wow::Troll::Five; 5; end", &ss);
+        let ops1 = ops(&mut state, "module Bob::Wow::Troll::Five; 5; end", ss);
         let test_ops1 = vec![
             (0, Push(Scope::new("source.ruby.rails").unwrap())),
             (0, Push(Scope::new("meta.module.ruby").unwrap())),
@@ -1187,8 +1187,8 @@ mod tests {
         ];
         assert_eq!(&ops1[0..test_ops1.len()], &test_ops1[..]);
 
-        let ops2 = ops(&mut state, "def lol(wow = 5)", &ss);
-        let test_ops2 = vec![
+        let ops2 = ops(&mut state, "def lol(wow = 5)", ss);
+        let test_ops2 = [
             (0, Push(Scope::new("meta.function.ruby").unwrap())),
             (0, Push(Scope::new("keyword.control.def.ruby").unwrap())),
             (3, Pop(2)),
@@ -1208,7 +1208,7 @@ mod tests {
         };
 
         assert_eq!(
-            ops(&mut state, "key: value\n", &ps),
+            ops(&mut state, "key: value\n", ps),
             vec![
                 (0, Push(Scope::new("source.yaml").unwrap())),
                 (
@@ -1239,7 +1239,7 @@ mod tests {
             ParseState::new(syntax)
         };
 
-        let ops = ops(&mut state, "<script>var lol = '<% def wow(", &ss);
+        let ops = ops(&mut state, "<script>var lol = '<% def wow(", ss);
 
         let mut test_stack = ScopeStack::new();
         test_stack.push(Scope::new("text.html.ruby").unwrap());
@@ -1269,7 +1269,7 @@ mod tests {
         // regex with a backref, to match the end of the HEREDOC. Note that there can be code
         // after the marker (`.strip`) here.
         assert_eq!(
-            ops(&mut state, "lol = <<-SQL.strip", &ss),
+            ops(&mut state, "lol = <<-SQL.strip", ss),
             vec![
                 (0, Push(Scope::new("source.ruby.rails").unwrap())),
                 (
@@ -1299,10 +1299,10 @@ mod tests {
             ]
         );
 
-        assert_eq!(ops(&mut state, "wow", &ss), vec![]);
+        assert_eq!(ops(&mut state, "wow", ss), vec![]);
 
         assert_eq!(
-            ops(&mut state, "SQL", &ss),
+            ops(&mut state, "SQL", ss),
             vec![
                 (0, Pop(1)),
                 (
@@ -1324,7 +1324,7 @@ mod tests {
         };
 
         assert_eq!(
-            ops(&mut state, "#ifdef FOO", &ss),
+            ops(&mut state, "#ifdef FOO", ss),
             vec![
                 (0, Push(Scope::new("source.c").unwrap())),
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
@@ -1334,7 +1334,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "{", &ss),
+            ops(&mut state, "{", ss),
             vec![
                 (0, Push(Scope::new("meta.block.c").unwrap())),
                 (
@@ -1345,7 +1345,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "#else", &ss),
+            ops(&mut state, "#else", ss),
             vec![
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
                 (0, Push(Scope::new("keyword.control.import.c").unwrap())),
@@ -1354,7 +1354,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "{", &ss),
+            ops(&mut state, "{", ss),
             vec![
                 (0, Push(Scope::new("meta.block.c").unwrap())),
                 (
@@ -1365,7 +1365,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "#endif", &ss),
+            ops(&mut state, "#endif", ss),
             vec![
                 (0, Pop(1)),
                 (0, Push(Scope::new("meta.block.c").unwrap())),
@@ -1377,14 +1377,14 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "    foo;", &ss),
+            ops(&mut state, "    foo;", ss),
             vec![
                 (7, Push(Scope::new("punctuation.terminator.c").unwrap())),
                 (8, Pop(1)),
             ]
         );
         assert_eq!(
-            ops(&mut state, "}", &ss),
+            ops(&mut state, "}", ss),
             vec![
                 (
                     0,
@@ -1405,7 +1405,7 @@ mod tests {
         };
 
         // test fix for issue #25
-        assert_eq!(ops(&mut state, "struct{estruct", &ss).len(), 10);
+        assert_eq!(ops(&mut state, "struct{estruct", ss).len(), 10);
     }
 
     #[test]
@@ -1415,11 +1415,11 @@ mod tests {
         let mut state1 = ParseState::new(syntax);
         let mut state2 = ParseState::new(syntax);
 
-        assert_eq!(ops(&mut state1, "class Foo {", &ss).len(), 11);
-        assert_eq!(ops(&mut state2, "class Fooo {", &ss).len(), 11);
+        assert_eq!(ops(&mut state1, "class Foo {", ss).len(), 11);
+        assert_eq!(ops(&mut state2, "class Fooo {", ss).len(), 11);
 
         assert_eq!(state1, state2);
-        ops(&mut state1, "}", &ss);
+        ops(&mut state1, "}", ss);
         assert_ne!(state1, state2);
     }
 
