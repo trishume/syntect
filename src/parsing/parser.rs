@@ -686,9 +686,13 @@ impl ParseState {
             ops.push((match_start, ScopeStackOp::Push(*s)));
         }
         if let Some(ref capture_map) = pat.captures {
+            // captures could appear in an arbitrary order, have to produce ops in right order
+            // ex: ((bob)|(hi))* could match hibob in wrong order, and outer has to push first
+            // we don't have to handle a capture matching multiple times, Sublime doesn't
             let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
             for &(cap_index, ref scopes) in capture_map.iter() {
                 if let Some((cap_start, cap_end)) = reg_match.regions.pos(cap_index) {
+                    // marking up empty captures causes pops to be sorted wrong
                     if cap_start == cap_end {
                         continue;
                     }
