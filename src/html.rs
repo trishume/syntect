@@ -91,7 +91,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
     /// *Note:* This function requires `line` to include a newline at the end and
     /// also use of the `load_defaults_newlines` version of the syntaxes.
     pub fn parse_html_for_line_which_includes_newline(&mut self, line: &str) -> Result<(), Error> {
-        let parsed_line = self.parse_state.parse_line(line, self.syntax_set)?;
+        let parsed_line = self.parse_state.parse_line(line, self.syntax_set)?.ops;
         let (formatted_line, delta) = line_tokens_to_classed_spans(
             line,
             parsed_line.as_slice(),
@@ -584,7 +584,7 @@ mod tests {
         let syntax = ss.find_syntax_by_name("Markdown").unwrap();
         let mut state = ParseState::new(syntax);
         let line = "[w](t.co) *hi* **five**";
-        let ops = state.parse_line(line, &ss).expect("#[cfg(test)]");
+        let ops = state.parse_line(line, &ss).expect("#[cfg(test)]").ops;
         let mut stack = ScopeStack::new();
 
         // use util::debug_print_ops;

@@ -54,6 +54,24 @@ pub enum ParsingError {
 /// It is not recommended that you try caching the first time you implement highlighting.
 ///
 /// [`HighlightState`]: ../highlighting/struct.HighlightState.html
+/// Output of [`ParseState::parse_line`].
+///
+/// `ops` contains the scope-stack operations for the current line, as before.
+/// `replayed` is non-empty only after a cross-line `fail` fires: it contains
+/// the corrected ops for each buffered line (in chronological order) so that
+/// callers who want full cross-line accuracy can re-apply them.
+///
+/// Callers that do not need cross-line accuracy can use `.ops` directly,
+/// which behaves identically to the old `Vec<(usize, ScopeStackOp)>` return.
+#[derive(Debug, Clone, Default)]
+pub struct ParseLineOutput {
+    /// Ops for the current line.
+    pub ops: Vec<(usize, ScopeStackOp)>,
+    /// Ops for previously buffered lines that have now been corrected, in order.
+    /// Non-empty only when a cross-line `fail` just resolved.
+    pub replayed: Vec<Vec<(usize, ScopeStackOp)>>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParseState {
     stack: Vec<StateLevel>,
@@ -65,6 +83,13 @@ pub struct ParseState {
     branch_points: Vec<BranchPoint>,
     /// Line counter for 128-line branch point expiry.
     line_number: usize,
+    /// Line strings buffered while branch points are active, for potential
+    /// cross-line `fail` replay. Only the strings are stored; the ops are
+    /// returned to callers immediately (same as before).
+    pending_lines: Vec<String>,
+    /// Corrected ops produced by a cross-line `fail` replay, to be returned
+    /// as `ParseLineOutput::replayed` at the end of `parse_line`.
+    flushed_ops: Vec<Vec<(usize, ScopeStackOp)>>,
 }
 
 /// Snapshot of parser state at a branch point, used for backtracking.
@@ -87,6 +112,8 @@ struct BranchPoint {
     non_consuming_push_at_snapshot: (usize, usize),
     first_line_snapshot: bool,
     with_prototype: Option<ContextReference>,
+    /// `pending_lines.len()` at snapshot time, for cross-line replay truncation.
+    pending_lines_snapshot_len: usize,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -215,6 +242,8 @@ impl ParseState {
             proto_starts: Vec::new(),
             branch_points: Vec::new(),
             line_number: 0,
+            pending_lines: Vec::new(),
+            flushed_ops: Vec::new(),
         }
     }
 
@@ -241,7 +270,7 @@ impl ParseState {
         &mut self,
         line: &str,
         syntax_set: &SyntaxSet,
-    ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
+    ) -> Result<ParseLineOutput, ParsingError> {
         if self.stack.is_empty() {
             return Err(ParsingError::MissingMainContext);
         }
@@ -252,6 +281,32 @@ impl ParseState {
             .retain(|bp| cur_line.saturating_sub(bp.line_number) <= 128);
         self.line_number += 1;
 
+        let ops = self.parse_line_inner(line, syntax_set)?;
+
+        // Collect any corrected ops produced by a cross-line `fail` during the
+        // parse above.  These are stored by `handle_fail` in `self.flushed_ops`.
+        let replayed = std::mem::take(&mut self.flushed_ops);
+
+        // Keep the line string for potential future cross-line replay.
+        if !self.branch_points.is_empty() {
+            self.pending_lines.push(line.to_string());
+        } else {
+            // No active branch points: any buffered strings are stale.
+            self.pending_lines.clear();
+        }
+
+        Ok(ParseLineOutput { ops, replayed })
+    }
+
+    /// Inner parsing loop: processes `line` with the current parser state and
+    /// returns the scope-stack operations.  Does **not** touch `pending_lines`
+    /// or `flushed_ops`, so it is safe to call recursively from `handle_fail`
+    /// for cross-line replay without re-entrancy issues.
+    fn parse_line_inner(
+        &mut self,
+        line: &str,
+        syntax_set: &SyntaxSet,
+    ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
         let mut match_start = 0;
         let mut res = Vec::new();
 
@@ -608,6 +663,7 @@ impl ParseState {
                     non_consuming_push_at_snapshot: *non_consuming_push_at,
                     first_line_snapshot: self.first_line,
                     with_prototype: pat.with_prototype.clone(),
+                    pending_lines_snapshot_len: self.pending_lines.len(),
                 };
                 self.branch_points.push(bp);
                 // Synthesize a Push of the first alternative
@@ -711,51 +767,37 @@ impl ParseState {
             return Ok(false); // All alternatives exhausted
         }
 
-        // Valid: rewind state
+        // Determine if this is a cross-line fail (branch was created on a previous line).
+        let is_cross_line = bp.line_number < cur_line;
+
+        // Extract everything we need from bp before mutating self.
         let next_alt_index = bp.next_alternative;
         let next_alt = bp.alternatives[next_alt_index].clone();
         let match_start_pos = bp.match_start;
+        let stack_snapshot = bp.stack_snapshot.clone();
+        let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
+        let first_line_snapshot = bp.first_line_snapshot;
+        let non_consuming_push_at_snapshot = bp.non_consuming_push_at_snapshot;
+        let ops_snapshot_len = bp.ops_snapshot_len;
+        let pending_lines_snapshot_len = bp.pending_lines_snapshot_len;
+        // bp borrow ends here.
 
-        // Restore snapshots
-        self.stack = bp.stack_snapshot.clone();
-        self.proto_starts = bp.proto_starts_snapshot.clone();
-        self.first_line = bp.first_line_snapshot;
-        *non_consuming_push_at = bp.non_consuming_push_at_snapshot;
+        // Restore parser state to the snapshot.
+        self.stack = stack_snapshot;
+        self.proto_starts = proto_starts_snapshot;
+        self.first_line = first_line_snapshot;
+        *non_consuming_push_at = non_consuming_push_at_snapshot;
 
-        // Truncate ops back to snapshot point
-        // For same-line backtracking, we can truncate ops directly.
-        // For cross-line, ops from previous lines are already returned,
-        // so we truncate to 0 (best effort).
-        let snapshot_len = bp.ops_snapshot_len;
-        if snapshot_len <= ops.len() {
-            ops.truncate(snapshot_len);
-        } else {
-            // Cross-line: can't undo previously returned ops, truncate current line's ops
-            ops.clear();
-        }
-
-        // Rewind position
-        *start = match_start_pos;
-
-        // Clear search cache since we're rewinding
-        search_cache.clear();
-
-        // Increment next_alternative on the branch point
+        // Update the branch point record before pushing the new alternative
+        // (so that the snapshot len is correct for any subsequent fail).
         self.branch_points[bp_index].next_alternative = next_alt_index + 1;
-        // Update ops_snapshot_len since ops may have been truncated
-        self.branch_points[bp_index].ops_snapshot_len = ops.len();
 
-        // Push the next alternative (like a Push operation)
+        // Push the next alternative onto the stack.
         let with_prototype = self.branch_points[bp_index].with_prototype.clone();
         let context_id = next_alt.id()?;
         let context = syntax_set.get_context(&context_id)?;
-        let captures = if context.uses_backrefs {
-            None // No captures available at rewind time
-        } else {
-            None
-        };
+        let captures = None; // no captures available at rewind time
 
-        // Build prototype IDs from with_prototype (if any)
         let proto_ids = match with_prototype {
             Some(ref p) => vec![p.id()?],
             None => Vec::new(),
@@ -767,18 +809,57 @@ impl ParseState {
             captures,
         });
 
-        // Emit meta scope ops for the new context.
-        // We directly push meta_scope and meta_content_scope rather than using
-        // push_meta_ops, because there was no "initial" phase to pair with.
-        if let Some(clear_amount) = context.clear_scopes {
-            ops.push((match_start_pos, ScopeStackOp::Clear(clear_amount)));
+        if is_cross_line {
+            // Cross-line fail: the ops for lines since the branch was created
+            // have already been returned to callers.  Re-parse those lines under
+            // the new alternative and store the corrected ops in `flushed_ops`
+            // so that `parse_line` can surface them via `ParseLineOutput::replayed`.
+            //
+            // The new alternative (context) is already on the stack, so
+            // parse_line_inner will process each buffered line starting in that
+            // context, producing correct ops.
+            let truncated_lines: Vec<String> = self
+                .pending_lines
+                .drain(pending_lines_snapshot_len..)
+                .collect();
+
+            let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
+                Vec::with_capacity(truncated_lines.len());
+            for replay_line in &truncated_lines {
+                let line_ops = self.parse_line_inner(replay_line, syntax_set)?;
+                replayed_ops.push(line_ops);
+            }
+            // Append (rather than overwrite) in case multiple cross-line fails
+            // fire on the same parse_line call.
+            self.flushed_ops.extend(replayed_ops);
+
+            // Restart the current line from the beginning.
+            ops.clear();
+            *start = 0;
+            *non_consuming_push_at = (0, 0);
+
+            self.branch_points[bp_index].ops_snapshot_len = 0;
+        } else {
+            // Same-line fail: truncate ops back to the snapshot point and rewind.
+            ops.truncate(ops_snapshot_len.min(ops.len()));
+            *start = match_start_pos;
+
+            self.branch_points[bp_index].ops_snapshot_len = ops.len();
+
+            // Emit meta scope ops for the new context at the rewind position.
+            if let Some(clear_amount) = context.clear_scopes {
+                ops.push((match_start_pos, ScopeStackOp::Clear(clear_amount)));
+            }
+            for scope in context.meta_scope.iter() {
+                ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
+            }
+            for scope in context.meta_content_scope.iter() {
+                ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
+            }
         }
-        for scope in context.meta_scope.iter() {
-            ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
-        }
-        for scope in context.meta_content_scope.iter() {
-            ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
-        }
+
+        // Clear search cache since we're rewinding.
+        search_cache.clear();
 
         Ok(true)
     }
@@ -2373,9 +2454,9 @@ contexts:
         line: &str,
         syntax_set: &SyntaxSet,
     ) -> Vec<(usize, ScopeStackOp)> {
-        let ops = state.parse_line(line, syntax_set).expect("#[cfg(test)]");
-        debug_print_ops(line, &ops);
-        ops
+        let output = state.parse_line(line, syntax_set).expect("#[cfg(test)]");
+        debug_print_ops(line, &output.ops);
+        output.ops
     }
 
     fn stack_states(ops: Vec<(usize, ScopeStackOp)>) -> Vec<String> {
@@ -2619,6 +2700,83 @@ contexts:
             states.iter().any(|s| s.contains("comment.proto-test")),
             "Expected comment.proto-test from with_prototype after backtrack, got: {:?}",
             states
+        );
+    }
+
+    #[test]
+    fn branch_cross_line_backtrack() {
+        // Syntax: "TRY" on line 1 triggers a branch_point.  try-ctx stays
+        // active (consuming the trailing newline) so that it is still live on
+        // line 2.  "FAIL" on line 2 fires `fail: bp`, which must rewind to
+        // fallback-ctx and re-parse line 1 under that alternative.
+        // After parsing line 2, `replayed` must contain corrected ops for
+        // line 1 (with the `fallback.content` scope, not a `try.*` scope).
+        let syntax_str = r#"
+name: CrossLineTest
+scope: source.clt
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+      # consume newline, stay in context for the next line
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: triggers the branch, tries try-ctx first.
+        // try-ctx consumes the newline and stays active.
+        let out1 = state
+            .parse_line("TRY\n", &ss)
+            .expect("parse line 1 failed");
+        // replayed is empty on line 1 (no cross-line fail yet)
+        assert!(
+            out1.replayed.is_empty(),
+            "line 1: expected no replayed ops, got {:?}",
+            out1.replayed
+        );
+
+        // Line 2: "FAIL" triggers fail: bp — cross-line backtrack.
+        // `replayed` must contain re-parsed ops for line 1 under fallback-ctx.
+        let out2 = state
+            .parse_line("FAIL\n", &ss)
+            .expect("parse line 2 failed");
+        assert_eq!(
+            out2.replayed.len(),
+            1,
+            "expected exactly one replayed line, got {:?}",
+            out2.replayed
+        );
+        let has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
+        });
+        assert!(
+            has_fallback,
+            "expected fallback.content scope in replayed line 1 ops, got: {:?}",
+            out2.replayed[0]
+        );
+        // The try.word scope must NOT appear in the replayed ops.
+        let has_try_word = out2.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
+        });
+        assert!(
+            !has_try_word,
+            "try.word must not appear in replayed ops after backtrack, got: {:?}",
+            out2.replayed[0]
         );
     }
 }

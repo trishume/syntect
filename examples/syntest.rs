@@ -274,7 +274,8 @@ fn test_file(
                     current_line_number, stack, state
                 );
             }
-            let ops = state.parse_line(&line, ss).unwrap();
+            let output = state.parse_line(&line, ss).unwrap();
+            let ops = output.ops;
             if out_opts.debug && !line_only_has_assertion {
                 if ops.is_empty() && !line.is_empty() {
                     println!("no operations for this line...");

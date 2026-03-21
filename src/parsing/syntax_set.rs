@@ -1357,7 +1357,8 @@ mod tests {
         let mut parse_state = ParseState::new(syntax);
         let ops = parse_state
             .parse_line("a go_b b", &cloned_syntax_set)
-            .expect("#[cfg(test)]");
+            .expect("#[cfg(test)]")
+            .ops;
         let expected = (7, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1410,7 +1411,8 @@ mod tests {
         let mut parse_state = ParseState::new(syntax);
         let ops = parse_state
             .parse_line("c go_a a go_b b", &syntax_set)
-            .expect("#[cfg(test)]");
+            .expect("#[cfg(test)]")
+            .ops;
         let expected = (14, ScopeStackOp::Push(Scope::new("b").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1463,7 +1465,8 @@ mod tests {
         let mut parse_state = ParseState::new(syntax);
         let ops = parse_state
             .parse_line("z go_x x leave_x z", &syntax_set)
-            .unwrap();
+            .unwrap()
+            .ops;
         let expected_ops = vec![
             (0, ScopeStackOp::Push(Scope::new("source.z").unwrap())),
             (0, ScopeStackOp::Push(Scope::new("z").unwrap())),
@@ -1521,6 +1524,7 @@ mod tests {
                 parse_state
                     .parse_line(line, &syntax_set)
                     .expect("#[cfg(test)]")
+                    .ops
             })
             .collect();
 
@@ -1614,7 +1618,8 @@ mod tests {
         let mut parse_state = ParseState::new(syntax);
         let ops = parse_state
             .parse_line("c go_a a", &syntax_set)
-            .expect("msg");
+            .expect("msg")
+            .ops;
         let expected = (7, ScopeStackOp::Push(Scope::new("a2").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1631,7 +1636,8 @@ mod tests {
         let mut parse_state = ParseState::new(syntax);
         let ops = parse_state
             .parse_line("# test\n", &syntax_set)
-            .expect("#[cfg(test)]");
+            .expect("#[cfg(test)]")
+            .ops;
         let expected = (
             0,
             ScopeStackOp::Push(Scope::new("comment.line.number-sign.yaml").unwrap()),
@@ -1879,7 +1885,8 @@ mod tests {
         let mut parse_state = ParseState::new(syntax);
         let ops = parse_state
             .parse_line("override\n", &ss)
-            .expect("parse failed");
+            .expect("parse failed")
+            .ops;
         // Should match child's 'override' keyword, not base's ident
         let expected = (
             0,
@@ -1919,7 +1926,8 @@ mod tests {
         // 'keyword' should match the child's pattern (prepended, so first in list)
         let ops = parse_state
             .parse_line("keyword\n", &ss)
-            .expect("parse failed");
+            .expect("parse failed")
+            .ops;
         let expected = (0, ScopeStackOp::Push(Scope::new("keyword.child").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -1953,7 +1961,7 @@ mod tests {
         let syntax = ss.find_syntax_by_name("Child").unwrap();
         let mut parse_state = ParseState::new(syntax);
         // 'abc' should still match base's ident pattern (it comes first since child is appended)
-        let ops = parse_state.parse_line("abc\n", &ss).expect("parse failed");
+        let ops = parse_state.parse_line("abc\n", &ss).expect("parse failed").ops;
         let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -2000,7 +2008,7 @@ mod tests {
         let syntax = ss.find_syntax_by_name("Child").unwrap();
         let mut parse_state = ParseState::new(syntax);
         // Lowercase should NOT match (child overrides ident to uppercase only)
-        let ops = parse_state.parse_line("ABC\n", &ss).expect("parse failed");
+        let ops = parse_state.parse_line("ABC\n", &ss).expect("parse failed").ops;
         let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
@@ -2427,7 +2435,7 @@ mod tests {
 
         let syntax = ss.find_syntax_by_name("V2ClearScopes").unwrap();
         let mut state = ParseState::new(syntax);
-        let ops = state.parse_line("gox\n", &ss).unwrap();
+        let ops = state.parse_line("gox\n", &ss).unwrap().ops;
 
         // After "go" sets to "cleared" which has clear_scopes: true,
         // the source.v2clearscopes scope should be cleared before "x" is matched
@@ -2487,7 +2495,7 @@ mod tests {
 
         let syntax = ss.find_syntax_by_name("V2Host").unwrap();
         let mut state = ParseState::new(syntax);
-        let ops = state.parse_line("<<x>>\n", &ss).unwrap();
+        let ops = state.parse_line("<<x>>\n", &ss).unwrap().ops;
 
         // Build scope stack to check what scopes are active when "x" is matched
         let mut scope_stack = ScopeStack::new();
@@ -2569,7 +2577,7 @@ mod tests {
         let syntax = ss.find_syntax_by_name("V2SetMCS").unwrap();
         let mut state = ParseState::new(syntax);
         // "go" is at positions [0, 2); check at position 0 (inside the matched text)
-        let ops = state.parse_line("go\n", &ss).unwrap();
+        let ops = state.parse_line("go\n", &ss).unwrap().ops;
         let v2_scopes = scopes_at_pos(&ops, 0);
 
         // v2: the matched text 'go' should NOT have meta.content.main
@@ -2606,7 +2614,7 @@ mod tests {
 
         let syntax2 = ss2.find_syntax_by_name("V1SetMCS").unwrap();
         let mut state2 = ParseState::new(syntax2);
-        let ops2 = state2.parse_line("go\n", &ss2).unwrap();
+        let ops2 = state2.parse_line("go\n", &ss2).unwrap().ops;
         let v1_scopes = scopes_at_pos(&ops2, 0);
 
         // v1: the matched text 'go' SHOULD have meta.content.main
@@ -2666,7 +2674,7 @@ mod tests {
         // "<<x>>" — '<<' at [0,2], 'x' at [2,3], '>>' at [3,5]
         let syntax = ss.find_syntax_by_name("V2EmbedMeta").unwrap();
         let mut state = ParseState::new(syntax);
-        let ops = state.parse_line("<<x>>\n", &ss).unwrap();
+        let ops = state.parse_line("<<x>>\n", &ss).unwrap().ops;
 
         // Build scope stack at position 3 (start of '>>' escape text)
         let mut stack = ScopeStack::new();
@@ -2726,7 +2734,7 @@ mod tests {
 
         let syntax = ss.find_syntax_by_name("V2MultiClear").unwrap();
         let mut state = ParseState::new(syntax);
-        let ops = state.parse_line("go\n", &ss).unwrap();
+        let ops = state.parse_line("go\n", &ss).unwrap().ops;
 
         // Count Clear ops in the result
         let clear_ops: Vec<_> = ops
@@ -2785,7 +2793,7 @@ mod tests {
 
         let syntax2 = ss2.find_syntax_by_name("V1MultiClear").unwrap();
         let mut state2 = ParseState::new(syntax2);
-        let ops2 = state2.parse_line("go\n", &ss2).unwrap();
+        let ops2 = state2.parse_line("go\n", &ss2).unwrap().ops;
 
         let v1_clear_ops: Vec<_> = ops2
             .iter()
@@ -2833,7 +2841,7 @@ mod tests {
         let syntax = ss.find_syntax_by_name("CaptureOrder").unwrap();
         let mut state = ParseState::new(syntax);
         // "ab" — capture 1 (outer) matches [0,2], capture 2 (inner) matches [1,2]
-        let ops = state.parse_line("ab\n", &ss).unwrap();
+        let ops = state.parse_line("ab\n", &ss).unwrap().ops;
 
         let outer_scope = Scope::new("outer.scope").unwrap();
         let inner_scope = Scope::new("inner.scope").unwrap();
