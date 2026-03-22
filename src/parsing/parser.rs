@@ -2579,13 +2579,35 @@ contexts:
         let syntax = SyntaxDefinition::load_from_str(BRANCH_SYNTAX, true, None).unwrap();
         let ss = link(syntax);
         let mut state = ParseState::new(&ss.syntaxes()[0]);
-        let ops = ops(&mut state, "let hello;", &ss);
-        let states = stack_states(ops);
+        let raw_ops = ops(&mut state, "let hello;", &ss);
+
+        // After backtracking, keyword.declaration must be absent (ops.truncate removes it)
+        let states = stack_states(raw_ops.clone());
+        assert!(
+            !states.iter().any(|s| s.contains("keyword.declaration")),
+            "keyword.declaration should be absent after backtrack, got: {:?}",
+            states
+        );
+
         // After backtracking, should use generic-stmt
         assert!(
             states.iter().any(|s| s.contains("string.unquoted")),
             "Expected string.unquoted scope after backtrack, got: {:?}",
             states
+        );
+
+        // The string.unquoted push must start at position 0 (covers "let hello", not just "hello")
+        let unquoted_pos = raw_ops.iter().find_map(|(pos, op)| {
+            match op {
+                ScopeStackOp::Push(s) if format!("{:?}", s).contains("string.unquoted") => Some(*pos),
+                _ => None,
+            }
+        });
+        assert_eq!(
+            unquoted_pos,
+            Some(0),
+            "string.unquoted should start at position 0 after rewind, got: {:?}",
+            unquoted_pos
         );
     }
 
@@ -2905,27 +2927,29 @@ contexts:
 
     #[test]
     fn branch_stack_depth_invalidation() {
-        // If the stack shrinks below the branch point's snapshot depth
-        // (because the context that contained the branch was popped),
-        // `fail` should be a no-op.
+        // Test two scenarios:
+        // 1. fail fires when stack depth == bp depth (should succeed)
+        // 2. fail fires when stack depth < bp depth (should be a no-op)
         let syntax_str = r#"
 name: DepthTest
 scope: source.depth-test
 contexts:
   main:
-    - match: 'GO'
+    - match: '(?=\S)'
       branch_point: bp
       branch: [try-ctx, fallback-ctx]
-    - match: 'FAIL'
-      fail: bp
-    - match: '.*'
-      scope: main.other
   try-ctx:
     - match: 'OK'
       scope: try.ok
-      pop: true
+      set: post-try
     - match: '(?=\S)'
       fail: bp
+  post-try:
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: post.word
+      pop: true
   fallback-ctx:
     - match: '.*'
       scope: fallback.content
@@ -2933,24 +2957,65 @@ contexts:
 "#;
         let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
         let ss = link(syntax);
-        let mut state = ParseState::new(&ss.syntaxes()[0]);
 
-        // "GO OK " — GO triggers branch (pushes try-ctx, deepening stack),
-        // OK matches and pops try-ctx back to main (stack shrinks).
-        // Then "FAIL" fires in main — stack is shallower than at branch creation.
-        let line_ops = ops(&mut state, "GO OK FAIL\n", &ss);
+        // Scenario 1: fail at equal depth should succeed.
+        // OK matches in try-ctx, `set` to post-try (depth unchanged since set = pop+push).
+        // FAIL fires in post-try at the same depth as bp → backtrack succeeds.
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let line_ops = ops(&mut state, "OK FAIL\n", &ss);
         let states = stack_states(line_ops);
-        // fail was a no-op, so fallback.content should NOT appear
         assert!(
-            !states.iter().any(|s| s.contains("fallback.content")),
-            "fail should be a no-op when stack is shallower than branch point, got: {:?}",
+            states.iter().any(|s| s.contains("fallback.content")),
+            "fail at equal depth should trigger backtrack to fallback, got: {:?}",
             states
         );
-        // try.ok SHOULD appear (the first alternative succeeded)
         assert!(
-            states.iter().any(|s| s.contains("try.ok")),
-            "expected try.ok from first alternative, got: {:?}",
+            !states.iter().any(|s| s.contains("try.ok")),
+            "try.ok should be absent after backtrack, got: {:?}",
             states
+        );
+
+        // Scenario 2: fail at shallower depth should be a no-op.
+        // Use a syntax where the branch context pops before fail fires.
+        let syntax_str2 = r#"
+name: DepthTest2
+scope: source.depth-test2
+contexts:
+  main:
+    - match: 'GO'
+      branch_point: bp
+      branch: [try-ctx2, fallback-ctx2]
+    - match: 'FAIL'
+      fail: bp
+    - match: '.*'
+      scope: main.other
+  try-ctx2:
+    - match: 'OK'
+      scope: try.ok2
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+  fallback-ctx2:
+    - match: '.*'
+      scope: fallback.content2
+      pop: true
+"#;
+        let syntax2 = SyntaxDefinition::load_from_str(syntax_str2, true, None).unwrap();
+        let ss2 = link(syntax2);
+        let mut state2 = ParseState::new(&ss2.syntaxes()[0]);
+        // GO pushes try-ctx2 (depth increases), OK pops back to main (depth decreases).
+        // FAIL fires in main at depth < bp depth → no-op.
+        let line_ops2 = ops(&mut state2, "GO OK FAIL\n", &ss2);
+        let states2 = stack_states(line_ops2);
+        assert!(
+            !states2.iter().any(|s| s.contains("fallback.content2")),
+            "fail should be a no-op when stack is shallower than branch point, got: {:?}",
+            states2
+        );
+        assert!(
+            states2.iter().any(|s| s.contains("try.ok2")),
+            "expected try.ok2 from first alternative, got: {:?}",
+            states2
         );
     }
 
@@ -3116,6 +3181,84 @@ contexts:
             !current_has_try,
             "current-line ops should not contain try.* scopes after cross-line fail, got: {:?}",
             out4.ops
+        );
+    }
+
+    #[test]
+    fn branch_cross_line_fail_with_preceding_ops() {
+        // When the fail-triggering line has matchable content BEFORE the fail keyword,
+        // ops are non-empty and start > 0 when fail fires. After cross-line backtrack,
+        // those stale ops must be cleared and the line re-parsed from position 0.
+        let syntax_str = r#"
+name: PrecedingOpsTest
+scope: source.preceding-ops
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+      # stay in context across lines
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: start the branch
+        let out1 = state.parse_line("TRY\n", &ss).expect("line 1");
+        assert!(out1.replayed.is_empty());
+
+        // Line 2: "stuff FAIL" — "stuff" matches try.word (ops non-empty, start advances)
+        // then FAIL triggers cross-line backtrack.
+        let out2 = state.parse_line("stuff FAIL\n", &ss).expect("line 2");
+
+        // Should have replayed line 1 (TRY\n)
+        assert_eq!(
+            out2.replayed.len(),
+            1,
+            "expected 1 replayed line, got {}",
+            out2.replayed.len()
+        );
+
+        // Replayed line should have fallback.content, not try.word
+        let replay_has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
+        });
+        assert!(
+            replay_has_fallback,
+            "replayed line should have fallback.content, got: {:?}",
+            out2.replayed[0]
+        );
+
+        // Current-line ops must NOT contain try.word (stale ops were cleared)
+        let current_has_try = out2.ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
+        });
+        assert!(
+            !current_has_try,
+            "current-line ops should not contain try.word after cross-line fail, got: {:?}",
+            out2.ops
+        );
+
+        // Current-line ops should have main.other (re-parsed from position 0)
+        let current_has_main = out2.ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("main.other"))
+        });
+        assert!(
+            current_has_main,
+            "current-line should be re-parsed as main.other from position 0, got: {:?}",
+            out2.ops
         );
     }
 }
