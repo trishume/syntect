@@ -2788,6 +2788,15 @@ contexts:
             "try.word must not appear in replayed ops after backtrack, got: {:?}",
             out2.replayed[0]
         );
+        // Verify current-line ops are clean (ops.clear() fired before re-parse)
+        let current_has_try = out2.ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try"))
+        });
+        assert!(
+            !current_has_try,
+            "current-line ops should not contain try.* scopes after cross-line fail, got: {:?}",
+            out2.ops
+        );
     }
 
     #[test]
@@ -2835,6 +2844,62 @@ contexts:
             out_fail.replayed.is_empty(),
             "branch point should have expired, but got replayed ops: {:?}",
             out_fail.replayed
+        );
+    }
+
+    #[test]
+    fn branch_point_still_valid_at_128_lines() {
+        // A branch point created on line 0 should still be alive when
+        // exactly 128 lines have elapsed (boundary: 128 - 0 = 128 <= 128).
+        let syntax_str = r#"
+name: ExpiryTest
+scope: source.expiry-test
+contexts:
+  main:
+    - match: 'START'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: filler.expiry-test
+  try-ctx:
+    - match: '\n'
+      # consume newlines, staying in context
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.matched
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        let out0 = state.parse_line("START\n", &ss).expect("parse START");
+        assert!(out0.replayed.is_empty());
+
+        // Feed exactly 127 filler lines so that FAIL lands on cur_line=128
+        // (128 - 0 = 128 <= 128, so the branch point is still valid)
+        for _ in 0..127 {
+            let _ = state.parse_line("\n", &ss).expect("parse filler");
+        }
+
+        // Fire fail — branch point should still be alive at the boundary
+        let out_fail = state.parse_line("FAIL\n", &ss).expect("parse FAIL");
+        assert!(
+            !out_fail.replayed.is_empty(),
+            "branch point should still be valid at exactly 128 lines, but got no replayed ops"
+        );
+        let has_fallback = out_fail.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
+        });
+        assert!(
+            has_fallback,
+            "expected fallback.content in replayed ops, got: {:?}",
+            out_fail.replayed[0]
         );
     }
 
@@ -3043,5 +3108,14 @@ contexts:
                 i, line_ops
             );
         }
+        // Verify current-line ops are clean (ops.clear() fired before re-parse)
+        let current_has_try = out4.ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try"))
+        });
+        assert!(
+            !current_has_try,
+            "current-line ops should not contain try.* scopes after cross-line fail, got: {:?}",
+            out4.ops
+        );
     }
 }
