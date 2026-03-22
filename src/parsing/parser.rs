@@ -2789,4 +2789,259 @@ contexts:
             out2.replayed[0]
         );
     }
+
+    #[test]
+    fn branch_point_expiry_after_128_lines() {
+        // A branch point created on line 0 should be silently discarded
+        // when `fail` fires after 129+ lines have elapsed.
+        let syntax_str = r#"
+name: ExpiryTest
+scope: source.expiry-test
+contexts:
+  main:
+    - match: 'START'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: filler.expiry-test
+  try-ctx:
+    - match: '\n'
+      # consume newlines, staying in context
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.matched
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        let out0 = state.parse_line("START\n", &ss).expect("parse START");
+        assert!(out0.replayed.is_empty());
+
+        // Feed 129 empty lines to exceed the 128-line limit
+        for _ in 0..129 {
+            let _ = state.parse_line("\n", &ss).expect("parse filler");
+        }
+
+        // Now fire fail — should be a no-op (branch point expired)
+        let out_fail = state.parse_line("FAIL\n", &ss).expect("parse FAIL");
+        assert!(
+            out_fail.replayed.is_empty(),
+            "branch point should have expired, but got replayed ops: {:?}",
+            out_fail.replayed
+        );
+    }
+
+    #[test]
+    fn branch_stack_depth_invalidation() {
+        // If the stack shrinks below the branch point's snapshot depth
+        // (because the context that contained the branch was popped),
+        // `fail` should be a no-op.
+        let syntax_str = r#"
+name: DepthTest
+scope: source.depth-test
+contexts:
+  main:
+    - match: 'GO'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: 'FAIL'
+      fail: bp
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: 'OK'
+      scope: try.ok
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // "GO OK " — GO triggers branch (pushes try-ctx, deepening stack),
+        // OK matches and pops try-ctx back to main (stack shrinks).
+        // Then "FAIL" fires in main — stack is shallower than at branch creation.
+        let line_ops = ops(&mut state, "GO OK FAIL\n", &ss);
+        let states = stack_states(line_ops);
+        // fail was a no-op, so fallback.content should NOT appear
+        assert!(
+            !states.iter().any(|s| s.contains("fallback.content")),
+            "fail should be a no-op when stack is shallower than branch point, got: {:?}",
+            states
+        );
+        // try.ok SHOULD appear (the first alternative succeeded)
+        assert!(
+            states.iter().any(|s| s.contains("try.ok")),
+            "expected try.ok from first alternative, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_nested_overlapping_branch_points() {
+        // Two branch points active simultaneously. The inner one fails,
+        // the outer should remain valid.
+        let syntax_str = r#"
+name: NestedTest
+scope: source.nested-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: outer
+      branch: [outer-try, outer-fallback]
+  outer-try:
+    - match: 'A'
+      scope: outer.a
+      set: inner-branch
+    - match: '(?=\S)'
+      fail: outer
+  inner-branch:
+    - match: '(?=\S)'
+      branch_point: inner
+      branch: [inner-try, inner-fallback]
+  inner-try:
+    - match: 'X'
+      scope: inner.x
+      pop: true
+    - match: '(?=\S)'
+      fail: inner
+  inner-fallback:
+    - match: '\w+'
+      scope: inner.fallback
+      pop: true
+  outer-fallback:
+    - match: '.*'
+      scope: outer.fallback
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // "A B" — A matches outer-try, B fails inner → inner-fallback matches B
+        let line_ops = ops(&mut state, "A B\n", &ss);
+        let states = stack_states(line_ops);
+        assert!(
+            states.iter().any(|s| s.contains("inner.fallback")),
+            "expected inner.fallback after inner branch fail, got: {:?}",
+            states
+        );
+        assert!(
+            !states.iter().any(|s| s.contains("outer.fallback")),
+            "outer branch should not have failed, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_fail_nonexistent_name() {
+        // `fail: nonexistent` should be a silent no-op — no panic, parsing continues.
+        let syntax_str = r#"
+name: NoNameTest
+scope: source.noname-test
+contexts:
+  main:
+    - match: '\w+'
+      scope: word.noname-test
+    - match: '(?=;)'
+      fail: nonexistent
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // The key assertion is that this doesn't panic
+        let line_ops = ops(&mut state, "hello;\n", &ss);
+        let states = stack_states(line_ops);
+        assert!(
+            states.iter().any(|s| s.contains("word.noname-test")),
+            "expected word.noname-test, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_cross_line_multi_replay() {
+        // When `fail` fires after 3+ buffered lines, all of them should be
+        // replayed correctly under the fallback alternative.
+        let syntax_str = r#"
+name: MultiReplayTest
+scope: source.multi-replay
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+      # stay in context
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        let out1 = state.parse_line("TRY\n", &ss).expect("line 1");
+        assert!(out1.replayed.is_empty());
+
+        let out2 = state.parse_line("aaa\n", &ss).expect("line 2");
+        assert!(out2.replayed.is_empty());
+
+        let out3 = state.parse_line("bbb\n", &ss).expect("line 3");
+        assert!(out3.replayed.is_empty());
+
+        // Line 4: "FAIL" triggers cross-line backtrack; lines 1-3 should be replayed
+        let out4 = state.parse_line("FAIL\n", &ss).expect("line 4");
+        assert_eq!(
+            out4.replayed.len(),
+            3,
+            "expected 3 replayed lines (lines 1-3), got {:?}",
+            out4.replayed
+        );
+
+        // The first replayed line (replay of "TRY\n") should have fallback.content
+        // because fallback-ctx matches `.*`. After that pop, lines 2-3 are parsed
+        // by main, which matches `.*` → main.other.
+        let has_fallback = out4.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
+        });
+        assert!(
+            has_fallback,
+            "replayed line 0 missing fallback.content, got: {:?}",
+            out4.replayed[0]
+        );
+
+        // No replayed line should have try.word (all are under fallback path)
+        for (i, line_ops) in out4.replayed.iter().enumerate() {
+            let has_try_word = line_ops.iter().any(|(_, op)| {
+                matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
+            });
+            assert!(
+                !has_try_word,
+                "replayed line {} should not have try.word, got: {:?}",
+                i, line_ops
+            );
+        }
+    }
 }
