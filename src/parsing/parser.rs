@@ -298,6 +298,14 @@ impl ParseState {
         Ok(ParseLineOutput { ops, replayed })
     }
 
+    /// Returns `true` when the parser is inside a `branch_point` and the
+    /// result of `parse_line` may be revised by a future `fail` action.
+    /// Once the branch resolves (or if no branch was entered), this returns
+    /// `false` and all ops emitted so far are final.
+    pub fn is_speculative(&self) -> bool {
+        !self.branch_points.is_empty()
+    }
+
     /// Inner parsing loop: processes `line` with the current parser state and
     /// returns the scope-stack operations.  Does **not** touch `pending_lines`
     /// or `flushed_ops`, so it is safe to call recursively from `handle_fail`

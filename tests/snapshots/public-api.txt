@@ -1006,6 +1006,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ParseLineOutp
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseLineOutput
 pub struct syntect::parsing::ParseState
 impl syntect::parsing::ParseState
+pub fn syntect::parsing::ParseState::is_speculative(&self) -> bool
 pub fn syntect::parsing::ParseState::new(syntax: &syntect::parsing::SyntaxReference) -> syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::parse_line(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<syntect::parsing::ParseLineOutput, syntect::parsing::ParsingError>
 impl core::clone::Clone for syntect::parsing::ParseState

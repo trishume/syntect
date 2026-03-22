@@ -86,11 +86,48 @@ struct RangeTestResult {
     success: bool,
 }
 
+/// A failure message buffered until the parser commits (leaves speculative state).
+struct BufferedFailureMessage {
+    selector_text: String,
+    assertion_line_number: usize,
+    test_against_line_number: usize,
+    column_begin: usize,
+    column_end: usize,
+    text: String,
+    scope: Vec<Scope>,
+}
+
+fn print_failure(msg: &BufferedFailureMessage) {
+    println!(
+        "  Assertion selector {:?} \
+        from line {:?} failed against line {:?}, column range {:?}-{:?} \
+        (with text {:?}) \
+        has scope {:?}",
+        msg.selector_text,
+        msg.assertion_line_number,
+        msg.test_against_line_number,
+        msg.column_begin,
+        msg.column_end,
+        msg.text,
+        msg.scope,
+    );
+}
+
+fn flush_pending_messages(messages: &mut Vec<BufferedFailureMessage>, summary: bool) {
+    if !summary {
+        for msg in messages.iter() {
+            print_failure(msg);
+        }
+    }
+    messages.clear();
+}
+
 /// Assertion details buffered for potential re-evaluation after cross-line backtracking.
 struct BufferedAssertion {
     begin_char: usize,
     end_char: usize,
     scope_selector_text: String,
+    assertion_line_number: usize,
 }
 
 /// Tracks state for a non-assertion line so its assertions can be re-evaluated
@@ -250,6 +287,9 @@ fn test_file(
     let mut parsed_line_buffer: Vec<ParsedLineRecord> = Vec::new();
     let mut current_test_line_buffer_idx: Option<usize> = None;
 
+    // Failure messages deferred until the parser commits (exits speculative state)
+    let mut pending_messages: Vec<BufferedFailureMessage> = Vec::new();
+
     loop {
         // over lines of file, starting with the header line
         let mut line_only_has_assertion = false;
@@ -265,25 +305,20 @@ fn test_file(
                     .skip(failure.column_begin)
                     .take(length)
                     .collect();
-                if !out_opts.summary {
-                    println!(
-                        "  Assertion selector {:?} \
-                        from line {:?} failed against line {:?}, column range {:?}-{:?} \
-                        (with text {:?}) \
-                        has scope {:?}",
-                        assertion.scope_selector_text.trim(),
-                        current_line_number,
-                        test_against_line_number,
-                        failure.column_begin,
-                        failure.column_end,
-                        text,
-                        scopes_on_line_being_tested
-                            .iter()
-                            .find(|s| s.char_start + s.text_len > failure.column_begin)
-                            .unwrap_or_else(|| scopes_on_line_being_tested.last().unwrap())
-                            .scope
-                    );
-                }
+                pending_messages.push(BufferedFailureMessage {
+                    selector_text: assertion.scope_selector_text.trim().to_string(),
+                    assertion_line_number: current_line_number,
+                    test_against_line_number,
+                    column_begin: failure.column_begin,
+                    column_end: failure.column_end,
+                    text,
+                    scope: scopes_on_line_being_tested
+                        .iter()
+                        .find(|s| s.char_start + s.text_len > failure.column_begin)
+                        .unwrap_or_else(|| scopes_on_line_being_tested.last().unwrap())
+                        .scope
+                        .clone(),
+                });
                 assertion_failures += failure.column_end - failure.column_begin;
                 current_assertion_failures += failure.column_end - failure.column_begin;
             }
@@ -294,6 +329,7 @@ fn test_file(
                         begin_char: assertion.begin_char,
                         end_char: assertion.end_char,
                         scope_selector_text: assertion.scope_selector_text.to_string(),
+                        assertion_line_number: current_line_number,
                     });
                     data.assertion_failures += current_assertion_failures;
                 }
@@ -330,6 +366,15 @@ fn test_file(
                 }
                 let buf_len = parsed_line_buffer.len();
                 let start_idx = buf_len - replayed.len();
+
+                // Collect replayed line numbers for pruning pending messages
+                let replayed_line_numbers: Vec<usize> = (start_idx..buf_len)
+                    .map(|i| parsed_line_buffer[i].line_number)
+                    .collect();
+                // Remove pending messages whose test_against_line_number
+                // matches any replayed line — they will be regenerated below
+                pending_messages
+                    .retain(|m| !replayed_line_numbers.contains(&m.test_against_line_number));
 
                 // Reset stack to the state before the first replayed line
                 stack = parsed_line_buffer[start_idx].stack_before.clone();
@@ -369,6 +414,27 @@ fn test_file(
                                 };
                                 let result = process_assertions(&temp_assertion, &new_scoped);
                                 for failure in result.iter().filter(|r| !r.success) {
+                                    let length = failure.column_end - failure.column_begin;
+                                    let text: String = record
+                                        .line_text
+                                        .chars()
+                                        .skip(failure.column_begin)
+                                        .take(length)
+                                        .collect();
+                                    pending_messages.push(BufferedFailureMessage {
+                                        selector_text: buffered.scope_selector_text.trim().to_string(),
+                                        assertion_line_number: buffered.assertion_line_number,
+                                        test_against_line_number: record.line_number,
+                                        column_begin: failure.column_begin,
+                                        column_end: failure.column_end,
+                                        text,
+                                        scope: new_scoped
+                                            .iter()
+                                            .find(|s| s.char_start + s.text_len > failure.column_begin)
+                                            .unwrap_or_else(|| new_scoped.last().unwrap())
+                                            .scope
+                                            .clone(),
+                                    });
                                     new_failures += failure.column_end - failure.column_begin;
                                 }
                             }
@@ -430,6 +496,11 @@ fn test_file(
             if !line_has_assertion {
                 current_test_line_buffer_idx = Some(parsed_line_buffer.len() - 1);
             }
+
+            // Flush buffered failure messages once the parser commits
+            if !state.is_speculative() {
+                flush_pending_messages(&mut pending_messages, out_opts.summary);
+            }
         }
 
         line.clear();
@@ -439,6 +510,9 @@ fn test_file(
         }
         line = line.replace('\r', "");
     }
+    // Flush any remaining buffered messages at EOF — parsing is done
+    flush_pending_messages(&mut pending_messages, out_opts.summary);
+
     let res = if assertion_failures > 0 {
         Ok(SyntaxTestFileResult::FailedAssertions(
             assertion_failures,
