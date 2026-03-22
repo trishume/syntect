@@ -10,7 +10,7 @@
 
 use syntect::easy::ScopeRegionIterator;
 use syntect::highlighting::ScopeSelectors;
-use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder};
+use syntect::parsing::{ParseLineOutput, ParseState, Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder};
 
 use std::cmp::{max, min};
 use std::fs::File;
@@ -84,6 +84,29 @@ struct RangeTestResult {
     column_begin: usize,
     column_end: usize,
     success: bool,
+}
+
+/// Assertion details buffered for potential re-evaluation after cross-line backtracking.
+struct BufferedAssertion {
+    begin_char: usize,
+    end_char: usize,
+    scope_selector_text: String,
+}
+
+/// Tracks state for a non-assertion line so its assertions can be re-evaluated
+/// if cross-line `fail` replays corrected ops.
+struct NonAssertionData {
+    assertions: Vec<BufferedAssertion>,
+    assertion_failures: usize,
+}
+
+/// Record of a line that was sent to `parse_line`, kept for replay handling.
+struct ParsedLineRecord {
+    line_text: String,
+    line_number: usize,
+    stack_before: ScopeStack,
+    /// Present only for non-assertion lines.
+    non_assertion_data: Option<NonAssertionData>,
 }
 
 fn get_line_assertion_details<'a>(
@@ -223,6 +246,10 @@ fn test_file(
     let mut assertion_failures: usize = 0;
     let mut total_assertions: usize = 0;
 
+    // Buffer for handling cross-line backtracking (replayed ops)
+    let mut parsed_line_buffer: Vec<ParsedLineRecord> = Vec::new();
+    let mut current_test_line_buffer_idx: Option<usize> = None;
+
     loop {
         // over lines of file, starting with the header line
         let mut line_only_has_assertion = false;
@@ -230,6 +257,7 @@ fn test_file(
         if let Some(assertion) = get_line_assertion_details(testtoken_start, testtoken_end, &line) {
             let result = process_assertions(&assertion, &scopes_on_line_being_tested);
             total_assertions += assertion.end_char - assertion.begin_char;
+            let mut current_assertion_failures: usize = 0;
             for failure in result.iter().filter(|r| !r.success) {
                 let length = failure.column_end - failure.column_begin;
                 let text: String = previous_non_assertion_line
@@ -257,6 +285,18 @@ fn test_file(
                     );
                 }
                 assertion_failures += failure.column_end - failure.column_begin;
+                current_assertion_failures += failure.column_end - failure.column_begin;
+            }
+            // Buffer this assertion for re-evaluation if backtracking replays the target line
+            if let Some(idx) = current_test_line_buffer_idx {
+                if let Some(ref mut data) = parsed_line_buffer[idx].non_assertion_data {
+                    data.assertions.push(BufferedAssertion {
+                        begin_char: assertion.begin_char,
+                        end_char: assertion.end_char,
+                        scope_selector_text: assertion.scope_selector_text.to_string(),
+                    });
+                    data.assertion_failures += current_assertion_failures;
+                }
             }
             line_only_has_assertion = assertion.is_pure_assertion_line;
             line_has_assertion = true;
@@ -274,8 +314,77 @@ fn test_file(
                     current_line_number, stack, state
                 );
             }
+            let stack_before = stack.clone();
             let output = state.parse_line(&line, ss).unwrap();
-            let ops = output.ops;
+            let ParseLineOutput { ops, replayed } = output;
+
+            // Handle cross-line backtracking: when `replayed` is non-empty, the
+            // parser has corrected ops for previously-parsed lines. Re-evaluate
+            // any assertions that were tested against those lines.
+            if !replayed.is_empty() {
+                if out_opts.debug {
+                    println!(
+                        "  replayed {} line(s) due to cross-line backtracking",
+                        replayed.len()
+                    );
+                }
+                let buf_len = parsed_line_buffer.len();
+                let start_idx = buf_len - replayed.len();
+
+                // Reset stack to the state before the first replayed line
+                stack = parsed_line_buffer[start_idx].stack_before.clone();
+
+                for (i, replayed_ops) in replayed.iter().enumerate() {
+                    let record = &mut parsed_line_buffer[start_idx + i];
+                    let has_non_assertion = record.non_assertion_data.is_some();
+
+                    // Advance the stack through the corrected ops, building
+                    // scoped text for non-assertion lines
+                    let mut new_scoped = Vec::new();
+                    let mut col: usize = 0;
+                    for (s, op) in ScopeRegionIterator::new(replayed_ops, &record.line_text) {
+                        stack.apply(op).unwrap();
+                        if !s.is_empty() && has_non_assertion {
+                            let len = s.chars().count();
+                            new_scoped.push(ScopedText {
+                                char_start: col,
+                                text_len: len,
+                                scope: stack.as_slice().to_vec(),
+                            });
+                            col += len;
+                        }
+                    }
+
+                    if let Some(ref mut data) = record.non_assertion_data {
+                        if !data.assertions.is_empty() {
+                            // Re-evaluate all assertions against corrected scopes
+                            let old_failures = data.assertion_failures;
+                            let mut new_failures: usize = 0;
+                            for buffered in &data.assertions {
+                                let temp_assertion = AssertionRange {
+                                    begin_char: buffered.begin_char,
+                                    end_char: buffered.end_char,
+                                    scope_selector_text: &buffered.scope_selector_text,
+                                    is_pure_assertion_line: true,
+                                };
+                                let result = process_assertions(&temp_assertion, &new_scoped);
+                                for failure in result.iter().filter(|r| !r.success) {
+                                    new_failures += failure.column_end - failure.column_begin;
+                                }
+                            }
+                            assertion_failures = assertion_failures - old_failures + new_failures;
+                            data.assertion_failures = new_failures;
+                        }
+
+                        // Update scopes if this is the line currently being tested
+                        if record.line_number == test_against_line_number {
+                            scopes_on_line_being_tested = new_scoped;
+                            previous_non_assertion_line = record.line_text.clone();
+                        }
+                    }
+                }
+            }
+
             if out_opts.debug && !line_only_has_assertion {
                 if ops.is_empty() && !line.is_empty() {
                     println!("no operations for this line...");
@@ -301,6 +410,25 @@ fn test_file(
                     // TODO: warn when there are duplicate adjacent (non-meta?) scopes, as it is almost always undesired
                     col += len;
                 }
+            }
+
+            // Buffer this parsed line for potential future replay
+            let non_assertion_data = if !line_has_assertion {
+                Some(NonAssertionData {
+                    assertions: Vec::new(),
+                    assertion_failures: 0,
+                })
+            } else {
+                None
+            };
+            parsed_line_buffer.push(ParsedLineRecord {
+                line_text: line.to_string(),
+                line_number: current_line_number,
+                stack_before,
+                non_assertion_data,
+            });
+            if !line_has_assertion {
+                current_test_line_buffer_idx = Some(parsed_line_buffer.len() - 1);
             }
         }
 
