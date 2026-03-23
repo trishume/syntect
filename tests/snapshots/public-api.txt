@@ -992,6 +992,7 @@ impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::MatchPower
 pub struct syntect::parsing::ParseLineOutput
 pub syntect::parsing::ParseLineOutput::ops: alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>
 pub syntect::parsing::ParseLineOutput::replayed: alloc::vec::Vec<alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>>
+pub syntect::parsing::ParseLineOutput::warnings: alloc::vec::Vec<alloc::string::String>
 impl core::clone::Clone for syntect::parsing::ParseLineOutput
 pub fn syntect::parsing::ParseLineOutput::clone(&self) -> syntect::parsing::ParseLineOutput
 impl core::default::Default for syntect::parsing::ParseLineOutput

@@ -70,6 +70,8 @@ pub struct ParseLineOutput {
     /// Ops for previously buffered lines that have now been corrected, in order.
     /// Non-empty only when a cross-line `fail` just resolved.
     pub replayed: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// Warnings collected during parsing (e.g. branch point expiry).
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -90,6 +92,8 @@ pub struct ParseState {
     /// Corrected ops produced by a cross-line `fail` replay, to be returned
     /// as `ParseLineOutput::replayed` at the end of `parse_line`.
     flushed_ops: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// Warnings accumulated during parsing, drained into `ParseLineOutput`.
+    warnings: Vec<String>,
 }
 
 /// Snapshot of parser state at a branch point, used for backtracking.
@@ -244,6 +248,7 @@ impl ParseState {
             line_number: 0,
             pending_lines: Vec::new(),
             flushed_ops: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -277,8 +282,17 @@ impl ParseState {
 
         // Prune branch points older than 128 lines
         let cur_line = self.line_number;
-        self.branch_points
-            .retain(|bp| cur_line.saturating_sub(bp.line_number) <= 128);
+        let warnings = &mut self.warnings;
+        self.branch_points.retain(|bp| {
+            let alive = cur_line.saturating_sub(bp.line_number) <= 128;
+            if !alive {
+                warnings.push(format!(
+                    "branch point '{}' expired (exceeded 128-line rewind limit)",
+                    bp.name
+                ));
+            }
+            alive
+        });
         self.line_number += 1;
 
         let ops = self.parse_line_inner(line, syntax_set)?;
@@ -295,7 +309,9 @@ impl ParseState {
             self.pending_lines.clear();
         }
 
-        Ok(ParseLineOutput { ops, replayed })
+        let warnings = std::mem::take(&mut self.warnings);
+
+        Ok(ParseLineOutput { ops, replayed, warnings })
     }
 
     /// Returns `true` when the parser is inside a `branch_point` and the
@@ -763,7 +779,11 @@ impl ParseState {
 
         // Check validity: not >128 lines old
         if cur_line.saturating_sub(bp.line_number) > 128 {
-            self.branch_points.remove(bp_index);
+            let bp = self.branch_points.remove(bp_index);
+            self.warnings.push(format!(
+                "branch point '{}' expired (exceeded 128-line rewind limit)",
+                bp.name
+            ));
             return Ok(false);
         }
 
@@ -2821,8 +2841,8 @@ contexts:
 
     #[test]
     fn branch_point_expiry_after_128_lines() {
-        // A branch point created on line 0 should be silently discarded
-        // when `fail` fires after 129+ lines have elapsed.
+        // A branch point created on line 0 should be discarded when `fail`
+        // fires after 129+ lines have elapsed, and a warning should be emitted.
         let syntax_str = r#"
 name: ExpiryTest
 scope: source.expiry-test
@@ -2853,17 +2873,26 @@ contexts:
         let out0 = state.parse_line("START\n", &ss).expect("parse START");
         assert!(out0.replayed.is_empty());
 
-        // Feed 129 empty lines to exceed the 128-line limit
+        // Feed 129 empty lines to exceed the 128-line limit.
+        // The pruning warning fires during the filler line that crosses the threshold.
+        let mut all_warnings: Vec<String> = Vec::new();
         for _ in 0..129 {
-            let _ = state.parse_line("\n", &ss).expect("parse filler");
+            let out = state.parse_line("\n", &ss).expect("parse filler");
+            all_warnings.extend(out.warnings);
         }
 
         // Now fire fail — should be a no-op (branch point expired)
         let out_fail = state.parse_line("FAIL\n", &ss).expect("parse FAIL");
+        all_warnings.extend(out_fail.warnings);
         assert!(
             out_fail.replayed.is_empty(),
             "branch point should have expired, but got replayed ops: {:?}",
             out_fail.replayed
+        );
+        assert!(
+            all_warnings.iter().any(|w| w.contains("expired") && w.contains("bp")),
+            "expected a warning about branch point expiry, got: {:?}",
+            all_warnings
         );
     }
 
@@ -2903,15 +2932,23 @@ contexts:
 
         // Feed exactly 127 filler lines so that FAIL lands on cur_line=128
         // (128 - 0 = 128 <= 128, so the branch point is still valid)
+        let mut all_warnings: Vec<String> = Vec::new();
         for _ in 0..127 {
-            let _ = state.parse_line("\n", &ss).expect("parse filler");
+            let out = state.parse_line("\n", &ss).expect("parse filler");
+            all_warnings.extend(out.warnings);
         }
 
         // Fire fail — branch point should still be alive at the boundary
         let out_fail = state.parse_line("FAIL\n", &ss).expect("parse FAIL");
+        all_warnings.extend(out_fail.warnings);
         assert!(
             !out_fail.replayed.is_empty(),
             "branch point should still be valid at exactly 128 lines, but got no replayed ops"
+        );
+        assert!(
+            all_warnings.is_empty(),
+            "expected no warnings at the 128-line boundary, got: {:?}",
+            all_warnings
         );
         let has_fallback = out_fail.replayed[0].iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))

@@ -354,7 +354,11 @@ fn test_file(
             }
             let stack_before = stack.clone();
             let output = state.parse_line(&line, ss).unwrap();
-            let ParseLineOutput { ops, replayed } = output;
+            let ParseLineOutput { ops, replayed, warnings } = output;
+
+            for warning in &warnings {
+                eprintln!("Warning: {}", warning);
+            }
 
             // Handle cross-line backtracking: when `replayed` is non-empty, the
             // parser has corrected ops for previously-parsed lines. Re-evaluate
