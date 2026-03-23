@@ -609,7 +609,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // .erb maps to HTML (Rails) which extends HTML.sublime-syntax; HTML uses regex `(?=[])` not supported by Oniguruma
     fn strings() {
         let ss = SyntaxSet::load_defaults_newlines();
         let ts = ThemeSet::load_defaults();
@@ -639,7 +638,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // testdata folder includes HTML.sublime-syntax which uses regex `(?=[])` not supported by Oniguruma, causing unresolved context references
     fn tricky_test_syntax() {
         // This syntax I wrote tests edge cases of prototypes
         // I verified the output HTML against what ST3 does with the same syntax and file

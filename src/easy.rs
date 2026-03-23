@@ -313,7 +313,6 @@ mod tests {
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
-    #[ignore] // .erb maps to HTML (Rails) which extends HTML.sublime-syntax; HTML uses regex `(?=[])` not supported by Oniguruma
     fn can_highlight_file() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
