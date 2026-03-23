@@ -1313,11 +1313,10 @@ mod tests {
 
         let ps = builder.build();
 
-        // JavaScript's first_line_match now uses {{shebang_language}} variable references
-        // which are not expanded by syntect in first_line_match, so this no longer matches.
-        // Use find_syntax_by_extension instead to verify JavaScript loads correctly.
         assert_eq!(
-            &ps.find_syntax_by_extension("js").unwrap().name,
+            &ps.find_syntax_by_first_line("#!/usr/bin/env node")
+                .unwrap()
+                .name,
             "JavaScript"
         );
         let rails_scope = Scope::new("source.ruby.rails").unwrap();
@@ -1326,9 +1325,8 @@ mod tests {
         assert_eq!(&ps.find_syntax_by_extension("rake").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_extension("RAKE").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
-        // C's first_line_match now requires `//` prefix for editorconfig mode lines
         assert_eq!(
-            &ps.find_syntax_by_first_line("// -*- Mode: C -*- such line")
+            &ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line")
                 .unwrap()
                 .name,
             "C"
@@ -1340,7 +1338,6 @@ mod tests {
                 .name,
             "Rust"
         );
-        // Ruby's first_line_match is a plain regex that matches #!/usr/bin/ruby
         assert_eq!(
             &ps.find_syntax_for_file("testdata/test_first_line.test")
                 .unwrap()

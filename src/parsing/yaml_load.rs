@@ -177,7 +177,7 @@ impl SyntaxDefinition {
             // TODO maybe cache a compiled version of this Regex
             first_line_match: get_key(h, "first_line_match", |x| x.as_str())
                 .ok()
-                .map(|s| s.to_owned()),
+                .map(|s| Self::resolve_variables(s, &state)),
             hidden: get_key(h, "hidden", |x| x.as_bool()).unwrap_or(false),
 
             variables: state.variables,
