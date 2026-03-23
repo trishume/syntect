@@ -311,7 +311,11 @@ impl ParseState {
 
         let warnings = std::mem::take(&mut self.warnings);
 
-        Ok(ParseLineOutput { ops, replayed, warnings })
+        Ok(ParseLineOutput {
+            ops,
+            replayed,
+            warnings,
+        })
     }
 
     /// Returns `true` when the parser is inside a `branch_point` and the
@@ -2890,7 +2894,9 @@ contexts:
             out_fail.replayed
         );
         assert!(
-            all_warnings.iter().any(|w| w.contains("expired") && w.contains("bp")),
+            all_warnings
+                .iter()
+                .any(|w| w.contains("expired") && w.contains("bp")),
             "expected a warning about branch point expiry, got: {:?}",
             all_warnings
         );
