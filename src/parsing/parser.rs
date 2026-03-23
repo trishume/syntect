@@ -2597,11 +2597,9 @@ contexts:
         );
 
         // The string.unquoted push must start at position 0 (covers "let hello", not just "hello")
-        let unquoted_pos = raw_ops.iter().find_map(|(pos, op)| {
-            match op {
-                ScopeStackOp::Push(s) if format!("{:?}", s).contains("string.unquoted") => Some(*pos),
-                _ => None,
-            }
+        let unquoted_pos = raw_ops.iter().find_map(|(pos, op)| match op {
+            ScopeStackOp::Push(s) if format!("{:?}", s).contains("string.unquoted") => Some(*pos),
+            _ => None,
         });
         assert_eq!(
             unquoted_pos,
@@ -2811,9 +2809,9 @@ contexts:
             out2.replayed[0]
         );
         // Verify current-line ops are clean (ops.clear() fired before re-parse)
-        let current_has_try = out2.ops.iter().any(|(_, op)| {
-            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try"))
-        });
+        let current_has_try = out2.ops.iter().any(
+            |(_, op)| matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try")),
+        );
         assert!(
             !current_has_try,
             "current-line ops should not contain try.* scopes after cross-line fail, got: {:?}",
@@ -3174,9 +3172,9 @@ contexts:
             );
         }
         // Verify current-line ops are clean (ops.clear() fired before re-parse)
-        let current_has_try = out4.ops.iter().any(|(_, op)| {
-            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try"))
-        });
+        let current_has_try = out4.ops.iter().any(
+            |(_, op)| matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try")),
+        );
         assert!(
             !current_has_try,
             "current-line ops should not contain try.* scopes after cross-line fail, got: {:?}",
@@ -3259,6 +3257,396 @@ contexts:
             current_has_main,
             "current-line should be re-parsed as main.other from position 0, got: {:?}",
             out2.ops
+        );
+    }
+
+    // ── Mutation-killing pass 3 ──────────────────────────────────────────
+
+    #[test]
+    fn is_speculative_reflects_branch_state() {
+        // Kills: L306 replace is_speculative -> true / false / delete !
+        // is_speculative must be true while inside a branch_point and false otherwise.
+        // We use a syntax where both alternatives fail, so the branch point is
+        // fully exhausted and removed.
+        let syntax_str = r#"
+name: SpeculativeTest
+scope: source.spec-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: bp
+      branch: [alt-a, alt-b]
+    - match: '\S+'
+      scope: fallback.spec-test
+
+  alt-a:
+    - match: 'AAA'
+      scope: alt-a.spec-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+
+  alt-b:
+    - match: 'BBB'
+      scope: alt-b.spec-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Before any branch: not speculative
+        assert!(
+            !state.is_speculative(),
+            "should not be speculative before branch_point is created"
+        );
+
+        // "AAA" matches first alternative, so branch stays open (could still fail)
+        let _ = state.parse_line("AAA\n", &ss).unwrap();
+        // Branch point is created then first alt succeeds — but bp stays until
+        // explicitly removed.  Since AAA matched and popped, bp is still there.
+        // Actually let's test with a failing input instead:
+        let mut state2 = ParseState::new(&ss.syntaxes()[0]);
+        assert!(!state2.is_speculative());
+
+        // "xyz" matches neither AAA nor BBB: both alternatives fail, bp exhausted & removed
+        let _ = state2.parse_line("xyz\n", &ss).unwrap();
+        assert!(
+            !state2.is_speculative(),
+            "should not be speculative after all alternatives exhausted"
+        );
+
+        // Now test it IS speculative mid-branch: use a cross-line syntax
+        let syntax_str2 = r#"
+name: SpecCross
+scope: source.spec-cross
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax2 = SyntaxDefinition::load_from_str(syntax_str2, true, None).unwrap();
+        let ss2 = link(syntax2);
+        let mut state3 = ParseState::new(&ss2.syntaxes()[0]);
+        assert!(!state3.is_speculative());
+
+        let _ = state3.parse_line("TRY\n", &ss2).unwrap();
+        assert!(
+            state3.is_speculative(),
+            "should be speculative after branch_point creation"
+        );
+    }
+
+    #[test]
+    fn consuming_match_not_treated_as_loop() {
+        // Kills: L533 replace > with < in find_best_match (consuming check)
+        // A pop that consumes characters must NOT be treated as a loop.
+        // If consuming is negated (> → <), a consuming pop would be flagged
+        // as a loop and skipped, breaking the parse.
+        let syntax_str = r#"
+name: ConsumingTest
+scope: source.consuming
+contexts:
+  main:
+    - match: '(?=\S)'
+      push: inner
+    - match: '\n'
+  inner:
+    - match: '\w+'
+      scope: word.consuming
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // "(?=\S)" is a zero-length push (non-consuming), then "\w+" is a
+        // consuming pop inside inner.  If the consuming check is inverted,
+        // the pop would be treated as looping and skipped, causing the parser
+        // to advance one character before matching, so the push position
+        // would be 1 instead of 0.
+        let raw_ops = ops(&mut state, "hello world\n", &ss);
+        let first_word_pos = raw_ops
+            .iter()
+            .find_map(|(pos, op)| match op {
+                ScopeStackOp::Push(s) if format!("{:?}", s).contains("word.consuming") => {
+                    Some(*pos)
+                }
+                _ => None,
+            })
+            .expect("expected at least one word.consuming push");
+        assert_eq!(
+            first_word_pos, 0,
+            "word.consuming must start at position 0 (consuming pop should not be treated as loop)"
+        );
+    }
+
+    #[test]
+    fn capture_sort_by_span_length() {
+        // Kills: L709 replace - with + in exec_pattern (capture sort key)
+        // Captures are sorted so that longer spans come first (pushed before
+        // shorter nested ones).  If the sort key sign is flipped, shorter
+        // spans push first, producing the wrong nesting order.
+        let syntax_str = r#"
+name: CaptureSort
+scope: source.capsort
+contexts:
+  main:
+    - match: '((a)(b))'
+      captures:
+        1: outer.capsort
+        2: inner-a.capsort
+        3: inner-b.capsort
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "ab\n", &ss);
+
+        // With correct sorting: outer pushes first (at pos 0), then inner-a
+        // at the same position.  With the sign flipped, inner-a would push
+        // before outer, which is wrong.
+        let push_order: Vec<&str> = raw_ops
+            .iter()
+            .filter_map(|(_, op)| match op {
+                ScopeStackOp::Push(s) => {
+                    let name = format!("{:?}", s);
+                    if name.contains("outer.capsort") {
+                        Some("outer")
+                    } else if name.contains("inner-a.capsort") {
+                        Some("inner-a")
+                    } else if name.contains("inner-b.capsort") {
+                        Some("inner-b")
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            push_order,
+            vec!["outer", "inner-a", "inner-b"],
+            "captures must push in longest-span-first order, got: {:?}",
+            push_order
+        );
+    }
+
+    #[test]
+    fn v2_set_pops_meta_content_scope_from_matched_text() {
+        // Kills: L1009 replace += with -= or *= in push_meta_ops
+        // When a v2 syntax uses `set`, num_to_pop must include
+        // cur_context.meta_scope.len() so that the old meta scope is removed.
+        let syntax_str = r#"
+name: V2SetMeta
+scope: source.v2setmeta
+version: 2
+contexts:
+  main:
+    - match: '(?=\S)'
+      push: ctx-a
+  ctx-a:
+    - meta_scope: meta.a.v2setmeta
+    - match: 'GO'
+      scope: keyword.go.v2setmeta
+      set: ctx-b
+    - match: '\w+'
+      scope: word.a.v2setmeta
+  ctx-b:
+    - meta_scope: meta.b.v2setmeta
+    - match: '\w+'
+      scope: word.b.v2setmeta
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "GO hello\n", &ss);
+        let states = stack_states(raw_ops);
+
+        // After "GO" triggers `set: ctx-b`, meta.a should be popped and
+        // meta.b should be active on "hello".  If num_to_pop is wrong
+        // (e.g. subtracted instead of added), meta.a would persist.
+        let last_state = states.last().expect("expected some states");
+        assert!(
+            !last_state.contains("meta.a.v2setmeta"),
+            "meta.a should have been popped after set, got: {:?}",
+            last_state
+        );
+    }
+
+    #[test]
+    fn v2_set_clear_scopes_only_from_last_context() {
+        // Kills: L1029 replace && with || / == with != in push_meta_ops
+        // In v2, clear_scopes during a set should only apply from the last
+        // context, and only when `is_set` is true AND `i == last_idx`.
+        let syntax_str = r#"
+name: V2ClearLast
+scope: source.v2clear
+version: 2
+contexts:
+  main:
+    - meta_scope: meta.main.v2clear
+    - match: 'GO'
+      set: [ctx-b, ctx-a]
+  ctx-a:
+    - meta_scope: meta.a.v2clear
+    - match: '\w+'
+      scope: word.a.v2clear
+  ctx-b:
+    - clear_scopes: true
+    - meta_scope: meta.b.v2clear
+    - match: '\w+'
+      scope: word.b.v2clear
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "GO hello\n", &ss);
+
+        // ctx-a is last in the set stack (top of stack), and it has no
+        // clear_scopes.  ctx-b has clear_scopes but is NOT the last context
+        // in v2.  If the condition is inverted (|| instead of &&), clear_scopes
+        // would incorrectly apply from ctx-b.
+        let states = stack_states(raw_ops);
+        // "hello" matches in ctx-a (top of stack), which should have meta.a
+        let hello_states: Vec<_> = states
+            .iter()
+            .filter(|s| s.contains("word.a.v2clear"))
+            .collect();
+        assert!(
+            !hello_states.is_empty(),
+            "expected word.a.v2clear, got states: {:?}",
+            states
+        );
+        // meta.a should be present (not cleared), since ctx-a is top and has
+        // no clear_scopes of its own
+        assert!(
+            hello_states.iter().any(|s| s.contains("meta.a.v2clear")),
+            "meta.a should be present since ctx-a (last) has no clear_scopes: {:?}",
+            hello_states
+        );
+        // source.v2clear must also be present — if clear_scopes from ctx-b
+        // fires incorrectly (mutations on L1029: && → || or == → !=), the
+        // root scope would be cleared.
+        assert!(
+            hello_states
+                .iter()
+                .any(|s| s.contains("source.v2clear")),
+            "source.v2clear should not be cleared (clear_scopes should only apply from last context): {:?}",
+            hello_states
+        );
+    }
+
+    #[test]
+    fn v2_embed_scope_replaces_skips_meta_content_pop_on_exit() {
+        // Kills: L912 replace >= with < (version >= 2)
+        //        L913 replace >= with < (stack.len() >= 2)
+        //        L915 replace - with / (stack.len() - 2)
+        // When a v2 syntax uses embed with embed_scope, the escape context
+        // has embed_scope_replaces=true.  On pop, the meta_content_scope of
+        // the escape context should NOT be popped because it was never pushed.
+        // If the version check is wrong, we'd get an extra Pop.
+        use crate::parsing::ScopeStack;
+
+        // The host pushes two intermediate contexts before embedding so that
+        // the stack depth is 5 when the escape fires:
+        //   [main, wrapper-a, wrapper-b, escape, embedded]
+        // This distinguishes stack.len()-2 (=3, escape) from stack.len()/2
+        // (=2, wrapper-b), catching the L915 `-` → `/` mutation.
+        let host = SyntaxDefinition::load_from_str(
+            r#"
+name: V2SkipHost
+scope: source.v2skip
+file_extensions: [v2skip]
+version: 2
+contexts:
+  main:
+    - match: '(?=<)'
+      push: wrapper-a
+    - match: '\w+'
+      scope: word.v2skip
+  wrapper-a:
+    - match: '(?=<)'
+      push: wrapper-b
+  wrapper-b:
+    - match: '<<'
+      embed: scope:source.v2skipemb
+      embed_scope: meta.embedded.v2skip
+      escape: '>>'
+      escape_captures:
+        0: punctuation.end.v2skip
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let embedded = SyntaxDefinition::load_from_str(
+            r#"
+name: V2SkipEmb
+scope: source.v2skipemb
+file_extensions: [v2skipemb]
+version: 2
+contexts:
+  main:
+    - meta_content_scope: content.v2skipemb
+    - match: '\w+'
+      scope: keyword.v2skipemb
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(host);
+        builder.add(embedded);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("V2SkipHost").unwrap();
+        let mut state = ParseState::new(syntax);
+        let raw_ops = state.parse_line("<<x>> hello\n", &ss).unwrap().ops;
+
+        // Build scope stack through all ops and verify it ends clean.
+        // If the skip logic is broken (mutations on L912-L915), an extra Pop
+        // for meta_content_scope is generated, which pops a scope that was
+        // never pushed, corrupting the stack.
+        let mut scope_stack = ScopeStack::new();
+        for (_, op) in &raw_ops {
+            scope_stack
+                .apply(op)
+                .expect("applying op should not fail — extra Pop means the skip logic is broken");
+        }
+        // After ">> hello\n", we should be back in main with source.v2skip
+        // as the only remaining scope (everything else was popped).
+        // If the skip logic is wrong, source.v2skip would be popped too.
+        let final_scopes: Vec<String> = scope_stack
+            .as_slice()
+            .iter()
+            .map(|s| format!("{:?}", s))
+            .collect();
+        assert!(
+            final_scopes.iter().any(|s| s.contains("source.v2skip")),
+            "source.v2skip should remain on stack after all ops, got: {:?}",
+            final_scopes
         );
     }
 }

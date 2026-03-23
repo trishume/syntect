@@ -10,7 +10,9 @@
 
 use syntect::easy::ScopeRegionIterator;
 use syntect::highlighting::ScopeSelectors;
-use syntect::parsing::{ParseLineOutput, ParseState, Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder};
+use syntect::parsing::{
+    ParseLineOutput, ParseState, Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder,
+};
 
 use std::cmp::{max, min};
 use std::fs::File;
@@ -422,7 +424,10 @@ fn test_file(
                                         .take(length)
                                         .collect();
                                     pending_messages.push(BufferedFailureMessage {
-                                        selector_text: buffered.scope_selector_text.trim().to_string(),
+                                        selector_text: buffered
+                                            .scope_selector_text
+                                            .trim()
+                                            .to_string(),
                                         assertion_line_number: buffered.assertion_line_number,
                                         test_against_line_number: record.line_number,
                                         column_begin: failure.column_begin,
@@ -430,7 +435,9 @@ fn test_file(
                                         text,
                                         scope: new_scoped
                                             .iter()
-                                            .find(|s| s.char_start + s.text_len > failure.column_begin)
+                                            .find(|s| {
+                                                s.char_start + s.text_len > failure.column_begin
+                                            })
                                             .unwrap_or_else(|| new_scoped.last().unwrap())
                                             .scope
                                             .clone(),
