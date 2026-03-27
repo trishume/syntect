@@ -667,6 +667,8 @@ impl core::marker::Unpin for syntect::parsing::syntax_definition::ContextReferen
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::ContextReference
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::ContextReference
 pub enum syntect::parsing::syntax_definition::MatchOperation
+pub syntect::parsing::syntax_definition::MatchOperation::Branch(alloc::string::String, alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
+pub syntect::parsing::syntax_definition::MatchOperation::Fail(alloc::string::String)
 pub syntect::parsing::syntax_definition::MatchOperation::None
 pub syntect::parsing::syntax_definition::MatchOperation::Pop(usize)
 pub syntect::parsing::syntax_definition::MatchOperation::Push(alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
@@ -987,10 +989,27 @@ impl core::marker::Sync for syntect::parsing::MatchPower
 impl core::marker::Unpin for syntect::parsing::MatchPower
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::MatchPower
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::MatchPower
+pub struct syntect::parsing::ParseLineOutput
+pub syntect::parsing::ParseLineOutput::ops: alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>
+pub syntect::parsing::ParseLineOutput::replayed: alloc::vec::Vec<alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>>
+pub syntect::parsing::ParseLineOutput::warnings: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for syntect::parsing::ParseLineOutput
+pub fn syntect::parsing::ParseLineOutput::clone(&self) -> syntect::parsing::ParseLineOutput
+impl core::default::Default for syntect::parsing::ParseLineOutput
+pub fn syntect::parsing::ParseLineOutput::default() -> syntect::parsing::ParseLineOutput
+impl core::fmt::Debug for syntect::parsing::ParseLineOutput
+pub fn syntect::parsing::ParseLineOutput::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for syntect::parsing::ParseLineOutput
+impl core::marker::Send for syntect::parsing::ParseLineOutput
+impl core::marker::Sync for syntect::parsing::ParseLineOutput
+impl core::marker::Unpin for syntect::parsing::ParseLineOutput
+impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ParseLineOutput
+impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseLineOutput
 pub struct syntect::parsing::ParseState
 impl syntect::parsing::ParseState
+pub fn syntect::parsing::ParseState::is_speculative(&self) -> bool
 pub fn syntect::parsing::ParseState::new(syntax: &syntect::parsing::SyntaxReference) -> syntect::parsing::ParseState
-pub fn syntect::parsing::ParseState::parse_line(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>, syntect::parsing::ParsingError>
+pub fn syntect::parsing::ParseState::parse_line(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<syntect::parsing::ParseLineOutput, syntect::parsing::ParsingError>
 impl core::clone::Clone for syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::clone(&self) -> syntect::parsing::ParseState
 impl core::cmp::Eq for syntect::parsing::ParseState

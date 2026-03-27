@@ -178,6 +178,12 @@ pub enum MatchOperation {
     Set(Vec<ContextReference>),
     Pop(usize),
     None,
+    /// Branch with backtracking: (branch_point_name, alternative_contexts).
+    /// Acts like Push for the first alternative, saving a checkpoint.
+    /// If a `Fail` with the same name fires later, the next alternative is tried.
+    Branch(String, Vec<ContextReference>),
+    /// Trigger backtracking to the named branch point.
+    Fail(String),
 }
 
 impl<'a> Iterator for MatchIter<'a> {
