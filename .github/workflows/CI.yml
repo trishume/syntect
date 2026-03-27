@@ -67,9 +67,13 @@ jobs:
         cd bat
         sed -i 's%\[dependencies.syntect\]%[dependencies.syntect]\npath = "../syntect"%' Cargo.toml
         cargo build --release # Build bat so we can update the assets
-        PATH=target/release:$PATH ./assets/create.sh # Update assets with newly built bat
+        PATH=$PWD/target/release:$PATH ./assets/create.sh # Update assets with newly built bat
         cargo build --release # Build bat using the newly updated assets
-        PATH=./target/release:$PATH tests/syntax-tests/regression_test.sh
+        # Regenerate the expected highlighted output so the regression test
+        # compares two runs of the *same* syntect, not our build against an
+        # old baseline committed in the bat repo.
+        PATH=$PWD/target/release:$PATH tests/syntax-tests/update.sh
+        PATH=$PWD/target/release:$PATH tests/syntax-tests/regression_test.sh
 
   build-and-test:
     name: Build and test

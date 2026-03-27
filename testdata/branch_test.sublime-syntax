@@ -1,0 +1,53 @@
+%YAML 1.2
+---
+# Test syntax for branch_point/branch/fail backtracking.
+#
+# Grammar: tries to parse "let NAME = VALUE;" as a let-statement.
+# If parsing fails (no '=' found), it backtracks and falls through
+# to a generic-statement context.
+name: Branch Test
+scope: source.branch-test
+file_extensions: [branch-test]
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: stmt
+      branch: [let-stmt, generic-stmt]
+
+  let-stmt:
+    - match: 'let'
+      scope: keyword.declaration.branch-test
+      set: let-name
+    - match: '(?=\S)'
+      fail: stmt
+
+  let-name:
+    - match: '\w+'
+      scope: variable.other.branch-test
+      set: let-assign
+    - match: '(?=\S)'
+      fail: stmt
+
+  let-assign:
+    - match: '='
+      scope: keyword.operator.assignment.branch-test
+      set: let-value
+    - match: '(?=\S)'
+      fail: stmt
+
+  let-value:
+    - match: '\w+'
+      scope: constant.other.branch-test
+      set: let-end
+
+  let-end:
+    - match: ';'
+      scope: punctuation.terminator.branch-test
+      pop: true
+
+  generic-stmt:
+    - match: '[^;]+'
+      scope: string.unquoted.branch-test
+    - match: ';'
+      scope: punctuation.terminator.branch-test
+      pop: true

@@ -44,6 +44,29 @@ pub struct SyntaxDefinition {
     pub variables: HashMap<String, String>,
     #[serde(serialize_with = "ordered_map")]
     pub contexts: HashMap<String, Context>,
+    /// The syntax(es) this definition extends (e.g., "Packages/C/C.sublime-syntax").
+    /// Can be a single path or a list of paths for multiple inheritance.
+    #[serde(default)]
+    pub extends: Vec<String>,
+    /// The version of the sublime-syntax format (1 or 2). Default is 1.
+    #[serde(default = "default_version")]
+    pub version: u32,
+}
+
+fn default_version() -> u32 {
+    1
+}
+
+/// How a child context should merge with its parent during extends resolution.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum ContextMergeMode {
+    /// Replace the parent context entirely (default behavior).
+    #[default]
+    Replace,
+    /// Prepend child patterns before parent patterns.
+    Prepend,
+    /// Append child patterns after parent patterns.
+    Append,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -61,6 +84,15 @@ pub struct Context {
     pub uses_backrefs: bool,
 
     pub patterns: Vec<Pattern>,
+
+    /// How this context should be merged with a parent context during extends resolution.
+    #[serde(skip)]
+    pub(crate) merge_mode: ContextMergeMode,
+
+    /// When true, this context's `meta_content_scope` (from embed_scope) should replace
+    /// the embedded syntax's top-level scope rather than stacking with it. (v2 behavior)
+    #[serde(default)]
+    pub(crate) embed_scope_replaces: bool,
 }
 
 impl Context {
@@ -73,6 +105,8 @@ impl Context {
             uses_backrefs: false,
             patterns: Vec::new(),
             prototype: None,
+            merge_mode: ContextMergeMode::default(),
+            embed_scope_replaces: false,
         }
     }
 }
@@ -81,6 +115,9 @@ impl Context {
 pub enum Pattern {
     Match(MatchPattern),
     Include(ContextReference),
+    /// Like `Include`, but also applies the target syntax's `prototype` context.
+    /// Created when `apply_prototype: true` is used with an `include` directive.
+    IncludeWithPrototype(ContextReference),
 }
 
 /// Used to iterate over all the match patterns in a context
@@ -101,6 +138,10 @@ pub struct MatchPattern {
     pub captures: Option<CaptureMapping>,
     pub operation: MatchOperation,
     pub with_prototype: Option<ContextReference>,
+    /// Raw regex string as written in YAML, before variable resolution and transforms.
+    /// Stored to enable re-resolution when variables are overridden via extends.
+    #[serde(skip)]
+    pub(crate) raw_regex_str: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -137,6 +178,12 @@ pub enum MatchOperation {
     Set(Vec<ContextReference>),
     Pop(usize),
     None,
+    /// Branch with backtracking: (branch_point_name, alternative_contexts).
+    /// Acts like Push for the first alternative, saving a checkpoint.
+    /// If a `Fail` with the same name fires later, the next alternative is tried.
+    Branch(String, Vec<ContextReference>),
+    /// Trigger backtracking to the named branch point.
+    Fail(String),
 }
 
 impl<'a> Iterator for MatchIter<'a> {
@@ -167,6 +214,24 @@ impl<'a> Iterator for MatchIter<'a> {
                             }
                             _ => return self.next(), // skip this and move onto the next one
                         };
+                        self.ctx_stack.push(ctx_ptr);
+                        self.index_stack.push(0);
+                    }
+                    Pattern::IncludeWithPrototype(ref ctx_ref) => {
+                        let context_id = match *ctx_ref {
+                            ContextReference::Direct(ref id) => id,
+                            _ => return self.next(),
+                        };
+                        let ctx_ptr = self.syntax_set.get_context(context_id).unwrap();
+                        // Also include the external syntax's prototype if the context allows it
+                        if ctx_ptr.meta_include_prototype {
+                            if let Some(ref proto_id) = ctx_ptr.prototype {
+                                let proto_ctx = self.syntax_set.get_context(proto_id).unwrap();
+                                // Push prototype first (it will be iterated first)
+                                self.ctx_stack.push(proto_ctx);
+                                self.index_stack.push(0);
+                            }
+                        }
                         self.ctx_stack.push(ctx_ptr);
                         self.index_stack.push(0);
                     }
@@ -263,6 +328,27 @@ impl MatchPattern {
             captures,
             operation,
             with_prototype,
+            raw_regex_str: None,
+        }
+    }
+
+    pub(crate) fn new_with_raw(
+        has_captures: bool,
+        regex_str: String,
+        raw_regex_str: String,
+        scope: Vec<Scope>,
+        captures: Option<CaptureMapping>,
+        operation: MatchOperation,
+        with_prototype: Option<ContextReference>,
+    ) -> MatchPattern {
+        MatchPattern {
+            has_captures,
+            regex: Regex::new(regex_str),
+            scope,
+            captures,
+            operation,
+            with_prototype,
+            raw_regex_str: Some(raw_regex_str),
         }
     }
 
@@ -305,6 +391,7 @@ mod tests {
             captures: None,
             operation: MatchOperation::None,
             with_prototype: None,
+            raw_regex_str: None,
         };
         let r = Regex::new(r"(\\\[\]\(\))(b)(c)(d)(e)".into());
         let s = r"\[]()bcde";

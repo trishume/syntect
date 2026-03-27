@@ -2,10 +2,13 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 
-fn loading_benchmark(c: &mut Criterion) {
-    c.bench_function("load_internal_dump", |b| {
-        b.iter(|| SyntaxSet::load_defaults_newlines());
-    });
+fn bench_load_internal_dump(b: &mut Bencher) {
+    b.iter(SyntaxSet::load_defaults_newlines);
+}
+
+fn bench_load_internal_themes(b: &mut Bencher) {
+    b.iter(ThemeSet::load_defaults);
+}
 
     c.bench_function("load_internal_themes", |b| {
         b.iter(|| ThemeSet::load_defaults());

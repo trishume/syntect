@@ -77,7 +77,7 @@ impl<'a> HighlightLines<'a> {
         syntax_set: &SyntaxSet,
     ) -> Result<Vec<(Style, &'b str)>, Error> {
         // println!("{}", self.highlight_state.path);
-        let ops = self.parse_state.parse_line(line, syntax_set)?;
+        let ops = self.parse_state.parse_line(line, syntax_set)?.ops;
         // use util::debug_print_ops;
         // debug_print_ops(line, &ops);
         let iter =
@@ -330,7 +330,7 @@ mod tests {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let mut state = ParseState::new(ss.find_syntax_by_extension("rb").unwrap());
         let line = "lol =5+2";
-        let ops = state.parse_line(line, &ss).expect("#[cfg(test)]");
+        let ops = state.parse_line(line, &ss).expect("#[cfg(test)]").ops;
 
         let mut stack = ScopeStack::new();
         let mut token_count = 0;
@@ -362,7 +362,7 @@ mod tests {
         let mut stack = ScopeStack::new();
 
         for line in lines.iter() {
-            let ops = state.parse_line(line, &ss).expect("#[cfg(test)]");
+            let ops = state.parse_line(line, &ss).expect("#[cfg(test)]").ops;
             println!("{:?}", ops);
 
             let mut iterated_ops: Vec<&ScopeStackOp> = Vec::new();

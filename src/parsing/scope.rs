@@ -398,12 +398,12 @@ impl Eq for MatchPower {}
 
 impl Ord for MatchPower {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.total_cmp(&other.0)
+        self.0.partial_cmp(&other.0).unwrap()
     }
 }
 
 impl PartialOrd for MatchPower {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &MatchPower) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }

@@ -547,33 +547,27 @@ mod tests {
         assert!(metadata
             .items
             .shell_variables
-            .get("TM_COMMENT_START")
-            .is_some());
+            .contains_key("TM_COMMENT_START"));
+        assert!(!metadata
+            .items
+            .shell_variables
+            .contains_key("TM_COMMENT_END"));
         assert!(metadata
             .items
             .shell_variables
-            .get("TM_COMMENT_END")
-            .is_none());
+            .contains_key("TM_COMMENT_START_2"));
         assert!(metadata
             .items
             .shell_variables
-            .get("TM_COMMENT_START_2")
-            .is_some());
+            .contains_key("TM_COMMENT_START_3"));
         assert!(metadata
             .items
             .shell_variables
-            .get("TM_COMMENT_START_3")
-            .is_some());
+            .contains_key("TM_COMMENT_END_3"));
         assert!(metadata
             .items
             .shell_variables
-            .get("TM_COMMENT_END_3")
-            .is_some());
-        assert!(metadata
-            .items
-            .shell_variables
-            .get("TM_COMMENT_DISABLE_INDENT_3")
-            .is_some());
+            .contains_key("TM_COMMENT_DISABLE_INDENT_3"));
         assert!(metadata.items.line_comment.is_some());
         assert!(metadata.items.block_comment.is_some());
         assert!(metadata.items.increase_indent_pattern.is_none());

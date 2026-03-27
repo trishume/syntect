@@ -54,6 +54,26 @@ pub enum ParsingError {
 /// It is not recommended that you try caching the first time you implement highlighting.
 ///
 /// [`HighlightState`]: ../highlighting/struct.HighlightState.html
+/// Output of [`ParseState::parse_line`].
+///
+/// `ops` contains the scope-stack operations for the current line, as before.
+/// `replayed` is non-empty only after a cross-line `fail` fires: it contains
+/// the corrected ops for each buffered line (in chronological order) so that
+/// callers who want full cross-line accuracy can re-apply them.
+///
+/// Callers that do not need cross-line accuracy can use `.ops` directly,
+/// which behaves identically to the old `Vec<(usize, ScopeStackOp)>` return.
+#[derive(Debug, Clone, Default)]
+pub struct ParseLineOutput {
+    /// Ops for the current line.
+    pub ops: Vec<(usize, ScopeStackOp)>,
+    /// Ops for previously buffered lines that have now been corrected, in order.
+    /// Non-empty only when a cross-line `fail` just resolved.
+    pub replayed: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// Warnings collected during parsing (e.g. branch point expiry).
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParseState {
     stack: Vec<StateLevel>,
@@ -61,6 +81,43 @@ pub struct ParseState {
     // See issue #101. Contains indices of frames pushed by `with_prototype`s.
     // Doesn't look at `with_prototype`s below top of stack.
     proto_starts: Vec<usize>,
+    /// Active branch points for backtracking support.
+    branch_points: Vec<BranchPoint>,
+    /// Line counter for 128-line branch point expiry.
+    line_number: usize,
+    /// Line strings buffered while branch points are active, for potential
+    /// cross-line `fail` replay. Only the strings are stored; the ops are
+    /// returned to callers immediately (same as before).
+    pending_lines: Vec<String>,
+    /// Corrected ops produced by a cross-line `fail` replay, to be returned
+    /// as `ParseLineOutput::replayed` at the end of `parse_line`.
+    flushed_ops: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// Warnings accumulated during parsing, drained into `ParseLineOutput`.
+    warnings: Vec<String>,
+}
+
+/// Snapshot of parser state at a branch point, used for backtracking.
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct BranchPoint {
+    name: String,
+    /// Index of the next alternative to try (0 = first alt already tried).
+    next_alternative: usize,
+    alternatives: Vec<ContextReference>,
+    stack_snapshot: Vec<StateLevel>,
+    proto_starts_snapshot: Vec<usize>,
+    /// Character position to rewind to.
+    match_start: usize,
+    /// Line number when the branch was created (for 128-line limit).
+    line_number: usize,
+    /// Length of ops vec at snapshot time — truncation point on fail.
+    ops_snapshot_len: usize,
+    /// Stack depth at creation — if stack shrinks below this, branch is invalid.
+    stack_depth: usize,
+    non_consuming_push_at_snapshot: (usize, usize),
+    first_line_snapshot: bool,
+    with_prototype: Option<ContextReference>,
+    /// `pending_lines.len()` at snapshot time, for cross-line replay truncation.
+    pending_lines_snapshot_len: usize,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -187,6 +244,11 @@ impl ParseState {
             stack: vec![start_state],
             first_line: true,
             proto_starts: Vec::new(),
+            branch_points: Vec::new(),
+            line_number: 0,
+            pending_lines: Vec::new(),
+            flushed_ops: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -213,10 +275,66 @@ impl ParseState {
         &mut self,
         line: &str,
         syntax_set: &SyntaxSet,
-    ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
+    ) -> Result<ParseLineOutput, ParsingError> {
         if self.stack.is_empty() {
             return Err(ParsingError::MissingMainContext);
         }
+
+        // Prune branch points older than 128 lines
+        let cur_line = self.line_number;
+        let warnings = &mut self.warnings;
+        self.branch_points.retain(|bp| {
+            let alive = cur_line.saturating_sub(bp.line_number) <= 128;
+            if !alive {
+                warnings.push(format!(
+                    "branch point '{}' expired (exceeded 128-line rewind limit)",
+                    bp.name
+                ));
+            }
+            alive
+        });
+        self.line_number += 1;
+
+        let ops = self.parse_line_inner(line, syntax_set)?;
+
+        // Collect any corrected ops produced by a cross-line `fail` during the
+        // parse above.  These are stored by `handle_fail` in `self.flushed_ops`.
+        let replayed = std::mem::take(&mut self.flushed_ops);
+
+        // Keep the line string for potential future cross-line replay.
+        if !self.branch_points.is_empty() {
+            self.pending_lines.push(line.to_string());
+        } else {
+            // No active branch points: any buffered strings are stale.
+            self.pending_lines.clear();
+        }
+
+        let warnings = std::mem::take(&mut self.warnings);
+
+        Ok(ParseLineOutput {
+            ops,
+            replayed,
+            warnings,
+        })
+    }
+
+    /// Returns `true` when the parser is inside a `branch_point` and the
+    /// result of `parse_line` may be revised by a future `fail` action.
+    /// Once the branch resolves (or if no branch was entered), this returns
+    /// `false` and all ops emitted so far are final.
+    pub fn is_speculative(&self) -> bool {
+        !self.branch_points.is_empty()
+    }
+
+    /// Inner parsing loop: processes `line` with the current parser state and
+    /// returns the scope-stack operations.  Does **not** touch `pending_lines`
+    /// or `flushed_ops`, so it is safe to call recursively from `handle_fail`
+    /// for cross-line replay without re-entrancy issues.
+    fn parse_line_inner(
+        &mut self,
+        line: &str,
+        syntax_set: &SyntaxSet,
+    ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
         let mut match_start = 0;
         let mut res = Vec::new();
 
@@ -310,15 +428,36 @@ impl ParseState {
 
             let match_end = reg_match.regions.pos(0).unwrap().1;
 
+            // Check if this is a Fail operation — handle before advancing start
+            let context = reg_match.context;
+            let match_pattern = context.match_at(reg_match.pat_index)?;
+            if let MatchOperation::Fail(_) = match_pattern.operation {
+                let level_context = {
+                    let id = &self.stack[self.stack.len() - 1].context;
+                    syntax_set.get_context(id)?
+                };
+                return self.exec_pattern(
+                    line,
+                    &reg_match,
+                    level_context,
+                    syntax_set,
+                    start,
+                    non_consuming_push_at,
+                    ops,
+                    search_cache,
+                );
+            }
+
             let consuming = match_end > *start;
             if !consuming {
                 // The match doesn't consume any characters. If this is a
                 // "push", remember the position and stack size so that we can
                 // check the next "pop" for loops. Otherwise leave the state,
                 // e.g. non-consuming "set" could also result in a loop.
-                let context = reg_match.context;
-                let match_pattern = context.match_at(reg_match.pat_index)?;
-                if let MatchOperation::Push(_) = match_pattern.operation {
+                if matches!(
+                    match_pattern.operation,
+                    MatchOperation::Push(_) | MatchOperation::Branch(_, _)
+                ) {
                     *non_consuming_push_at = (match_end, self.stack.len() + 1);
                 }
             }
@@ -335,7 +474,16 @@ impl ParseState {
                 let id = &self.stack[self.stack.len() - 1].context;
                 syntax_set.get_context(id)?
             };
-            self.exec_pattern(line, &reg_match, level_context, syntax_set, ops)?;
+            self.exec_pattern(
+                line,
+                &reg_match,
+                level_context,
+                syntax_set,
+                start,
+                non_consuming_push_at,
+                ops,
+                search_cache,
+            )?;
 
             Ok(true)
         } else {
@@ -407,8 +555,10 @@ impl ParseState {
                             && !consuming
                             && matches!(match_pat.operation, MatchOperation::Pop(_));
 
-                        let push_too_deep = matches!(match_pat.operation, MatchOperation::Push(_))
-                            && self.stack.len() >= 100;
+                        let push_too_deep = matches!(
+                            match_pat.operation,
+                            MatchOperation::Push(_) | MatchOperation::Branch(_, _)
+                        ) && self.stack.len() >= 100;
 
                         if push_too_deep {
                             return Ok(None);
@@ -475,7 +625,7 @@ impl ParseState {
             // this is necessary to avoid infinite looping on dumb patterns
             let does_something = match match_pat.operation {
                 MatchOperation::None => match_start != match_end,
-                MatchOperation::Push(_) => self.stack.len() < 100,
+                MatchOperation::Push(_) | MatchOperation::Branch(_, _) => self.stack.len() < 100,
                 _ => true,
             };
             if can_cache && does_something {
@@ -491,30 +641,76 @@ impl ParseState {
         None
     }
 
-    /// Returns true if the stack was changed
+    /// Returns true if the stack was changed.
+    /// For `Fail` operations, returns `Ok(true)` if backtracking was performed
+    /// (caller should continue parsing from the rewound position).
     fn exec_pattern<'a>(
         &mut self,
         line: &str,
         reg_match: &RegexMatch<'a>,
         level_context: &'a Context,
         syntax_set: &'a SyntaxSet,
+        start: &mut usize,
+        non_consuming_push_at: &mut (usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
+        search_cache: &mut SearchCache,
     ) -> Result<bool, ParsingError> {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context;
         let pat = context.match_at(reg_match.pat_index)?;
-        // println!("running pattern {:?} on '{}' at {}, operation {:?}", pat.regex_str, line, match_start, pat.operation);
 
-        self.push_meta_ops(
-            true,
-            match_start,
-            level_context,
-            &pat.operation,
-            syntax_set,
-            ops,
-        )?;
+        // Handle Fail: attempt backtracking
+        if let MatchOperation::Fail(ref name) = pat.operation {
+            return self.handle_fail(
+                name,
+                start,
+                non_consuming_push_at,
+                ops,
+                search_cache,
+                syntax_set,
+            );
+        }
+
+        // For Branch, we need to snapshot state before executing, then synthesize a Push.
+        let is_branch = matches!(pat.operation, MatchOperation::Branch(_, _));
+        let synthetic_op;
+
+        if is_branch {
+            if let MatchOperation::Branch(ref name, ref alternatives) = pat.operation {
+                // Snapshot current state
+                let bp = BranchPoint {
+                    name: name.clone(),
+                    next_alternative: 1, // 0 is about to be pushed
+                    alternatives: alternatives.clone(),
+                    stack_snapshot: self.stack.clone(),
+                    proto_starts_snapshot: self.proto_starts.clone(),
+                    match_start: *start, // position before this match's advance
+                    line_number: self.line_number.saturating_sub(1), // current line (already incremented)
+                    ops_snapshot_len: ops.len(),
+                    stack_depth: self.stack.len(),
+                    non_consuming_push_at_snapshot: *non_consuming_push_at,
+                    first_line_snapshot: self.first_line,
+                    with_prototype: pat.with_prototype.clone(),
+                    pending_lines_snapshot_len: self.pending_lines.len(),
+                };
+                self.branch_points.push(bp);
+                // Synthesize a Push of the first alternative
+                synthetic_op = MatchOperation::Push(vec![alternatives[0].clone()]);
+            } else {
+                unreachable!()
+            }
+        } else {
+            synthetic_op = pat.operation.clone();
+        }
+
+        let op_to_use = if is_branch {
+            &synthetic_op
+        } else {
+            &pat.operation
+        };
+
+        self.push_meta_ops(true, match_start, level_context, op_to_use, syntax_set, ops)?;
         for s in &pat.scope {
-            // println!("pushing {:?} at {}", s, match_start);
             ops.push((match_start, ScopeStackOp::Push(*s)));
         }
         if let Some(ref capture_map) = pat.captures {
@@ -528,7 +724,6 @@ impl ParseState {
                     if cap_start == cap_end {
                         continue;
                     }
-                    // println!("capture {:?} at {:?}-{:?}", scopes[0], cap_start, cap_end);
                     for scope in scopes.iter() {
                         map.push((
                             (cap_start, -((cap_end - cap_start) as i32)),
@@ -544,19 +739,178 @@ impl ParseState {
             }
         }
         if !pat.scope.is_empty() {
-            // println!("popping at {}", match_end);
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
-        self.push_meta_ops(
-            false,
-            match_end,
-            level_context,
-            &pat.operation,
-            syntax_set,
-            ops,
-        )?;
+        self.push_meta_ops(false, match_end, level_context, op_to_use, syntax_set, ops)?;
 
-        self.perform_op(line, &reg_match.regions, pat, syntax_set)
+        if is_branch {
+            // Execute the synthetic Push through perform_op
+            let synthetic_pat = MatchPattern::new(
+                pat.has_captures,
+                pat.regex.regex_str().to_string(),
+                pat.scope.clone(),
+                pat.captures.clone(),
+                synthetic_op,
+                pat.with_prototype.clone(),
+            );
+            self.perform_op(line, &reg_match.regions, &synthetic_pat, syntax_set)
+        } else {
+            self.perform_op(line, &reg_match.regions, pat, syntax_set)
+        }
+    }
+
+    /// Handle a `fail` operation by rewinding to the named branch point.
+    /// Returns Ok(true) if backtracking happened (caller should continue from rewound position).
+    /// Returns Ok(false) if the fail had no effect.
+    fn handle_fail(
+        &mut self,
+        name: &str,
+        start: &mut usize,
+        non_consuming_push_at: &mut (usize, usize),
+        ops: &mut Vec<(usize, ScopeStackOp)>,
+        search_cache: &mut SearchCache,
+        syntax_set: &SyntaxSet,
+    ) -> Result<bool, ParsingError> {
+        // Find the branch point by name (most recent first)
+        let bp_index = self.branch_points.iter().rposition(|bp| bp.name == name);
+        let bp_index = match bp_index {
+            Some(i) => i,
+            None => return Ok(false), // No such branch point, fail is no-op
+        };
+
+        let cur_line = self.line_number.saturating_sub(1);
+        let bp = &self.branch_points[bp_index];
+
+        // Check validity: not >128 lines old
+        if cur_line.saturating_sub(bp.line_number) > 128 {
+            let bp = self.branch_points.remove(bp_index);
+            self.warnings.push(format!(
+                "branch point '{}' expired (exceeded 128-line rewind limit)",
+                bp.name
+            ));
+            return Ok(false);
+        }
+
+        // Check validity: stack depth still >= branch's stack_depth
+        if self.stack.len() < bp.stack_depth {
+            self.branch_points.remove(bp_index);
+            return Ok(false);
+        }
+
+        // Check if there are more alternatives
+        if bp.next_alternative >= bp.alternatives.len() {
+            self.branch_points.remove(bp_index);
+            return Ok(false); // All alternatives exhausted
+        }
+
+        // Determine if this is a cross-line fail (branch was created on a previous line).
+        let is_cross_line = bp.line_number < cur_line;
+
+        // Extract everything we need from bp before mutating self.
+        let next_alt_index = bp.next_alternative;
+        let next_alt = bp.alternatives[next_alt_index].clone();
+        let match_start_pos = bp.match_start;
+        let stack_snapshot = bp.stack_snapshot.clone();
+        let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
+        let first_line_snapshot = bp.first_line_snapshot;
+        let non_consuming_push_at_snapshot = bp.non_consuming_push_at_snapshot;
+        let ops_snapshot_len = bp.ops_snapshot_len;
+        let pending_lines_snapshot_len = bp.pending_lines_snapshot_len;
+        // bp borrow ends here.
+
+        // Restore parser state to the snapshot.
+        self.stack = stack_snapshot;
+        self.proto_starts = proto_starts_snapshot;
+        self.first_line = first_line_snapshot;
+        *non_consuming_push_at = non_consuming_push_at_snapshot;
+
+        // Update the branch point record before pushing the new alternative
+        // (so that the snapshot len is correct for any subsequent fail).
+        self.branch_points[bp_index].next_alternative = next_alt_index + 1;
+
+        // Push the next alternative onto the stack.
+        let with_prototype = self.branch_points[bp_index].with_prototype.clone();
+        let context_id = next_alt.id()?;
+        let context = syntax_set.get_context(&context_id)?;
+        let captures = None; // no captures available at rewind time
+
+        let proto_ids = match with_prototype {
+            Some(ref p) => vec![p.id()?],
+            None => Vec::new(),
+        };
+
+        self.stack.push(StateLevel {
+            context: context_id,
+            prototypes: proto_ids,
+            captures,
+        });
+
+        if is_cross_line {
+            // Cross-line fail: the ops for lines since the branch was created
+            // have already been returned to callers.  Re-parse those lines under
+            // the new alternative and store the corrected ops in `flushed_ops`
+            // so that `parse_line` can surface them via `ParseLineOutput::replayed`.
+            //
+            // The new alternative (context) is already on the stack, so
+            // parse_line_inner will process each buffered line starting in that
+            // context, producing correct ops.
+            let truncated_lines: Vec<String> = self
+                .pending_lines
+                .drain(pending_lines_snapshot_len..)
+                .collect();
+
+            let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
+                Vec::with_capacity(truncated_lines.len());
+            for replay_line in &truncated_lines {
+                let line_ops = self.parse_line_inner(replay_line, syntax_set)?;
+                replayed_ops.push(line_ops);
+            }
+            // Append (rather than overwrite) in case multiple cross-line fails
+            // fire on the same parse_line call.
+            self.flushed_ops.extend(replayed_ops);
+
+            // Restart the current line from the beginning.
+            ops.clear();
+            *start = 0;
+            *non_consuming_push_at = (0, 0);
+
+            self.branch_points[bp_index].ops_snapshot_len = 0;
+        } else {
+            // Same-line fail: truncate ops back to the snapshot point and rewind.
+            ops.truncate(ops_snapshot_len.min(ops.len()));
+            *start = match_start_pos;
+
+            self.branch_points[bp_index].ops_snapshot_len = ops.len();
+
+            // Emit meta scope ops for the new context at the rewind position.
+            if let Some(clear_amount) = context.clear_scopes {
+                ops.push((match_start_pos, ScopeStackOp::Clear(clear_amount)));
+            }
+            for scope in context.meta_scope.iter() {
+                ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
+            }
+            for scope in context.meta_content_scope.iter() {
+                ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
+            }
+        }
+
+        // Clear search cache since we're rewinding.
+        search_cache.clear();
+
+        Ok(true)
+    }
+
+    /// Get the syntax version for the current parse state
+    fn current_syntax_version(&self, syntax_set: &SyntaxSet) -> u32 {
+        if let Some(level) = self.stack.last() {
+            let syntax_index = level.context.syntax_index;
+            syntax_set
+                .syntaxes()
+                .get(syntax_index)
+                .map_or(1, |s| s.version)
+        } else {
+            1
+        }
     }
 
     fn push_meta_ops(
@@ -568,19 +922,31 @@ impl ParseState {
         syntax_set: &SyntaxSet,
         ops: &mut Vec<(usize, ScopeStackOp)>,
     ) -> Result<(), ParsingError> {
+        let version = self.current_syntax_version(syntax_set);
         // println!("metas ops for {:?}, initial: {}",
         //          match_op,
         //          initial);
         // println!("{:?}", cur_context.meta_scope);
         match *match_op {
             MatchOperation::Pop(_) => {
-                let v = if initial {
-                    &cur_context.meta_content_scope
-                } else {
-                    &cur_context.meta_scope
-                };
-                if !v.is_empty() {
-                    ops.push((index, ScopeStackOp::Pop(v.len())));
+                if initial {
+                    // v2: if the context below has embed_scope_replaces, then
+                    // cur_context's meta_content_scope was never pushed (it was skipped
+                    // during the Push phase), so don't generate a Pop for it.
+                    let skip = version >= 2
+                        && self.stack.len() >= 2
+                        && syntax_set
+                            .get_context(&self.stack[self.stack.len() - 2].context)
+                            .map(|c| c.embed_scope_replaces)
+                            .unwrap_or(false);
+                    if !skip && !cur_context.meta_content_scope.is_empty() {
+                        ops.push((
+                            index,
+                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                        ));
+                    }
+                } else if !cur_context.meta_scope.is_empty() {
+                    ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
                 }
 
                 // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
@@ -596,22 +962,48 @@ impl ParseState {
                 let is_set = matches!(*match_op, MatchOperation::Set(_));
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
+                    // v2: pop parent's meta_content_scope so matched text does not see it
+                    if is_set && version >= 2 && !cur_context.meta_content_scope.is_empty() {
+                        ops.push((
+                            index,
+                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                        ));
+                    }
                     if is_set && cur_context.clear_scopes.is_some() {
                         // cleared scopes from the old context are restored immediately
                         ops.push((index, ScopeStackOp::Restore));
                     }
                     // add each context's meta scope
-                    for r in context_refs.iter() {
-                        let ctx = r.resolve(syntax_set)?;
+                    if version >= 2 {
+                        // v2: For push with multiple contexts, only apply clear_scopes
+                        // from the last (topmost) context, not sum all of them
+                        let last_idx = context_refs.len().saturating_sub(1);
+                        for (i, r) in context_refs.iter().enumerate() {
+                            let ctx = r.resolve(syntax_set)?;
 
-                        if !is_set {
-                            if let Some(clear_amount) = ctx.clear_scopes {
-                                ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                            if i == last_idx {
+                                if let Some(clear_amount) = ctx.clear_scopes {
+                                    ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                }
+                            }
+
+                            for scope in ctx.meta_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
                             }
                         }
+                    } else {
+                        for r in context_refs.iter() {
+                            let ctx = r.resolve(syntax_set)?;
 
-                        for scope in ctx.meta_scope.iter() {
-                            ops.push((index, ScopeStackOp::Push(*scope)));
+                            if !is_set {
+                                if let Some(clear_amount) = ctx.clear_scopes {
+                                    ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                }
+                            }
+
+                            for scope in ctx.meta_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
                         }
                     }
                 } else {
@@ -636,8 +1028,13 @@ impl ParseState {
 
                         // also pop off the original context's meta scopes
                         if is_set {
-                            num_to_pop +=
-                                cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
+                            if version >= 2 {
+                                // v2: set excludes parent meta_content_scope from matched text
+                                num_to_pop += cur_context.meta_scope.len();
+                            } else {
+                                num_to_pop += cur_context.meta_content_scope.len()
+                                    + cur_context.meta_scope.len();
+                            }
                         }
 
                         // do all the popping as one operation
@@ -646,27 +1043,72 @@ impl ParseState {
                         }
 
                         // now we push meta scope and meta context scope for each context pushed
-                        for r in context_refs {
-                            let ctx = r.resolve(syntax_set)?;
+                        if version >= 2 {
+                            // v2: For multiple push, only apply clear_scopes from last context
+                            let last_idx = context_refs.len().saturating_sub(1);
+                            let mut prev_embed_scope_replaces = false;
+                            for (i, r) in context_refs.iter().enumerate() {
+                                let ctx = r.resolve(syntax_set)?;
 
-                            // for some reason, contrary to my reading of the docs, set does this after the token
-                            if is_set {
-                                if let Some(clear_amount) = ctx.clear_scopes {
-                                    ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                if is_set && i == last_idx {
+                                    if let Some(clear_amount) = ctx.clear_scopes {
+                                        ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                    }
                                 }
-                            }
 
-                            for scope in ctx.meta_scope.iter() {
-                                ops.push((index, ScopeStackOp::Push(*scope)));
+                                for scope in ctx.meta_scope.iter() {
+                                    ops.push((index, ScopeStackOp::Push(*scope)));
+                                }
+                                // v2: if the previous context has embed_scope_replaces,
+                                // skip this context's meta_content_scope (the embedded
+                                // syntax's top-level scope is replaced by embed_scope)
+                                if !prev_embed_scope_replaces {
+                                    for scope in ctx.meta_content_scope.iter() {
+                                        ops.push((index, ScopeStackOp::Push(*scope)));
+                                    }
+                                }
+                                prev_embed_scope_replaces = ctx.embed_scope_replaces;
                             }
-                            for scope in ctx.meta_content_scope.iter() {
-                                ops.push((index, ScopeStackOp::Push(*scope)));
+                        } else {
+                            for r in context_refs {
+                                let ctx = r.resolve(syntax_set)?;
+
+                                // for some reason, contrary to my reading of the docs, set does this after the token
+                                if is_set {
+                                    if let Some(clear_amount) = ctx.clear_scopes {
+                                        ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                    }
+                                }
+
+                                for scope in ctx.meta_scope.iter() {
+                                    ops.push((index, ScopeStackOp::Push(*scope)));
+                                }
+                                for scope in ctx.meta_content_scope.iter() {
+                                    ops.push((index, ScopeStackOp::Push(*scope)));
+                                }
                             }
                         }
                     }
                 }
             }
-            MatchOperation::None => (),
+            MatchOperation::None | MatchOperation::Fail(_) => (),
+            MatchOperation::Branch(_, ref context_refs) => {
+                // Branch acts like Push for meta ops purposes.
+                // We only push the first (or current) alternative, but the meta ops
+                // are generated based on the context refs passed here. Since at exec time
+                // we transform Branch into a single-element Push before calling push_meta_ops,
+                // this arm handles the case where push_meta_ops is called with the original
+                // Branch operation (which shouldn't happen in practice, but for safety).
+                let synthetic = MatchOperation::Push(context_refs.clone());
+                return self.push_meta_ops(
+                    initial,
+                    index,
+                    cur_context,
+                    &synthetic,
+                    syntax_set,
+                    ops,
+                );
+            }
         }
 
         Ok(())
@@ -692,9 +1134,16 @@ impl ParseState {
                 for _ in 0..n {
                     self.stack.pop();
                 }
+                // Invalidate branch points whose stack depth is now above current stack
+                self.branch_points
+                    .retain(|bp| bp.stack_depth <= self.stack.len());
                 return Ok(true);
             }
             MatchOperation::None => return Ok(false),
+            MatchOperation::Branch(_, _) | MatchOperation::Fail(_) => {
+                // Branch and Fail are handled in exec_pattern, not here
+                return Ok(false);
+            }
         };
         for (i, r) in ctx_refs.iter().enumerate() {
             let mut proto_ids = if i == 0 {
@@ -758,7 +1207,7 @@ mod tests {
             ParseState::new(syntax)
         };
 
-        let ops1 = ops(&mut state, "module Bob::Wow::Troll::Five; 5; end", &ss);
+        let ops1 = ops(&mut state, "module Bob::Wow::Troll::Five; 5; end", ss);
         let test_ops1 = vec![
             (0, Push(Scope::new("source.ruby.rails").unwrap())),
             (0, Push(Scope::new("meta.module.ruby").unwrap())),
@@ -774,8 +1223,8 @@ mod tests {
         ];
         assert_eq!(&ops1[0..test_ops1.len()], &test_ops1[..]);
 
-        let ops2 = ops(&mut state, "def lol(wow = 5)", &ss);
-        let test_ops2 = vec![
+        let ops2 = ops(&mut state, "def lol(wow = 5)", ss);
+        let test_ops2 = [
             (0, Push(Scope::new("meta.function.ruby").unwrap())),
             (0, Push(Scope::new("keyword.control.def.ruby").unwrap())),
             (3, Pop(2)),
@@ -795,7 +1244,7 @@ mod tests {
         };
 
         assert_eq!(
-            ops(&mut state, "key: value\n", &ps),
+            ops(&mut state, "key: value\n", ps),
             vec![
                 (0, Push(Scope::new("source.yaml").unwrap())),
                 (
@@ -826,7 +1275,7 @@ mod tests {
             ParseState::new(syntax)
         };
 
-        let ops = ops(&mut state, "<script>var lol = '<% def wow(", &ss);
+        let ops = ops(&mut state, "<script>var lol = '<% def wow(", ss);
 
         let mut test_stack = ScopeStack::new();
         test_stack.push(Scope::new("text.html.ruby").unwrap());
@@ -856,7 +1305,7 @@ mod tests {
         // regex with a backref, to match the end of the HEREDOC. Note that there can be code
         // after the marker (`.strip`) here.
         assert_eq!(
-            ops(&mut state, "lol = <<-SQL.strip", &ss),
+            ops(&mut state, "lol = <<-SQL.strip", ss),
             vec![
                 (0, Push(Scope::new("source.ruby.rails").unwrap())),
                 (
@@ -886,10 +1335,10 @@ mod tests {
             ]
         );
 
-        assert_eq!(ops(&mut state, "wow", &ss), vec![]);
+        assert_eq!(ops(&mut state, "wow", ss), vec![]);
 
         assert_eq!(
-            ops(&mut state, "SQL", &ss),
+            ops(&mut state, "SQL", ss),
             vec![
                 (0, Pop(1)),
                 (
@@ -911,7 +1360,7 @@ mod tests {
         };
 
         assert_eq!(
-            ops(&mut state, "#ifdef FOO", &ss),
+            ops(&mut state, "#ifdef FOO", ss),
             vec![
                 (0, Push(Scope::new("source.c").unwrap())),
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
@@ -921,7 +1370,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "{", &ss),
+            ops(&mut state, "{", ss),
             vec![
                 (0, Push(Scope::new("meta.block.c").unwrap())),
                 (
@@ -932,7 +1381,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "#else", &ss),
+            ops(&mut state, "#else", ss),
             vec![
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
                 (0, Push(Scope::new("keyword.control.import.c").unwrap())),
@@ -941,7 +1390,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "{", &ss),
+            ops(&mut state, "{", ss),
             vec![
                 (0, Push(Scope::new("meta.block.c").unwrap())),
                 (
@@ -952,7 +1401,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "#endif", &ss),
+            ops(&mut state, "#endif", ss),
             vec![
                 (0, Pop(1)),
                 (0, Push(Scope::new("meta.block.c").unwrap())),
@@ -964,14 +1413,14 @@ mod tests {
             ]
         );
         assert_eq!(
-            ops(&mut state, "    foo;", &ss),
+            ops(&mut state, "    foo;", ss),
             vec![
                 (7, Push(Scope::new("punctuation.terminator.c").unwrap())),
                 (8, Pop(1)),
             ]
         );
         assert_eq!(
-            ops(&mut state, "}", &ss),
+            ops(&mut state, "}", ss),
             vec![
                 (
                     0,
@@ -992,7 +1441,7 @@ mod tests {
         };
 
         // test fix for issue #25
-        assert_eq!(ops(&mut state, "struct{estruct", &ss).len(), 10);
+        assert_eq!(ops(&mut state, "struct{estruct", ss).len(), 10);
     }
 
     #[test]
@@ -1002,11 +1451,11 @@ mod tests {
         let mut state1 = ParseState::new(syntax);
         let mut state2 = ParseState::new(syntax);
 
-        assert_eq!(ops(&mut state1, "class Foo {", &ss).len(), 11);
-        assert_eq!(ops(&mut state2, "class Fooo {", &ss).len(), 11);
+        assert_eq!(ops(&mut state1, "class Foo {", ss).len(), 11);
+        assert_eq!(ops(&mut state2, "class Fooo {", ss).len(), 11);
 
         assert_eq!(state1, state2);
-        ops(&mut state1, "}", &ss);
+        ops(&mut state1, "}", ss);
         assert_ne!(state1, state2);
     }
 
@@ -2041,9 +2490,9 @@ contexts:
         line: &str,
         syntax_set: &SyntaxSet,
     ) -> Vec<(usize, ScopeStackOp)> {
-        let ops = state.parse_line(line, syntax_set).expect("#[cfg(test)]");
-        debug_print_ops(line, &ops);
-        ops
+        let output = state.parse_line(line, syntax_set).expect("#[cfg(test)]");
+        debug_print_ops(line, &output.ops);
+        output.ops
     }
 
     fn stack_states(ops: Vec<(usize, ScopeStackOp)>) -> Vec<String> {
@@ -2060,5 +2509,1187 @@ contexts:
             states.push(stack_str);
         }
         states
+    }
+
+    const BRANCH_SYNTAX: &str = r#"
+scope: source.branch-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: stmt
+      branch: [let-stmt, generic-stmt]
+
+  let-stmt:
+    - match: 'let'
+      scope: keyword.declaration.branch-test
+      set: let-assign
+    - match: '(?=\S)'
+      fail: stmt
+
+  let-assign:
+    - match: '='
+      scope: keyword.operator.assignment.branch-test
+      set: let-value
+    - match: '(?=\S)'
+      fail: stmt
+
+  let-value:
+    - match: '\w+'
+      scope: constant.other.branch-test
+    - match: ';'
+      scope: punctuation.terminator.branch-test
+      pop: true
+
+  generic-stmt:
+    - match: '[^;]+'
+      scope: string.unquoted.branch-test
+    - match: ';'
+      scope: punctuation.terminator.branch-test
+      pop: true
+"#;
+
+    #[test]
+    fn branch_first_alternative_succeeds() {
+        // "let = foo;" should parse as a let-statement (first alternative)
+        let syntax = SyntaxDefinition::load_from_str(BRANCH_SYNTAX, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let ops = ops(&mut state, "let = foo;", &ss);
+        let states = stack_states(ops);
+        // Should contain keyword.declaration and keyword.operator.assignment
+        assert!(
+            states.iter().any(|s| s.contains("keyword.declaration")),
+            "Expected keyword.declaration scope, got: {:?}",
+            states
+        );
+        assert!(
+            states
+                .iter()
+                .any(|s| s.contains("keyword.operator.assignment")),
+            "Expected keyword.operator.assignment scope, got: {:?}",
+            states
+        );
+        assert!(
+            states.iter().any(|s| s.contains("constant.other")),
+            "Expected constant.other scope, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_fail_backtracks_to_second_alternative() {
+        // "hello;" is not a let-statement, should fail and use generic-stmt
+        let syntax = SyntaxDefinition::load_from_str(BRANCH_SYNTAX, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let ops = ops(&mut state, "hello;", &ss);
+        let states = stack_states(ops);
+        // Should contain string.unquoted (generic-stmt), not keyword.declaration
+        assert!(
+            states.iter().any(|s| s.contains("string.unquoted")),
+            "Expected string.unquoted scope, got: {:?}",
+            states
+        );
+        assert!(
+            !states.iter().any(|s| s.contains("keyword.declaration")),
+            "Should NOT contain keyword.declaration scope, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_fail_after_partial_match() {
+        // "let hello;" — starts like a let-stmt ('let' matches) but no '=' follows, so fail
+        let syntax = SyntaxDefinition::load_from_str(BRANCH_SYNTAX, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "let hello;", &ss);
+
+        // After backtracking, keyword.declaration must be absent (ops.truncate removes it)
+        let states = stack_states(raw_ops.clone());
+        assert!(
+            !states.iter().any(|s| s.contains("keyword.declaration")),
+            "keyword.declaration should be absent after backtrack, got: {:?}",
+            states
+        );
+
+        // After backtracking, should use generic-stmt
+        assert!(
+            states.iter().any(|s| s.contains("string.unquoted")),
+            "Expected string.unquoted scope after backtrack, got: {:?}",
+            states
+        );
+
+        // The string.unquoted push must start at position 0 (covers "let hello", not just "hello")
+        let unquoted_pos = raw_ops.iter().find_map(|(pos, op)| match op {
+            ScopeStackOp::Push(s) if format!("{:?}", s).contains("string.unquoted") => Some(*pos),
+            _ => None,
+        });
+        assert_eq!(
+            unquoted_pos,
+            Some(0),
+            "string.unquoted should start at position 0 after rewind, got: {:?}",
+            unquoted_pos
+        );
+    }
+
+    #[test]
+    fn branch_all_alternatives_exhausted() {
+        // Test with a syntax where all alternatives fail — should not panic
+        let syntax_str = r#"
+scope: source.exhaust-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: bp
+      branch: [alt-a, alt-b]
+    - match: '\S+'
+      scope: fallback.exhaust-test
+
+  alt-a:
+    - match: 'AAA'
+      scope: alt-a.exhaust-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+
+  alt-b:
+    - match: 'BBB'
+      scope: alt-b.exhaust-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        // "xyz" matches neither AAA nor BBB
+        let ops = ops(&mut state, "xyz", &ss);
+        // Should not panic, and should eventually move past the input
+        assert!(!ops.is_empty(), "Expected some ops, got empty");
+    }
+
+    #[test]
+    fn branch_fail_emits_meta_content_scope() {
+        // The second alternative has meta_content_scope; after backtracking,
+        // content inside it should have that scope applied.
+        let syntax_str = r#"
+scope: source.meta-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: bp
+      branch: [try-special, fallback-ctx]
+
+  try-special:
+    - match: 'SPECIAL'
+      scope: keyword.meta-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+
+  fallback-ctx:
+    - meta_content_scope: meta.fallback.meta-test
+    - match: '\w+'
+      scope: variable.meta-test
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let ops = ops(&mut state, "hello", &ss);
+        let states = stack_states(ops);
+        // After backtracking to fallback-ctx, "hello" should have meta.fallback scope
+        assert!(
+            states.iter().any(|s| s.contains("meta.fallback")),
+            "Expected meta.fallback.meta-test scope after backtrack, got: {:?}",
+            states
+        );
+        assert!(
+            states.iter().any(|s| s.contains("variable.meta-test")),
+            "Expected variable.meta-test scope, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_fail_applies_with_prototype() {
+        // The branch pattern has with_prototype; after backtracking to the second
+        // alternative, the prototype should still be active.
+        let syntax_str = r#"
+scope: source.proto-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: bp
+      branch: [try-num, fallback-word]
+      with_prototype:
+        - match: '#'
+          scope: comment.proto-test
+          pop: true
+
+  try-num:
+    - match: '\d+'
+      scope: constant.numeric.proto-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+
+  fallback-word:
+    - match: '\w+'
+      scope: variable.proto-test
+    - match: ';'
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        // "abc#" — 'abc' matches fallback-word, '#' should trigger the prototype
+        let ops = ops(&mut state, "abc#", &ss);
+        let states = stack_states(ops);
+        assert!(
+            states.iter().any(|s| s.contains("variable.proto-test")),
+            "Expected variable.proto-test scope, got: {:?}",
+            states
+        );
+        assert!(
+            states.iter().any(|s| s.contains("comment.proto-test")),
+            "Expected comment.proto-test from with_prototype after backtrack, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_cross_line_backtrack() {
+        // Syntax: "TRY" on line 1 triggers a branch_point.  try-ctx stays
+        // active (consuming the trailing newline) so that it is still live on
+        // line 2.  "FAIL" on line 2 fires `fail: bp`, which must rewind to
+        // fallback-ctx and re-parse line 1 under that alternative.
+        // After parsing line 2, `replayed` must contain corrected ops for
+        // line 1 (with the `fallback.content` scope, not a `try.*` scope).
+        let syntax_str = r#"
+name: CrossLineTest
+scope: source.clt
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+      # consume newline, stay in context for the next line
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: triggers the branch, tries try-ctx first.
+        // try-ctx consumes the newline and stays active.
+        let out1 = state.parse_line("TRY\n", &ss).expect("parse line 1 failed");
+        // replayed is empty on line 1 (no cross-line fail yet)
+        assert!(
+            out1.replayed.is_empty(),
+            "line 1: expected no replayed ops, got {:?}",
+            out1.replayed
+        );
+
+        // Line 2: "FAIL" triggers fail: bp — cross-line backtrack.
+        // `replayed` must contain re-parsed ops for line 1 under fallback-ctx.
+        let out2 = state
+            .parse_line("FAIL\n", &ss)
+            .expect("parse line 2 failed");
+        assert_eq!(
+            out2.replayed.len(),
+            1,
+            "expected exactly one replayed line, got {:?}",
+            out2.replayed
+        );
+        let has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
+        });
+        assert!(
+            has_fallback,
+            "expected fallback.content scope in replayed line 1 ops, got: {:?}",
+            out2.replayed[0]
+        );
+        // The try.word scope must NOT appear in the replayed ops.
+        let has_try_word = out2.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
+        });
+        assert!(
+            !has_try_word,
+            "try.word must not appear in replayed ops after backtrack, got: {:?}",
+            out2.replayed[0]
+        );
+        // Verify current-line ops are clean (ops.clear() fired before re-parse)
+        let current_has_try = out2.ops.iter().any(
+            |(_, op)| matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try")),
+        );
+        assert!(
+            !current_has_try,
+            "current-line ops should not contain try.* scopes after cross-line fail, got: {:?}",
+            out2.ops
+        );
+    }
+
+    #[test]
+    fn branch_point_expiry_after_128_lines() {
+        // A branch point created on line 0 should be discarded when `fail`
+        // fires after 129+ lines have elapsed, and a warning should be emitted.
+        let syntax_str = r#"
+name: ExpiryTest
+scope: source.expiry-test
+contexts:
+  main:
+    - match: 'START'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: filler.expiry-test
+  try-ctx:
+    - match: '\n'
+      # consume newlines, staying in context
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.matched
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        let out0 = state.parse_line("START\n", &ss).expect("parse START");
+        assert!(out0.replayed.is_empty());
+
+        // Feed 129 empty lines to exceed the 128-line limit.
+        // The pruning warning fires during the filler line that crosses the threshold.
+        let mut all_warnings: Vec<String> = Vec::new();
+        for _ in 0..129 {
+            let out = state.parse_line("\n", &ss).expect("parse filler");
+            all_warnings.extend(out.warnings);
+        }
+
+        // Now fire fail — should be a no-op (branch point expired)
+        let out_fail = state.parse_line("FAIL\n", &ss).expect("parse FAIL");
+        all_warnings.extend(out_fail.warnings);
+        assert!(
+            out_fail.replayed.is_empty(),
+            "branch point should have expired, but got replayed ops: {:?}",
+            out_fail.replayed
+        );
+        assert!(
+            all_warnings
+                .iter()
+                .any(|w| w.contains("expired") && w.contains("bp")),
+            "expected a warning about branch point expiry, got: {:?}",
+            all_warnings
+        );
+    }
+
+    #[test]
+    fn branch_point_still_valid_at_128_lines() {
+        // A branch point created on line 0 should still be alive when
+        // exactly 128 lines have elapsed (boundary: 128 - 0 = 128 <= 128).
+        let syntax_str = r#"
+name: ExpiryTest
+scope: source.expiry-test
+contexts:
+  main:
+    - match: 'START'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: filler.expiry-test
+  try-ctx:
+    - match: '\n'
+      # consume newlines, staying in context
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.matched
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        let out0 = state.parse_line("START\n", &ss).expect("parse START");
+        assert!(out0.replayed.is_empty());
+
+        // Feed exactly 127 filler lines so that FAIL lands on cur_line=128
+        // (128 - 0 = 128 <= 128, so the branch point is still valid)
+        let mut all_warnings: Vec<String> = Vec::new();
+        for _ in 0..127 {
+            let out = state.parse_line("\n", &ss).expect("parse filler");
+            all_warnings.extend(out.warnings);
+        }
+
+        // Fire fail — branch point should still be alive at the boundary
+        let out_fail = state.parse_line("FAIL\n", &ss).expect("parse FAIL");
+        all_warnings.extend(out_fail.warnings);
+        assert!(
+            !out_fail.replayed.is_empty(),
+            "branch point should still be valid at exactly 128 lines, but got no replayed ops"
+        );
+        assert!(
+            all_warnings.is_empty(),
+            "expected no warnings at the 128-line boundary, got: {:?}",
+            all_warnings
+        );
+        let has_fallback = out_fail.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
+        });
+        assert!(
+            has_fallback,
+            "expected fallback.content in replayed ops, got: {:?}",
+            out_fail.replayed[0]
+        );
+    }
+
+    #[test]
+    fn branch_stack_depth_invalidation() {
+        // Test two scenarios:
+        // 1. fail fires when stack depth == bp depth (should succeed)
+        // 2. fail fires when stack depth < bp depth (should be a no-op)
+        let syntax_str = r#"
+name: DepthTest
+scope: source.depth-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+  try-ctx:
+    - match: 'OK'
+      scope: try.ok
+      set: post-try
+    - match: '(?=\S)'
+      fail: bp
+  post-try:
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: post.word
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+
+        // Scenario 1: fail at equal depth should succeed.
+        // OK matches in try-ctx, `set` to post-try (depth unchanged since set = pop+push).
+        // FAIL fires in post-try at the same depth as bp → backtrack succeeds.
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let line_ops = ops(&mut state, "OK FAIL\n", &ss);
+        let states = stack_states(line_ops);
+        assert!(
+            states.iter().any(|s| s.contains("fallback.content")),
+            "fail at equal depth should trigger backtrack to fallback, got: {:?}",
+            states
+        );
+        assert!(
+            !states.iter().any(|s| s.contains("try.ok")),
+            "try.ok should be absent after backtrack, got: {:?}",
+            states
+        );
+
+        // Scenario 2: fail at shallower depth should be a no-op.
+        // Use a syntax where the branch context pops before fail fires.
+        let syntax_str2 = r#"
+name: DepthTest2
+scope: source.depth-test2
+contexts:
+  main:
+    - match: 'GO'
+      branch_point: bp
+      branch: [try-ctx2, fallback-ctx2]
+    - match: 'FAIL'
+      fail: bp
+    - match: '.*'
+      scope: main.other
+  try-ctx2:
+    - match: 'OK'
+      scope: try.ok2
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+  fallback-ctx2:
+    - match: '.*'
+      scope: fallback.content2
+      pop: true
+"#;
+        let syntax2 = SyntaxDefinition::load_from_str(syntax_str2, true, None).unwrap();
+        let ss2 = link(syntax2);
+        let mut state2 = ParseState::new(&ss2.syntaxes()[0]);
+        // GO pushes try-ctx2 (depth increases), OK pops back to main (depth decreases).
+        // FAIL fires in main at depth < bp depth → no-op.
+        let line_ops2 = ops(&mut state2, "GO OK FAIL\n", &ss2);
+        let states2 = stack_states(line_ops2);
+        assert!(
+            !states2.iter().any(|s| s.contains("fallback.content2")),
+            "fail should be a no-op when stack is shallower than branch point, got: {:?}",
+            states2
+        );
+        assert!(
+            states2.iter().any(|s| s.contains("try.ok2")),
+            "expected try.ok2 from first alternative, got: {:?}",
+            states2
+        );
+    }
+
+    #[test]
+    fn branch_nested_overlapping_branch_points() {
+        // Two branch points active simultaneously. The inner one fails,
+        // the outer should remain valid.
+        let syntax_str = r#"
+name: NestedTest
+scope: source.nested-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: outer
+      branch: [outer-try, outer-fallback]
+  outer-try:
+    - match: 'A'
+      scope: outer.a
+      set: inner-branch
+    - match: '(?=\S)'
+      fail: outer
+  inner-branch:
+    - match: '(?=\S)'
+      branch_point: inner
+      branch: [inner-try, inner-fallback]
+  inner-try:
+    - match: 'X'
+      scope: inner.x
+      pop: true
+    - match: '(?=\S)'
+      fail: inner
+  inner-fallback:
+    - match: '\w+'
+      scope: inner.fallback
+      pop: true
+  outer-fallback:
+    - match: '.*'
+      scope: outer.fallback
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // "A B" — A matches outer-try, B fails inner → inner-fallback matches B
+        let line_ops = ops(&mut state, "A B\n", &ss);
+        let states = stack_states(line_ops);
+        assert!(
+            states.iter().any(|s| s.contains("inner.fallback")),
+            "expected inner.fallback after inner branch fail, got: {:?}",
+            states
+        );
+        assert!(
+            !states.iter().any(|s| s.contains("outer.fallback")),
+            "outer branch should not have failed, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_fail_nonexistent_name() {
+        // `fail: nonexistent` should be a silent no-op — no panic, parsing continues.
+        let syntax_str = r#"
+name: NoNameTest
+scope: source.noname-test
+contexts:
+  main:
+    - match: '\w+'
+      scope: word.noname-test
+    - match: '(?=;)'
+      fail: nonexistent
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // The key assertion is that this doesn't panic
+        let line_ops = ops(&mut state, "hello;\n", &ss);
+        let states = stack_states(line_ops);
+        assert!(
+            states.iter().any(|s| s.contains("word.noname-test")),
+            "expected word.noname-test, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn branch_cross_line_multi_replay() {
+        // When `fail` fires after 3+ buffered lines, all of them should be
+        // replayed correctly under the fallback alternative.
+        let syntax_str = r#"
+name: MultiReplayTest
+scope: source.multi-replay
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+      # stay in context
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        let out1 = state.parse_line("TRY\n", &ss).expect("line 1");
+        assert!(out1.replayed.is_empty());
+
+        let out2 = state.parse_line("aaa\n", &ss).expect("line 2");
+        assert!(out2.replayed.is_empty());
+
+        let out3 = state.parse_line("bbb\n", &ss).expect("line 3");
+        assert!(out3.replayed.is_empty());
+
+        // Line 4: "FAIL" triggers cross-line backtrack; lines 1-3 should be replayed
+        let out4 = state.parse_line("FAIL\n", &ss).expect("line 4");
+        assert_eq!(
+            out4.replayed.len(),
+            3,
+            "expected 3 replayed lines (lines 1-3), got {:?}",
+            out4.replayed
+        );
+
+        // The first replayed line (replay of "TRY\n") should have fallback.content
+        // because fallback-ctx matches `.*`. After that pop, lines 2-3 are parsed
+        // by main, which matches `.*` → main.other.
+        let has_fallback = out4.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
+        });
+        assert!(
+            has_fallback,
+            "replayed line 0 missing fallback.content, got: {:?}",
+            out4.replayed[0]
+        );
+
+        // No replayed line should have try.word (all are under fallback path)
+        for (i, line_ops) in out4.replayed.iter().enumerate() {
+            let has_try_word = line_ops.iter().any(|(_, op)| {
+                matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
+            });
+            assert!(
+                !has_try_word,
+                "replayed line {} should not have try.word, got: {:?}",
+                i, line_ops
+            );
+        }
+        // Verify current-line ops are clean (ops.clear() fired before re-parse)
+        let current_has_try = out4.ops.iter().any(
+            |(_, op)| matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try")),
+        );
+        assert!(
+            !current_has_try,
+            "current-line ops should not contain try.* scopes after cross-line fail, got: {:?}",
+            out4.ops
+        );
+    }
+
+    #[test]
+    fn branch_cross_line_fail_with_preceding_ops() {
+        // When the fail-triggering line has matchable content BEFORE the fail keyword,
+        // ops are non-empty and start > 0 when fail fires. After cross-line backtrack,
+        // those stale ops must be cleared and the line re-parsed from position 0.
+        let syntax_str = r#"
+name: PrecedingOpsTest
+scope: source.preceding-ops
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+      # stay in context across lines
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: start the branch
+        let out1 = state.parse_line("TRY\n", &ss).expect("line 1");
+        assert!(out1.replayed.is_empty());
+
+        // Line 2: "stuff FAIL" — "stuff" matches try.word (ops non-empty, start advances)
+        // then FAIL triggers cross-line backtrack.
+        let out2 = state.parse_line("stuff FAIL\n", &ss).expect("line 2");
+
+        // Should have replayed line 1 (TRY\n)
+        assert_eq!(
+            out2.replayed.len(),
+            1,
+            "expected 1 replayed line, got {}",
+            out2.replayed.len()
+        );
+
+        // Replayed line should have fallback.content, not try.word
+        let replay_has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
+        });
+        assert!(
+            replay_has_fallback,
+            "replayed line should have fallback.content, got: {:?}",
+            out2.replayed[0]
+        );
+
+        // Current-line ops must NOT contain try.word (stale ops were cleared)
+        let current_has_try = out2.ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
+        });
+        assert!(
+            !current_has_try,
+            "current-line ops should not contain try.word after cross-line fail, got: {:?}",
+            out2.ops
+        );
+
+        // Current-line ops should have main.other (re-parsed from position 0)
+        let current_has_main = out2.ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("main.other"))
+        });
+        assert!(
+            current_has_main,
+            "current-line should be re-parsed as main.other from position 0, got: {:?}",
+            out2.ops
+        );
+    }
+
+    // ── Mutation-killing pass 3 ──────────────────────────────────────────
+
+    #[test]
+    fn is_speculative_reflects_branch_state() {
+        // Kills: L306 replace is_speculative -> true / false / delete !
+        // is_speculative must be true while inside a branch_point and false otherwise.
+        // We use a syntax where both alternatives fail, so the branch point is
+        // fully exhausted and removed.
+        let syntax_str = r#"
+name: SpeculativeTest
+scope: source.spec-test
+contexts:
+  main:
+    - match: '(?=\S)'
+      branch_point: bp
+      branch: [alt-a, alt-b]
+    - match: '\S+'
+      scope: fallback.spec-test
+
+  alt-a:
+    - match: 'AAA'
+      scope: alt-a.spec-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+
+  alt-b:
+    - match: 'BBB'
+      scope: alt-b.spec-test
+      pop: true
+    - match: '(?=\S)'
+      fail: bp
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Before any branch: not speculative
+        assert!(
+            !state.is_speculative(),
+            "should not be speculative before branch_point is created"
+        );
+
+        // "AAA" matches first alternative, so branch stays open (could still fail)
+        let _ = state.parse_line("AAA\n", &ss).unwrap();
+        // Branch point is created then first alt succeeds — but bp stays until
+        // explicitly removed.  Since AAA matched and popped, bp is still there.
+        // Actually let's test with a failing input instead:
+        let mut state2 = ParseState::new(&ss.syntaxes()[0]);
+        assert!(!state2.is_speculative());
+
+        // "xyz" matches neither AAA nor BBB: both alternatives fail, bp exhausted & removed
+        let _ = state2.parse_line("xyz\n", &ss).unwrap();
+        assert!(
+            !state2.is_speculative(),
+            "should not be speculative after all alternatives exhausted"
+        );
+
+        // Now test it IS speculative mid-branch: use a cross-line syntax
+        let syntax_str2 = r#"
+name: SpecCross
+scope: source.spec-cross
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax2 = SyntaxDefinition::load_from_str(syntax_str2, true, None).unwrap();
+        let ss2 = link(syntax2);
+        let mut state3 = ParseState::new(&ss2.syntaxes()[0]);
+        assert!(!state3.is_speculative());
+
+        let _ = state3.parse_line("TRY\n", &ss2).unwrap();
+        assert!(
+            state3.is_speculative(),
+            "should be speculative after branch_point creation"
+        );
+    }
+
+    #[test]
+    fn consuming_match_not_treated_as_loop() {
+        // Kills: L533 replace > with < in find_best_match (consuming check)
+        // A pop that consumes characters must NOT be treated as a loop.
+        // If consuming is negated (> → <), a consuming pop would be flagged
+        // as a loop and skipped, breaking the parse.
+        let syntax_str = r#"
+name: ConsumingTest
+scope: source.consuming
+contexts:
+  main:
+    - match: '(?=\S)'
+      push: inner
+    - match: '\n'
+  inner:
+    - match: '\w+'
+      scope: word.consuming
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // "(?=\S)" is a zero-length push (non-consuming), then "\w+" is a
+        // consuming pop inside inner.  If the consuming check is inverted,
+        // the pop would be treated as looping and skipped, causing the parser
+        // to advance one character before matching, so the push position
+        // would be 1 instead of 0.
+        let raw_ops = ops(&mut state, "hello world\n", &ss);
+        let first_word_pos = raw_ops
+            .iter()
+            .find_map(|(pos, op)| match op {
+                ScopeStackOp::Push(s) if format!("{:?}", s).contains("word.consuming") => {
+                    Some(*pos)
+                }
+                _ => None,
+            })
+            .expect("expected at least one word.consuming push");
+        assert_eq!(
+            first_word_pos, 0,
+            "word.consuming must start at position 0 (consuming pop should not be treated as loop)"
+        );
+    }
+
+    #[test]
+    fn capture_sort_by_span_length() {
+        // Kills: L709 replace - with + in exec_pattern (capture sort key)
+        // Captures are sorted so that longer spans come first (pushed before
+        // shorter nested ones).  If the sort key sign is flipped, shorter
+        // spans push first, producing the wrong nesting order.
+        let syntax_str = r#"
+name: CaptureSort
+scope: source.capsort
+contexts:
+  main:
+    - match: '((a)(b))'
+      captures:
+        1: outer.capsort
+        2: inner-a.capsort
+        3: inner-b.capsort
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "ab\n", &ss);
+
+        // With correct sorting: outer pushes first (at pos 0), then inner-a
+        // at the same position.  With the sign flipped, inner-a would push
+        // before outer, which is wrong.
+        let push_order: Vec<&str> = raw_ops
+            .iter()
+            .filter_map(|(_, op)| match op {
+                ScopeStackOp::Push(s) => {
+                    let name = format!("{:?}", s);
+                    if name.contains("outer.capsort") {
+                        Some("outer")
+                    } else if name.contains("inner-a.capsort") {
+                        Some("inner-a")
+                    } else if name.contains("inner-b.capsort") {
+                        Some("inner-b")
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            push_order,
+            vec!["outer", "inner-a", "inner-b"],
+            "captures must push in longest-span-first order, got: {:?}",
+            push_order
+        );
+    }
+
+    #[test]
+    fn v2_set_pops_meta_content_scope_from_matched_text() {
+        // Kills: L1009 replace += with -= or *= in push_meta_ops
+        // When a v2 syntax uses `set`, num_to_pop must include
+        // cur_context.meta_scope.len() so that the old meta scope is removed.
+        let syntax_str = r#"
+name: V2SetMeta
+scope: source.v2setmeta
+version: 2
+contexts:
+  main:
+    - match: '(?=\S)'
+      push: ctx-a
+  ctx-a:
+    - meta_scope: meta.a.v2setmeta
+    - match: 'GO'
+      scope: keyword.go.v2setmeta
+      set: ctx-b
+    - match: '\w+'
+      scope: word.a.v2setmeta
+  ctx-b:
+    - meta_scope: meta.b.v2setmeta
+    - match: '\w+'
+      scope: word.b.v2setmeta
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "GO hello\n", &ss);
+        let states = stack_states(raw_ops);
+
+        // After "GO" triggers `set: ctx-b`, meta.a should be popped and
+        // meta.b should be active on "hello".  If num_to_pop is wrong
+        // (e.g. subtracted instead of added), meta.a would persist.
+        let last_state = states.last().expect("expected some states");
+        assert!(
+            !last_state.contains("meta.a.v2setmeta"),
+            "meta.a should have been popped after set, got: {:?}",
+            last_state
+        );
+    }
+
+    #[test]
+    fn v2_set_clear_scopes_only_from_last_context() {
+        // Kills: L1029 replace && with || / == with != in push_meta_ops
+        // In v2, clear_scopes during a set should only apply from the last
+        // context, and only when `is_set` is true AND `i == last_idx`.
+        let syntax_str = r#"
+name: V2ClearLast
+scope: source.v2clear
+version: 2
+contexts:
+  main:
+    - meta_scope: meta.main.v2clear
+    - match: 'GO'
+      set: [ctx-b, ctx-a]
+  ctx-a:
+    - meta_scope: meta.a.v2clear
+    - match: '\w+'
+      scope: word.a.v2clear
+  ctx-b:
+    - clear_scopes: true
+    - meta_scope: meta.b.v2clear
+    - match: '\w+'
+      scope: word.b.v2clear
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "GO hello\n", &ss);
+
+        // ctx-a is last in the set stack (top of stack), and it has no
+        // clear_scopes.  ctx-b has clear_scopes but is NOT the last context
+        // in v2.  If the condition is inverted (|| instead of &&), clear_scopes
+        // would incorrectly apply from ctx-b.
+        let states = stack_states(raw_ops);
+        // "hello" matches in ctx-a (top of stack), which should have meta.a
+        let hello_states: Vec<_> = states
+            .iter()
+            .filter(|s| s.contains("word.a.v2clear"))
+            .collect();
+        assert!(
+            !hello_states.is_empty(),
+            "expected word.a.v2clear, got states: {:?}",
+            states
+        );
+        // meta.a should be present (not cleared), since ctx-a is top and has
+        // no clear_scopes of its own
+        assert!(
+            hello_states.iter().any(|s| s.contains("meta.a.v2clear")),
+            "meta.a should be present since ctx-a (last) has no clear_scopes: {:?}",
+            hello_states
+        );
+        // source.v2clear must also be present — if clear_scopes from ctx-b
+        // fires incorrectly (mutations on L1029: && → || or == → !=), the
+        // root scope would be cleared.
+        assert!(
+            hello_states
+                .iter()
+                .any(|s| s.contains("source.v2clear")),
+            "source.v2clear should not be cleared (clear_scopes should only apply from last context): {:?}",
+            hello_states
+        );
+    }
+
+    #[test]
+    fn v2_embed_scope_replaces_skips_meta_content_pop_on_exit() {
+        // Kills: L912 replace >= with < (version >= 2)
+        //        L913 replace >= with < (stack.len() >= 2)
+        //        L915 replace - with / (stack.len() - 2)
+        // When a v2 syntax uses embed with embed_scope, the escape context
+        // has embed_scope_replaces=true.  On pop, the meta_content_scope of
+        // the escape context should NOT be popped because it was never pushed.
+        // If the version check is wrong, we'd get an extra Pop.
+        use crate::parsing::ScopeStack;
+
+        // The host pushes two intermediate contexts before embedding so that
+        // the stack depth is 5 when the escape fires:
+        //   [main, wrapper-a, wrapper-b, escape, embedded]
+        // This distinguishes stack.len()-2 (=3, escape) from stack.len()/2
+        // (=2, wrapper-b), catching the L915 `-` → `/` mutation.
+        let host = SyntaxDefinition::load_from_str(
+            r#"
+name: V2SkipHost
+scope: source.v2skip
+file_extensions: [v2skip]
+version: 2
+contexts:
+  main:
+    - match: '(?=<)'
+      push: wrapper-a
+    - match: '\w+'
+      scope: word.v2skip
+  wrapper-a:
+    - match: '(?=<)'
+      push: wrapper-b
+  wrapper-b:
+    - match: '<<'
+      embed: scope:source.v2skipemb
+      embed_scope: meta.embedded.v2skip
+      escape: '>>'
+      escape_captures:
+        0: punctuation.end.v2skip
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let embedded = SyntaxDefinition::load_from_str(
+            r#"
+name: V2SkipEmb
+scope: source.v2skipemb
+file_extensions: [v2skipemb]
+version: 2
+contexts:
+  main:
+    - meta_content_scope: content.v2skipemb
+    - match: '\w+'
+      scope: keyword.v2skipemb
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(host);
+        builder.add(embedded);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("V2SkipHost").unwrap();
+        let mut state = ParseState::new(syntax);
+        let raw_ops = state.parse_line("<<x>> hello\n", &ss).unwrap().ops;
+
+        // Build scope stack through all ops and verify it ends clean.
+        // If the skip logic is broken (mutations on L912-L915), an extra Pop
+        // for meta_content_scope is generated, which pops a scope that was
+        // never pushed, corrupting the stack.
+        let mut scope_stack = ScopeStack::new();
+        for (_, op) in &raw_ops {
+            scope_stack
+                .apply(op)
+                .expect("applying op should not fail — extra Pop means the skip logic is broken");
+        }
+        // After ">> hello\n", we should be back in main with source.v2skip
+        // as the only remaining scope (everything else was popped).
+        // If the skip logic is wrong, source.v2skip would be popped too.
+        let final_scopes: Vec<String> = scope_stack
+            .as_slice()
+            .iter()
+            .map(|s| format!("{:?}", s))
+            .collect();
+        assert!(
+            final_scopes.iter().any(|s| s.contains("source.v2skip")),
+            "source.v2skip should remain on stack after all ops, got: {:?}",
+            final_scopes
+        );
     }
 }

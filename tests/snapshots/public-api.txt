@@ -667,6 +667,8 @@ impl core::marker::Unpin for syntect::parsing::syntax_definition::ContextReferen
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::ContextReference
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::ContextReference
 pub enum syntect::parsing::syntax_definition::MatchOperation
+pub syntect::parsing::syntax_definition::MatchOperation::Branch(alloc::string::String, alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
+pub syntect::parsing::syntax_definition::MatchOperation::Fail(alloc::string::String)
 pub syntect::parsing::syntax_definition::MatchOperation::None
 pub syntect::parsing::syntax_definition::MatchOperation::Pop(usize)
 pub syntect::parsing::syntax_definition::MatchOperation::Push(alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
@@ -691,6 +693,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_defini
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::MatchOperation
 pub enum syntect::parsing::syntax_definition::Pattern
 pub syntect::parsing::syntax_definition::Pattern::Include(syntect::parsing::syntax_definition::ContextReference)
+pub syntect::parsing::syntax_definition::Pattern::IncludeWithPrototype(syntect::parsing::syntax_definition::ContextReference)
 pub syntect::parsing::syntax_definition::Pattern::Match(syntect::parsing::syntax_definition::MatchPattern)
 impl core::clone::Clone for syntect::parsing::syntax_definition::Pattern
 pub fn syntect::parsing::syntax_definition::Pattern::clone(&self) -> syntect::parsing::syntax_definition::Pattern
@@ -805,12 +808,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_defini
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::MatchPattern
 pub struct syntect::parsing::syntax_definition::SyntaxDefinition
 pub syntect::parsing::syntax_definition::SyntaxDefinition::contexts: std::collections::hash::map::HashMap<alloc::string::String, syntect::parsing::syntax_definition::Context>
+pub syntect::parsing::syntax_definition::SyntaxDefinition::extends: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::file_extensions: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::first_line_match: core::option::Option<alloc::string::String>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::hidden: bool
 pub syntect::parsing::syntax_definition::SyntaxDefinition::name: alloc::string::String
 pub syntect::parsing::syntax_definition::SyntaxDefinition::scope: syntect::parsing::Scope
 pub syntect::parsing::syntax_definition::SyntaxDefinition::variables: std::collections::hash::map::HashMap<alloc::string::String, alloc::string::String>
+pub syntect::parsing::syntax_definition::SyntaxDefinition::version: u32
 impl syntect::parsing::syntax_definition::SyntaxDefinition
 pub fn syntect::parsing::syntax_definition::SyntaxDefinition::load_from_str(s: &str, lines_include_newline: bool, fallback_name: core::option::Option<&str>) -> core::result::Result<syntect::parsing::syntax_definition::SyntaxDefinition, syntect::parsing::ParseSyntaxError>
 impl core::clone::Clone for syntect::parsing::syntax_definition::SyntaxDefinition
@@ -984,10 +989,27 @@ impl core::marker::Sync for syntect::parsing::MatchPower
 impl core::marker::Unpin for syntect::parsing::MatchPower
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::MatchPower
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::MatchPower
+pub struct syntect::parsing::ParseLineOutput
+pub syntect::parsing::ParseLineOutput::ops: alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>
+pub syntect::parsing::ParseLineOutput::replayed: alloc::vec::Vec<alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>>
+pub syntect::parsing::ParseLineOutput::warnings: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for syntect::parsing::ParseLineOutput
+pub fn syntect::parsing::ParseLineOutput::clone(&self) -> syntect::parsing::ParseLineOutput
+impl core::default::Default for syntect::parsing::ParseLineOutput
+pub fn syntect::parsing::ParseLineOutput::default() -> syntect::parsing::ParseLineOutput
+impl core::fmt::Debug for syntect::parsing::ParseLineOutput
+pub fn syntect::parsing::ParseLineOutput::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for syntect::parsing::ParseLineOutput
+impl core::marker::Send for syntect::parsing::ParseLineOutput
+impl core::marker::Sync for syntect::parsing::ParseLineOutput
+impl core::marker::Unpin for syntect::parsing::ParseLineOutput
+impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ParseLineOutput
+impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseLineOutput
 pub struct syntect::parsing::ParseState
 impl syntect::parsing::ParseState
+pub fn syntect::parsing::ParseState::is_speculative(&self) -> bool
 pub fn syntect::parsing::ParseState::new(syntax: &syntect::parsing::SyntaxReference) -> syntect::parsing::ParseState
-pub fn syntect::parsing::ParseState::parse_line(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>, syntect::parsing::ParsingError>
+pub fn syntect::parsing::ParseState::parse_line(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<syntect::parsing::ParseLineOutput, syntect::parsing::ParsingError>
 impl core::clone::Clone for syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::clone(&self) -> syntect::parsing::ParseState
 impl core::cmp::Eq for syntect::parsing::ParseState
@@ -1141,12 +1163,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ScopeStack
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ScopeStack
 pub struct syntect::parsing::SyntaxDefinition
 pub syntect::parsing::SyntaxDefinition::contexts: std::collections::hash::map::HashMap<alloc::string::String, syntect::parsing::syntax_definition::Context>
+pub syntect::parsing::SyntaxDefinition::extends: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::SyntaxDefinition::file_extensions: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::SyntaxDefinition::first_line_match: core::option::Option<alloc::string::String>
 pub syntect::parsing::SyntaxDefinition::hidden: bool
 pub syntect::parsing::SyntaxDefinition::name: alloc::string::String
 pub syntect::parsing::SyntaxDefinition::scope: syntect::parsing::Scope
 pub syntect::parsing::SyntaxDefinition::variables: std::collections::hash::map::HashMap<alloc::string::String, alloc::string::String>
+pub syntect::parsing::SyntaxDefinition::version: u32
 impl syntect::parsing::syntax_definition::SyntaxDefinition
 pub fn syntect::parsing::syntax_definition::SyntaxDefinition::load_from_str(s: &str, lines_include_newline: bool, fallback_name: core::option::Option<&str>) -> core::result::Result<syntect::parsing::syntax_definition::SyntaxDefinition, syntect::parsing::ParseSyntaxError>
 impl core::clone::Clone for syntect::parsing::syntax_definition::SyntaxDefinition
@@ -1174,6 +1198,7 @@ pub syntect::parsing::SyntaxReference::hidden: bool
 pub syntect::parsing::SyntaxReference::name: alloc::string::String
 pub syntect::parsing::SyntaxReference::scope: syntect::parsing::Scope
 pub syntect::parsing::SyntaxReference::variables: std::collections::hash::map::HashMap<alloc::string::String, alloc::string::String>
+pub syntect::parsing::SyntaxReference::version: u32
 impl core::clone::Clone for syntect::parsing::SyntaxReference
 pub fn syntect::parsing::SyntaxReference::clone(&self) -> syntect::parsing::SyntaxReference
 impl core::fmt::Debug for syntect::parsing::SyntaxReference
