@@ -613,6 +613,7 @@ impl<'a> syntect::html::ClassedHTMLGenerator<'a>
 pub fn syntect::html::ClassedHTMLGenerator<'a>::finalize(self) -> alloc::string::String
 pub fn syntect::html::ClassedHTMLGenerator<'a>::new(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet) -> syntect::html::ClassedHTMLGenerator<'a>
 pub fn syntect::html::ClassedHTMLGenerator<'a>::new_with_class_style(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, style: syntect::html::ClassStyle) -> syntect::html::ClassedHTMLGenerator<'a>
+pub fn syntect::html::ClassedHTMLGenerator<'a>::new_with_class_style_and_highlighted_lines(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, style: syntect::html::ClassStyle, highlighted_lines: &[usize]) -> syntect::html::ClassedHTMLGenerator<'a>
 pub fn syntect::html::ClassedHTMLGenerator<'a>::parse_html_for_line(&mut self, line: &str)
 pub fn syntect::html::ClassedHTMLGenerator<'a>::parse_html_for_line_which_includes_newline(&mut self, line: &str) -> core::result::Result<(), syntect::Error>
 impl<'a> core::marker::Freeze for syntect::html::ClassedHTMLGenerator<'a>
