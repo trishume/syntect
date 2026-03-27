@@ -692,6 +692,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_defini
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::MatchOperation
 pub enum syntect::parsing::syntax_definition::Pattern
 pub syntect::parsing::syntax_definition::Pattern::Include(syntect::parsing::syntax_definition::ContextReference)
+pub syntect::parsing::syntax_definition::Pattern::IncludeWithPrototype(syntect::parsing::syntax_definition::ContextReference)
 pub syntect::parsing::syntax_definition::Pattern::Match(syntect::parsing::syntax_definition::MatchPattern)
 impl core::clone::Clone for syntect::parsing::syntax_definition::Pattern
 pub fn syntect::parsing::syntax_definition::Pattern::clone(&self) -> syntect::parsing::syntax_definition::Pattern
@@ -806,12 +807,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_defini
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::MatchPattern
 pub struct syntect::parsing::syntax_definition::SyntaxDefinition
 pub syntect::parsing::syntax_definition::SyntaxDefinition::contexts: std::collections::hash::map::HashMap<alloc::string::String, syntect::parsing::syntax_definition::Context>
+pub syntect::parsing::syntax_definition::SyntaxDefinition::extends: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::file_extensions: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::first_line_match: core::option::Option<alloc::string::String>
 pub syntect::parsing::syntax_definition::SyntaxDefinition::hidden: bool
 pub syntect::parsing::syntax_definition::SyntaxDefinition::name: alloc::string::String
 pub syntect::parsing::syntax_definition::SyntaxDefinition::scope: syntect::parsing::Scope
 pub syntect::parsing::syntax_definition::SyntaxDefinition::variables: std::collections::hash::map::HashMap<alloc::string::String, alloc::string::String>
+pub syntect::parsing::syntax_definition::SyntaxDefinition::version: u32
 impl syntect::parsing::syntax_definition::SyntaxDefinition
 pub fn syntect::parsing::syntax_definition::SyntaxDefinition::load_from_str(s: &str, lines_include_newline: bool, fallback_name: core::option::Option<&str>) -> core::result::Result<syntect::parsing::syntax_definition::SyntaxDefinition, syntect::parsing::ParseSyntaxError>
 impl core::clone::Clone for syntect::parsing::syntax_definition::SyntaxDefinition
@@ -1142,12 +1145,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ScopeStack
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ScopeStack
 pub struct syntect::parsing::SyntaxDefinition
 pub syntect::parsing::SyntaxDefinition::contexts: std::collections::hash::map::HashMap<alloc::string::String, syntect::parsing::syntax_definition::Context>
+pub syntect::parsing::SyntaxDefinition::extends: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::SyntaxDefinition::file_extensions: alloc::vec::Vec<alloc::string::String>
 pub syntect::parsing::SyntaxDefinition::first_line_match: core::option::Option<alloc::string::String>
 pub syntect::parsing::SyntaxDefinition::hidden: bool
 pub syntect::parsing::SyntaxDefinition::name: alloc::string::String
 pub syntect::parsing::SyntaxDefinition::scope: syntect::parsing::Scope
 pub syntect::parsing::SyntaxDefinition::variables: std::collections::hash::map::HashMap<alloc::string::String, alloc::string::String>
+pub syntect::parsing::SyntaxDefinition::version: u32
 impl syntect::parsing::syntax_definition::SyntaxDefinition
 pub fn syntect::parsing::syntax_definition::SyntaxDefinition::load_from_str(s: &str, lines_include_newline: bool, fallback_name: core::option::Option<&str>) -> core::result::Result<syntect::parsing::syntax_definition::SyntaxDefinition, syntect::parsing::ParseSyntaxError>
 impl core::clone::Clone for syntect::parsing::syntax_definition::SyntaxDefinition
@@ -1175,6 +1180,7 @@ pub syntect::parsing::SyntaxReference::hidden: bool
 pub syntect::parsing::SyntaxReference::name: alloc::string::String
 pub syntect::parsing::SyntaxReference::scope: syntect::parsing::Scope
 pub syntect::parsing::SyntaxReference::variables: std::collections::hash::map::HashMap<alloc::string::String, alloc::string::String>
+pub syntect::parsing::SyntaxReference::version: u32
 impl core::clone::Clone for syntect::parsing::SyntaxReference
 pub fn syntect::parsing::SyntaxReference::clone(&self) -> syntect::parsing::SyntaxReference
 impl core::fmt::Debug for syntect::parsing::SyntaxReference

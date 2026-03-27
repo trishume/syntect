@@ -55,12 +55,13 @@ fn str_to_scopes(s: &str, repo: &mut ScopeRepository) -> Result<Vec<Scope>, Pars
         .collect()
 }
 
-struct ParserState<'a> {
-    scope_repo: &'a mut ScopeRepository,
-    variables: HashMap<String, String>,
-    variable_regex: Regex,
-    backref_regex: Regex,
-    lines_include_newline: bool,
+pub(crate) struct ParserState<'a> {
+    pub(crate) scope_repo: &'a mut ScopeRepository,
+    pub(crate) variables: HashMap<String, String>,
+    pub(crate) variable_regex: Regex,
+    pub(crate) backref_regex: Regex,
+    pub(crate) lines_include_newline: bool,
+    pub(crate) version: u32,
 }
 
 // `__start` must not include prototypes from the actual syntax definition,
@@ -124,20 +125,26 @@ impl SyntaxDefinition {
         let top_level_scope = scope_repo
             .build(get_key(h, "scope", |x| x.as_str())?)
             .map_err(ParseSyntaxError::InvalidScope)?;
+        let version = get_key(h, "version", |x| x.as_i64()).unwrap_or(1) as u32;
+
         let mut state = ParserState {
             scope_repo,
             variables,
             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into()),
             backref_regex: Regex::new(r"\\\d".into()),
             lines_include_newline,
+            version,
         };
 
         let mut contexts = SyntaxDefinition::parse_contexts(contexts_hash, &mut state)?;
-        if !contexts.contains_key("main") {
+        let has_extends = get_key(h, "extends", Some).is_ok();
+        if !contexts.contains_key("main") && !has_extends {
             return Err(ParseSyntaxError::MainMissing);
         }
 
-        SyntaxDefinition::add_initial_contexts(&mut contexts, &mut state, top_level_scope);
+        if contexts.contains_key("main") {
+            SyntaxDefinition::add_initial_contexts(&mut contexts, &mut state, top_level_scope);
+        }
 
         let mut file_extensions = Vec::new();
         for extension_key in &["file_extensions", "hidden_file_extensions"] {
@@ -145,6 +152,21 @@ impl SyntaxDefinition {
                 file_extensions.extend(v.iter().filter_map(|y| y.as_str().map(|s| s.to_owned())))
             }
         }
+
+        let extends = get_key(h, "extends", Some)
+            .ok()
+            .map(|y| {
+                if let Some(s) = y.as_str() {
+                    vec![s.to_owned()]
+                } else if let Some(seq) = y.as_vec() {
+                    seq.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_owned()))
+                        .collect()
+                } else {
+                    vec![]
+                }
+            })
+            .unwrap_or_default();
 
         let defn = SyntaxDefinition {
             name: get_key(h, "name", |x| x.as_str())
@@ -160,6 +182,8 @@ impl SyntaxDefinition {
 
             variables: state.variables,
             contexts,
+            extends,
+            version,
         };
         Ok(defn)
     }
@@ -213,6 +237,14 @@ impl SyntaxDefinition {
                 context.meta_include_prototype = x;
                 is_special = true;
             }
+            if let Ok(true) = get_key(map, "meta_prepend", |x| x.as_bool()) {
+                context.merge_mode = ContextMergeMode::Prepend;
+                is_special = true;
+            }
+            if let Ok(true) = get_key(map, "meta_append", |x| x.as_bool()) {
+                context.merge_mode = ContextMergeMode::Append;
+                is_special = true;
+            }
             if let Ok(true) = get_key(map, "clear_scopes", |x| x.as_bool()) {
                 context.clear_scopes = Some(ClearAmount::All);
                 is_special = true;
@@ -225,7 +257,15 @@ impl SyntaxDefinition {
                 if let Ok(x) = get_key(map, "include", Some) {
                     let reference =
                         SyntaxDefinition::parse_reference(x, state, contexts, namer, false)?;
-                    context.patterns.push(Pattern::Include(reference));
+                    let apply_prototype =
+                        get_key(map, "apply_prototype", |x| x.as_bool()).unwrap_or(false);
+                    if apply_prototype {
+                        context
+                            .patterns
+                            .push(Pattern::IncludeWithPrototype(reference));
+                    } else {
+                        context.patterns.push(Pattern::Include(reference));
+                    }
                 } else {
                     let pattern =
                         SyntaxDefinition::parse_match_pattern(map, state, contexts, namer)?;
@@ -292,8 +332,8 @@ impl SyntaxDefinition {
         namer: &mut ContextNamer,
     ) -> Result<MatchPattern, ParseSyntaxError> {
         let raw_regex = get_key(map, "match", |x| x.as_str())?;
+        let raw_regex_owned = raw_regex.to_owned();
         let regex_str = Self::parse_regex(raw_regex, state)?;
-        // println!("{:?}", regex_str);
 
         let scope = get_key(map, "scope", |x| x.as_str())
             .ok()
@@ -336,6 +376,7 @@ impl SyntaxDefinition {
                 commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
                 embed_escape_context_yaml.push(Yaml::Hash(commands));
             }
+            let has_embed_scope = get_key(map, "embed_scope", Some).is_ok();
             if let Ok(v) = get_key(map, "escape", Some) {
                 let mut match_map = Hash::new();
                 match_map.insert(Yaml::String("match".to_string()), v.clone());
@@ -351,6 +392,12 @@ impl SyntaxDefinition {
                     false,
                     namer,
                 )?;
+                // In v2, embed_scope replaces the embedded syntax's scope
+                if state.version >= 2 && has_embed_scope {
+                    if let Some(ctx) = contexts.get_mut(&escape_context) {
+                        ctx.embed_scope_replaces = true;
+                    }
+                }
                 MatchOperation::Push(vec![
                     ContextReference::Inline(escape_context),
                     SyntaxDefinition::parse_reference(y, state, contexts, namer, true)?,
@@ -389,9 +436,10 @@ impl SyntaxDefinition {
             None
         };
 
-        let pattern = MatchPattern::new(
+        let pattern = MatchPattern::new_with_raw(
             has_captures,
             regex_str,
+            raw_regex_owned,
             scope,
             captures,
             operation,
@@ -505,7 +553,7 @@ impl SyntaxDefinition {
     /// scope remains. This behaviour is emulated through some added contexts
     /// that are the actual top level contexts used in parsing.
     /// See <https://github.com/trishume/syntect/issues/58> for more.
-    fn add_initial_contexts(
+    pub(crate) fn add_initial_contexts(
         contexts: &mut HashMap<String, Context>,
         state: &mut ParserState<'_>,
         top_level_scope: Scope,
@@ -553,6 +601,83 @@ impl SyntaxDefinition {
             main.meta_content_scope.insert(0, top_level_scope);
         }
     }
+}
+
+/// Re-resolve a raw regex string with the given variables and newline mode.
+/// Applies the full pipeline: resolve_variables → replace_posix → newlines → try_compile.
+pub(crate) fn re_resolve_regex(
+    raw: &str,
+    variables: &HashMap<String, String>,
+    lines_include_newline: bool,
+) -> Result<String, ParseSyntaxError> {
+    let variable_regex = Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into());
+    let state = ReResolveState {
+        variables,
+        variable_regex: &variable_regex,
+    };
+    let regex = re_resolve_variables(raw, &state);
+    let regex = replace_posix_char_classes(regex);
+    let regex = if lines_include_newline {
+        regex_for_newlines(regex)
+    } else {
+        regex_for_no_newlines(regex)
+    };
+    SyntaxDefinition::try_compile_regex(&regex)?;
+    Ok(regex)
+}
+
+struct ReResolveState<'a> {
+    variables: &'a HashMap<String, String>,
+    variable_regex: &'a Regex,
+}
+
+fn re_resolve_variables(raw_regex: &str, state: &ReResolveState<'_>) -> String {
+    let mut result = String::new();
+    let mut index = 0;
+    let mut region = Region::new();
+    while state
+        .variable_regex
+        .search(raw_regex, index, raw_regex.len(), Some(&mut region))
+    {
+        let (begin, end) = region.pos(0).unwrap();
+        result.push_str(&raw_regex[index..begin]);
+
+        let var_pos = region.pos(1).unwrap();
+        let var_name = &raw_regex[var_pos.0..var_pos.1];
+        let var_raw = state
+            .variables
+            .get(var_name)
+            .map(String::as_ref)
+            .unwrap_or("");
+        let var_resolved = re_resolve_variables(var_raw, state);
+        result.push_str(&var_resolved);
+
+        index = end;
+    }
+    if index < raw_regex.len() {
+        result.push_str(&raw_regex[index..]);
+    }
+    result
+}
+
+/// Re-resolve all regexes in a SyntaxDefinition that have a stored raw_regex_str.
+/// This is used after merging variables during extends resolution.
+pub(crate) fn re_resolve_all_regexes(
+    syntax: &mut SyntaxDefinition,
+    lines_include_newline: bool,
+) -> Result<(), ParseSyntaxError> {
+    for context in syntax.contexts.values_mut() {
+        for pattern in &mut context.patterns {
+            if let Pattern::Match(ref mut match_pat) = pattern {
+                if let Some(ref raw) = match_pat.raw_regex_str {
+                    let new_regex_str =
+                        re_resolve_regex(raw, &syntax.variables, lines_include_newline)?;
+                    match_pat.regex = Regex::new(new_regex_str);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 struct ContextNamer {
@@ -1343,6 +1468,167 @@ mod tests {
         match load_err {
             ParseSyntaxError::RegexCompileError(bad_regex, _) => assert_eq!(bad_regex, r"\"),
             _ => panic!("Unexpected error: {load_err}"),
+        }
+    }
+
+    #[test]
+    fn can_parse_extends_field() {
+        let defn = SyntaxDefinition::load_from_str(
+            r#"
+            name: C++
+            scope: source.c++
+            extends: Packages/C/C.sublime-syntax
+            contexts:
+              main:
+                - match: 'class'
+                  scope: keyword.c++
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(defn.extends, vec!["Packages/C/C.sublime-syntax".to_owned()]);
+    }
+
+    #[test]
+    fn can_parse_extends_without_main() {
+        // A child with extends can omit the main context
+        let defn = SyntaxDefinition::load_from_str(
+            r#"
+            name: C++ Extra
+            scope: source.c++
+            extends: Packages/C/C.sublime-syntax
+            contexts:
+              extra:
+                - match: 'extra'
+                  scope: keyword.extra
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(defn.extends, vec!["Packages/C/C.sublime-syntax".to_owned()]);
+        assert!(!defn.contexts.contains_key("main"));
+    }
+
+    #[test]
+    fn can_parse_version_field() {
+        let defn = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2 Test
+            scope: source.v2
+            version: 2
+            contexts:
+              main:
+                - match: 'test'
+                  scope: keyword.test
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(defn.version, 2);
+    }
+
+    #[test]
+    fn version_defaults_to_1() {
+        let defn = SyntaxDefinition::load_from_str(
+            "name: V1\nscope: source.v1\ncontexts: {main: []}",
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(defn.version, 1);
+    }
+
+    #[test]
+    fn can_parse_meta_prepend() {
+        let defn = SyntaxDefinition::load_from_str(
+            r#"
+            name: Test
+            scope: source.test
+            extends: Packages/Base/Base.sublime-syntax
+            contexts:
+              main:
+                - meta_prepend: true
+                - match: 'prepended'
+                  scope: keyword.prepended
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+        let main = &defn.contexts["main"];
+        assert_eq!(main.merge_mode, ContextMergeMode::Prepend);
+    }
+
+    #[test]
+    fn can_parse_meta_append() {
+        let defn = SyntaxDefinition::load_from_str(
+            r#"
+            name: Test
+            scope: source.test
+            extends: Packages/Base/Base.sublime-syntax
+            contexts:
+              main:
+                - meta_append: true
+                - match: 'appended'
+                  scope: keyword.appended
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+        let main = &defn.contexts["main"];
+        assert_eq!(main.merge_mode, ContextMergeMode::Append);
+    }
+
+    #[test]
+    fn can_parse_apply_prototype() {
+        let defn = SyntaxDefinition::load_from_str(
+            r#"
+            name: Test
+            scope: source.test
+            contexts:
+              main:
+                - include: scope:source.other
+                  apply_prototype: true
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+        let main = &defn.contexts["main"];
+        assert_eq!(main.patterns.len(), 1);
+        match &main.patterns[0] {
+            Pattern::IncludeWithPrototype(_) => {}
+            other => panic!("Expected IncludeWithPrototype, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn stores_raw_regex_str() {
+        let defn = SyntaxDefinition::load_from_str(
+            r#"
+            name: Test
+            scope: source.test
+            variables:
+              ident: '[a-z]+'
+            contexts:
+              main:
+                - match: '{{ident}}'
+                  scope: variable.test
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+        let main = &defn.contexts["main"];
+        match &main.patterns[0] {
+            Pattern::Match(mp) => {
+                assert_eq!(mp.raw_regex_str.as_deref(), Some("{{ident}}"));
+            }
+            _ => panic!("Expected Match pattern"),
         }
     }
 }

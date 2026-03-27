@@ -559,6 +559,19 @@ impl ParseState {
         self.perform_op(line, &reg_match.regions, pat, syntax_set)
     }
 
+    /// Get the syntax version for the current parse state
+    fn current_syntax_version(&self, syntax_set: &SyntaxSet) -> u32 {
+        if let Some(level) = self.stack.last() {
+            let syntax_index = level.context.syntax_index;
+            syntax_set
+                .syntaxes()
+                .get(syntax_index)
+                .map_or(1, |s| s.version)
+        } else {
+            1
+        }
+    }
+
     fn push_meta_ops(
         &self,
         initial: bool,
@@ -568,19 +581,31 @@ impl ParseState {
         syntax_set: &SyntaxSet,
         ops: &mut Vec<(usize, ScopeStackOp)>,
     ) -> Result<(), ParsingError> {
+        let version = self.current_syntax_version(syntax_set);
         // println!("metas ops for {:?}, initial: {}",
         //          match_op,
         //          initial);
         // println!("{:?}", cur_context.meta_scope);
         match *match_op {
             MatchOperation::Pop(_) => {
-                let v = if initial {
-                    &cur_context.meta_content_scope
-                } else {
-                    &cur_context.meta_scope
-                };
-                if !v.is_empty() {
-                    ops.push((index, ScopeStackOp::Pop(v.len())));
+                if initial {
+                    // v2: if the context below has embed_scope_replaces, then
+                    // cur_context's meta_content_scope was never pushed (it was skipped
+                    // during the Push phase), so don't generate a Pop for it.
+                    let skip = version >= 2
+                        && self.stack.len() >= 2
+                        && syntax_set
+                            .get_context(&self.stack[self.stack.len() - 2].context)
+                            .map(|c| c.embed_scope_replaces)
+                            .unwrap_or(false);
+                    if !skip && !cur_context.meta_content_scope.is_empty() {
+                        ops.push((
+                            index,
+                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                        ));
+                    }
+                } else if !cur_context.meta_scope.is_empty() {
+                    ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
                 }
 
                 // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
@@ -596,22 +621,48 @@ impl ParseState {
                 let is_set = matches!(*match_op, MatchOperation::Set(_));
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
+                    // v2: pop parent's meta_content_scope so matched text does not see it
+                    if is_set && version >= 2 && !cur_context.meta_content_scope.is_empty() {
+                        ops.push((
+                            index,
+                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                        ));
+                    }
                     if is_set && cur_context.clear_scopes.is_some() {
                         // cleared scopes from the old context are restored immediately
                         ops.push((index, ScopeStackOp::Restore));
                     }
                     // add each context's meta scope
-                    for r in context_refs.iter() {
-                        let ctx = r.resolve(syntax_set)?;
+                    if version >= 2 {
+                        // v2: For push with multiple contexts, only apply clear_scopes
+                        // from the last (topmost) context, not sum all of them
+                        let last_idx = context_refs.len().saturating_sub(1);
+                        for (i, r) in context_refs.iter().enumerate() {
+                            let ctx = r.resolve(syntax_set)?;
 
-                        if !is_set {
-                            if let Some(clear_amount) = ctx.clear_scopes {
-                                ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                            if i == last_idx {
+                                if let Some(clear_amount) = ctx.clear_scopes {
+                                    ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                }
+                            }
+
+                            for scope in ctx.meta_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
                             }
                         }
+                    } else {
+                        for r in context_refs.iter() {
+                            let ctx = r.resolve(syntax_set)?;
 
-                        for scope in ctx.meta_scope.iter() {
-                            ops.push((index, ScopeStackOp::Push(*scope)));
+                            if !is_set {
+                                if let Some(clear_amount) = ctx.clear_scopes {
+                                    ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                }
+                            }
+
+                            for scope in ctx.meta_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
                         }
                     }
                 } else {
@@ -636,8 +687,13 @@ impl ParseState {
 
                         // also pop off the original context's meta scopes
                         if is_set {
-                            num_to_pop +=
-                                cur_context.meta_content_scope.len() + cur_context.meta_scope.len();
+                            if version >= 2 {
+                                // v2: set excludes parent meta_content_scope from matched text
+                                num_to_pop += cur_context.meta_scope.len();
+                            } else {
+                                num_to_pop += cur_context.meta_content_scope.len()
+                                    + cur_context.meta_scope.len();
+                            }
                         }
 
                         // do all the popping as one operation
@@ -646,21 +702,49 @@ impl ParseState {
                         }
 
                         // now we push meta scope and meta context scope for each context pushed
-                        for r in context_refs {
-                            let ctx = r.resolve(syntax_set)?;
+                        if version >= 2 {
+                            // v2: For multiple push, only apply clear_scopes from last context
+                            let last_idx = context_refs.len().saturating_sub(1);
+                            let mut prev_embed_scope_replaces = false;
+                            for (i, r) in context_refs.iter().enumerate() {
+                                let ctx = r.resolve(syntax_set)?;
 
-                            // for some reason, contrary to my reading of the docs, set does this after the token
-                            if is_set {
-                                if let Some(clear_amount) = ctx.clear_scopes {
-                                    ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                if is_set && i == last_idx {
+                                    if let Some(clear_amount) = ctx.clear_scopes {
+                                        ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                    }
                                 }
-                            }
 
-                            for scope in ctx.meta_scope.iter() {
-                                ops.push((index, ScopeStackOp::Push(*scope)));
+                                for scope in ctx.meta_scope.iter() {
+                                    ops.push((index, ScopeStackOp::Push(*scope)));
+                                }
+                                // v2: if the previous context has embed_scope_replaces,
+                                // skip this context's meta_content_scope (the embedded
+                                // syntax's top-level scope is replaced by embed_scope)
+                                if !prev_embed_scope_replaces {
+                                    for scope in ctx.meta_content_scope.iter() {
+                                        ops.push((index, ScopeStackOp::Push(*scope)));
+                                    }
+                                }
+                                prev_embed_scope_replaces = ctx.embed_scope_replaces;
                             }
-                            for scope in ctx.meta_content_scope.iter() {
-                                ops.push((index, ScopeStackOp::Push(*scope)));
+                        } else {
+                            for r in context_refs {
+                                let ctx = r.resolve(syntax_set)?;
+
+                                // for some reason, contrary to my reading of the docs, set does this after the token
+                                if is_set {
+                                    if let Some(clear_amount) = ctx.clear_scopes {
+                                        ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                                    }
+                                }
+
+                                for scope in ctx.meta_scope.iter() {
+                                    ops.push((index, ScopeStackOp::Push(*scope)));
+                                }
+                                for scope in ctx.meta_content_scope.iter() {
+                                    ops.push((index, ScopeStackOp::Push(*scope)));
+                                }
                             }
                         }
                     }
