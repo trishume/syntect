@@ -15,6 +15,16 @@ use std::hash::Hash;
 
 pub type CaptureMapping = Vec<(usize, Vec<Scope>)>;
 
+/// Information about the escape pattern for an `embed` operation.
+/// The escape regex takes strict precedence over all other patterns,
+/// unlike `with_prototype` where patterns compete equally.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct EscapeInfo {
+    pub escape_regex: Regex,
+    pub has_captures: bool,
+    pub escape_captures: Option<CaptureMapping>,
+}
+
 /// An opaque ID for a [`Context`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContextId {
@@ -184,6 +194,14 @@ pub enum MatchOperation {
     Branch(String, Vec<ContextReference>),
     /// Trigger backtracking to the named branch point.
     Fail(String),
+    /// Embed contexts with a prioritized escape pattern.
+    /// Unlike Push+with_prototype, the escape regex takes strict precedence
+    /// over all other patterns — it is checked first and truncates the search
+    /// region for normal patterns.
+    Embed {
+        contexts: Vec<ContextReference>,
+        escape: EscapeInfo,
+    },
 }
 
 impl<'a> Iterator for MatchIter<'a> {

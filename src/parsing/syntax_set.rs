@@ -442,6 +442,7 @@ impl SyntaxSet {
                     MatchOperation::Push(context_refs)
                     | MatchOperation::Set(context_refs)
                     | MatchOperation::Branch(_, context_refs) => Some(context_refs),
+                    MatchOperation::Embed { ref contexts, .. } => Some(contexts),
                     MatchOperation::Pop(_) | MatchOperation::None | MatchOperation::Fail(_) => None,
                 },
                 _ => None,
@@ -1032,7 +1033,11 @@ impl SyntaxSetBuilder {
                     let maybe_context_refs = match match_pat.operation {
                         MatchOperation::Push(ref context_refs)
                         | MatchOperation::Set(ref context_refs)
-                        | MatchOperation::Branch(_, ref context_refs) => Some(context_refs),
+                        | MatchOperation::Branch(_, ref context_refs)
+                        | MatchOperation::Embed {
+                            contexts: ref context_refs,
+                            ..
+                        } => Some(context_refs),
                         MatchOperation::Pop(_) | MatchOperation::None | MatchOperation::Fail(_) => {
                             None
                         }
@@ -1208,7 +1213,11 @@ impl SyntaxSetBuilder {
         let maybe_context_refs = match match_pat.operation {
             MatchOperation::Push(ref mut context_refs)
             | MatchOperation::Set(ref mut context_refs)
-            | MatchOperation::Branch(_, ref mut context_refs) => Some(context_refs),
+            | MatchOperation::Branch(_, ref mut context_refs)
+            | MatchOperation::Embed {
+                contexts: ref mut context_refs,
+                ..
+            } => Some(context_refs),
             MatchOperation::Pop(_) | MatchOperation::None | MatchOperation::Fail(_) => None,
         };
         if let Some(context_refs) = maybe_context_refs {

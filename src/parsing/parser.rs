@@ -10,12 +10,13 @@
 // See https://github.com/rust-lang/rust/blob/1.54.0/library/core/src/hash/mod.rs#L717-L725
 #![allow(clippy::mutable_key_type)]
 
-use super::regex::Region;
+use super::regex::{Regex, Region};
 use super::scope::*;
 use super::syntax_definition::*;
 use crate::parsing::syntax_definition::ContextId;
 use crate::parsing::syntax_set::{SyntaxReference, SyntaxSet};
 use fnv::FnvHasher;
+use regex_syntax::escape;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 
@@ -94,6 +95,22 @@ pub struct ParseState {
     flushed_ops: Vec<Vec<(usize, ScopeStackOp)>>,
     /// Warnings accumulated during parsing, drained into `ParseLineOutput`.
     warnings: Vec<String>,
+    /// Active escape patterns from embed operations. The escape regex takes
+    /// strict precedence over normal patterns — it is checked first and can
+    /// truncate the search region.
+    escape_stack: Vec<EscapeEntry>,
+}
+
+/// A resolved escape pattern from an `embed` operation, stored on the escape stack.
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct EscapeEntry {
+    /// The resolved escape regex (backrefs substituted at push time).
+    regex: Regex,
+    /// Capture mapping for escape_captures scopes.
+    captures: Option<CaptureMapping>,
+    /// Stack depth at the time of the embed push — when escape fires,
+    /// pop down to this depth.
+    stack_depth: usize,
 }
 
 /// Snapshot of parser state at a branch point, used for backtracking.
@@ -118,6 +135,7 @@ struct BranchPoint {
     with_prototype: Option<ContextReference>,
     /// `pending_lines.len()` at snapshot time, for cross-line replay truncation.
     pending_lines_snapshot_len: usize,
+    escape_stack_snapshot: Vec<EscapeEntry>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -249,6 +267,7 @@ impl ParseState {
             pending_lines: Vec::new(),
             flushed_ops: Vec::new(),
             warnings: Vec::new(),
+            escape_stack: Vec::new(),
         }
     }
 
@@ -402,6 +421,15 @@ impl ParseState {
         )?;
 
         if let Some(reg_match) = best_match {
+            // Check if this is an escape match (sentinel pat_index)
+            if reg_match.pat_index == usize::MAX {
+                let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
+                *start = match_end;
+                self.exec_escape(match_start, match_end, &reg_match.regions, syntax_set, ops)?;
+                search_cache.clear();
+                return Ok(true);
+            }
+
             if reg_match.would_loop {
                 // A push that doesn't consume anything (a regex that resulted
                 // in an empty match at the current position) can not be
@@ -456,7 +484,9 @@ impl ParseState {
                 // e.g. non-consuming "set" could also result in a loop.
                 if matches!(
                     match_pattern.operation,
-                    MatchOperation::Push(_) | MatchOperation::Branch(_, _)
+                    MatchOperation::Push(_)
+                        | MatchOperation::Branch(_, _)
+                        | MatchOperation::Embed { .. }
                 ) {
                     *non_consuming_push_at = (match_end, self.stack.len() + 1);
                 }
@@ -526,6 +556,41 @@ impl ParseState {
         // println!("{:#?}", cur_level);
         // println!("token at {} on {}", start, line.trim_right());
 
+        // Check escape patterns first — they take strict precedence.
+        // If an escape matches at `start`, return it immediately as a synthetic match.
+        // If it matches later, truncate the search region for normal patterns.
+        let mut search_end = line.len();
+        let mut escape_match: Option<(usize, Region)> = None; // (escape_stack_index, region)
+
+        for (ei, entry) in self.escape_stack.iter().enumerate() {
+            let mut esc_regions = Region::new();
+            if entry
+                .regex
+                .search(line, start, line.len(), Some(&mut esc_regions))
+            {
+                let (esc_start, _esc_end) = esc_regions.pos(0).unwrap();
+                if esc_start < search_end {
+                    search_end = esc_start;
+                    escape_match = Some((ei, esc_regions));
+                }
+            }
+        }
+
+        // If escape matches right at `start`, it wins immediately — no need to
+        // search normal patterns.
+        if let Some((_, ref esc_region)) = escape_match {
+            let esc_start = esc_region.pos(0).unwrap().0;
+            if esc_start == start {
+                return Ok(Some(RegexMatch {
+                    regions: esc_region.clone(),
+                    context: syntax_set.get_context(&cur_level.context)?,
+                    pat_index: usize::MAX, // sentinel for escape match
+                    from_with_prototype: false,
+                    would_loop: false,
+                }));
+            }
+        }
+
         let mut min_start = usize::MAX;
         let mut best_match: Option<RegexMatch<'_>> = None;
         let mut pop_would_loop = false;
@@ -534,9 +599,15 @@ impl ParseState {
             for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)?) {
                 let match_pat = pat_context.match_at(pat_index)?;
 
-                if let Some(match_region) =
-                    self.search(line, start, match_pat, captures, search_cache, regions)
-                {
+                if let Some(match_region) = self.search_with_end(
+                    line,
+                    start,
+                    search_end,
+                    match_pat,
+                    captures,
+                    search_cache,
+                    regions,
+                ) {
                     let (match_start, match_end) = match_region.pos(0).unwrap();
 
                     // println!("matched pattern {:?} at start {} end {} (pop would loop: {}, min start: {}, initial start: {}, check_pop_loop: {}, stack_len: {})", match_pat, match_start, match_end, pop_would_loop, min_start, start, check_pop_loop, self.stack.len());
@@ -557,7 +628,9 @@ impl ParseState {
 
                         let push_too_deep = matches!(
                             match_pat.operation,
-                            MatchOperation::Push(_) | MatchOperation::Branch(_, _)
+                            MatchOperation::Push(_)
+                                | MatchOperation::Branch(_, _)
+                                | MatchOperation::Embed { .. }
                         ) && self.stack.len() >= 100;
 
                         if push_too_deep {
@@ -581,13 +654,30 @@ impl ParseState {
                 }
             }
         }
+
+        // If no normal match was found before the escape position, or escape
+        // position is earlier, use the escape match.
+        if let Some((_, esc_region)) = escape_match {
+            let esc_start = esc_region.pos(0).unwrap().0;
+            if esc_start < min_start || (esc_start == min_start && pop_would_loop) {
+                return Ok(Some(RegexMatch {
+                    regions: esc_region,
+                    context: syntax_set.get_context(&cur_level.context)?,
+                    pat_index: usize::MAX, // sentinel for escape match
+                    from_with_prototype: false,
+                    would_loop: false,
+                }));
+            }
+        }
+
         Ok(best_match)
     }
 
-    fn search(
+    fn search_with_end(
         &self,
         line: &str,
         start: usize,
+        search_end: usize,
         match_pat: &MatchPattern,
         captures: Option<&(Region, String)>,
         search_cache: &mut SearchCache,
@@ -598,12 +688,18 @@ impl ParseState {
 
         if let Some(maybe_region) = search_cache.get(&match_ptr) {
             if let Some(ref region) = *maybe_region {
-                let match_start = region.pos(0).unwrap().0;
-                if match_start >= start {
-                    // Cached match is valid, return it. Otherwise do another
-                    // search below.
+                let (cached_start, cached_end) = region.pos(0).unwrap();
+                if cached_start >= start && cached_end <= search_end {
+                    // Cached match is valid within the truncated region.
                     return Some(region.clone());
+                } else if cached_start >= start && cached_start < search_end {
+                    // Match starts within range but extends past search_end.
+                    // Can't use cache — need to re-search. Fall through below.
+                } else if cached_start >= search_end {
+                    // Cached match is beyond our search end — treat as no match
+                    return None;
                 }
+                // cached_start < start: cache miss, re-search below
             } else {
                 // Didn't find a match earlier, so no point trying to match it again
                 return None;
@@ -618,24 +714,28 @@ impl ParseState {
             _ => (match_pat.regex(), true),
         };
         // print!("  executing regex: {:?} at pos {} on line {}", regex.regex_str(), start, line);
-        let matched = regex.search(line, start, line.len(), Some(regions));
+        let matched = regex.search(line, start, search_end, Some(regions));
 
         if matched {
             let (match_start, match_end) = regions.pos(0).unwrap();
             // this is necessary to avoid infinite looping on dumb patterns
             let does_something = match match_pat.operation {
                 MatchOperation::None => match_start != match_end,
-                MatchOperation::Push(_) | MatchOperation::Branch(_, _) => self.stack.len() < 100,
+                MatchOperation::Push(_)
+                | MatchOperation::Branch(_, _)
+                | MatchOperation::Embed { .. } => self.stack.len() < 100,
                 _ => true,
             };
-            if can_cache && does_something {
+            if can_cache && does_something && search_end == line.len() {
+                // Only cache when searching the full line — truncated searches
+                // could give different results for later positions.
                 search_cache.insert(match_pat, Some(regions.clone()));
             }
             if does_something {
                 // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
                 return Some(regions.clone());
             }
-        } else if can_cache {
+        } else if can_cache && search_end == line.len() {
             search_cache.insert(match_pat, None);
         }
         None
@@ -692,6 +792,7 @@ impl ParseState {
                     first_line_snapshot: self.first_line,
                     with_prototype: pat.with_prototype.clone(),
                     pending_lines_snapshot_len: self.pending_lines.len(),
+                    escape_stack_snapshot: self.escape_stack.clone(),
                 };
                 self.branch_points.push(bp);
                 // Synthesize a Push of the first alternative
@@ -816,11 +917,13 @@ impl ParseState {
         let non_consuming_push_at_snapshot = bp.non_consuming_push_at_snapshot;
         let ops_snapshot_len = bp.ops_snapshot_len;
         let pending_lines_snapshot_len = bp.pending_lines_snapshot_len;
+        let escape_stack_snapshot = bp.escape_stack_snapshot.clone();
         // bp borrow ends here.
 
         // Restore parser state to the snapshot.
         self.stack = stack_snapshot;
         self.proto_starts = proto_starts_snapshot;
+        self.escape_stack = escape_stack_snapshot;
         self.first_line = first_line_snapshot;
         *non_consuming_push_at = non_consuming_push_at_snapshot;
 
@@ -1091,6 +1194,18 @@ impl ParseState {
                     }
                 }
             }
+            MatchOperation::Embed { ref contexts, .. } => {
+                // Embed acts like Push for meta scope operations
+                let synthetic = MatchOperation::Push(contexts.clone());
+                return self.push_meta_ops(
+                    initial,
+                    index,
+                    cur_context,
+                    &synthetic,
+                    syntax_set,
+                    ops,
+                );
+            }
             MatchOperation::None | MatchOperation::Fail(_) => (),
             MatchOperation::Branch(_, ref context_refs) => {
                 // Branch acts like Push for meta ops purposes.
@@ -1122,13 +1237,14 @@ impl ParseState {
         pat: &MatchPattern,
         syntax_set: &SyntaxSet,
     ) -> Result<bool, ParsingError> {
-        let (ctx_refs, old_proto_ids) = match pat.operation {
-            MatchOperation::Push(ref ctx_refs) => (ctx_refs, None),
+        let (ctx_refs, old_proto_ids, is_embed) = match pat.operation {
+            MatchOperation::Push(ref ctx_refs) => (ctx_refs, None, false),
+            MatchOperation::Embed { ref contexts, .. } => (contexts, None, true),
             MatchOperation::Set(ref ctx_refs) => {
                 // a `with_prototype` stays active when the context is `set`
                 // until the context layer in the stack (where the `with_prototype`
                 // was initially applied) is popped off.
-                (ctx_refs, self.stack.pop().map(|s| s.prototypes))
+                (ctx_refs, self.stack.pop().map(|s| s.prototypes), false)
             }
             MatchOperation::Pop(n) => {
                 for _ in 0..n {
@@ -1137,6 +1253,9 @@ impl ParseState {
                 // Invalidate branch points whose stack depth is now above current stack
                 self.branch_points
                     .retain(|bp| bp.stack_depth <= self.stack.len());
+                // Remove escape entries whose stack_depth >= current stack
+                self.escape_stack
+                    .retain(|e| e.stack_depth < self.stack.len());
                 return Ok(true);
             }
             MatchOperation::None => return Ok(false),
@@ -1145,6 +1264,10 @@ impl ParseState {
                 return Ok(false);
             }
         };
+
+        // Record stack depth before pushing (for Embed escape entry)
+        let stack_depth_before = self.stack.len();
+
         for (i, r) in ctx_refs.iter().enumerate() {
             let mut proto_ids = if i == 0 {
                 // it is only necessary to preserve the old prototypes
@@ -1185,8 +1308,120 @@ impl ParseState {
                 captures,
             });
         }
+
+        // For Embed: push an EscapeEntry with the resolved escape regex
+        if is_embed {
+            if let MatchOperation::Embed { ref escape, .. } = pat.operation {
+                let resolved_regex = if escape.has_captures {
+                    // Resolve backrefs in escape regex using the triggering match's captures
+                    let new_regex_str =
+                        substitute_backrefs_in_regex(escape.escape_regex.regex_str(), |i| {
+                            regions.pos(i).map(|(s, e)| escape_str(&line[s..e]))
+                        });
+                    Regex::new(new_regex_str)
+                } else {
+                    escape.escape_regex.clone()
+                };
+                self.escape_stack.push(EscapeEntry {
+                    regex: resolved_regex,
+                    captures: escape.escape_captures.clone(),
+                    stack_depth: stack_depth_before,
+                });
+            }
+        }
+
         Ok(true)
     }
+
+    /// Execute an escape match: apply escape_captures, pop stack down to
+    /// the embed's stack_depth, and remove the escape entry.
+    fn exec_escape(
+        &mut self,
+        match_start: usize,
+        _match_end: usize,
+        regions: &Region,
+        syntax_set: &SyntaxSet,
+        ops: &mut Vec<(usize, ScopeStackOp)>,
+    ) -> Result<(), ParsingError> {
+        // In find_best_match, escape entries are iterated outermost first (index 0).
+        // The one that set `search_end` (earliest match) is always the outermost
+        // matching entry, which is at index 0 when an escape fires.
+        let escape_idx = 0;
+
+        let entry = &self.escape_stack[escape_idx];
+        let target_depth = entry.stack_depth;
+        let escape_captures = entry.captures.clone();
+
+        // Pop all stack levels down to target_depth, emitting proper meta scope pops
+        while self.stack.len() > target_depth {
+            let level = &self.stack[self.stack.len() - 1];
+            let ctx = syntax_set.get_context(&level.context)?;
+
+            // Pop meta_content_scope
+            if !ctx.meta_content_scope.is_empty() {
+                // v2: check if context below has embed_scope_replaces
+                let version = self.current_syntax_version(syntax_set);
+                let skip = version >= 2
+                    && self.stack.len() >= 2
+                    && syntax_set
+                        .get_context(&self.stack[self.stack.len() - 2].context)
+                        .map(|c| c.embed_scope_replaces)
+                        .unwrap_or(false);
+                if !skip {
+                    ops.push((match_start, ScopeStackOp::Pop(ctx.meta_content_scope.len())));
+                }
+            }
+
+            // Pop meta_scope
+            if !ctx.meta_scope.is_empty() {
+                ops.push((match_start, ScopeStackOp::Pop(ctx.meta_scope.len())));
+            }
+
+            // Restore cleared scopes
+            if ctx.clear_scopes.is_some() {
+                ops.push((match_start, ScopeStackOp::Restore));
+            }
+
+            self.stack.pop();
+        }
+
+        // Apply escape_captures scopes
+        if let Some(ref capture_map) = escape_captures {
+            let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
+            for &(cap_index, ref scopes) in capture_map.iter() {
+                if let Some((cap_start, cap_end)) = regions.pos(cap_index) {
+                    if cap_start == cap_end {
+                        continue;
+                    }
+                    for scope in scopes.iter() {
+                        map.push((
+                            (cap_start, -((cap_end - cap_start) as i32)),
+                            ScopeStackOp::Push(*scope),
+                        ));
+                    }
+                    map.push(((cap_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
+                }
+            }
+            map.sort_by(|a, b| a.0.cmp(&b.0));
+            for ((index, _), op) in map.into_iter() {
+                ops.push((index, op));
+            }
+        }
+
+        // Remove this escape entry and any inner (later) escape entries
+        self.escape_stack.truncate(escape_idx);
+
+        // Invalidate branch points whose stack depth is now above current stack
+        self.branch_points
+            .retain(|bp| bp.stack_depth <= self.stack.len());
+
+        Ok(())
+    }
+}
+
+/// Escape a string for use in regex substitution (re-export for use in escape resolution).
+fn escape_str(s: &str) -> String {
+    escape(s)
 }
 
 #[cfg(feature = "yaml-load")]
@@ -3690,6 +3925,257 @@ contexts:
             final_scopes.iter().any(|s| s.contains("source.v2skip")),
             "source.v2skip should remain on stack after all ops, got: {:?}",
             final_scopes
+        );
+    }
+
+    #[test]
+    fn nested_embed_outer_escape_wins() {
+        // Inner embed's escape must not fire before outer embed's escape.
+        // The outer escape at position 3 ("END") should take precedence over
+        // the inner escape at position 5 ("zzz"), truncating the search region.
+        let syntax = r#"
+name: NestedEmbed
+scope: source.nested-embed
+contexts:
+  main:
+    - match: 'OUTER'
+      embed: mid
+      escape: 'END'
+      escape_captures:
+        0: keyword.escape.outer
+    - match: '.'
+      scope: main.char
+
+  mid:
+    - match: 'INNER'
+      embed: deep
+      escape: 'zzz'
+      escape_captures:
+        0: keyword.escape.inner
+    - match: '.'
+      scope: mid.char
+
+  deep:
+    - match: '.'
+      scope: deep.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: enter outer embed, then inner embed
+        let out1 = state.parse_line("OUTERINNER\n", &ss).expect("line 1");
+        debug_print_ops("OUTERINNER\n", &out1.ops);
+
+        // Line 2: "xxENDzzzAFTER" — outer escape "END" at pos 2 must fire before
+        // inner escape "zzz" at pos 5. After outer escape fires, we're back in main.
+        let out2 = state.parse_line("xxENDzzzAFTER\n", &ss).expect("line 2");
+        let states = stack_states(out2.ops);
+        println!("states: {:?}", states);
+
+        // The outer escape scope must appear
+        assert!(
+            states.iter().any(|s| s.contains("keyword.escape.outer")),
+            "outer escape must fire, got: {:?}",
+            states
+        );
+        // The inner escape scope must NOT appear (outer wins)
+        assert!(
+            !states.iter().any(|s| s.contains("keyword.escape.inner")),
+            "inner escape must not fire when outer escape is earlier, got: {:?}",
+            states
+        );
+        // After the outer escape, "zzzAFTER" should be parsed in main context
+        assert!(
+            states.iter().any(|s| s.contains("main.char")),
+            "after outer escape we should be in main, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn embed_escape_with_backref_at_parse_time() {
+        // The escape pattern uses \1 to backreference the opening delimiter.
+        // Verify that the resolved regex correctly matches at parse time.
+        let syntax = r#"
+name: BackrefEscape
+scope: source.backref-escape
+contexts:
+  main:
+    - match: '(<<|>>)'
+      scope: punctuation.open
+      embed: inner
+      escape: '\1'
+      escape_captures:
+        0: punctuation.close
+    - match: '.'
+      scope: main.char
+
+  inner:
+    - match: '.'
+      scope: inner.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
+        let ss = link(syntax);
+
+        // Test 1: "<<" opens, ">>" should NOT close it, "<<" should close it
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let out1 = state.parse_line("<<>>stuff<<after\n", &ss).expect("line 1");
+        let states = stack_states(out1.ops);
+        println!("backref states: {:?}", states);
+
+        // The opening << should push punctuation.open
+        assert!(
+            states.iter().any(|s| s.contains("punctuation.open")),
+            "expected punctuation.open, got: {:?}",
+            states
+        );
+        // ">>" should be parsed as inner.char (not as escape)
+        assert!(
+            states.iter().any(|s| s.contains("inner.char")),
+            ">> should be inner.char since escape is <<, got: {:?}",
+            states
+        );
+        // "<<" at pos 9 should fire as escape (punctuation.close)
+        assert!(
+            states.iter().any(|s| s.contains("punctuation.close")),
+            "matching << should trigger escape, got: {:?}",
+            states
+        );
+        // After escape, "after" should be in main
+        assert!(
+            states.iter().any(|s| s.contains("main.char")),
+            "after escape we should be in main, got: {:?}",
+            states
+        );
+    }
+
+    #[test]
+    fn embed_escape_cross_line() {
+        // Embed on line 1, content on line 2, escape on line 3.
+        // Verifies that escape_stack persists across parse_line calls.
+        let syntax = r#"
+name: CrossLineEscape
+scope: source.cross-line-escape
+contexts:
+  main:
+    - match: 'BEGIN'
+      scope: keyword.begin
+      embed: body
+      escape: 'STOP'
+      escape_captures:
+        0: keyword.stop
+    - match: '.'
+      scope: main.char
+
+  body:
+    - match: '.'
+      scope: body.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: embed begins
+        let out1 = state.parse_line("BEGIN\n", &ss).expect("line 1");
+        let states1 = stack_states(out1.ops);
+        assert!(
+            states1.iter().any(|s| s.contains("keyword.begin")),
+            "line 1 should have keyword.begin, got: {:?}",
+            states1
+        );
+
+        // Line 2: content inside the embed
+        let out2 = state.parse_line("hello\n", &ss).expect("line 2");
+        let states2 = stack_states(out2.ops);
+        assert!(
+            states2.iter().any(|s| s.contains("body.char")),
+            "line 2 should be body content, got: {:?}",
+            states2
+        );
+
+        // Line 3: escape fires
+        let out3 = state.parse_line("STOPafter\n", &ss).expect("line 3");
+        let states3 = stack_states(out3.ops);
+        assert!(
+            states3.iter().any(|s| s.contains("keyword.stop")),
+            "line 3 should have escape keyword.stop, got: {:?}",
+            states3
+        );
+        assert!(
+            states3.iter().any(|s| s.contains("main.char")),
+            "after escape on line 3, should be in main, got: {:?}",
+            states3
+        );
+    }
+
+    #[test]
+    fn embed_inside_branch_then_fail_restores_escape_stack() {
+        // An embed inside a branch alternative pushes to escape_stack.
+        // When fail fires, the escape_stack must be restored (the embed's
+        // escape entry must be removed). The fallback alternative stays on
+        // the stack (no pop) so any stale escape entry would survive to
+        // the next line, where it would incorrectly fire.
+        let syntax = r#"
+name: EmbedBranchFail
+scope: source.embed-branch
+contexts:
+  main:
+    - match: 'START'
+      branch_point: bp
+      branch: [try-embed, fallback]
+    - match: '.'
+      scope: main.char
+
+  try-embed:
+    - match: 'EMB'
+      embed: embedded
+      escape: 'ESC'
+      escape_captures:
+        0: keyword.escape
+
+  fallback:
+    # No pop — stays on the stack so a stale escape entry would persist
+    - match: '\w+'
+      scope: fallback.matched
+    - match: '\n'
+
+  embedded:
+    - match: 'FAIL'
+      fail: bp
+    - match: '.'
+      scope: embedded.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // "START" triggers branch, tries try-embed first.
+        // "EMB" enters the embed (pushing escape entry for "ESC").
+        // "FAIL" fires `fail: bp`, which must restore escape_stack and
+        // replay under fallback alternative.
+        let out = state
+            .parse_line("STARTEMBFAIL\n", &ss)
+            .expect("parse failed");
+        let states = stack_states(out.ops);
+        println!("embed+branch+fail states: {:?}", states);
+
+        // After backtracking, fallback should match
+        assert!(
+            states.iter().any(|s| s.contains("fallback.matched")),
+            "fallback should match after fail, got: {:?}",
+            states
+        );
+
+        // Parse another line — "ESC" must NOT trigger the escape (it was
+        // from a reverted branch). Without proper escape_stack restoration,
+        // the stale escape entry would fire here.
+        let out2 = state.parse_line("xESCy\n", &ss).expect("line 2");
+        let states2 = stack_states(out2.ops);
+        assert!(
+            !states2.iter().any(|s| s.contains("keyword.escape")),
+            "stale escape must not fire after branch revert, got: {:?}",
+            states2
         );
     }
 }

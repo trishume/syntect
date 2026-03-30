@@ -372,45 +372,78 @@ impl SyntaxDefinition {
         } else if let Ok(y) = get_key(map, "fail", |x| x.as_str()) {
             MatchOperation::Fail(y.to_owned())
         } else if let Ok(y) = get_key(map, "embed", Some) {
-            // Same as push so we translate it to what it would be
-            let mut embed_escape_context_yaml = vec![];
-            let mut commands = Hash::new();
-            commands.insert(
-                Yaml::String("meta_include_prototype".to_string()),
-                Yaml::Boolean(false),
-            );
-            embed_escape_context_yaml.push(Yaml::Hash(commands));
-            if let Ok(s) = get_key(map, "embed_scope", Some) {
-                commands = Hash::new();
-                commands.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
-                embed_escape_context_yaml.push(Yaml::Hash(commands));
-            }
-            let has_embed_scope = get_key(map, "embed_scope", Some).is_ok();
             if let Ok(v) = get_key(map, "escape", Some) {
-                let mut match_map = Hash::new();
-                match_map.insert(Yaml::String("match".to_string()), v.clone());
-                match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
-                if let Ok(y) = get_key(map, "escape_captures", Some) {
-                    match_map.insert(Yaml::String("captures".to_string()), y.clone());
-                }
-                embed_escape_context_yaml.push(Yaml::Hash(match_map));
-                let escape_context = SyntaxDefinition::parse_context(
-                    &embed_escape_context_yaml,
-                    state,
-                    contexts,
-                    false,
-                    namer,
-                )?;
-                // In v2, embed_scope replaces the embedded syntax's scope
-                if state.version >= 2 && has_embed_scope {
-                    if let Some(ctx) = contexts.get_mut(&escape_context) {
-                        ctx.embed_scope_replaces = true;
+                let escape_raw = v.as_str().ok_or(ParseSyntaxError::TypeMismatch)?;
+                let escape_regex_str = Self::parse_regex(escape_raw, state)?;
+                let escape_has_captures =
+                    state
+                        .backref_regex
+                        .search(&escape_regex_str, 0, escape_regex_str.len(), None);
+
+                let escape_captures =
+                    if let Ok(cap_map) = get_key(map, "escape_captures", |x| x.as_hash()) {
+                        Some(Self::parse_captures(cap_map, &escape_regex_str, state)?)
+                    } else {
+                        None
+                    };
+
+                let escape_info = EscapeInfo {
+                    escape_regex: Regex::new(escape_regex_str),
+                    has_captures: escape_has_captures,
+                    escape_captures,
+                };
+
+                // Build the wrapper context for embed_scope (meta_content_scope)
+                // and the embedded context reference
+                let mut embed_contexts = Vec::new();
+
+                // Create wrapper context with embed_scope if present
+                let has_embed_scope = get_key(map, "embed_scope", Some).is_ok();
+                if has_embed_scope {
+                    let mut embed_scope_context_yaml = vec![];
+                    let mut commands = Hash::new();
+                    commands.insert(
+                        Yaml::String("meta_include_prototype".to_string()),
+                        Yaml::Boolean(false),
+                    );
+                    embed_scope_context_yaml.push(Yaml::Hash(commands));
+                    if let Ok(s) = get_key(map, "embed_scope", Some) {
+                        let mut commands2 = Hash::new();
+                        commands2.insert(Yaml::String("meta_content_scope".to_string()), s.clone());
+                        embed_scope_context_yaml.push(Yaml::Hash(commands2));
                     }
+                    // Add a match-all to pass through to next context
+                    let mut match_map = Hash::new();
+                    match_map.insert(
+                        Yaml::String("match".to_string()),
+                        Yaml::String(String::new()),
+                    );
+                    match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
+                    embed_scope_context_yaml.push(Yaml::Hash(match_map));
+                    let scope_ctx_name = SyntaxDefinition::parse_context(
+                        &embed_scope_context_yaml,
+                        state,
+                        contexts,
+                        false,
+                        namer,
+                    )?;
+                    // In v2, embed_scope replaces the embedded syntax's scope
+                    if state.version >= 2 {
+                        if let Some(ctx) = contexts.get_mut(&scope_ctx_name) {
+                            ctx.embed_scope_replaces = true;
+                        }
+                    }
+                    embed_contexts.push(ContextReference::Inline(scope_ctx_name));
                 }
-                MatchOperation::Push(vec![
-                    ContextReference::Inline(escape_context),
-                    SyntaxDefinition::parse_reference(y, state, contexts, namer, true)?,
-                ])
+
+                embed_contexts.push(SyntaxDefinition::parse_reference(
+                    y, state, contexts, namer, true,
+                )?);
+
+                MatchOperation::Embed {
+                    contexts: embed_contexts,
+                    escape: escape_info,
+                }
             } else {
                 return Err(ParseSyntaxError::MissingMandatoryKey("escape"));
             }
@@ -421,25 +454,6 @@ impl SyntaxDefinition {
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
             // should a with_prototype include the prototype? I don't think so.
             let subname = Self::parse_context(v, state, contexts, true, namer)?;
-            Some(ContextReference::Inline(subname))
-        } else if let Ok(v) = get_key(map, "escape", Some) {
-            let subname = namer.next();
-
-            let mut context = Context::new(false);
-            let mut match_map = Hash::new();
-            match_map.insert(
-                Yaml::String("match".to_string()),
-                Yaml::String(format!("(?={})", v.as_str().unwrap())),
-            );
-            match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
-            let pattern =
-                SyntaxDefinition::parse_match_pattern(&match_map, state, contexts, namer)?;
-            if pattern.has_captures {
-                context.uses_backrefs = true;
-            }
-            context.patterns.push(Pattern::Match(pattern));
-
-            contexts.insert(subname.clone(), context);
             Some(ContextReference::Inline(subname))
         } else {
             None
@@ -1152,27 +1166,8 @@ mod tests {
     }
 
     #[test]
-    fn can_parse_embed_as_with_prototypes() {
-        let old_def = SyntaxDefinition::load_from_str(r#"
-        name: C
-        scope: source.c
-        file_extensions: [c, h]
-        variables:
-          ident: '[QY]+'
-        contexts:
-          main:
-            - match: '(>)\s*'
-              captures:
-                1: meta.tag.style.begin.html punctuation.definition.tag.end.html
-              push:
-                - [{ meta_include_prototype: false }, { meta_content_scope: 'source.css.embedded.html' }, { match: '(?i)(?=</style)', pop: true }]
-                - scope:source.css
-              with_prototype:
-                - match: (?=(?i)(?=</style))
-                  pop: true
-        "#,false, None).unwrap();
-
-        let mut def_with_embed = SyntaxDefinition::load_from_str(
+    fn can_parse_embed_produces_embed_op() {
+        let def = SyntaxDefinition::load_from_str(
             r#"
         name: C
         scope: source.c
@@ -1193,24 +1188,41 @@ mod tests {
         )
         .unwrap();
 
-        // We will soon do an `assert_eq!()`. But there is one difference we must expect, namely
-        // that for `def_with_embed`, the value of `ContextReference::ByScope::with_escape` will be
-        // `true`, whereas for `old_def` it will be `false`. So manually adjust `with_escape` to
-        // `false` so that `assert_eq!()` will work.
-        let def_with_embed_context = def_with_embed.contexts.get_mut("main").unwrap();
-        if let Pattern::Match(ref mut match_pattern) = def_with_embed_context.patterns[0] {
-            if let MatchOperation::Push(ref mut context_references) = match_pattern.operation {
-                if let ContextReference::ByScope {
-                    ref mut with_escape,
-                    ..
-                } = context_references[1]
-                {
-                    *with_escape = false;
+        // Verify the operation is Embed (not Push)
+        let main_ctx = &def.contexts["main"];
+        if let Pattern::Match(ref match_pattern) = main_ctx.patterns[0] {
+            match match_pattern.operation {
+                MatchOperation::Embed {
+                    ref contexts,
+                    ref escape,
+                } => {
+                    // Should have 2 contexts: wrapper for embed_scope + the embedded syntax
+                    assert_eq!(contexts.len(), 2);
+                    // First is the inline wrapper context
+                    assert!(matches!(contexts[0], ContextReference::Inline(_)));
+                    // Second is the scope reference
+                    assert!(matches!(
+                        contexts[1],
+                        ContextReference::ByScope {
+                            with_escape: true,
+                            ..
+                        }
+                    ));
+                    // Escape regex should be present
+                    assert_eq!(escape.escape_regex.regex_str(), "(?i)(?=</style)");
+                    assert!(!escape.has_captures);
+                    assert!(escape.escape_captures.is_none());
                 }
+                _ => panic!(
+                    "Expected Embed operation, got {:?}",
+                    match_pattern.operation
+                ),
             }
+            // No with_prototype for embed (escape is native)
+            assert!(match_pattern.with_prototype.is_none());
+        } else {
+            panic!("Expected Match pattern");
         }
-
-        assert_eq!(old_def.contexts["main"], def_with_embed.contexts["main"]);
     }
 
     #[test]
@@ -1356,7 +1368,9 @@ mod tests {
             def.contexts["#anon_a_2"].meta_scope,
             vec![Scope::new("anonymous_y").unwrap()]
         );
-        assert_eq!(def.contexts["#anon_a_3"].patterns.len(), 1); // escape
+        // With native embed/escape, no synthetic escape context is created,
+        // so #anon_a_3 should not exist.
+        assert!(!def.contexts.contains_key("#anon_a_3"));
     }
 
     #[test]
