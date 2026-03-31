@@ -1,14 +1,31 @@
 pub mod syntect
 pub mod syntect::dumps
+#[non_exhaustive] pub enum syntect::dumps::DumpError
+pub syntect::dumps::DumpError::Io(std::io::error::Error)
+pub syntect::dumps::DumpError::Serialize(alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>)
+impl core::convert::From<std::io::error::Error> for syntect::dumps::DumpError
+pub fn syntect::dumps::DumpError::from(source: std::io::error::Error) -> Self
+impl core::error::Error for syntect::dumps::DumpError
+pub fn syntect::dumps::DumpError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for syntect::dumps::DumpError
+pub fn syntect::dumps::DumpError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for syntect::dumps::DumpError
+pub fn syntect::dumps::DumpError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for syntect::dumps::DumpError
+impl core::marker::Send for syntect::dumps::DumpError
+impl core::marker::Sync for syntect::dumps::DumpError
+impl core::marker::Unpin for syntect::dumps::DumpError
+impl !core::panic::unwind_safe::RefUnwindSafe for syntect::dumps::DumpError
+impl !core::panic::unwind_safe::UnwindSafe for syntect::dumps::DumpError
 pub fn syntect::dumps::dump_binary<T: serde_core::ser::Serialize>(o: &T) -> alloc::vec::Vec<u8>
-pub fn syntect::dumps::dump_to_file<T: serde_core::ser::Serialize, P: core::convert::AsRef<std::path::Path>>(o: &T, path: P) -> bincode::error::Result<()>
-pub fn syntect::dumps::dump_to_uncompressed_file<T: serde_core::ser::Serialize, P: core::convert::AsRef<std::path::Path>>(o: &T, path: P) -> bincode::error::Result<()>
-pub fn syntect::dumps::dump_to_writer<T: serde_core::ser::Serialize, W: std::io::Write>(to_dump: &T, output: W) -> bincode::error::Result<()>
+pub fn syntect::dumps::dump_to_file<T: serde_core::ser::Serialize, P: core::convert::AsRef<std::path::Path>>(o: &T, path: P) -> core::result::Result<(), syntect::dumps::DumpError>
+pub fn syntect::dumps::dump_to_uncompressed_file<T: serde_core::ser::Serialize, P: core::convert::AsRef<std::path::Path>>(o: &T, path: P) -> core::result::Result<(), syntect::dumps::DumpError>
+pub fn syntect::dumps::dump_to_writer<T: serde_core::ser::Serialize, W: std::io::Write>(to_dump: &T, output: W) -> core::result::Result<(), syntect::dumps::DumpError>
 pub fn syntect::dumps::from_binary<T: serde_core::de::DeserializeOwned>(v: &[u8]) -> T
-pub fn syntect::dumps::from_dump_file<T: serde_core::de::DeserializeOwned, P: core::convert::AsRef<std::path::Path>>(path: P) -> bincode::error::Result<T>
-pub fn syntect::dumps::from_reader<T: serde_core::de::DeserializeOwned, R: std::io::BufRead>(input: R) -> bincode::error::Result<T>
-pub fn syntect::dumps::from_uncompressed_data<T: serde_core::de::DeserializeOwned>(v: &[u8]) -> bincode::error::Result<T>
-pub fn syntect::dumps::from_uncompressed_dump_file<T: serde_core::de::DeserializeOwned, P: core::convert::AsRef<std::path::Path>>(path: P) -> bincode::error::Result<T>
+pub fn syntect::dumps::from_dump_file<T: serde_core::de::DeserializeOwned, P: core::convert::AsRef<std::path::Path>>(path: P) -> core::result::Result<T, syntect::dumps::DumpError>
+pub fn syntect::dumps::from_reader<T: serde_core::de::DeserializeOwned, R: std::io::BufRead>(input: R) -> core::result::Result<T, syntect::dumps::DumpError>
+pub fn syntect::dumps::from_uncompressed_data<T: serde_core::de::DeserializeOwned>(v: &[u8]) -> core::result::Result<T, syntect::dumps::DumpError>
+pub fn syntect::dumps::from_uncompressed_dump_file<T: serde_core::de::DeserializeOwned, P: core::convert::AsRef<std::path::Path>>(path: P) -> core::result::Result<T, syntect::dumps::DumpError>
 pub mod syntect::easy
 pub struct syntect::easy::HighlightFile<'a>
 pub syntect::easy::HighlightFile::highlight_lines: syntect::easy::HighlightLines<'a>
@@ -93,12 +110,11 @@ impl core::marker::Unpin for syntect::highlighting::ParseThemeError
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::ParseThemeError
 impl core::panic::unwind_safe::UnwindSafe for syntect::highlighting::ParseThemeError
 #[non_exhaustive] pub enum syntect::highlighting::SettingsError
-pub syntect::highlighting::SettingsError::Plist(plist::error::Error)
-impl core::convert::From<plist::error::Error> for syntect::highlighting::SettingsError
-pub fn syntect::highlighting::SettingsError::from(error: plist::error::Error) -> syntect::highlighting::SettingsError
+pub syntect::highlighting::SettingsError::Plist(alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>)
 impl core::convert::From<syntect::highlighting::SettingsError> for syntect::LoadingError
 pub fn syntect::LoadingError::from(source: syntect::highlighting::SettingsError) -> Self
 impl core::error::Error for syntect::highlighting::SettingsError
+pub fn syntect::highlighting::SettingsError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for syntect::highlighting::SettingsError
 pub fn syntect::highlighting::SettingsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for syntect::highlighting::SettingsError
@@ -922,13 +938,11 @@ impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseScopeError
 pub syntect::parsing::ParseSyntaxError::BadFileRef
 pub syntect::parsing::ParseSyntaxError::EmptyFile
 pub syntect::parsing::ParseSyntaxError::InvalidScope(syntect::parsing::ParseScopeError)
-pub syntect::parsing::ParseSyntaxError::InvalidYaml(yaml_rust2::scanner::ScanError)
+pub syntect::parsing::ParseSyntaxError::InvalidYaml(alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>)
 pub syntect::parsing::ParseSyntaxError::MainMissing
 pub syntect::parsing::ParseSyntaxError::MissingMandatoryKey(&'static str)
 pub syntect::parsing::ParseSyntaxError::RegexCompileError(alloc::string::String, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync + 'static)>)
 pub syntect::parsing::ParseSyntaxError::TypeMismatch
-impl core::convert::From<yaml_rust2::scanner::ScanError> for syntect::parsing::ParseSyntaxError
-pub fn syntect::parsing::ParseSyntaxError::from(source: yaml_rust2::scanner::ScanError) -> Self
 impl core::error::Error for syntect::parsing::ParseSyntaxError
 pub fn syntect::parsing::ParseSyntaxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for syntect::parsing::ParseSyntaxError
@@ -1344,7 +1358,7 @@ pub syntect::LoadingError::Io(std::io::error::Error)
 pub syntect::LoadingError::ParseSyntax(syntect::parsing::ParseSyntaxError, alloc::string::String)
 pub syntect::LoadingError::ParseTheme(syntect::highlighting::ParseThemeError)
 pub syntect::LoadingError::ReadSettings(syntect::highlighting::SettingsError)
-pub syntect::LoadingError::WalkDir(walkdir::error::Error)
+pub syntect::LoadingError::WalkDir(alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>)
 impl core::convert::From<std::io::error::Error> for syntect::LoadingError
 pub fn syntect::LoadingError::from(source: std::io::error::Error) -> Self
 impl core::convert::From<syntect::LoadingError> for syntect::Error
@@ -1353,8 +1367,6 @@ impl core::convert::From<syntect::highlighting::ParseThemeError> for syntect::Lo
 pub fn syntect::LoadingError::from(source: syntect::highlighting::ParseThemeError) -> Self
 impl core::convert::From<syntect::highlighting::SettingsError> for syntect::LoadingError
 pub fn syntect::LoadingError::from(source: syntect::highlighting::SettingsError) -> Self
-impl core::convert::From<walkdir::error::Error> for syntect::LoadingError
-pub fn syntect::LoadingError::from(source: walkdir::error::Error) -> Self
 impl core::error::Error for syntect::LoadingError
 pub fn syntect::LoadingError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for syntect::LoadingError

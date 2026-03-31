@@ -6,14 +6,14 @@ use std::error::Error;
 use std::ops::DerefMut;
 use std::path::Path;
 use yaml_rust2::yaml::Hash;
-use yaml_rust2::{ScanError, Yaml, YamlLoader};
+use yaml_rust2::{Yaml, YamlLoader};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ParseSyntaxError {
     /// Invalid YAML file syntax, or at least something yaml_rust2 can't handle
     #[error("Invalid YAML file syntax: {0}")]
-    InvalidYaml(#[from] ScanError),
+    InvalidYaml(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// The file must contain at least one YAML document
     #[error("The file must contain at least one YAML document")]
     EmptyFile,
@@ -90,7 +90,7 @@ impl SyntaxDefinition {
     ) -> Result<SyntaxDefinition, ParseSyntaxError> {
         let docs = match YamlLoader::load_from_str(s) {
             Ok(x) => x,
-            Err(e) => return Err(ParseSyntaxError::InvalidYaml(e)),
+            Err(e) => return Err(ParseSyntaxError::InvalidYaml(Box::new(e))),
         };
         if docs.is_empty() {
             return Err(ParseSyntaxError::EmptyFile);

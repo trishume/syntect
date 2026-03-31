@@ -20,7 +20,6 @@ use crate::parsing::SyntaxSet;
 use bincode::deserialize_from;
 #[cfg(feature = "dump-create")]
 use bincode::serialize_into;
-use bincode::Result;
 #[cfg(feature = "dump-load")]
 use flate2::bufread::ZlibDecoder;
 #[cfg(feature = "dump-create")]
@@ -38,11 +37,23 @@ use std::io::BufRead;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
+/// An error that can occur during dump/load operations
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum DumpError {
+    /// An IO error occurred
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    /// A serialization or deserialization error occurred
+    #[error("Serialization error: {0}")]
+    Serialize(#[source] Box<dyn std::error::Error + Send + Sync>),
+}
+
 /// Dumps an object to the given writer in a compressed binary format
 ///
 /// The writer is encoded with the `bincode` crate and compressed with `flate2`.
 #[cfg(feature = "dump-create")]
-pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<()> {
+pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<(), DumpError> {
     serialize_to_writer_impl(to_dump, output, true)
 }
 
@@ -63,14 +74,14 @@ pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
 ///
 /// [`dump_to_writer`]: fn.dump_to_writer.html
 #[cfg(feature = "dump-create")]
-pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
+pub fn dump_to_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<(), DumpError> {
     let out = BufWriter::new(File::create(path)?);
     dump_to_writer(o, out)
 }
 
 /// A helper function for decoding and decompressing data from a reader
 #[cfg(feature = "dump-load")]
-pub fn from_reader<T: DeserializeOwned, R: BufRead>(input: R) -> Result<T> {
+pub fn from_reader<T: DeserializeOwned, R: BufRead>(input: R) -> Result<T, DumpError> {
     deserialize_from_reader_impl(input, true)
 }
 
@@ -84,7 +95,7 @@ pub fn from_binary<T: DeserializeOwned>(v: &[u8]) -> T {
 
 /// Returns a fully loaded object from a binary dump file.
 #[cfg(feature = "dump-load")]
-pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
+pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T, DumpError> {
     let contents = std::fs::read(path)?;
     from_reader(&contents[..])
 }
@@ -94,7 +105,7 @@ pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T>
 /// syntaxes are already compressed. Compressing another time just results in
 /// bad performance.
 #[cfg(feature = "dump-create")]
-pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<()> {
+pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<(), DumpError> {
     let out = BufWriter::new(File::create(path)?);
     serialize_to_writer_impl(o, out, false)
 }
@@ -102,7 +113,7 @@ pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -
 /// To be used when deserializing a [`SyntaxSet`] that was previously written to
 /// file using [dump_to_uncompressed_file].
 #[cfg(feature = "dump-load")]
-pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
+pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T, DumpError> {
     let contents = std::fs::read(path)?;
     deserialize_from_reader_impl(&contents[..], false)
 }
@@ -111,7 +122,7 @@ pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P)
 /// data that has been embedded in your own binary with the [`include_bytes!`]
 /// macro.
 #[cfg(feature = "dump-load")]
-pub fn from_uncompressed_data<T: DeserializeOwned>(v: &[u8]) -> Result<T> {
+pub fn from_uncompressed_data<T: DeserializeOwned>(v: &[u8]) -> Result<T, DumpError> {
     deserialize_from_reader_impl(v, false)
 }
 
@@ -121,12 +132,12 @@ fn serialize_to_writer_impl<T: Serialize, W: Write>(
     to_dump: &T,
     output: W,
     use_compression: bool,
-) -> Result<()> {
+) -> Result<(), DumpError> {
     if use_compression {
         let mut encoder = std::io::BufWriter::new(ZlibEncoder::new(output, Compression::best()));
-        serialize_into(&mut encoder, to_dump)
+        serialize_into(&mut encoder, to_dump).map_err(|e| DumpError::Serialize(Box::new(e)))
     } else {
-        serialize_into(output, to_dump)
+        serialize_into(output, to_dump).map_err(|e| DumpError::Serialize(Box::new(e)))
     }
 }
 
@@ -135,12 +146,12 @@ fn serialize_to_writer_impl<T: Serialize, W: Write>(
 fn deserialize_from_reader_impl<T: DeserializeOwned, R: BufRead>(
     input: R,
     use_compression: bool,
-) -> Result<T> {
+) -> Result<T, DumpError> {
     if use_compression {
         let mut decoder = ZlibDecoder::new(input);
-        deserialize_from(&mut decoder)
+        deserialize_from(&mut decoder).map_err(|e| DumpError::Serialize(Box::new(e)))
     } else {
-        deserialize_from(input)
+        deserialize_from(input).map_err(|e| DumpError::Serialize(Box::new(e)))
     }
 }
 

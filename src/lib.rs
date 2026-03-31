@@ -71,7 +71,7 @@ pub enum Error {
 pub enum LoadingError {
     /// error finding all the files in a directory
     #[error("error finding all the files in a directory: {0}")]
-    WalkDir(#[from] walkdir::Error),
+    WalkDir(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// error reading a file
     #[error("error reading a file: {0}")]
     Io(#[from] IoError),

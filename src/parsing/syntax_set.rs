@@ -531,7 +531,7 @@ impl SyntaxSetBuilder {
     ) -> Result<(), LoadingError> {
         for entry in crate::utils::walk_dir(folder).sort_by(|a, b| a.file_name().cmp(b.file_name()))
         {
-            let entry = entry.map_err(LoadingError::WalkDir)?;
+            let entry = entry.map_err(|e| LoadingError::WalkDir(Box::new(e)))?;
             if entry
                 .path()
                 .extension()
