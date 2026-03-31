@@ -543,7 +543,8 @@ impl SyntaxSetBuilder {
                             // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
                             // can still be loaded the same way.
                             let path = Path::new(path_str);
-                            let path_parts: Vec<_> = path.iter().map(|c| c.to_str().unwrap()).collect();
+                            let path_parts: Vec<_> =
+                                path.iter().map(|c| c.to_str().unwrap()).collect();
                             self.path_syntaxes
                                 .push((path_parts.join("/").to_string(), self.syntaxes.len()));
                         }
@@ -982,7 +983,9 @@ impl SyntaxSetBuilder {
                 // Ensure the syntax has __start and __main contexts so that
                 // ParseState::new won't panic if this syntax is still accessed.
                 if !syntax.contexts.contains_key("main") {
-                    syntax.contexts.insert("main".to_string(), Context::new(false));
+                    syntax
+                        .contexts
+                        .insert("main".to_string(), Context::new(false));
                 }
                 if !syntax.contexts.contains_key("__start") {
                     let mut scope_repo = crate::parsing::scope::lock_global_scope_repo();
