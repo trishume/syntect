@@ -1343,8 +1343,8 @@ mod tests {
         );
         assert_eq!(
             &ps.find_syntax_for_file("testdata/test_first_line.test")
-                .unwrap()
-                .unwrap()
+                .expect("Error finding syntax for file")
+                .expect("No syntax found for file")
                 .name,
             "Ruby"
         );
