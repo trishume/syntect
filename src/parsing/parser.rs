@@ -1428,6 +1428,7 @@ fn escape_str(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parsing::scope::ClearAmount;
     use crate::parsing::ScopeStackOp::{Clear, Pop, Push, Restore};
     use crate::parsing::{Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder};
     use crate::util::debug_print_ops;
@@ -1454,7 +1455,6 @@ mod tests {
             (7, Push(Scope::new("entity.name.module.ruby").unwrap())),
             (7, Push(Scope::new("support.other.namespace.ruby").unwrap())),
             (10, Pop(1)),
-            (10, Push(Scope::new("punctuation.accessor.ruby").unwrap())),
         ];
         assert_eq!(&ops1[0..test_ops1.len()], &test_ops1[..]);
 

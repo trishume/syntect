@@ -537,16 +537,23 @@ impl SyntaxSetBuilder {
                 .extension()
                 .is_some_and(|e| e == "sublime-syntax")
             {
-                let syntax = load_syntax_file(entry.path(), lines_include_newline)?;
-                if let Some(path_str) = entry.path().to_str() {
-                    // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
-                    // can still be loaded the same way.
-                    let path = Path::new(path_str);
-                    let path_parts: Vec<_> = path.iter().map(|c| c.to_str().unwrap()).collect();
-                    self.path_syntaxes
-                        .push((path_parts.join("/").to_string(), self.syntaxes.len()));
+                match load_syntax_file(entry.path(), lines_include_newline) {
+                    Ok(syntax) => {
+                        if let Some(path_str) = entry.path().to_str() {
+                            // Split the path up and rejoin with slashes so that syntaxes loaded on Windows
+                            // can still be loaded the same way.
+                            let path = Path::new(path_str);
+                            let path_parts: Vec<_> =
+                                path.iter().map(|c| c.to_str().unwrap()).collect();
+                            self.path_syntaxes
+                                .push((path_parts.join("/").to_string(), self.syntaxes.len()));
+                        }
+                        self.syntaxes.push(syntax);
+                    }
+                    Err(err) => {
+                        eprintln!("Warning: skipping {:?}: {}", entry.path(), err);
+                    }
                 }
-                self.syntaxes.push(syntax);
             }
 
             #[cfg(feature = "metadata")]
@@ -957,7 +964,8 @@ impl SyntaxSetBuilder {
 
         if !unresolved.is_empty() {
             for idx in &unresolved {
-                let e = &syntax_definitions[*idx].extends;
+                let syntax = &mut syntax_definitions[*idx];
+                let e = &syntax.extends;
                 let extends_str = if e.is_empty() {
                     "?".to_string()
                 } else {
@@ -965,9 +973,36 @@ impl SyntaxSetBuilder {
                 };
                 eprintln!(
                     "Warning: syntax '{}' extends '{}' but parent was not found or has circular dependency",
-                    syntax_definitions[*idx].name,
+                    syntax.name,
                     extends_str,
                 );
+                // Mark broken syntaxes as hidden so they won't be found by
+                // name/extension lookups and won't cause panics when used.
+                syntax.hidden = true;
+
+                // Ensure the syntax has __start and __main contexts so that
+                // ParseState::new won't panic if this syntax is still accessed.
+                if !syntax.contexts.contains_key("main") {
+                    syntax
+                        .contexts
+                        .insert("main".to_string(), Context::new(false));
+                }
+                if !syntax.contexts.contains_key("__start") {
+                    let mut scope_repo = crate::parsing::scope::lock_global_scope_repo();
+                    let top_level_scope = syntax.scope;
+                    SyntaxDefinition::add_initial_contexts(
+                        &mut syntax.contexts,
+                        &mut crate::parsing::yaml_load::ParserState {
+                            scope_repo: scope_repo.deref_mut(),
+                            variables: syntax.variables.clone(),
+                            variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into()),
+                            backref_regex: Regex::new(r"\\\d".into()),
+                            lines_include_newline: false,
+                            version: syntax.version,
+                        },
+                        top_level_scope,
+                    );
+                }
             }
         }
 

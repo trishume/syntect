@@ -353,7 +353,19 @@ fn test_file(
                 );
             }
             let stack_before = stack.clone();
-            let output = state.parse_line(&line, ss).unwrap();
+            let output = match state.parse_line(&line, ss) {
+                Ok(output) => output,
+                Err(e) => {
+                    if !out_opts.summary {
+                        eprintln!("  Parse error on line {}: {}", current_line_number, e);
+                    }
+                    // Treat parse errors as total test failure
+                    return Ok(SyntaxTestFileResult::FailedAssertions(
+                        total_assertions.max(1),
+                        total_assertions.max(1),
+                    ));
+                }
+            };
             let ParseLineOutput {
                 ops,
                 replayed,
@@ -475,7 +487,16 @@ fn test_file(
             }
             let mut col: usize = 0;
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
-                stack.apply(op).unwrap();
+                if let Err(_) = stack.apply(op) {
+                    // Scope stack error (e.g. NoClearedScopesToRestore) - treat as test failure
+                    if !out_opts.summary {
+                        eprintln!("  Scope stack error on line {}", current_line_number);
+                    }
+                    return Ok(SyntaxTestFileResult::FailedAssertions(
+                        total_assertions.max(1),
+                        total_assertions.max(1),
+                    ));
+                }
                 if s.is_empty() {
                     // in this case we don't care about blank tokens
                     continue;
@@ -621,7 +642,13 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
             println!("Testing file {}", path.display());
         }
         let start = Instant::now();
-        let result = test_file(ss, path, true, out_opts);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            test_file(ss, path, true, out_opts)
+        }))
+        .unwrap_or_else(|_| {
+            eprintln!("PANIC while testing {}", path.display());
+            Ok(SyntaxTestFileResult::FailedAssertions(1, 1))
+        });
         let elapsed = start.elapsed();
         if out_opts.time {
             let ms = (elapsed.as_secs() * 1_000) + elapsed.subsec_millis() as u64;

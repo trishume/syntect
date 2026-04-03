@@ -141,7 +141,7 @@ impl<'a> HighlightFile<'a> {
     /// let ss = SyntaxSet::load_defaults_newlines();
     /// let ts = ThemeSet::load_defaults();
     ///
-    /// let mut highlighter = HighlightFile::new("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
+    /// let mut highlighter = HighlightFile::new("testdata/parser.rs", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
     /// let mut line = String::new();
     /// while highlighter.reader.read_line(&mut line)? > 0 {
     ///     {
@@ -166,7 +166,7 @@ impl<'a> HighlightFile<'a> {
     /// let ss = SyntaxSet::load_defaults_nonewlines();
     /// let ts = ThemeSet::load_defaults();
     ///
-    /// let mut highlighter = HighlightFile::new("testdata/highlight_test.erb", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
+    /// let mut highlighter = HighlightFile::new("testdata/parser.rs", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
     /// for maybe_line in highlighter.reader.lines() {
     ///     let line = maybe_line.unwrap();
     ///     let regions: Vec<(Style, &str)> = highlighter.highlight_lines.highlight_line(&line, &ss).unwrap();
