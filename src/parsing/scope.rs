@@ -6,7 +6,7 @@ use std::mem;
 use std::str::FromStr;
 use std::sync::{Mutex, MutexGuard};
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use serde::de::{Deserialize, Deserializer, Error, Visitor};
 use serde::ser::{Serialize, Serializer};
 use serde_derive::{Deserialize, Serialize};
@@ -39,8 +39,8 @@ pub const ATOM_LEN_BITS: u16 = 3;
     https://github.com/trishume/syntect/issues/575\
     "
 )]
-pub static SCOPE_REPO: Lazy<Mutex<ScopeRepository>> =
-    Lazy::new(|| Mutex::new(ScopeRepository::new()));
+pub static SCOPE_REPO: LazyLock<Mutex<ScopeRepository>> =
+    LazyLock::new(|| Mutex::new(ScopeRepository::new()));
 
 pub(crate) fn lock_global_scope_repo() -> MutexGuard<'static, ScopeRepository> {
     #[allow(deprecated)]

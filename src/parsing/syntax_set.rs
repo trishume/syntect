@@ -17,7 +17,7 @@ use std::path::Path;
 
 use super::regex::Regex;
 use crate::parsing::syntax_definition::ContextId;
-use once_cell::sync::OnceCell;
+use std::sync::OnceLock;
 use serde_derive::{Deserialize, Serialize};
 
 /// A syntax set holds multiple syntaxes that have been linked together.
@@ -35,8 +35,8 @@ pub struct SyntaxSet {
     /// Stores the syntax index for every path that was loaded
     path_syntaxes: Vec<(String, usize)>,
 
-    #[serde(skip_serializing, skip_deserializing, default = "OnceCell::new")]
-    first_line_cache: OnceCell<FirstLineCache>,
+    #[serde(skip_serializing, skip_deserializing, default = "OnceLock::new")]
+    first_line_cache: OnceLock<FirstLineCache>,
     /// Metadata, e.g. indent and commenting information.
     ///
     /// NOTE: if serializing, you should handle metadata manually; that is, you should serialize and
@@ -62,7 +62,7 @@ pub struct SyntaxReference {
     #[serde(default = "default_syntax_version")]
     pub version: u32,
     #[serde(skip)]
-    pub(crate) lazy_contexts: OnceCell<LazyContexts>,
+    pub(crate) lazy_contexts: OnceLock<LazyContexts>,
     pub(crate) serialized_lazy_contexts: Vec<u8>,
 }
 
@@ -122,7 +122,7 @@ impl Clone for SyntaxSet {
             syntaxes: self.syntaxes.clone(),
             path_syntaxes: self.path_syntaxes.clone(),
             // Will need to be re-initialized
-            first_line_cache: OnceCell::new(),
+            first_line_cache: OnceLock::new(),
             #[cfg(feature = "metadata")]
             metadata: self.metadata.clone(),
         }
@@ -134,7 +134,7 @@ impl Default for SyntaxSet {
         SyntaxSet {
             syntaxes: Vec::new(),
             path_syntaxes: Vec::new(),
-            first_line_cache: OnceCell::new(),
+            first_line_cache: OnceLock::new(),
             #[cfg(feature = "metadata")]
             metadata: Metadata::default(),
         }
@@ -653,7 +653,7 @@ impl SyntaxSetBuilder {
                 hidden,
                 variables,
                 version,
-                lazy_contexts: OnceCell::new(),
+                lazy_contexts: OnceLock::new(),
                 serialized_lazy_contexts: Vec::new(), // initialized in the last step
             };
             syntaxes.push(syntax);
@@ -737,7 +737,7 @@ impl SyntaxSetBuilder {
         SyntaxSet {
             syntaxes,
             path_syntaxes,
-            first_line_cache: OnceCell::new(),
+            first_line_cache: OnceLock::new(),
             #[cfg(feature = "metadata")]
             metadata,
         }

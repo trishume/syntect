@@ -435,7 +435,7 @@ impl RawMetadataEntry {
         contents
             .as_object_mut()
             .and_then(|obj| obj.insert("path".into(), path.to_string_lossy().into()));
-        Ok(serde_json::from_value(contents)?)
+        Ok(serde_json::from_value(contents).map_err(|e| LoadingError::ParseMetadata(Box::new(e)))?)
     }
 }
 

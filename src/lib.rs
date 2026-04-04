@@ -82,7 +82,7 @@ pub enum LoadingError {
     /// a metadata file was invalid in some way
     #[cfg(feature = "metadata")]
     #[error("Failed to parse JSON")]
-    ParseMetadata(#[from] serde_json::Error),
+    ParseMetadata(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// a theme file was invalid in some way
     #[cfg(feature = "plist-load")]
     #[error("Invalid syntax theme")]
