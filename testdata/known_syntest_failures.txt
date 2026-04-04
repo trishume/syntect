@@ -1,2 +1,3 @@
 loading syntax definitions from testdata/Packages
-exiting with code 0
+FAILED testdata/Packages/Makefile/syntax_test_makefile.mak: 6
+exiting with code 1

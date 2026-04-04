@@ -1,3 +1,8 @@
 loading syntax definitions from testdata/Packages
+FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 42
+FAILED testdata/Packages/C#/tests/syntax_test_Generics.cs: 10
+FAILED testdata/Packages/C#/tests/syntax_test_Strings.cs: 38
+FAILED testdata/Packages/Java/syntax_test_java.java: 4
+FAILED testdata/Packages/LaTeX/syntax_test_latex.tex: 1
 FAILED testdata/Packages/Markdown/syntax_test_markdown.md: 11
 exiting with code 1
