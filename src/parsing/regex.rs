@@ -12,6 +12,9 @@ use std::error::Error;
 pub struct Regex {
     regex_str: String,
     regex: OnceCell<regex_impl::Regex>,
+    /// Lazily-compiled variant that won't match zero-length strings (for use with
+    /// match patterns whose operation does not modify the parser context stack).
+    regex_not_empty: OnceCell<regex_impl::Regex>,
 }
 
 /// A region contains text positions for capture groups in a match result.
@@ -29,6 +32,7 @@ impl Regex {
         Self {
             regex_str,
             regex: OnceCell::new(),
+            regex_not_empty: OnceCell::new(),
         }
     }
 
@@ -53,6 +57,10 @@ impl Regex {
     /// the [`Region`] to be reused between searches, which makes a significant performance
     /// difference.
     ///
+    /// When `allow_empty` is `false`, zero-length matches are not considered. This should be used
+    /// for match patterns whose operation does not push, set, pop or embed a context, to prevent
+    /// the parser from stalling at the same position.
+    ///
     /// [`Region`]: struct.Region.html
     pub fn search(
         &self,
@@ -60,14 +68,38 @@ impl Regex {
         begin: usize,
         end: usize,
         region: Option<&mut Region>,
+        allow_empty: bool,
     ) -> bool {
-        self.regex()
-            .search(text, begin, end, region.map(|r| &mut r.region))
+        if allow_empty {
+            return self.regex().search(text, begin, end, region.map(|r| &mut r.region));
+        }
+        // For Oniguruma, the not_empty_regex is compiled with FIND_NOT_EMPTY which
+        // natively avoids empty matches. For fancy-regex, which lacks a compile-time
+        // equivalent option, we additionally filter out any zero-length match below.
+        match region {
+            Some(region) => {
+                let matched = self
+                    .not_empty_regex()
+                    .search(text, begin, end, Some(&mut region.region));
+                if matched && region.pos(0).map_or(false, |(ms, me)| ms == me) {
+                    return false;
+                }
+                matched
+            }
+            None => self.not_empty_regex().search(text, begin, end, None),
+        }
     }
 
     fn regex(&self) -> &regex_impl::Regex {
         self.regex.get_or_init(|| {
             regex_impl::Regex::new(&self.regex_str).expect("regex string should be pre-tested")
+        })
+    }
+
+    fn not_empty_regex(&self) -> &regex_impl::Regex {
+        self.regex_not_empty.get_or_init(|| {
+            regex_impl::Regex::new_find_not_empty(&self.regex_str)
+                .expect("regex string should be pre-tested")
         })
     }
 }
@@ -77,6 +109,7 @@ impl Clone for Regex {
         Regex {
             regex_str: self.regex_str.clone(),
             regex: OnceCell::new(),
+            regex_not_empty: OnceCell::new(),
         }
     }
 }
@@ -158,6 +191,21 @@ mod regex_impl {
             }
         }
 
+        pub fn new_find_not_empty(
+            regex_str: &str,
+        ) -> Result<Regex, Box<dyn Error + Send + Sync + 'static>> {
+            let result = onig::Regex::with_options(
+                regex_str,
+                RegexOptions::REGEX_OPTION_CAPTURE_GROUP
+                    | RegexOptions::REGEX_OPTION_FIND_NOT_EMPTY,
+                Syntax::default(),
+            );
+            match result {
+                Ok(regex) => Ok(Regex { regex }),
+                Err(error) => Err(Box::new(error)),
+            }
+        }
+
         pub fn is_match(&self, text: &str) -> bool {
             self.regex
                 .match_with_options(text, 0, SearchOptions::SEARCH_OPTION_NONE, None)
@@ -218,6 +266,14 @@ mod regex_impl {
                 Ok(regex) => Ok(Regex { regex }),
                 Err(error) => Err(Box::new(error)),
             }
+        }
+
+        pub fn new_find_not_empty(
+            regex_str: &str,
+        ) -> Result<Regex, Box<dyn Error + Send + Sync + 'static>> {
+            // fancy-regex doesn't support a compile-time FIND_NOT_EMPTY option; empty matches are
+            // filtered out at search time via a wrapper in the outer Regex::search method.
+            Self::new(regex_str)
         }
 
         pub fn is_match(&self, text: &str) -> bool {

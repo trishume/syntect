@@ -224,7 +224,7 @@ impl SyntaxSet {
         let s = s.strip_prefix("\u{feff}").unwrap_or(s); // Strip UTF-8 BOM
         let cache = self.first_line_cache();
         for &(ref reg, i) in cache.regexes.iter().rev() {
-            if reg.search(s, 0, s.len(), None) {
+            if reg.search(s, 0, s.len(), None, true) {
                 return Some(&self.syntaxes[i]);
             }
         }

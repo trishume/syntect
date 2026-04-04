@@ -566,7 +566,7 @@ impl ParseState {
             let mut esc_regions = Region::new();
             if entry
                 .regex
-                .search(line, start, line.len(), Some(&mut esc_regions))
+                .search(line, start, line.len(), Some(&mut esc_regions), true)
             {
                 let (esc_start, _esc_end) = esc_regions.pos(0).unwrap();
                 if esc_start < search_end {
@@ -714,7 +714,11 @@ impl ParseState {
             _ => (match_pat.regex(), true),
         };
         // print!("  executing regex: {:?} at pos {} on line {}", regex.regex_str(), start, line);
-        let matched = regex.search(line, start, search_end, Some(regions));
+        // Only None-operation patterns should avoid zero-length matches. All other operations
+        // (Push, Set, Pop, Embed, Branch, Fail) legitimately need to match zero-length input
+        // (e.g. lookaheads used with Branch/Fail, empty patterns used with Pop/Set).
+        let allow_empty = !matches!(match_pat.operation, MatchOperation::None);
+        let matched = regex.search(line, start, search_end, Some(regions), allow_empty);
 
         if matched {
             let (match_start, match_end) = regions.pos(0).unwrap();

@@ -414,7 +414,7 @@ mod tests {
         let r = Regex::new(r"(\\\[\]\(\))(b)(c)(d)(e)".into());
         let s = r"\[]()bcde";
         let mut region = Region::new();
-        let matched = r.search(s, 0, s.len(), Some(&mut region));
+        let matched = r.search(s, 0, s.len(), Some(&mut region), true);
         assert!(matched);
 
         let regex_with_refs = pat.regex_with_refs(&region, s);
