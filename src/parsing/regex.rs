@@ -71,16 +71,18 @@ impl Regex {
         allow_empty: bool,
     ) -> bool {
         if allow_empty {
-            return self.regex().search(text, begin, end, region.map(|r| &mut r.region));
+            return self
+                .regex()
+                .search(text, begin, end, region.map(|r| &mut r.region));
         }
         // For Oniguruma, the not_empty_regex is compiled with FIND_NOT_EMPTY which
         // natively avoids empty matches. For fancy-regex, which lacks a compile-time
         // equivalent option, we additionally filter out any zero-length match below.
         match region {
             Some(region) => {
-                let matched = self
-                    .not_empty_regex()
-                    .search(text, begin, end, Some(&mut region.region));
+                let matched =
+                    self.not_empty_regex()
+                        .search(text, begin, end, Some(&mut region.region));
                 if matched && region.pos(0).map_or(false, |(ms, me)| ms == me) {
                     return false;
                 }

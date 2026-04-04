@@ -375,10 +375,13 @@ impl SyntaxDefinition {
             if let Ok(v) = get_key(map, "escape", Some) {
                 let escape_raw = v.as_str().ok_or(ParseSyntaxError::TypeMismatch)?;
                 let escape_regex_str = Self::parse_regex(escape_raw, state)?;
-                let escape_has_captures =
-                    state
-                        .backref_regex
-                        .search(&escape_regex_str, 0, escape_regex_str.len(), None, true);
+                let escape_has_captures = state.backref_regex.search(
+                    &escape_regex_str,
+                    0,
+                    escape_regex_str.len(),
+                    None,
+                    true,
+                );
 
                 let escape_captures =
                     if let Ok(cap_map) = get_key(map, "escape_captures", |x| x.as_hash()) {
@@ -515,10 +518,13 @@ impl SyntaxDefinition {
         let mut result = String::new();
         let mut index = 0;
         let mut region = Region::new();
-        while state
-            .variable_regex
-            .search(raw_regex, index, raw_regex.len(), Some(&mut region), true)
-        {
+        while state.variable_regex.search(
+            raw_regex,
+            index,
+            raw_regex.len(),
+            Some(&mut region),
+            true,
+        ) {
             let (begin, end) = region.pos(0).unwrap();
 
             result.push_str(&raw_regex[index..begin]);
