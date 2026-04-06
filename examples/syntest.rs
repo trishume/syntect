@@ -22,8 +22,8 @@ use std::str::FromStr;
 use std::time::Instant;
 
 use getopts::Options;
-use std::sync::LazyLock;
 use regex::Regex;
+use std::sync::LazyLock;
 use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

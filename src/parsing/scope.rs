@@ -6,10 +6,10 @@ use std::mem;
 use std::str::FromStr;
 use std::sync::{Mutex, MutexGuard};
 
-use std::sync::LazyLock;
 use serde::de::{Deserialize, Deserializer, Error, Visitor};
 use serde::ser::{Serialize, Serializer};
 use serde_derive::{Deserialize, Serialize};
+use std::sync::LazyLock;
 
 /// Scope related errors
 #[derive(Debug, thiserror::Error)]

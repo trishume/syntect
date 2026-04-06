@@ -1,7 +1,7 @@
-use std::sync::OnceLock;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 use std::error::Error;
+use std::sync::OnceLock;
 
 /// An abstraction for regex patterns.
 ///

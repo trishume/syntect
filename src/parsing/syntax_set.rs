@@ -17,8 +17,8 @@ use std::path::Path;
 
 use super::regex::Regex;
 use crate::parsing::syntax_definition::ContextId;
-use std::sync::OnceLock;
 use serde_derive::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 /// A syntax set holds multiple syntaxes that have been linked together.
 ///

@@ -105,7 +105,10 @@ pub fn from_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T,
 /// syntaxes are already compressed. Compressing another time just results in
 /// bad performance.
 #[cfg(feature = "dump-create")]
-pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -> Result<(), DumpError> {
+pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(
+    o: &T,
+    path: P,
+) -> Result<(), DumpError> {
     let out = BufWriter::new(File::create(path)?);
     serialize_to_writer_impl(o, out, false)
 }
@@ -113,7 +116,9 @@ pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(o: &T, path: P) -
 /// To be used when deserializing a [`SyntaxSet`] that was previously written to
 /// file using [dump_to_uncompressed_file].
 #[cfg(feature = "dump-load")]
-pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T, DumpError> {
+pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(
+    path: P,
+) -> Result<T, DumpError> {
     let contents = std::fs::read(path)?;
     deserialize_from_reader_impl(&contents[..], false)
 }
