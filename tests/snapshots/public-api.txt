@@ -1305,7 +1305,6 @@ impl core::marker::Unpin for syntect::parsing::SyntaxSetBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::SyntaxSetBuilder
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::SyntaxSetBuilder
 pub const syntect::parsing::ATOM_LEN_BITS: u16
-pub static syntect::parsing::SCOPE_REPO: std::sync::lazy_lock::LazyLock<std::sync::poison::mutex::Mutex<syntect::parsing::ScopeRepository>>
 pub mod syntect::util
 pub struct syntect::util::LinesWithEndings<'a>
 impl<'a> syntect::util::LinesWithEndings<'a>

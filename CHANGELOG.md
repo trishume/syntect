@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- Remove `SCOPE_REPO` from the public API (deprecated since 5.3.0, see [#575])
+- Remove external dependency types from the public API ([#512])
+- Drop `once_cell` dependency, replaced by `std::sync::{LazyLock, OnceLock}` ([#576])
+
 ## [Version 5.3.0](https://github.com/trishume/syntect/compare/v5.2.0...v5.3.0)
 
 ### Improvements

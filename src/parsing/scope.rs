@@ -25,25 +25,10 @@ pub enum ScopeError {
 /// [`MatchPower`]: struct.MatchPower.html
 pub const ATOM_LEN_BITS: u16 = 3;
 
-/// The global scope repo, exposed in case you want to minimize locking and unlocking.
-///
-/// Ths shouldn't be necessary for you to use. See the [`ScopeRepository`] docs.
-///
-/// [`ScopeRepository`]: struct.ScopeRepository.html
-#[deprecated(
-    since = "5.3.0",
-    note = "\
-    Deprecated in anticipation of removal in the next semver-breaking release under the \
-    justification that it's incredibly niche functionality to expose. If you rely on this \
-    functionality then please express your particular use-case in the github issue: \
-    https://github.com/trishume/syntect/issues/575\
-    "
-)]
-pub static SCOPE_REPO: LazyLock<Mutex<ScopeRepository>> =
+static SCOPE_REPO: LazyLock<Mutex<ScopeRepository>> =
     LazyLock::new(|| Mutex::new(ScopeRepository::new()));
 
 pub(crate) fn lock_global_scope_repo() -> MutexGuard<'static, ScopeRepository> {
-    #[allow(deprecated)]
     SCOPE_REPO.lock().unwrap()
 }
 
@@ -85,12 +70,11 @@ pub enum ParseScopeError {
 /// The structure used to keep track of the mapping between scope atom numbers and their string
 /// names
 ///
-/// It is only exposed in case you want to lock [`SCOPE_REPO`] and then allocate a bunch of scopes
-/// at once without thrashing the lock. In general, you should just use [`Scope::new()`].
+/// It is only exposed in case you want to allocate a bunch of scopes at once without thrashing the
+/// lock. In general, you should just use [`Scope::new()`].
 ///
 /// Only [`Scope`]s created by the same repository have valid comparison results.
 ///
-/// [`SCOPE_REPO`]: struct.SCOPE_REPO.html
 /// [`Scope::new()`]: struct.Scope.html#method.new
 /// [`Scope`]: struct.Scope.html
 #[derive(Debug)]
