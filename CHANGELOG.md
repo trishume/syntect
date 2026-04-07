@@ -9,7 +9,7 @@
 - `Pattern` enum: new `IncludeWithPrototype` variant [#610]
 - `SyntaxDefinition` struct: new `extends` and `version` fields [#610]
 - `SyntaxReference` struct: new `version` field [#610]
-- Replace `SCOPE_REPO` static (deprecated since 5.3.0) with `lock_global_scope_repo()` function [#575]
+- `SCOPE_REPO` type changed from `once_cell::sync::Lazy<...>` to `std::sync::LazyLock<...>` [#576]
 - Remove external dependency types from the public API ([#512])
 - Drop `once_cell` dependency, replaced by `std::sync::{LazyLock, OnceLock}` ([#576])
 
