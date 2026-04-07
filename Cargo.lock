@@ -891,7 +891,6 @@ dependencies = [
  "flate2",
  "fnv",
  "getopts",
- "once_cell",
  "onig",
  "plist",
  "pretty_assertions",

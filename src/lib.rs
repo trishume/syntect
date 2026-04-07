@@ -71,7 +71,7 @@ pub enum Error {
 pub enum LoadingError {
     /// error finding all the files in a directory
     #[error("error finding all the files in a directory: {0}")]
-    WalkDir(#[from] walkdir::Error),
+    WalkDir(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// error reading a file
     #[error("error reading a file: {0}")]
     Io(#[from] IoError),
@@ -82,7 +82,7 @@ pub enum LoadingError {
     /// a metadata file was invalid in some way
     #[cfg(feature = "metadata")]
     #[error("Failed to parse JSON")]
-    ParseMetadata(#[from] serde_json::Error),
+    ParseMetadata(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// a theme file was invalid in some way
     #[cfg(feature = "plist-load")]
     #[error("Invalid syntax theme")]

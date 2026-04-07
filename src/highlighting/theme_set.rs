@@ -25,7 +25,7 @@ impl ThemeSet {
     pub fn discover_theme_paths<P: AsRef<Path>>(folder: P) -> Result<Vec<PathBuf>, LoadingError> {
         let mut themes = Vec::new();
         for entry in crate::utils::walk_dir(folder) {
-            let entry = entry.map_err(LoadingError::WalkDir)?;
+            let entry = entry.map_err(|e| LoadingError::WalkDir(Box::new(e)))?;
             if entry.path().is_file()
                 && entry
                     .path()

@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- `ParseState::parse_line` now returns `Result<ParseLineOutput, ParsingError>` instead of a bare `Vec` [#614]
+- `MatchOperation` enum: new `Branch`, `Fail` [#614], and `Embed` [#615] variants
+- `Pattern` enum: new `IncludeWithPrototype` variant [#610]
+- `SyntaxDefinition` struct: new `extends` and `version` fields [#610]
+- `SyntaxReference` struct: new `version` field [#610]
+- `SCOPE_REPO` type changed from `once_cell::sync::Lazy<...>` to `std::sync::LazyLock<...>` [#576]
+- Remove external dependency types from the public API ([#512])
+- Drop `once_cell` dependency, replaced by `std::sync::{LazyLock, OnceLock}` ([#576])
+
+### Improvements
+
+- Implement sublime-syntax Build 4075 features: `extends` (single and multiple inheritance), `meta_prepend`/`meta_append`, `apply_prototype`, `version: 2`, and `first_line_match` variable resolution [#610] [#612]
+- Implement `branch_point`/`branch`/`fail` backtracking with cross-line replay support [#614]
+- Implement native `embed`/`escape` support, fixing cases where embedded context patterns could consume escape characters first [#615]
+- Gracefully skip syntax files that fail to load and hide syntaxes with unresolved `extends` parents [#610]
+
 ## [Version 5.3.0](https://github.com/trishume/syntect/compare/v5.2.0...v5.3.0)
 
 ### Improvements
