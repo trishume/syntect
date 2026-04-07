@@ -28,7 +28,12 @@ pub const ATOM_LEN_BITS: u16 = 3;
 static SCOPE_REPO: LazyLock<Mutex<ScopeRepository>> =
     LazyLock::new(|| Mutex::new(ScopeRepository::new()));
 
-pub(crate) fn lock_global_scope_repo() -> MutexGuard<'static, ScopeRepository> {
+/// Locks and returns a reference to the global [`ScopeRepository`].
+///
+/// This is useful when you need to perform multiple scope lookups (e.g. via
+/// [`ScopeRepository::atom_str`]) without repeatedly acquiring and releasing
+/// the lock.
+pub fn lock_global_scope_repo() -> MutexGuard<'static, ScopeRepository> {
     SCOPE_REPO.lock().unwrap()
 }
 
