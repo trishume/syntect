@@ -32,7 +32,7 @@ pub use renderer::*;
 /// # Example
 ///
 /// ```
-/// use syntect::html::{ClassedHighlighter, ClassStyle, HtmlScopeRenderer};
+/// use syntect::html::{ClassedHTMLGenerator, ClassStyle, HtmlScopeRenderer};
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::util::LinesWithEndings;
 ///
@@ -44,13 +44,13 @@ pub use renderer::*;
 ///
 /// let syntax_set = SyntaxSet::load_defaults_newlines();
 /// let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-/// let mut highlighter = ClassedHighlighter::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
+/// let mut highlighter = ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
 /// for line in LinesWithEndings::from(current_code) {
 ///     highlighter.parse_html_for_line_which_includes_newline(line);
 /// }
 /// let output_html = highlighter.finalize();
 /// ```
-pub struct ClassedHighlighter<'a, R: ScopeRenderer = HtmlScopeRenderer> {
+pub struct ClassedHTMLGenerator<'a, R: ScopeRenderer = HtmlScopeRenderer> {
     syntax_set: &'a SyntaxSet,
     open_spans: isize,
     parse_state: ParseState,
@@ -60,16 +60,12 @@ pub struct ClassedHighlighter<'a, R: ScopeRenderer = HtmlScopeRenderer> {
     line_index: usize,
 }
 
-/// Backward-compatible alias for [`ClassedHighlighter`] with the default renderer.
-#[deprecated(since = "6.0.0", note = "Use `ClassedHighlighter` instead")]
-pub type ClassedHTMLGenerator<'a> = ClassedHighlighter<'a, HtmlScopeRenderer>;
-
-impl<'a> ClassedHighlighter<'a, HtmlScopeRenderer> {
+impl<'a> ClassedHTMLGenerator<'a, HtmlScopeRenderer> {
     #[deprecated(since = "4.2.0", note = "Please use `new_with_class_style` instead")]
     pub fn new(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
-    ) -> ClassedHighlighter<'a, HtmlScopeRenderer> {
+    ) -> ClassedHTMLGenerator<'a, HtmlScopeRenderer> {
         Self::new_with_class_style(syntax_reference, syntax_set, ClassStyle::Spaced)
     }
 
@@ -77,8 +73,8 @@ impl<'a> ClassedHighlighter<'a, HtmlScopeRenderer> {
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         style: ClassStyle,
-    ) -> ClassedHighlighter<'a, HtmlScopeRenderer> {
-        ClassedHighlighter::new_with_renderer(
+    ) -> ClassedHTMLGenerator<'a, HtmlScopeRenderer> {
+        ClassedHTMLGenerator::new_with_renderer(
             syntax_reference,
             syntax_set,
             HtmlScopeRenderer::new(style),
@@ -86,14 +82,14 @@ impl<'a> ClassedHighlighter<'a, HtmlScopeRenderer> {
     }
 }
 
-impl<'a, R: ScopeRenderer> ClassedHighlighter<'a, R> {
+impl<'a, R: ScopeRenderer> ClassedHTMLGenerator<'a, R> {
     /// Create a new highlighter with a custom renderer.
     pub fn new_with_renderer(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         renderer: R,
-    ) -> ClassedHighlighter<'a, R> {
-        ClassedHighlighter {
+    ) -> ClassedHTMLGenerator<'a, R> {
+        ClassedHTMLGenerator {
             syntax_set,
             open_spans: 0,
             parse_state: ParseState::new(syntax_reference),
@@ -301,7 +297,7 @@ fn escape_css_identifier(identifier: &str) -> String {
 /// like the scope stack and the scopes are mapped to classes based
 /// on the `ClassStyle` (see it's docs).
 ///
-/// See [`ClassedHighlighter`] for a more convenient wrapper, this is the advanced
+/// See [`ClassedHTMLGenerator`] for a more convenient wrapper, this is the advanced
 /// version of the function that gives more control over the parsing flow.
 ///
 /// For this to work correctly you must concatenate all the lines in a `<pre>`
@@ -753,7 +749,7 @@ fn main() {
         let renderer = CapturingRenderer {
             captured: RefCell::new(Vec::new()),
         };
-        let mut gen = ClassedHighlighter::new_with_renderer(syntax, &syntax_set, renderer);
+        let mut gen = ClassedHTMLGenerator::new_with_renderer(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
             gen.parse_html_for_line_which_includes_newline(line)
                 .expect("#[cfg(test)]");
@@ -769,14 +765,14 @@ fn main() {
 
     #[test]
     fn test_classed_highlighter_matches_legacy_output() {
-        // Ensure ClassedHighlighter with HtmlScopeRenderer produces
+        // Ensure ClassedHTMLGenerator with HtmlScopeRenderer produces
         // identical output to the original ClassedHTMLGenerator path.
         let code = "x + y\n";
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
 
         let mut gen =
-            ClassedHighlighter::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
+            ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
         for line in LinesWithEndings::from(code) {
             gen.parse_html_for_line_which_includes_newline(line)
                 .expect("#[cfg(test)]");
@@ -796,7 +792,7 @@ fn main() {
             &[1], // highlight second line (0-indexed)
             style,
         );
-        let mut gen = ClassedHighlighter::new_with_renderer(syntax, &syntax_set, renderer);
+        let mut gen = ClassedHTMLGenerator::new_with_renderer(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
             gen.parse_html_for_line_which_includes_newline(line)
                 .expect("#[cfg(test)]");
@@ -814,7 +810,7 @@ fn main() {
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
         let style = ClassStyle::SpacedPrefixed { prefix: "syn-" };
         let renderer = LineHighlightingRenderer::new(HtmlScopeRenderer::new(style), &[0], style);
-        let mut gen = ClassedHighlighter::new_with_renderer(syntax, &syntax_set, renderer);
+        let mut gen = ClassedHTMLGenerator::new_with_renderer(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
             gen.parse_html_for_line_which_includes_newline(line)
                 .expect("#[cfg(test)]");
@@ -831,10 +827,10 @@ fn main() {
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
 
         let mut gen_plain =
-            ClassedHighlighter::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
+            ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
         let syntax2 = syntax_set.find_syntax_by_name("R").unwrap();
         let style = ClassStyle::Spaced;
-        let mut gen_empty = ClassedHighlighter::new_with_renderer(
+        let mut gen_empty = ClassedHTMLGenerator::new_with_renderer(
             syntax2,
             &syntax_set,
             LineHighlightingRenderer::new(HtmlScopeRenderer::new(style), &[], style),

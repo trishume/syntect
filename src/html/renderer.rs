@@ -62,7 +62,7 @@ impl ScopeRenderer for HtmlScopeRenderer {
 /// # Example
 ///
 /// ```
-/// use syntect::html::{ClassedHighlighter, ClassStyle, HtmlScopeRenderer, LineHighlightingRenderer};
+/// use syntect::html::{ClassedHTMLGenerator, ClassStyle, HtmlScopeRenderer, LineHighlightingRenderer};
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::util::LinesWithEndings;
 ///
@@ -75,7 +75,7 @@ impl ScopeRenderer for HtmlScopeRenderer {
 ///     &[1], // 0-indexed: highlight the second line
 ///     style,
 /// );
-/// let mut gen = ClassedHighlighter::new_with_renderer(syntax, &syntax_set, renderer);
+/// let mut gen = ClassedHTMLGenerator::new_with_renderer(syntax, &syntax_set, renderer);
 /// for line in LinesWithEndings::from(code) {
 ///     gen.parse_html_for_line_which_includes_newline(line).unwrap();
 /// }

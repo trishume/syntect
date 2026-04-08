@@ -624,21 +624,21 @@ impl core::marker::Sync for syntect::html::IncludeBackground
 impl core::marker::Unpin for syntect::html::IncludeBackground
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::html::IncludeBackground
 impl core::panic::unwind_safe::UnwindSafe for syntect::html::IncludeBackground
-pub struct syntect::html::ClassedHighlighter<'a, R: syntect::renderer::ScopeRenderer>
-impl<'a, R: syntect::renderer::ScopeRenderer> syntect::html::ClassedHighlighter<'a, R>
-pub fn syntect::html::ClassedHighlighter<'a, R>::finalize(self) -> alloc::string::String
-pub fn syntect::html::ClassedHighlighter<'a, R>::new_with_renderer(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R) -> syntect::html::ClassedHighlighter<'a, R>
-pub fn syntect::html::ClassedHighlighter<'a, R>::parse_html_for_line(&mut self, line: &str)
-pub fn syntect::html::ClassedHighlighter<'a, R>::parse_html_for_line_which_includes_newline(&mut self, line: &str) -> core::result::Result<(), syntect::Error>
-impl<'a> syntect::html::ClassedHighlighter<'a, syntect::html::HtmlScopeRenderer>
-pub fn syntect::html::ClassedHighlighter<'a, syntect::html::HtmlScopeRenderer>::new(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet) -> syntect::html::ClassedHighlighter<'a, syntect::html::HtmlScopeRenderer>
-pub fn syntect::html::ClassedHighlighter<'a, syntect::html::HtmlScopeRenderer>::new_with_class_style(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, style: syntect::html::ClassStyle) -> syntect::html::ClassedHighlighter<'a, syntect::html::HtmlScopeRenderer>
-impl<'a, R> core::marker::Freeze for syntect::html::ClassedHighlighter<'a, R> where R: core::marker::Freeze
-impl<'a, R> !core::marker::Send for syntect::html::ClassedHighlighter<'a, R>
-impl<'a, R> !core::marker::Sync for syntect::html::ClassedHighlighter<'a, R>
-impl<'a, R> core::marker::Unpin for syntect::html::ClassedHighlighter<'a, R> where R: core::marker::Unpin
-impl<'a, R> core::panic::unwind_safe::RefUnwindSafe for syntect::html::ClassedHighlighter<'a, R> where R: core::panic::unwind_safe::RefUnwindSafe
-impl<'a, R> core::panic::unwind_safe::UnwindSafe for syntect::html::ClassedHighlighter<'a, R> where R: core::panic::unwind_safe::UnwindSafe
+pub struct syntect::html::ClassedHTMLGenerator<'a, R: syntect::renderer::ScopeRenderer>
+impl<'a, R: syntect::renderer::ScopeRenderer> syntect::html::ClassedHTMLGenerator<'a, R>
+pub fn syntect::html::ClassedHTMLGenerator<'a, R>::finalize(self) -> alloc::string::String
+pub fn syntect::html::ClassedHTMLGenerator<'a, R>::new_with_renderer(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R) -> syntect::html::ClassedHTMLGenerator<'a, R>
+pub fn syntect::html::ClassedHTMLGenerator<'a, R>::parse_html_for_line(&mut self, line: &str)
+pub fn syntect::html::ClassedHTMLGenerator<'a, R>::parse_html_for_line_which_includes_newline(&mut self, line: &str) -> core::result::Result<(), syntect::Error>
+impl<'a> syntect::html::ClassedHTMLGenerator<'a, syntect::html::HtmlScopeRenderer>
+pub fn syntect::html::ClassedHTMLGenerator<'a, syntect::html::HtmlScopeRenderer>::new(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet) -> syntect::html::ClassedHTMLGenerator<'a, syntect::html::HtmlScopeRenderer>
+pub fn syntect::html::ClassedHTMLGenerator<'a, syntect::html::HtmlScopeRenderer>::new_with_class_style(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, style: syntect::html::ClassStyle) -> syntect::html::ClassedHTMLGenerator<'a, syntect::html::HtmlScopeRenderer>
+impl<'a, R> core::marker::Freeze for syntect::html::ClassedHTMLGenerator<'a, R> where R: core::marker::Freeze
+impl<'a, R> !core::marker::Send for syntect::html::ClassedHTMLGenerator<'a, R>
+impl<'a, R> !core::marker::Sync for syntect::html::ClassedHTMLGenerator<'a, R>
+impl<'a, R> core::marker::Unpin for syntect::html::ClassedHTMLGenerator<'a, R> where R: core::marker::Unpin
+impl<'a, R> core::panic::unwind_safe::RefUnwindSafe for syntect::html::ClassedHTMLGenerator<'a, R> where R: core::panic::unwind_safe::RefUnwindSafe
+impl<'a, R> core::panic::unwind_safe::UnwindSafe for syntect::html::ClassedHTMLGenerator<'a, R> where R: core::panic::unwind_safe::UnwindSafe
 pub struct syntect::html::HtmlScopeRenderer
 impl syntect::html::HtmlScopeRenderer
 pub fn syntect::html::HtmlScopeRenderer::new(style: syntect::html::ClassStyle) -> Self
@@ -677,7 +677,6 @@ pub fn syntect::html::start_highlighted_html_snippet(t: &syntect::highlighting::
 pub fn syntect::html::styled_line_to_highlighted_html(v: &[(syntect::highlighting::Style, &str)], bg: syntect::html::IncludeBackground) -> core::result::Result<alloc::string::String, syntect::Error>
 pub fn syntect::html::tokens_to_classed_html(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], style: syntect::html::ClassStyle) -> alloc::string::String
 pub fn syntect::html::tokens_to_classed_spans(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], style: syntect::html::ClassStyle) -> (alloc::string::String, isize)
-pub type syntect::html::ClassedHTMLGenerator<'a> = syntect::html::ClassedHighlighter<'a, syntect::html::HtmlScopeRenderer>
 pub mod syntect::parsing
 pub mod syntect::parsing::syntax_definition
 #[non_exhaustive] pub enum syntect::parsing::syntax_definition::ContextReference
