@@ -31,11 +31,13 @@ pub mod dumps;
 pub mod easy;
 #[cfg(feature = "html")]
 mod escape;
+#[cfg(feature = "parsing")]
 pub mod generator;
 pub mod highlighting;
 #[cfg(feature = "html")]
 pub mod html;
 pub mod parsing;
+#[cfg(feature = "parsing")]
 pub mod renderer;
 pub mod util;
 mod utils;
