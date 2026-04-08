@@ -2,7 +2,7 @@ use super::ClassStyle;
 use crate::escape::Escape;
 use crate::parsing::Scope;
 use crate::renderer::ScopeRenderer;
-use std::io::{self, Write};
+use std::fmt::Write;
 
 /// An HTML renderer that produces `<span class="...">` elements with
 /// CSS class names derived from scope atoms.
@@ -24,30 +24,30 @@ impl ScopeRenderer for HTMLScopeRenderer {
         atom_strs: &[&str],
         _scope: Scope,
         _scope_stack: &[Scope],
-        output: &mut Vec<u8>,
+        output: &mut String,
     ) -> bool {
-        output.extend_from_slice(b"<span class=\"");
+        output.push_str("<span class=\"");
         for (i, atom) in atom_strs.iter().enumerate() {
             if i != 0 {
-                output.push(b' ');
+                output.push(' ');
             }
             match self.style {
                 ClassStyle::Spaced => {}
                 ClassStyle::SpacedPrefixed { prefix } => {
-                    output.extend_from_slice(prefix.as_bytes());
+                    output.push_str(prefix);
                 }
             }
-            output.extend_from_slice(atom.as_bytes());
+            output.push_str(atom);
         }
-        output.extend_from_slice(b"\">");
+        output.push_str("\">");
         true
     }
 
-    fn end_scope(&mut self, output: &mut Vec<u8>) {
-        output.extend_from_slice(b"</span>");
+    fn end_scope(&mut self, output: &mut String) {
+        output.push_str("</span>");
     }
 
-    fn write_text(&mut self, text: &str, output: &mut Vec<u8>) -> Result<(), io::Error> {
-        write!(output, "{}", Escape(text))
+    fn write_text(&mut self, text: &str, output: &mut String) {
+        write!(output, "{}", Escape(text)).expect("writing to a String never fails");
     }
 }

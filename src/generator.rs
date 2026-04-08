@@ -114,13 +114,9 @@ impl<'a, R: ScopeRenderer> DocumentGenerator<'a, R> {
 
     /// Close any remaining open scopes and return the finished output.
     pub fn finalize(mut self) -> String {
-        let mut closing = Vec::new();
         for _ in 0..self.open_scopes {
-            self.renderer.end_scope(&mut closing);
+            self.renderer.end_scope(&mut self.output);
         }
-        // All renderer output is valid UTF-8 (see render_line).
-        self.output
-            .push_str(&String::from_utf8(closing).expect("renderer output is valid UTF-8"));
         self.output
     }
 }
