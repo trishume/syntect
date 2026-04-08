@@ -3,264 +3,29 @@ use crate::easy::{HighlightFile, HighlightLines};
 use crate::escape::Escape;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
 use crate::parsing::{
-    lock_global_scope_repo, BasicScopeStackOp, ParseState, Scope, ScopeRepository, ScopeStack,
-    ScopeStackOp, SyntaxReference, SyntaxSet,
+    lock_global_scope_repo, ParseState, Scope, ScopeRepository, ScopeStack, ScopeStackOp,
+    SyntaxReference, SyntaxSet,
 };
+use crate::renderer::{render_line_to_classed_spans, ScopeRenderer};
 use crate::util::LinesWithEndings;
 use crate::Error;
-use std::collections::HashSet;
 use std::fmt::Write;
 
 use std::io::BufRead;
 use std::path::Path;
 
-/// Trait for customizing the output of class-based syntax highlighting.
-///
-/// The methods receive pre-resolved scope atom strings so implementations
-/// never need to interact with the scope repository directly.
-///
-/// See [`DefaultClassedRenderer`] for the default implementation that produces
-/// the same output as the original `ClassedHTMLGenerator`.
-pub trait ClassedRenderer {
-    /// Called at the start of each line, before any tokens.
-    ///
-    /// `line_index` is 0-based. `scope_stack` is the current scope stack carried
-    /// over from the previous line. `style` is the active [`ClassStyle`].
-    fn begin_line(
-        &mut self,
-        _line_index: usize,
-        _scope_stack: &[Scope],
-        _style: ClassStyle,
-        _output: &mut String,
-    ) {
-    }
+mod renderer;
+pub use renderer::*;
 
-    /// Called at the end of each line, after all tokens.
-    fn end_line(
-        &mut self,
-        _line_index: usize,
-        _scope_stack: &[Scope],
-        _style: ClassStyle,
-        _output: &mut String,
-    ) {
-    }
+/// Backward-compatible alias for [`HtmlScopeRenderer`].
+#[deprecated(since = "6.0.0", note = "Use `HtmlScopeRenderer` instead")]
+pub type DefaultScopeRenderer = HtmlScopeRenderer;
 
-    /// Called when a new scope is pushed onto the stack.
-    ///
-    /// - `atom_strs`: the individual atom strings of the scope
-    ///   (e.g., `["keyword", "operator", "arithmetic", "r"]` for `keyword.operator.arithmetic.r`)
-    /// - `scope`: the raw [`Scope`] value, for advanced matching
-    /// - `scope_stack`: the full stack after the push
-    /// - `output`: the buffer to write the opening tag to
-    ///
-    /// Return `true` if a tag was written (meaning [`end_scope`] will be called
-    /// to close it), or `false` to skip this scope (no matching `end_scope` call).
-    ///
-    /// [`end_scope`]: #tymethod.end_scope
-    fn begin_scope(
-        &mut self,
-        atom_strs: &[&str],
-        scope: Scope,
-        scope_stack: &[Scope],
-        output: &mut String,
-    ) -> bool;
-
-    /// Called when a scope is popped, only if the corresponding [`begin_scope`]
-    /// returned `true`.
-    ///
-    /// [`begin_scope`]: #tymethod.begin_scope
-    fn end_scope(&mut self, output: &mut String);
-
-    /// Called for text content between scope operations.
-    ///
-    /// The default implementation HTML-escapes the text.
-    fn write_text(&mut self, text: &str, output: &mut String) -> Result<(), std::fmt::Error> {
-        write!(output, "{}", Escape(text))
-    }
-}
-
-/// The default renderer that produces `<span class="...">` elements with
-/// CSS class names derived from scope atoms.
-///
-/// This produces identical output to the original `ClassedHTMLGenerator`.
-pub struct DefaultClassedRenderer {
-    style: ClassStyle,
-}
-
-impl DefaultClassedRenderer {
-    pub fn new(style: ClassStyle) -> Self {
-        Self { style }
-    }
-}
-
-impl ClassedRenderer for DefaultClassedRenderer {
-    fn begin_scope(
-        &mut self,
-        atom_strs: &[&str],
-        _scope: Scope,
-        _scope_stack: &[Scope],
-        output: &mut String,
-    ) -> bool {
-        output.push_str("<span class=\"");
-        for (i, atom) in atom_strs.iter().enumerate() {
-            if i != 0 {
-                output.push(' ');
-            }
-            match self.style {
-                ClassStyle::Spaced => {}
-                ClassStyle::SpacedPrefixed { prefix } => {
-                    output.push_str(prefix);
-                }
-            }
-            output.push_str(atom);
-        }
-        output.push_str("\">");
-        true
-    }
-
-    fn end_scope(&mut self, output: &mut String) {
-        output.push_str("</span>");
-    }
-}
-
-/// A composable renderer wrapper that highlights specific lines by wrapping
-/// them in `<span class="hl">` (or `<span class="prefix-hl">`).
-///
-/// It correctly closes and reopens any scope spans that cross line boundaries,
-/// keeping the HTML well-nested.
-///
-/// # Example
-///
-/// ```
-/// use syntect::html::{ClassedHighlighter, ClassStyle, DefaultClassedRenderer, LineHighlightingRenderer};
-/// use syntect::parsing::SyntaxSet;
-/// use syntect::util::LinesWithEndings;
-///
-/// let code = "x <- 5\ny <- 6\nx + y\n";
-/// let syntax_set = SyntaxSet::load_defaults_newlines();
-/// let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-/// let style = ClassStyle::Spaced;
-/// let renderer = LineHighlightingRenderer::new(
-///     DefaultClassedRenderer::new(style),
-///     &[1], // 0-indexed: highlight the second line
-/// );
-/// let mut gen = ClassedHighlighter::new_with_renderer(syntax, &syntax_set, style, renderer);
-/// for line in LinesWithEndings::from(code) {
-///     gen.parse_html_for_line_which_includes_newline(line).unwrap();
-/// }
-/// let html = gen.finalize();
-/// assert!(html.contains("<span class=\"hl\">"));
-/// ```
-pub struct LineHighlightingRenderer<R: ClassedRenderer> {
-    inner: R,
-    highlighted_lines: HashSet<usize>,
-}
-
-impl<R: ClassedRenderer> LineHighlightingRenderer<R> {
-    pub fn new(inner: R, highlighted_lines: &[usize]) -> Self {
-        Self {
-            inner,
-            highlighted_lines: highlighted_lines.iter().copied().collect(),
-        }
-    }
-}
-
-impl<R: ClassedRenderer> ClassedRenderer for LineHighlightingRenderer<R> {
-    fn begin_line(
-        &mut self,
-        line_index: usize,
-        scope_stack: &[Scope],
-        style: ClassStyle,
-        output: &mut String,
-    ) {
-        if self.highlighted_lines.contains(&line_index) {
-            // Close all open scope spans so the highlight wrapper is well-nested
-            for _ in scope_stack {
-                output.push_str("</span>");
-            }
-            // Open the highlight wrapper
-            output.push_str("<span class=\"");
-            if let ClassStyle::SpacedPrefixed { prefix } = style {
-                output.push_str(prefix);
-            }
-            output.push_str("hl\">");
-            // Reopen scope spans inside the highlight wrapper
-            let repo = lock_global_scope_repo();
-            for &scope in scope_stack {
-                write_scope_open(output, scope, style, &repo);
-            }
-        }
-        self.inner
-            .begin_line(line_index, scope_stack, style, output);
-    }
-
-    fn end_line(
-        &mut self,
-        line_index: usize,
-        scope_stack: &[Scope],
-        style: ClassStyle,
-        output: &mut String,
-    ) {
-        self.inner.end_line(line_index, scope_stack, style, output);
-        if self.highlighted_lines.contains(&line_index) {
-            // Close all scope spans that were reopened inside the highlight wrapper
-            for _ in scope_stack {
-                output.push_str("</span>");
-            }
-            // Close the highlight wrapper
-            output.push_str("</span>");
-            // Reopen scope spans for the next line
-            let repo = lock_global_scope_repo();
-            for &scope in scope_stack {
-                write_scope_open(output, scope, style, &repo);
-            }
-        }
-    }
-
-    fn begin_scope(
-        &mut self,
-        atom_strs: &[&str],
-        scope: Scope,
-        scope_stack: &[Scope],
-        output: &mut String,
-    ) -> bool {
-        self.inner
-            .begin_scope(atom_strs, scope, scope_stack, output)
-    }
-
-    fn end_scope(&mut self, output: &mut String) {
-        self.inner.end_scope(output);
-    }
-
-    fn write_text(&mut self, text: &str, output: &mut String) -> Result<(), std::fmt::Error> {
-        self.inner.write_text(text, output)
-    }
-}
-
-/// Write an opening `<span class="...">` tag for a scope using atom strings from a repo.
-fn write_scope_open(output: &mut String, scope: Scope, style: ClassStyle, repo: &ScopeRepository) {
-    output.push_str("<span class=\"");
-    for i in 0..(scope.len()) {
-        let atom_s = repo.atom_str(scope.atom_at(i as usize));
-        if i != 0 {
-            output.push(' ');
-        }
-        match style {
-            ClassStyle::Spaced => {}
-            ClassStyle::SpacedPrefixed { prefix } => {
-                output.push_str(prefix);
-            }
-        }
-        output.push_str(atom_s);
-    }
-    output.push_str("\">");
-}
-
-/// Drives syntax parsing and delegates HTML rendering to a [`ClassedRenderer`].
+/// Drives syntax parsing and delegates HTML rendering to a [`ScopeRenderer`].
 ///
 /// This struct parses lines of code and emits rendering events (scope push/pop,
 /// text content, line boundaries) to a pluggable renderer. The default renderer
-/// ([`DefaultClassedRenderer`]) produces the same `<span class="...">` output as
+/// ([`HtmlScopeRenderer`]) produces the same `<span class="...">` output as
 /// the original `ClassedHTMLGenerator`.
 ///
 /// There is a [`finalize()`] method that must be called in the end in order
@@ -271,7 +36,7 @@ fn write_scope_open(output: &mut String, scope: Scope, style: ClassStyle, repo: 
 /// # Example
 ///
 /// ```
-/// use syntect::html::{ClassedHighlighter, ClassStyle, DefaultClassedRenderer};
+/// use syntect::html::{ClassedHighlighter, ClassStyle, HtmlScopeRenderer};
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::util::LinesWithEndings;
 ///
@@ -289,27 +54,26 @@ fn write_scope_open(output: &mut String, scope: Scope, style: ClassStyle, repo: 
 /// }
 /// let output_html = highlighter.finalize();
 /// ```
-pub struct ClassedHighlighter<'a, R: ClassedRenderer = DefaultClassedRenderer> {
+pub struct ClassedHighlighter<'a, R: ScopeRenderer = HtmlScopeRenderer> {
     syntax_set: &'a SyntaxSet,
     open_spans: isize,
     parse_state: ParseState,
     scope_stack: ScopeStack,
     html: String,
-    style: ClassStyle,
     renderer: R,
     line_index: usize,
 }
 
 /// Backward-compatible alias for [`ClassedHighlighter`] with the default renderer.
 #[deprecated(since = "6.0.0", note = "Use `ClassedHighlighter` instead")]
-pub type ClassedHTMLGenerator<'a> = ClassedHighlighter<'a, DefaultClassedRenderer>;
+pub type ClassedHTMLGenerator<'a> = ClassedHighlighter<'a, HtmlScopeRenderer>;
 
-impl<'a> ClassedHighlighter<'a, DefaultClassedRenderer> {
+impl<'a> ClassedHighlighter<'a, HtmlScopeRenderer> {
     #[deprecated(since = "4.2.0", note = "Please use `new_with_class_style` instead")]
     pub fn new(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
-    ) -> ClassedHighlighter<'a, DefaultClassedRenderer> {
+    ) -> ClassedHighlighter<'a, HtmlScopeRenderer> {
         Self::new_with_class_style(syntax_reference, syntax_set, ClassStyle::Spaced)
     }
 
@@ -317,25 +81,20 @@ impl<'a> ClassedHighlighter<'a, DefaultClassedRenderer> {
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         style: ClassStyle,
-    ) -> ClassedHighlighter<'a, DefaultClassedRenderer> {
+    ) -> ClassedHighlighter<'a, HtmlScopeRenderer> {
         ClassedHighlighter::new_with_renderer(
             syntax_reference,
             syntax_set,
-            style,
-            DefaultClassedRenderer::new(style),
+            HtmlScopeRenderer::new(style),
         )
     }
 }
 
-impl<'a, R: ClassedRenderer> ClassedHighlighter<'a, R> {
+impl<'a, R: ScopeRenderer> ClassedHighlighter<'a, R> {
     /// Create a new highlighter with a custom renderer.
-    ///
-    /// The `style` parameter controls the CSS class prefix behavior and is
-    /// passed to [`ClassedRenderer::begin_line`] and [`ClassedRenderer::end_line`].
     pub fn new_with_renderer(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
-        style: ClassStyle,
         renderer: R,
     ) -> ClassedHighlighter<'a, R> {
         ClassedHighlighter {
@@ -344,7 +103,6 @@ impl<'a, R: ClassedRenderer> ClassedHighlighter<'a, R> {
             parse_state: ParseState::new(syntax_reference),
             scope_stack: ScopeStack::new(),
             html: String::new(),
-            style,
             renderer,
             line_index: 0,
         }
@@ -359,7 +117,6 @@ impl<'a, R: ClassedRenderer> ClassedHighlighter<'a, R> {
         let (formatted_line, delta) = render_line_to_classed_spans(
             line,
             parsed_line.as_slice(),
-            self.style,
             &mut self.scope_stack,
             &mut self.renderer,
             self.line_index,
@@ -526,78 +283,6 @@ fn scope_to_selector(s: &mut String, scope: Scope, style: ClassStyle, repo: &Sco
     }
 }
 
-/// Resolve atom strings for a scope from a locked repository.
-fn resolve_atom_strs<'a>(scope: Scope, repo: &'a ScopeRepository) -> Vec<&'a str> {
-    (0..scope.len() as usize)
-        .map(|i| repo.atom_str(scope.atom_at(i)))
-        .collect()
-}
-
-/// Core rendering loop shared by [`ClassedHighlighter`] and
-/// [`line_tokens_to_classed_spans`].
-///
-/// Locks the global scope repository once per line. Applies the transparent
-/// empty-span optimization: if a scope push/pop pair contains no text, the
-/// push output is truncated rather than emitting an empty element.
-fn render_line_to_classed_spans<R: ClassedRenderer>(
-    line: &str,
-    ops: &[(usize, ScopeStackOp)],
-    style: ClassStyle,
-    stack: &mut ScopeStack,
-    renderer: &mut R,
-    line_index: usize,
-) -> Result<(String, isize), Error> {
-    let mut s = String::with_capacity(line.len() + ops.len() * 8);
-    let mut cur_index = 0;
-    let mut span_delta = 0;
-
-    // Empty-span optimization tracking
-    let mut span_empty = false;
-    let mut span_start = 0;
-
-    // begin_line is called without the repo lock held, so renderers like
-    // LineHighlightingRenderer can safely lock the repo themselves.
-    renderer.begin_line(line_index, &stack.scopes, style, &mut s);
-
-    {
-        let repo = lock_global_scope_repo();
-        for &(i, ref op) in ops {
-            if i > cur_index {
-                span_empty = false;
-                renderer.write_text(&line[cur_index..i], &mut s)?;
-                cur_index = i;
-            }
-            stack.apply_with_hook(op, |basic_op, stack_slice| match basic_op {
-                BasicScopeStackOp::Push(scope) => {
-                    let atom_strs = resolve_atom_strs(scope, &repo);
-                    span_start = s.len();
-                    span_empty = true;
-                    let wrote = renderer.begin_scope(&atom_strs, scope, stack_slice, &mut s);
-                    if wrote {
-                        span_delta += 1;
-                    } else {
-                        span_empty = false;
-                    }
-                }
-                BasicScopeStackOp::Pop => {
-                    if span_empty {
-                        s.truncate(span_start);
-                    } else {
-                        renderer.end_scope(&mut s);
-                    }
-                    span_delta -= 1;
-                    span_empty = false;
-                }
-            })?;
-        }
-        renderer.write_text(&line[cur_index..line.len()], &mut s)?;
-    }
-
-    // end_line is called without the repo lock held.
-    renderer.end_line(line_index, &stack.scopes, style, &mut s);
-    Ok((s, span_delta))
-}
-
 /// Escape special characters in a CSS identifier.
 ///
 /// See <https://www.w3.org/International/questions/qa-escapes#css_identifiers>.
@@ -613,6 +298,31 @@ fn escape_css_identifier(identifier: &str) -> String {
             output
         },
     )
+}
+
+/// Output HTML for a line of code with `<span>` elements
+/// specifying classes for each token. The span elements are nested
+/// like the scope stack and the scopes are mapped to classes based
+/// on the `ClassStyle` (see it's docs).
+///
+/// See [`ClassedHighlighter`] for a more convenient wrapper, this is the advanced
+/// version of the function that gives more control over the parsing flow.
+///
+/// For this to work correctly you must concatenate all the lines in a `<pre>`
+/// tag since some span tags opened on a line may not be closed on that line
+/// and later lines may close tags from previous lines.
+///
+/// Returns the HTML string and the number of `<span>` tags opened
+/// (negative for closed). So that you can emit the correct number of closing
+/// tags at the end.
+pub fn line_tokens_to_classed_spans(
+    line: &str,
+    ops: &[(usize, ScopeStackOp)],
+    style: ClassStyle,
+    stack: &mut ScopeStack,
+) -> Result<(String, isize), Error> {
+    let mut renderer = HtmlScopeRenderer::new(style);
+    render_line_to_classed_spans(line, ops, stack, &mut renderer, 0)
 }
 
 /// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
@@ -670,31 +380,6 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     }
     output.push_str("</pre>\n");
     Ok(output)
-}
-
-/// Output HTML for a line of code with `<span>` elements
-/// specifying classes for each token. The span elements are nested
-/// like the scope stack and the scopes are mapped to classes based
-/// on the `ClassStyle` (see it's docs).
-///
-/// See [`ClassedHighlighter`] for a more convenient wrapper, this is the advanced
-/// version of the function that gives more control over the parsing flow.
-///
-/// For this to work correctly you must concatenate all the lines in a `<pre>`
-/// tag since some span tags opened on a line may not be closed on that line
-/// and later lines may close tags from previous lines.
-///
-/// Returns the HTML string and the number of `<span>` tags opened
-/// (negative for closed). So that you can emit the correct number of closing
-/// tags at the end.
-pub fn line_tokens_to_classed_spans(
-    line: &str,
-    ops: &[(usize, ScopeStackOp)],
-    style: ClassStyle,
-    stack: &mut ScopeStack,
-) -> Result<(String, isize), Error> {
-    let mut renderer = DefaultClassedRenderer::new(style);
-    render_line_to_classed_spans(line, ops, style, stack, &mut renderer, 0)
 }
 
 /// Preserved for compatibility, always use `line_tokens_to_classed_spans`
@@ -881,7 +566,7 @@ mod tests {
             line_tokens_to_classed_spans(line, &ops[..], ClassStyle::Spaced, &mut stack)
                 .expect("#[cfg(test)]");
         println!("{}", html);
-        assert_eq!(html, include_str!("../testdata/test2.html").trim_end());
+        assert_eq!(html, include_str!("../../testdata/test2.html").trim_end());
 
         let ts = ThemeSet::load_defaults();
         let highlighter = Highlighter::new(&ts.themes["InspiredGitHub"]);
@@ -892,19 +577,19 @@ mod tests {
         let html2 = styled_line_to_highlighted_html(&regions[..], IncludeBackground::Yes)
             .expect("#[cfg(test)]");
         println!("{}", html2);
-        assert_eq!(html2, include_str!("../testdata/test1.html").trim_end());
+        assert_eq!(html2, include_str!("../../testdata/test1.html").trim_end());
     }
 
     #[test]
     fn strings() {
         let ss = SyntaxSet::load_defaults_newlines();
         let ts = ThemeSet::load_defaults();
-        let s = include_str!("../testdata/highlight_test.erb");
+        let s = include_str!("../../testdata/highlight_test.erb");
         let syntax = ss.find_syntax_by_extension("erb").unwrap();
         let html = highlighted_html_for_string(s, &ss, syntax, &ts.themes["base16-ocean.dark"])
             .expect("#[cfg(test)]");
         // println!("{}", html);
-        assert_eq!(html, include_str!("../testdata/test3.html"));
+        assert_eq!(html, include_str!("../../testdata/test3.html"));
         let html2 = highlighted_html_for_file(
             "testdata/highlight_test.erb",
             &ss,
@@ -921,7 +606,7 @@ mod tests {
         )
         .unwrap();
         println!("{}", html3);
-        assert_eq!(html3, include_str!("../testdata/test4.html"));
+        assert_eq!(html3, include_str!("../../testdata/test4.html"));
     }
 
     #[test]
@@ -939,14 +624,14 @@ mod tests {
         )
         .unwrap();
         println!("{}", html);
-        assert_eq!(html, include_str!("../testdata/test5.html"));
+        assert_eq!(html, include_str!("../../testdata/test5.html"));
     }
 
     #[test]
     fn test_classed_html_generator_doesnt_panic() {
         let current_code = "{\n    \"headers\": [\"Number\", \"Title\"],\n    \"records\": [\n        [\"1\", \"Gutenberg\"],\n        [\"2\", \"Printing\"]\n    ],\n}\n";
         let syntax_def = SyntaxDefinition::load_from_str(
-            include_str!("../testdata/JSON.sublime-syntax"),
+            include_str!("../../testdata/JSON.sublime-syntax"),
             true,
             None,
         )
@@ -1041,12 +726,13 @@ fn main() {
 
     #[test]
     fn test_custom_renderer_receives_atom_strs() {
+        use crate::renderer::ScopeRenderer;
         use std::cell::RefCell;
 
         struct CapturingRenderer {
             captured: RefCell<Vec<Vec<String>>>,
         }
-        impl ClassedRenderer for CapturingRenderer {
+        impl ScopeRenderer for CapturingRenderer {
             fn begin_scope(
                 &mut self,
                 atom_strs: &[&str],
@@ -1071,12 +757,7 @@ fn main() {
         let renderer = CapturingRenderer {
             captured: RefCell::new(Vec::new()),
         };
-        let mut gen = ClassedHighlighter::new_with_renderer(
-            syntax,
-            &syntax_set,
-            ClassStyle::Spaced,
-            renderer,
-        );
+        let mut gen = ClassedHighlighter::new_with_renderer(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
             gen.parse_html_for_line_which_includes_newline(line)
                 .expect("#[cfg(test)]");
@@ -1092,7 +773,7 @@ fn main() {
 
     #[test]
     fn test_classed_highlighter_matches_legacy_output() {
-        // Ensure ClassedHighlighter with DefaultClassedRenderer produces
+        // Ensure ClassedHighlighter with HtmlScopeRenderer produces
         // identical output to the original ClassedHTMLGenerator path.
         let code = "x + y\n";
         let syntax_set = SyntaxSet::load_defaults_newlines();
@@ -1113,16 +794,13 @@ fn main() {
         let code = "x <- 5\ny <- 6\nx + y\n";
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let style = ClassStyle::Spaced;
         let renderer = LineHighlightingRenderer::new(
-            DefaultClassedRenderer::new(ClassStyle::Spaced),
+            HtmlScopeRenderer::new(style),
             &[1], // highlight second line (0-indexed)
+            style,
         );
-        let mut gen = ClassedHighlighter::new_with_renderer(
-            syntax,
-            &syntax_set,
-            ClassStyle::Spaced,
-            renderer,
-        );
+        let mut gen = ClassedHighlighter::new_with_renderer(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
             gen.parse_html_for_line_which_includes_newline(line)
                 .expect("#[cfg(test)]");
@@ -1139,8 +817,8 @@ fn main() {
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
         let style = ClassStyle::SpacedPrefixed { prefix: "syn-" };
-        let renderer = LineHighlightingRenderer::new(DefaultClassedRenderer::new(style), &[0]);
-        let mut gen = ClassedHighlighter::new_with_renderer(syntax, &syntax_set, style, renderer);
+        let renderer = LineHighlightingRenderer::new(HtmlScopeRenderer::new(style), &[0], style);
+        let mut gen = ClassedHighlighter::new_with_renderer(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
             gen.parse_html_for_line_which_includes_newline(line)
                 .expect("#[cfg(test)]");
@@ -1159,11 +837,11 @@ fn main() {
         let mut gen_plain =
             ClassedHighlighter::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
         let syntax2 = syntax_set.find_syntax_by_name("R").unwrap();
+        let style = ClassStyle::Spaced;
         let mut gen_empty = ClassedHighlighter::new_with_renderer(
             syntax2,
             &syntax_set,
-            ClassStyle::Spaced,
-            LineHighlightingRenderer::new(DefaultClassedRenderer::new(ClassStyle::Spaced), &[]),
+            LineHighlightingRenderer::new(HtmlScopeRenderer::new(style), &[], style),
         );
         for line in LinesWithEndings::from(code) {
             gen_plain

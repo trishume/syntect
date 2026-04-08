@@ -35,6 +35,7 @@ pub mod highlighting;
 #[cfg(feature = "html")]
 pub mod html;
 pub mod parsing;
+pub mod renderer;
 pub mod util;
 mod utils;
 
