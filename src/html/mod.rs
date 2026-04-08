@@ -730,16 +730,16 @@ fn main() {
                 atom_strs: &[&str],
                 _scope: Scope,
                 _scope_stack: &[Scope],
-                output: &mut String,
+                output: &mut Vec<u8>,
             ) -> bool {
                 self.captured
                     .borrow_mut()
                     .push(atom_strs.iter().map(|s| s.to_string()).collect());
-                output.push_str("<span>");
+                output.extend_from_slice(b"<span>");
                 true
             }
-            fn end_scope(&mut self, output: &mut String) {
-                output.push_str("</span>");
+            fn end_scope(&mut self, output: &mut Vec<u8>) {
+                output.extend_from_slice(b"</span>");
             }
         }
 

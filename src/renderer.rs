@@ -7,6 +7,8 @@
 //!
 //! For an HTML-specific implementation, see [`crate::html::HtmlScopeRenderer`].
 
+use std::io;
+
 use crate::parsing::{
     lock_global_scope_repo, BasicScopeStackOp, Scope, ScopeRepository, ScopeStack, ScopeStackOp,
 };
@@ -14,20 +16,26 @@ use crate::Error;
 
 /// Trait for customizing the output of class-based syntax highlighting.
 ///
+/// The type parameter `W` is the output target. It defaults to [`Vec<u8>`],
+/// which is what the built-in rendering loop ([`render_line_to_classed_spans`])
+/// uses. Implementors targeting other writable types (e.g., streaming to a
+/// file or a socket) can implement `ScopeRenderer<MyWriter>` and drive
+/// their own rendering loop.
+///
 /// The methods receive pre-resolved scope atom strings so implementations
 /// never need to interact with the scope repository directly.
 ///
 /// See [`crate::html::HtmlScopeRenderer`] for an HTML implementation that produces
 /// `<span class="...">` elements.
-pub trait ScopeRenderer {
+pub trait ScopeRenderer<W: io::Write = Vec<u8>> {
     /// Called at the start of each line, before any tokens.
     ///
     /// `line_index` is 0-based. `scope_stack` is the current scope stack carried
     /// over from the previous line.
-    fn begin_line(&mut self, _line_index: usize, _scope_stack: &[Scope], _output: &mut String) {}
+    fn begin_line(&mut self, _line_index: usize, _scope_stack: &[Scope], _output: &mut W) {}
 
     /// Called at the end of each line, after all tokens.
-    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], _output: &mut String) {}
+    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], _output: &mut W) {}
 
     /// Called when a new scope is pushed onto the stack.
     ///
@@ -46,21 +54,20 @@ pub trait ScopeRenderer {
         atom_strs: &[&str],
         scope: Scope,
         scope_stack: &[Scope],
-        output: &mut String,
+        output: &mut W,
     ) -> bool;
 
     /// Called when a scope is popped, only if the corresponding [`begin_scope`]
     /// returned `true`.
     ///
     /// [`begin_scope`]: ScopeRenderer::begin_scope
-    fn end_scope(&mut self, output: &mut String);
+    fn end_scope(&mut self, output: &mut W);
 
     /// Called for text content between scope operations.
     ///
     /// The default implementation passes text through unchanged.
-    fn write_text(&mut self, text: &str, output: &mut String) -> Result<(), std::fmt::Error> {
-        output.push_str(text);
-        Ok(())
+    fn write_text(&mut self, text: &str, output: &mut W) -> Result<(), io::Error> {
+        output.write_all(text.as_bytes())
     }
 }
 
@@ -83,7 +90,7 @@ pub fn render_line_to_classed_spans<R: ScopeRenderer>(
     renderer: &mut R,
     line_index: usize,
 ) -> Result<(String, isize), Error> {
-    let mut s = String::with_capacity(line.len() + ops.len() * 8);
+    let mut s = Vec::with_capacity(line.len() + ops.len() * 8);
     let mut cur_index = 0;
     let mut span_delta = 0;
 
@@ -131,5 +138,9 @@ pub fn render_line_to_classed_spans<R: ScopeRenderer>(
 
     // end_line is called without the repo lock held.
     renderer.end_line(line_index, &stack.scopes, &mut s);
-    Ok((s, span_delta))
+
+    // SAFETY: all writes go through write_all(str.as_bytes()) or write!() with
+    // Display impls that produce valid UTF-8, so the buffer is guaranteed valid.
+    let result = unsafe { String::from_utf8_unchecked(s) };
+    Ok((result, span_delta))
 }

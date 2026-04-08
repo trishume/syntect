@@ -643,9 +643,9 @@ pub struct syntect::html::HtmlScopeRenderer
 impl syntect::html::HtmlScopeRenderer
 pub fn syntect::html::HtmlScopeRenderer::new(style: syntect::html::ClassStyle) -> Self
 impl syntect::renderer::ScopeRenderer for syntect::html::HtmlScopeRenderer
-pub fn syntect::html::HtmlScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], _scope: syntect::parsing::Scope, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String) -> bool
-pub fn syntect::html::HtmlScopeRenderer::end_scope(&mut self, output: &mut alloc::string::String)
-pub fn syntect::html::HtmlScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::string::String) -> core::result::Result<(), core::fmt::Error>
+pub fn syntect::html::HtmlScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], _scope: syntect::parsing::Scope, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::vec::Vec<u8>) -> bool
+pub fn syntect::html::HtmlScopeRenderer::end_scope(&mut self, output: &mut alloc::vec::Vec<u8>)
+pub fn syntect::html::HtmlScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::vec::Vec<u8>) -> core::result::Result<(), std::io::error::Error>
 impl core::marker::Freeze for syntect::html::HtmlScopeRenderer
 impl core::marker::Send for syntect::html::HtmlScopeRenderer
 impl core::marker::Sync for syntect::html::HtmlScopeRenderer
@@ -1322,16 +1322,16 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::SyntaxSetBuil
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::SyntaxSetBuilder
 pub const syntect::parsing::ATOM_LEN_BITS: u16
 pub mod syntect::renderer
-pub trait syntect::renderer::ScopeRenderer
-pub fn syntect::renderer::ScopeRenderer::begin_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String)
-pub fn syntect::renderer::ScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String) -> bool
-pub fn syntect::renderer::ScopeRenderer::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String)
-pub fn syntect::renderer::ScopeRenderer::end_scope(&mut self, output: &mut alloc::string::String)
-pub fn syntect::renderer::ScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::string::String) -> core::result::Result<(), core::fmt::Error>
+pub trait syntect::renderer::ScopeRenderer<W: std::io::Write>
+pub fn syntect::renderer::ScopeRenderer::begin_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], _output: &mut W)
+pub fn syntect::renderer::ScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], output: &mut W) -> bool
+pub fn syntect::renderer::ScopeRenderer::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], _output: &mut W)
+pub fn syntect::renderer::ScopeRenderer::end_scope(&mut self, output: &mut W)
+pub fn syntect::renderer::ScopeRenderer::write_text(&mut self, text: &str, output: &mut W) -> core::result::Result<(), std::io::error::Error>
 impl syntect::renderer::ScopeRenderer for syntect::html::HtmlScopeRenderer
-pub fn syntect::html::HtmlScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], _scope: syntect::parsing::Scope, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String) -> bool
-pub fn syntect::html::HtmlScopeRenderer::end_scope(&mut self, output: &mut alloc::string::String)
-pub fn syntect::html::HtmlScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::string::String) -> core::result::Result<(), core::fmt::Error>
+pub fn syntect::html::HtmlScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], _scope: syntect::parsing::Scope, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::vec::Vec<u8>) -> bool
+pub fn syntect::html::HtmlScopeRenderer::end_scope(&mut self, output: &mut alloc::vec::Vec<u8>)
+pub fn syntect::html::HtmlScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::vec::Vec<u8>) -> core::result::Result<(), std::io::error::Error>
 pub fn syntect::renderer::render_line_to_classed_spans<R: syntect::renderer::ScopeRenderer>(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], stack: &mut syntect::parsing::ScopeStack, renderer: &mut R, line_index: usize) -> core::result::Result<(alloc::string::String, isize), syntect::Error>
 pub mod syntect::util
 pub struct syntect::util::LinesWithEndings<'a>
