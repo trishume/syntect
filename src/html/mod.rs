@@ -1,12 +1,13 @@
 //! Rendering highlighted code as HTML+CSS
 use crate::easy::{HighlightFile, HighlightLines};
 use crate::escape::Escape;
+use crate::generator::DocumentGenerator;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
 use crate::parsing::{
-    lock_global_scope_repo, ParseState, Scope, ScopeRepository, ScopeStack, ScopeStackOp,
-    SyntaxReference, SyntaxSet,
+    lock_global_scope_repo, Scope, ScopeRepository, ScopeStack, ScopeStackOp, SyntaxReference,
+    SyntaxSet,
 };
-use crate::renderer::{render_line_to_classed_spans, ScopeRenderer};
+use crate::renderer::render_line;
 use crate::util::LinesWithEndings;
 use crate::Error;
 use std::fmt::Write;
@@ -17,12 +18,10 @@ use std::path::Path;
 mod renderer;
 pub use renderer::*;
 
-/// Drives syntax parsing and delegates HTML rendering to a [`ScopeRenderer`].
+/// HTML-specific convenience wrapper around [`DocumentGenerator`].
 ///
-/// This struct parses lines of code and emits rendering events (scope push/pop,
-/// text content, line boundaries) to a pluggable renderer. The default renderer
-/// ([`HTMLScopeRenderer`]) produces the same `<span class="...">` output as
-/// the original `ClassedHTMLGenerator`.
+/// Uses [`HTMLScopeRenderer`] to produce `<span class="...">` output with
+/// CSS class names derived from scope atoms.
 ///
 /// Note that because CSS classes have slightly different matching semantics
 /// than Textmate themes, this may produce somewhat less accurate
@@ -30,14 +29,14 @@ pub use renderer::*;
 /// inline colors as opposed to classes and a stylesheet.
 ///
 /// There is a [`finalize()`] method that must be called in the end in order
-/// to close all open tags.
+/// to close all open `<span>` tags.
 ///
-/// [`finalize()`]: #method.finalize
+/// [`finalize()`]: ClassedHTMLGenerator::finalize
 ///
 /// # Example
 ///
 /// ```
-/// use syntect::html::{ClassedHTMLGenerator, ClassStyle, HTMLScopeRenderer};
+/// use syntect::html::{ClassedHTMLGenerator, ClassStyle};
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::util::LinesWithEndings;
 ///
@@ -55,22 +54,16 @@ pub use renderer::*;
 /// }
 /// let output_html = html_generator.finalize();
 /// ```
-pub struct ClassedHTMLGenerator<'a, R: ScopeRenderer = HTMLScopeRenderer> {
-    syntax_set: &'a SyntaxSet,
-    open_spans: isize,
-    parse_state: ParseState,
-    scope_stack: ScopeStack,
-    html: String,
-    renderer: R,
-    line_index: usize,
+pub struct ClassedHTMLGenerator<'a> {
+    inner: DocumentGenerator<'a, HTMLScopeRenderer>,
 }
 
-impl<'a> ClassedHTMLGenerator<'a, HTMLScopeRenderer> {
+impl<'a> ClassedHTMLGenerator<'a> {
     #[deprecated(since = "4.2.0", note = "Please use `new_with_class_style` instead")]
     pub fn new(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
-    ) -> ClassedHTMLGenerator<'a, HTMLScopeRenderer> {
+    ) -> ClassedHTMLGenerator<'a> {
         Self::new_with_class_style(syntax_reference, syntax_set, ClassStyle::Spaced)
     }
 
@@ -78,30 +71,13 @@ impl<'a> ClassedHTMLGenerator<'a, HTMLScopeRenderer> {
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         style: ClassStyle,
-    ) -> ClassedHTMLGenerator<'a, HTMLScopeRenderer> {
-        ClassedHTMLGenerator::new_with_renderer(
-            syntax_reference,
-            syntax_set,
-            HTMLScopeRenderer::new(style),
-        )
-    }
-}
-
-impl<'a, R: ScopeRenderer> ClassedHTMLGenerator<'a, R> {
-    /// Create a new HTML generator with a custom renderer.
-    pub fn new_with_renderer(
-        syntax_reference: &'a SyntaxReference,
-        syntax_set: &'a SyntaxSet,
-        renderer: R,
-    ) -> ClassedHTMLGenerator<'a, R> {
+    ) -> ClassedHTMLGenerator<'a> {
         ClassedHTMLGenerator {
-            syntax_set,
-            open_spans: 0,
-            parse_state: ParseState::new(syntax_reference),
-            scope_stack: ScopeStack::new(),
-            html: String::new(),
-            renderer,
-            line_index: 0,
+            inner: DocumentGenerator::new(
+                syntax_reference,
+                syntax_set,
+                HTMLScopeRenderer::new(style),
+            ),
         }
     }
 
@@ -110,19 +86,7 @@ impl<'a, R: ScopeRenderer> ClassedHTMLGenerator<'a, R> {
     /// *Note:* This function requires `line` to include a newline at the end and
     /// also use of the `load_defaults_newlines` version of the syntaxes.
     pub fn parse_html_for_line_which_includes_newline(&mut self, line: &str) -> Result<(), Error> {
-        let parsed_line = self.parse_state.parse_line(line, self.syntax_set)?.ops;
-        let (formatted_line, delta) = render_line_to_classed_spans(
-            line,
-            parsed_line.as_slice(),
-            &mut self.scope_stack,
-            &mut self.renderer,
-            self.line_index,
-        )?;
-        self.open_spans += delta;
-        self.html.push_str(formatted_line.as_str());
-        self.line_index += 1;
-
-        Ok(())
+        self.inner.parse_line(line)
     }
 
     /// Parse the line of code and update the internal HTML buffer with tagged HTML
@@ -141,16 +105,13 @@ impl<'a, R: ScopeRenderer> ClassedHTMLGenerator<'a, R> {
     pub fn parse_html_for_line(&mut self, line: &str) {
         self.parse_html_for_line_which_includes_newline(line)
             .expect("Please use `parse_html_for_line_which_includes_newline` instead");
-        // retain newline
-        self.html.push('\n');
+        // retain newline — this is a quirk of the deprecated API
+        self.inner.push_output('\n');
     }
 
-    /// Close all open `<span>` tags and return the finished HTML string
-    pub fn finalize(mut self) -> String {
-        for _ in 0..self.open_spans {
-            self.html.push_str("</span>");
-        }
-        self.html
+    /// Close any remaining open `<span>` tags and return the finished HTML.
+    pub fn finalize(self) -> String {
+        self.inner.finalize()
     }
 }
 
@@ -319,7 +280,7 @@ pub fn line_tokens_to_classed_spans(
     stack: &mut ScopeStack,
 ) -> Result<(String, isize), Error> {
     let mut renderer = HTMLScopeRenderer::new(style);
-    render_line_to_classed_spans(line, ops, stack, &mut renderer, 0)
+    render_line(line, ops, stack, &mut renderer, 0)
 }
 
 /// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
@@ -754,14 +715,13 @@ fn main() {
         let renderer = CapturingRenderer {
             captured: RefCell::new(Vec::new()),
         };
-        let mut gen = ClassedHTMLGenerator::new_with_renderer(syntax, &syntax_set, renderer);
+        let mut gen = crate::generator::DocumentGenerator::new(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
-            gen.parse_html_for_line_which_includes_newline(line)
-                .expect("#[cfg(test)]");
+            gen.parse_line(line).expect("#[cfg(test)]");
         }
 
         // The R syntax should produce "source r" as the first scope
-        let captured = gen.renderer.captured.borrow().clone();
+        let captured = gen.renderer().captured.borrow().clone();
         assert!(!captured.is_empty());
         assert_eq!(captured[0], vec!["source", "r"]);
 

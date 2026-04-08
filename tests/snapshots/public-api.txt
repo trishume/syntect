@@ -79,6 +79,20 @@ impl<'a> core::marker::Sync for syntect::easy::ScopeRegionIterator<'a>
 impl<'a> core::marker::Unpin for syntect::easy::ScopeRegionIterator<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::ScopeRegionIterator<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::ScopeRegionIterator<'a>
+pub mod syntect::generator
+pub struct syntect::generator::DocumentGenerator<'a, R: syntect::renderer::ScopeRenderer>
+impl<'a, R: syntect::renderer::ScopeRenderer> syntect::generator::DocumentGenerator<'a, R>
+pub fn syntect::generator::DocumentGenerator<'a, R>::finalize(self) -> alloc::string::String
+pub fn syntect::generator::DocumentGenerator<'a, R>::new(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R) -> syntect::generator::DocumentGenerator<'a, R>
+pub fn syntect::generator::DocumentGenerator<'a, R>::parse_line(&mut self, line: &str) -> core::result::Result<(), syntect::Error>
+pub fn syntect::generator::DocumentGenerator<'a, R>::renderer(&self) -> &R
+pub fn syntect::generator::DocumentGenerator<'a, R>::renderer_mut(&mut self) -> &mut R
+impl<'a, R> core::marker::Freeze for syntect::generator::DocumentGenerator<'a, R> where R: core::marker::Freeze
+impl<'a, R> !core::marker::Send for syntect::generator::DocumentGenerator<'a, R>
+impl<'a, R> !core::marker::Sync for syntect::generator::DocumentGenerator<'a, R>
+impl<'a, R> core::marker::Unpin for syntect::generator::DocumentGenerator<'a, R> where R: core::marker::Unpin
+impl<'a, R> core::panic::unwind_safe::RefUnwindSafe for syntect::generator::DocumentGenerator<'a, R> where R: core::panic::unwind_safe::RefUnwindSafe
+impl<'a, R> core::panic::unwind_safe::UnwindSafe for syntect::generator::DocumentGenerator<'a, R> where R: core::panic::unwind_safe::UnwindSafe
 pub mod syntect::highlighting
 #[non_exhaustive] pub enum syntect::highlighting::ParseThemeError
 pub syntect::highlighting::ParseThemeError::ColorShemeScopeIsNotObject
@@ -624,21 +638,19 @@ impl core::marker::Sync for syntect::html::IncludeBackground
 impl core::marker::Unpin for syntect::html::IncludeBackground
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::html::IncludeBackground
 impl core::panic::unwind_safe::UnwindSafe for syntect::html::IncludeBackground
-pub struct syntect::html::ClassedHTMLGenerator<'a, R: syntect::renderer::ScopeRenderer>
-impl<'a, R: syntect::renderer::ScopeRenderer> syntect::html::ClassedHTMLGenerator<'a, R>
-pub fn syntect::html::ClassedHTMLGenerator<'a, R>::finalize(self) -> alloc::string::String
-pub fn syntect::html::ClassedHTMLGenerator<'a, R>::new_with_renderer(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R) -> syntect::html::ClassedHTMLGenerator<'a, R>
-pub fn syntect::html::ClassedHTMLGenerator<'a, R>::parse_html_for_line(&mut self, line: &str)
-pub fn syntect::html::ClassedHTMLGenerator<'a, R>::parse_html_for_line_which_includes_newline(&mut self, line: &str) -> core::result::Result<(), syntect::Error>
-impl<'a> syntect::html::ClassedHTMLGenerator<'a, syntect::html::HTMLScopeRenderer>
-pub fn syntect::html::ClassedHTMLGenerator<'a, syntect::html::HTMLScopeRenderer>::new(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet) -> syntect::html::ClassedHTMLGenerator<'a, syntect::html::HTMLScopeRenderer>
-pub fn syntect::html::ClassedHTMLGenerator<'a, syntect::html::HTMLScopeRenderer>::new_with_class_style(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, style: syntect::html::ClassStyle) -> syntect::html::ClassedHTMLGenerator<'a, syntect::html::HTMLScopeRenderer>
-impl<'a, R> core::marker::Freeze for syntect::html::ClassedHTMLGenerator<'a, R> where R: core::marker::Freeze
-impl<'a, R> !core::marker::Send for syntect::html::ClassedHTMLGenerator<'a, R>
-impl<'a, R> !core::marker::Sync for syntect::html::ClassedHTMLGenerator<'a, R>
-impl<'a, R> core::marker::Unpin for syntect::html::ClassedHTMLGenerator<'a, R> where R: core::marker::Unpin
-impl<'a, R> core::panic::unwind_safe::RefUnwindSafe for syntect::html::ClassedHTMLGenerator<'a, R> where R: core::panic::unwind_safe::RefUnwindSafe
-impl<'a, R> core::panic::unwind_safe::UnwindSafe for syntect::html::ClassedHTMLGenerator<'a, R> where R: core::panic::unwind_safe::UnwindSafe
+pub struct syntect::html::ClassedHTMLGenerator<'a>
+impl<'a> syntect::html::ClassedHTMLGenerator<'a>
+pub fn syntect::html::ClassedHTMLGenerator<'a>::finalize(self) -> alloc::string::String
+pub fn syntect::html::ClassedHTMLGenerator<'a>::new(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet) -> syntect::html::ClassedHTMLGenerator<'a>
+pub fn syntect::html::ClassedHTMLGenerator<'a>::new_with_class_style(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, style: syntect::html::ClassStyle) -> syntect::html::ClassedHTMLGenerator<'a>
+pub fn syntect::html::ClassedHTMLGenerator<'a>::parse_html_for_line(&mut self, line: &str)
+pub fn syntect::html::ClassedHTMLGenerator<'a>::parse_html_for_line_which_includes_newline(&mut self, line: &str) -> core::result::Result<(), syntect::Error>
+impl<'a> core::marker::Freeze for syntect::html::ClassedHTMLGenerator<'a>
+impl<'a> !core::marker::Send for syntect::html::ClassedHTMLGenerator<'a>
+impl<'a> !core::marker::Sync for syntect::html::ClassedHTMLGenerator<'a>
+impl<'a> core::marker::Unpin for syntect::html::ClassedHTMLGenerator<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::html::ClassedHTMLGenerator<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::html::ClassedHTMLGenerator<'a>
 pub struct syntect::html::HTMLScopeRenderer
 impl syntect::html::HTMLScopeRenderer
 pub fn syntect::html::HTMLScopeRenderer::new(style: syntect::html::ClassStyle) -> Self
@@ -1332,7 +1344,7 @@ impl syntect::renderer::ScopeRenderer for syntect::html::HTMLScopeRenderer
 pub fn syntect::html::HTMLScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], _scope: syntect::parsing::Scope, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::vec::Vec<u8>) -> bool
 pub fn syntect::html::HTMLScopeRenderer::end_scope(&mut self, output: &mut alloc::vec::Vec<u8>)
 pub fn syntect::html::HTMLScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::vec::Vec<u8>) -> core::result::Result<(), std::io::error::Error>
-pub fn syntect::renderer::render_line_to_classed_spans<R: syntect::renderer::ScopeRenderer>(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], stack: &mut syntect::parsing::ScopeStack, renderer: &mut R, line_index: usize) -> core::result::Result<(alloc::string::String, isize), syntect::Error>
+pub fn syntect::renderer::render_line<R: syntect::renderer::ScopeRenderer>(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], stack: &mut syntect::parsing::ScopeStack, renderer: &mut R, line_index: usize) -> core::result::Result<(alloc::string::String, isize), syntect::Error>
 pub mod syntect::util
 pub struct syntect::util::LinesWithEndings<'a>
 impl<'a> syntect::util::LinesWithEndings<'a>

@@ -31,6 +31,7 @@ pub mod dumps;
 pub mod easy;
 #[cfg(feature = "html")]
 mod escape;
+pub mod generator;
 pub mod highlighting;
 #[cfg(feature = "html")]
 pub mod html;

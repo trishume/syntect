@@ -1,9 +1,9 @@
-//! Generic trait and rendering loop for class-based syntax highlighting.
+//! Generic trait and rendering loop for scope-based syntax highlighting.
 //!
 //! This module provides the [`ScopeRenderer`] trait and the
-//! [`render_line_to_classed_spans`] function that drives it. They are
-//! format-agnostic: the trait's default `write_text` passes text through
-//! unchanged, and no HTML or other markup concepts leak into this module.
+//! [`render_line`] function that drives it. They are format-agnostic:
+//! the trait's default `write_text` passes text through unchanged, and
+//! no HTML or other markup concepts leak into this module.
 //!
 //! For an HTML-specific implementation, see [`crate::html::HTMLScopeRenderer`].
 
@@ -14,13 +14,13 @@ use crate::parsing::{
 };
 use crate::Error;
 
-/// Trait for customizing the output of class-based syntax highlighting.
+/// Trait for customizing the output of scope-based syntax highlighting.
 ///
 /// The type parameter `W` is the output target. It defaults to [`Vec<u8>`],
-/// which is what the built-in rendering loop ([`render_line_to_classed_spans`])
-/// uses. Implementors targeting other writable types (e.g., streaming to a
-/// file or a socket) can implement `ScopeRenderer<MyWriter>` and drive
-/// their own rendering loop.
+/// which is what the built-in rendering loop ([`render_line`]) uses.
+/// Implementors targeting other writable types (e.g., streaming to a file
+/// or a socket) can implement `ScopeRenderer<MyWriter>` and drive their
+/// own rendering loop.
 ///
 /// The methods receive pre-resolved scope atom strings so implementations
 /// never need to interact with the scope repository directly.
@@ -43,9 +43,9 @@ pub trait ScopeRenderer<W: io::Write = Vec<u8>> {
     ///   (e.g., `["keyword", "operator", "arithmetic", "r"]` for `keyword.operator.arithmetic.r`)
     /// - `scope`: the raw [`Scope`] value, for advanced matching
     /// - `scope_stack`: the full stack after the push
-    /// - `output`: the buffer to write the opening tag to
+    /// - `output`: the buffer to write to
     ///
-    /// Return `true` if a tag was written (meaning [`end_scope`] will be called
+    /// Return `true` if output was written (meaning [`end_scope`] will be called
     /// to close it), or `false` to skip this scope (no matching `end_scope` call).
     ///
     /// [`end_scope`]: ScopeRenderer::end_scope
@@ -81,9 +81,9 @@ pub(crate) fn resolve_atom_strs<'a>(scope: Scope, repo: &'a ScopeRepository) -> 
 /// Core rendering loop that drives a [`ScopeRenderer`].
 ///
 /// Locks the global scope repository once per line. Applies the transparent
-/// empty-span optimization: if a scope push/pop pair contains no text, the
+/// empty-scope optimization: if a scope push/pop pair contains no text, the
 /// push output is truncated rather than emitting an empty element.
-pub fn render_line_to_classed_spans<R: ScopeRenderer>(
+pub fn render_line<R: ScopeRenderer>(
     line: &str,
     ops: &[(usize, ScopeStackOp)],
     stack: &mut ScopeStack,
@@ -92,44 +92,44 @@ pub fn render_line_to_classed_spans<R: ScopeRenderer>(
 ) -> Result<(String, isize), Error> {
     let mut s = Vec::with_capacity(line.len() + ops.len() * 8);
     let mut cur_index = 0;
-    let mut span_delta = 0;
+    let mut scope_delta = 0;
 
-    // Empty-span optimization tracking
-    let mut span_empty = false;
-    let mut span_start = 0;
+    // Empty-scope optimization tracking
+    let mut scope_empty = false;
+    let mut scope_start = 0;
 
-    // begin_line is called without the repo lock held, so renderers like
-    // LineHighlightingRenderer can safely lock the repo themselves.
+    // begin_line is called without the repo lock held, so renderers can
+    // safely lock the repo themselves if needed.
     renderer.begin_line(line_index, &stack.scopes, &mut s);
 
     {
         let repo = lock_global_scope_repo();
         for &(i, ref op) in ops {
             if i > cur_index {
-                span_empty = false;
+                scope_empty = false;
                 renderer.write_text(&line[cur_index..i], &mut s)?;
                 cur_index = i;
             }
             stack.apply_with_hook(op, |basic_op, stack_slice| match basic_op {
                 BasicScopeStackOp::Push(scope) => {
                     let atom_strs = resolve_atom_strs(scope, &repo);
-                    span_start = s.len();
-                    span_empty = true;
+                    scope_start = s.len();
+                    scope_empty = true;
                     let wrote = renderer.begin_scope(&atom_strs, scope, stack_slice, &mut s);
                     if wrote {
-                        span_delta += 1;
+                        scope_delta += 1;
                     } else {
-                        span_empty = false;
+                        scope_empty = false;
                     }
                 }
                 BasicScopeStackOp::Pop => {
-                    if span_empty {
-                        s.truncate(span_start);
+                    if scope_empty {
+                        s.truncate(scope_start);
                     } else {
                         renderer.end_scope(&mut s);
                     }
-                    span_delta -= 1;
-                    span_empty = false;
+                    scope_delta -= 1;
+                    scope_empty = false;
                 }
             })?;
         }
@@ -142,5 +142,5 @@ pub fn render_line_to_classed_spans<R: ScopeRenderer>(
     // All writes go through write_all(str.as_bytes()) or write!() with Display
     // impls that produce valid UTF-8, so this conversion will never fail.
     let result = String::from_utf8(s).expect("renderer output is valid UTF-8");
-    Ok((result, span_delta))
+    Ok((result, scope_delta))
 }
