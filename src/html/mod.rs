@@ -44,11 +44,11 @@ pub use renderer::*;
 ///
 /// let syntax_set = SyntaxSet::load_defaults_newlines();
 /// let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-/// let mut highlighter = ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
+/// let mut html_generator = ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
 /// for line in LinesWithEndings::from(current_code) {
-///     highlighter.parse_html_for_line_which_includes_newline(line);
+///     html_generator.parse_html_for_line_which_includes_newline(line);
 /// }
-/// let output_html = highlighter.finalize();
+/// let output_html = html_generator.finalize();
 /// ```
 pub struct ClassedHTMLGenerator<'a, R: ScopeRenderer = HtmlScopeRenderer> {
     syntax_set: &'a SyntaxSet,
@@ -83,7 +83,7 @@ impl<'a> ClassedHTMLGenerator<'a, HtmlScopeRenderer> {
 }
 
 impl<'a, R: ScopeRenderer> ClassedHTMLGenerator<'a, R> {
-    /// Create a new highlighter with a custom renderer.
+    /// Create a new HTML generator with a custom renderer.
     pub fn new_with_renderer(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
@@ -764,7 +764,7 @@ fn main() {
     }
 
     #[test]
-    fn test_classed_highlighter_matches_legacy_output() {
+    fn test_classed_html_generator_matches_legacy_output() {
         // Ensure ClassedHTMLGenerator with HtmlScopeRenderer produces
         // identical output to the original ClassedHTMLGenerator path.
         let code = "x + y\n";
