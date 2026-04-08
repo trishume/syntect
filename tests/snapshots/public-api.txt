@@ -652,21 +652,6 @@ impl core::marker::Sync for syntect::html::HtmlScopeRenderer
 impl core::marker::Unpin for syntect::html::HtmlScopeRenderer
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::html::HtmlScopeRenderer
 impl core::panic::unwind_safe::UnwindSafe for syntect::html::HtmlScopeRenderer
-pub struct syntect::html::LineHighlightingRenderer<R: syntect::renderer::ScopeRenderer>
-impl<R: syntect::renderer::ScopeRenderer> syntect::html::LineHighlightingRenderer<R>
-pub fn syntect::html::LineHighlightingRenderer<R>::new(inner: R, highlighted_lines: &[usize], style: syntect::html::ClassStyle) -> Self
-impl<R: syntect::renderer::ScopeRenderer> syntect::renderer::ScopeRenderer for syntect::html::LineHighlightingRenderer<R>
-pub fn syntect::html::LineHighlightingRenderer<R>::begin_line(&mut self, line_index: usize, scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
-pub fn syntect::html::LineHighlightingRenderer<R>::begin_scope(&mut self, atom_strs: &[&str], scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String) -> bool
-pub fn syntect::html::LineHighlightingRenderer<R>::end_line(&mut self, line_index: usize, scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
-pub fn syntect::html::LineHighlightingRenderer<R>::end_scope(&mut self, output: &mut alloc::string::String)
-pub fn syntect::html::LineHighlightingRenderer<R>::write_text(&mut self, text: &str, output: &mut alloc::string::String) -> core::result::Result<(), core::fmt::Error>
-impl<R> core::marker::Freeze for syntect::html::LineHighlightingRenderer<R> where R: core::marker::Freeze
-impl<R> core::marker::Send for syntect::html::LineHighlightingRenderer<R> where R: core::marker::Send
-impl<R> core::marker::Sync for syntect::html::LineHighlightingRenderer<R> where R: core::marker::Sync
-impl<R> core::marker::Unpin for syntect::html::LineHighlightingRenderer<R> where R: core::marker::Unpin
-impl<R> core::panic::unwind_safe::RefUnwindSafe for syntect::html::LineHighlightingRenderer<R> where R: core::panic::unwind_safe::RefUnwindSafe
-impl<R> core::panic::unwind_safe::UnwindSafe for syntect::html::LineHighlightingRenderer<R> where R: core::panic::unwind_safe::UnwindSafe
 pub fn syntect::html::append_highlighted_html_for_styled_line(v: &[(syntect::highlighting::Style, &str)], bg: syntect::html::IncludeBackground, s: &mut alloc::string::String) -> core::result::Result<(), syntect::Error>
 pub fn syntect::html::css_for_theme(theme: &syntect::highlighting::Theme) -> alloc::string::String
 pub fn syntect::html::css_for_theme_with_class_style(theme: &syntect::highlighting::Theme, style: syntect::html::ClassStyle) -> core::result::Result<alloc::string::String, syntect::Error>
@@ -1347,12 +1332,6 @@ impl syntect::renderer::ScopeRenderer for syntect::html::HtmlScopeRenderer
 pub fn syntect::html::HtmlScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], _scope: syntect::parsing::Scope, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String) -> bool
 pub fn syntect::html::HtmlScopeRenderer::end_scope(&mut self, output: &mut alloc::string::String)
 pub fn syntect::html::HtmlScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::string::String) -> core::result::Result<(), core::fmt::Error>
-impl<R: syntect::renderer::ScopeRenderer> syntect::renderer::ScopeRenderer for syntect::html::LineHighlightingRenderer<R>
-pub fn syntect::html::LineHighlightingRenderer<R>::begin_line(&mut self, line_index: usize, scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
-pub fn syntect::html::LineHighlightingRenderer<R>::begin_scope(&mut self, atom_strs: &[&str], scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String) -> bool
-pub fn syntect::html::LineHighlightingRenderer<R>::end_line(&mut self, line_index: usize, scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
-pub fn syntect::html::LineHighlightingRenderer<R>::end_scope(&mut self, output: &mut alloc::string::String)
-pub fn syntect::html::LineHighlightingRenderer<R>::write_text(&mut self, text: &str, output: &mut alloc::string::String) -> core::result::Result<(), core::fmt::Error>
 pub fn syntect::renderer::render_line_to_classed_spans<R: syntect::renderer::ScopeRenderer>(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], stack: &mut syntect::parsing::ScopeStack, renderer: &mut R, line_index: usize) -> core::result::Result<(alloc::string::String, isize), syntect::Error>
 pub mod syntect::util
 pub struct syntect::util::LinesWithEndings<'a>
