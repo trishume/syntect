@@ -17,10 +17,6 @@ use std::path::Path;
 mod renderer;
 pub use renderer::*;
 
-/// Backward-compatible alias for [`HtmlScopeRenderer`].
-#[deprecated(since = "6.0.0", note = "Use `HtmlScopeRenderer` instead")]
-pub type DefaultScopeRenderer = HtmlScopeRenderer;
-
 /// Drives syntax parsing and delegates HTML rendering to a [`ScopeRenderer`].
 ///
 /// This struct parses lines of code and emits rendering events (scope push/pop,

@@ -678,7 +678,6 @@ pub fn syntect::html::styled_line_to_highlighted_html(v: &[(syntect::highlightin
 pub fn syntect::html::tokens_to_classed_html(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], style: syntect::html::ClassStyle) -> alloc::string::String
 pub fn syntect::html::tokens_to_classed_spans(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], style: syntect::html::ClassStyle) -> (alloc::string::String, isize)
 pub type syntect::html::ClassedHTMLGenerator<'a> = syntect::html::ClassedHighlighter<'a, syntect::html::HtmlScopeRenderer>
-pub type syntect::html::DefaultScopeRenderer = syntect::html::HtmlScopeRenderer
 pub mod syntect::parsing
 pub mod syntect::parsing::syntax_definition
 #[non_exhaustive] pub enum syntect::parsing::syntax_definition::ContextReference
