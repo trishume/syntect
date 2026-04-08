@@ -139,8 +139,8 @@ pub fn render_line_to_classed_spans<R: ScopeRenderer>(
     // end_line is called without the repo lock held.
     renderer.end_line(line_index, &stack.scopes, &mut s);
 
-    // SAFETY: all writes go through write_all(str.as_bytes()) or write!() with
-    // Display impls that produce valid UTF-8, so the buffer is guaranteed valid.
-    let result = unsafe { String::from_utf8_unchecked(s) };
+    // All writes go through write_all(str.as_bytes()) or write!() with Display
+    // impls that produce valid UTF-8, so this conversion will never fail.
+    let result = String::from_utf8(s).expect("renderer output is valid UTF-8");
     Ok((result, span_delta))
 }
