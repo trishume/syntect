@@ -21,7 +21,7 @@ pub use renderer::*;
 ///
 /// This struct parses lines of code and emits rendering events (scope push/pop,
 /// text content, line boundaries) to a pluggable renderer. The default renderer
-/// ([`HtmlScopeRenderer`]) produces the same `<span class="...">` output as
+/// ([`HTMLScopeRenderer`]) produces the same `<span class="...">` output as
 /// the original `ClassedHTMLGenerator`.
 ///
 /// Note that because CSS classes have slightly different matching semantics
@@ -37,7 +37,7 @@ pub use renderer::*;
 /// # Example
 ///
 /// ```
-/// use syntect::html::{ClassedHTMLGenerator, ClassStyle, HtmlScopeRenderer};
+/// use syntect::html::{ClassedHTMLGenerator, ClassStyle, HTMLScopeRenderer};
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::util::LinesWithEndings;
 ///
@@ -55,7 +55,7 @@ pub use renderer::*;
 /// }
 /// let output_html = html_generator.finalize();
 /// ```
-pub struct ClassedHTMLGenerator<'a, R: ScopeRenderer = HtmlScopeRenderer> {
+pub struct ClassedHTMLGenerator<'a, R: ScopeRenderer = HTMLScopeRenderer> {
     syntax_set: &'a SyntaxSet,
     open_spans: isize,
     parse_state: ParseState,
@@ -65,12 +65,12 @@ pub struct ClassedHTMLGenerator<'a, R: ScopeRenderer = HtmlScopeRenderer> {
     line_index: usize,
 }
 
-impl<'a> ClassedHTMLGenerator<'a, HtmlScopeRenderer> {
+impl<'a> ClassedHTMLGenerator<'a, HTMLScopeRenderer> {
     #[deprecated(since = "4.2.0", note = "Please use `new_with_class_style` instead")]
     pub fn new(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
-    ) -> ClassedHTMLGenerator<'a, HtmlScopeRenderer> {
+    ) -> ClassedHTMLGenerator<'a, HTMLScopeRenderer> {
         Self::new_with_class_style(syntax_reference, syntax_set, ClassStyle::Spaced)
     }
 
@@ -78,11 +78,11 @@ impl<'a> ClassedHTMLGenerator<'a, HtmlScopeRenderer> {
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         style: ClassStyle,
-    ) -> ClassedHTMLGenerator<'a, HtmlScopeRenderer> {
+    ) -> ClassedHTMLGenerator<'a, HTMLScopeRenderer> {
         ClassedHTMLGenerator::new_with_renderer(
             syntax_reference,
             syntax_set,
-            HtmlScopeRenderer::new(style),
+            HTMLScopeRenderer::new(style),
         )
     }
 }
@@ -318,7 +318,7 @@ pub fn line_tokens_to_classed_spans(
     style: ClassStyle,
     stack: &mut ScopeStack,
 ) -> Result<(String, isize), Error> {
-    let mut renderer = HtmlScopeRenderer::new(style);
+    let mut renderer = HTMLScopeRenderer::new(style);
     render_line_to_classed_spans(line, ops, stack, &mut renderer, 0)
 }
 
@@ -770,7 +770,7 @@ fn main() {
 
     #[test]
     fn test_classed_html_generator_matches_legacy_output() {
-        // Ensure ClassedHTMLGenerator with HtmlScopeRenderer produces
+        // Ensure ClassedHTMLGenerator with HTMLScopeRenderer produces
         // identical output to the original ClassedHTMLGenerator path.
         let code = "x + y\n";
         let syntax_set = SyntaxSet::load_defaults_newlines();

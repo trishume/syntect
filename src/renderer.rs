@@ -5,7 +5,7 @@
 //! format-agnostic: the trait's default `write_text` passes text through
 //! unchanged, and no HTML or other markup concepts leak into this module.
 //!
-//! For an HTML-specific implementation, see [`crate::html::HtmlScopeRenderer`].
+//! For an HTML-specific implementation, see [`crate::html::HTMLScopeRenderer`].
 
 use std::io;
 
@@ -25,7 +25,7 @@ use crate::Error;
 /// The methods receive pre-resolved scope atom strings so implementations
 /// never need to interact with the scope repository directly.
 ///
-/// See [`crate::html::HtmlScopeRenderer`] for an HTML implementation that produces
+/// See [`crate::html::HTMLScopeRenderer`] for an HTML implementation that produces
 /// `<span class="...">` elements.
 pub trait ScopeRenderer<W: io::Write = Vec<u8>> {
     /// Called at the start of each line, before any tokens.

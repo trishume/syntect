@@ -8,17 +8,17 @@ use std::io::{self, Write};
 /// CSS class names derived from scope atoms.
 ///
 /// This produces identical output to the original `ClassedHTMLGenerator`.
-pub struct HtmlScopeRenderer {
+pub struct HTMLScopeRenderer {
     style: ClassStyle,
 }
 
-impl HtmlScopeRenderer {
+impl HTMLScopeRenderer {
     pub fn new(style: ClassStyle) -> Self {
         Self { style }
     }
 }
 
-impl ScopeRenderer for HtmlScopeRenderer {
+impl ScopeRenderer for HTMLScopeRenderer {
     fn begin_scope(
         &mut self,
         atom_strs: &[&str],
