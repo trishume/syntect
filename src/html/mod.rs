@@ -24,6 +24,11 @@ pub use renderer::*;
 /// ([`HtmlScopeRenderer`]) produces the same `<span class="...">` output as
 /// the original `ClassedHTMLGenerator`.
 ///
+/// Note that because CSS classes have slightly different matching semantics
+/// than Textmate themes, this may produce somewhat less accurate
+/// highlighting than the other highlighting functions which directly use
+/// inline colors as opposed to classes and a stylesheet.
+///
 /// There is a [`finalize()`] method that must be called in the end in order
 /// to close all open tags.
 ///
