@@ -10,6 +10,7 @@
 use crate::parsing::{ParseState, ScopeStack, SyntaxReference, SyntaxSet};
 use crate::renderer::{render_line, ScopeRenderer};
 use crate::Error;
+use std::io;
 
 /// Drives syntax parsing and delegates rendering to a [`ScopeRenderer`].
 ///
@@ -44,31 +45,54 @@ use crate::Error;
 /// for line in LinesWithEndings::from(current_code) {
 ///     generator.parse_line(line);
 /// }
-/// let output = generator.finalize();
+/// let output: Vec<u8> = generator.finalize();
+/// let html = String::from_utf8(output).unwrap();
 /// ```
-pub struct DocumentGenerator<'a, R: ScopeRenderer> {
+pub struct DocumentGenerator<'a, R: ScopeRenderer, W: io::Write = Vec<u8>> {
     syntax_set: &'a SyntaxSet,
     open_scopes: isize,
     parse_state: ParseState,
     scope_stack: ScopeStack,
-    output: String,
+    output: W,
     renderer: R,
     line_index: usize,
 }
 
 impl<'a, R: ScopeRenderer> DocumentGenerator<'a, R> {
     /// Create a new document generator with a custom renderer.
+    ///
+    /// The output is collected into a `Vec<u8>` that is returned by
+    /// [`finalize`]. Use [`new_with_output`] to stream output to an
+    /// arbitrary [`io::Write`] sink instead.
+    ///
+    /// [`finalize`]: DocumentGenerator::finalize
+    /// [`new_with_output`]: DocumentGenerator::new_with_output
     pub fn new(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         renderer: R,
     ) -> DocumentGenerator<'a, R> {
+        Self::new_with_output(syntax_reference, syntax_set, renderer, Vec::new())
+    }
+}
+
+impl<'a, R: ScopeRenderer, W: io::Write> DocumentGenerator<'a, R, W> {
+    /// Create a new document generator that writes to the given output sink.
+    ///
+    /// This allows streaming rendered output directly to a file, socket,
+    /// or buffered writer without intermediate allocation.
+    pub fn new_with_output(
+        syntax_reference: &'a SyntaxReference,
+        syntax_set: &'a SyntaxSet,
+        renderer: R,
+        output: W,
+    ) -> DocumentGenerator<'a, R, W> {
         DocumentGenerator {
             syntax_set,
             open_scopes: 0,
             parse_state: ParseState::new(syntax_reference),
             scope_stack: ScopeStack::new(),
-            output: String::new(),
+            output,
             renderer,
             line_index: 0,
         }
@@ -84,12 +108,14 @@ impl<'a, R: ScopeRenderer> DocumentGenerator<'a, R> {
         &mut self.renderer
     }
 
-    /// Append a character to the output buffer.
+    /// Append a character to the output.
     ///
     /// This is primarily for backward-compatibility helpers that need to
     /// inject extra characters (e.g., a trailing newline) into the output.
     pub(crate) fn push_output(&mut self, ch: char) {
-        self.output.push(ch);
+        let mut buf = [0u8; 4];
+        let bytes = ch.encode_utf8(&mut buf);
+        let _ = self.output.write_all(bytes.as_bytes());
     }
 
     /// Parse a line and render it using the configured renderer.
@@ -106,17 +132,19 @@ impl<'a, R: ScopeRenderer> DocumentGenerator<'a, R> {
             self.line_index,
         )?;
         self.open_scopes += delta;
-        self.output.push_str(formatted_line.as_str());
+        self.output.write_all(formatted_line.as_bytes())?;
         self.line_index += 1;
 
         Ok(())
     }
 
-    /// Close any remaining open scopes and return the finished output.
-    pub fn finalize(mut self) -> String {
+    /// Close any remaining open scopes and return the finished output sink.
+    pub fn finalize(mut self) -> W {
+        let mut buf = String::new();
         for _ in 0..self.open_scopes {
-            self.renderer.end_scope(&mut self.output);
+            self.renderer.end_scope(&mut buf);
         }
+        let _ = self.output.write_all(buf.as_bytes());
         self.output
     }
 }

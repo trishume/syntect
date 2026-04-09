@@ -154,7 +154,8 @@ impl<'a> ClassedHTMLGenerator<'a> {
 
     /// Close any remaining open `<span>` tags and return the finished HTML.
     pub fn finalize(self) -> String {
-        self.inner.finalize()
+        let bytes = self.inner.finalize();
+        String::from_utf8(bytes).expect("renderer produces valid UTF-8")
     }
 }
 

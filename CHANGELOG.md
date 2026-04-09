@@ -18,7 +18,7 @@
 
 - Add `ScopeRenderer` trait (`syntect::renderer`) for pluggable scope-based rendering with pre-resolved atom strings [#627]
 - Add `render_line()` core rendering loop that drives a `ScopeRenderer` [#627]
-- Add `DocumentGenerator<'a, R: ScopeRenderer>` (`syntect::generator`) as a format-agnostic parsing + rendering driver [#627]
+- Add `DocumentGenerator<'a, R: ScopeRenderer, W: io::Write>` (`syntect::generator`) as a format-agnostic parsing + rendering driver, generic over the output sink (`Vec<u8>` by default, or any `io::Write` for streaming) [#627]
 - Add `HTMLScopeRenderer` (`syntect::html`) concrete renderer for `<span class="...">` output [#627]
 - Add `Scope::with_atom_strs()` closure-based API for reading atom strings without direct repository access [#627]
 - `ClassedHTMLGenerator` preserved as backward-compatible wrapper around `DocumentGenerator` [#627]
