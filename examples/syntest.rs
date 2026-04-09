@@ -609,7 +609,13 @@ fn main() {
         println!("loading syntax definitions from {}", syntaxes_path);
         let mut builder = SyntaxSetBuilder::new();
         builder.add_from_folder(syntaxes_path, true).unwrap(); // note that we load the version with newlines
+        for warning in builder.warnings() {
+            eprintln!("Warning: {}", warning);
+        }
         ss = builder.build();
+        for warning in ss.warnings() {
+            eprintln!("Warning: {}", warning);
+        }
     }
 
     let out_opts = OutputOptions {
