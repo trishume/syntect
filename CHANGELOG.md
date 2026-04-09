@@ -4,6 +4,7 @@
 
 ### Breaking changes
 
+- `SCOPE_REPO` removed from public API (was already deprecated since 5.3.0) [#627]
 - `ParseState::parse_line` now returns `Result<ParseLineOutput, ParsingError>` instead of a bare `Vec` [#614]
 - `MatchOperation` enum: new `Branch`, `Fail` [#614], and `Embed` [#615] variants
 - `Pattern` enum: new `IncludeWithPrototype` variant [#610]
@@ -15,6 +16,12 @@
 
 ### Improvements
 
+- Add `ScopeRenderer` trait (`syntect::renderer`) for pluggable scope-based rendering with pre-resolved atom strings [#627]
+- Add `render_line()` core rendering loop that drives a `ScopeRenderer` [#627]
+- Add `DocumentGenerator<'a, R: ScopeRenderer>` (`syntect::generator`) as a format-agnostic parsing + rendering driver [#627]
+- Add `HTMLScopeRenderer` (`syntect::html`) concrete renderer for `<span class="...">` output [#627]
+- Add `Scope::with_atom_strs()` closure-based API for reading atom strings without direct repository access [#627]
+- `ClassedHTMLGenerator` preserved as backward-compatible wrapper around `DocumentGenerator` [#627]
 - Implement sublime-syntax Build 4075 features: `extends` (single and multiple inheritance), `meta_prepend`/`meta_append`, `apply_prototype`, `version: 2`, and `first_line_match` variable resolution [#610] [#612]
 - Implement `branch_point`/`branch`/`fail` backtracking with cross-line replay support [#614]
 - Implement native `embed`/`escape` support, fixing cases where embedded context patterns could consume escape characters first [#615]
@@ -94,6 +101,7 @@
 [#596]: https://github.com/trishume/syntect/pull/596
 [#597]: https://github.com/trishume/syntect/pull/597
 [#598]: https://github.com/trishume/syntect/pull/598
+[#627]: https://github.com/trishume/syntect/pull/627
 
 ## [Version 5.2.0](https://github.com/trishume/syntect/compare/v5.1.0...v5.2.0) (2024-02-07)
 
