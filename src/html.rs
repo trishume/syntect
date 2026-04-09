@@ -1,5 +1,5 @@
 //! Rendering highlighted code as HTML+CSS
-use crate::easy::{render_line, HighlightFile, HighlightLines, ScopeRenderer, ThemeHighlight};
+use crate::easy::{render_line, HighlightLines, ScopeRenderer, StyleWriter};
 use crate::escape::Escape;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
 use crate::parsing::{
@@ -114,7 +114,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
         ClassedHTMLGenerator {
-            inner: HighlightLines::new(
+            inner: HighlightLines::new_with_renderer(
                 syntax_reference,
                 syntax_set,
                 HTMLScopeRenderer::new(style),
@@ -325,9 +325,67 @@ pub fn line_tokens_to_classed_spans(
     render_line(line, ops, stack, &mut renderer, 0)
 }
 
-/// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
-/// and `HighlightLines` from `syntect::easy` to create a full highlighted HTML snippet for
-/// a string (which can contain many lines).
+// ---------------------------------------------------------------------------
+// InlineHtmlStyleWriter — inline-styled HTML via StyleWriter
+// ---------------------------------------------------------------------------
+
+/// A [`StyleWriter`] that produces `<span style="...">` elements with
+/// inline CSS for foreground color, background color, and font style.
+///
+/// Adjacent tokens with the same style are merged into a single `<span>`.
+/// Text is HTML-escaped.
+pub struct InlineHtmlStyleWriter {
+    default_bg: Color,
+}
+
+impl InlineHtmlStyleWriter {
+    /// Create a new inline HTML style writer.
+    ///
+    /// `default_bg` is the background color of the containing element;
+    /// the background-color CSS property is only emitted when the token's
+    /// background differs from this default.
+    pub fn new(default_bg: Color) -> Self {
+        Self { default_bg }
+    }
+}
+
+impl StyleWriter for InlineHtmlStyleWriter {
+    fn open(&mut self, style: Style, output: &mut String) {
+        output.push_str("<span style=\"");
+        if style.background != self.default_bg {
+            output.push_str("background-color:");
+            write_css_color(output, style.background);
+            output.push(';');
+        }
+        if style.font_style.contains(FontStyle::UNDERLINE) {
+            output.push_str("text-decoration:underline;");
+        }
+        if style.font_style.contains(FontStyle::BOLD) {
+            output.push_str("font-weight:bold;");
+        }
+        if style.font_style.contains(FontStyle::ITALIC) {
+            output.push_str("font-style:italic;");
+        }
+        output.push_str("color:");
+        write_css_color(output, style.foreground);
+        output.push_str(";\">");
+    }
+
+    fn close(&mut self, output: &mut String) {
+        output.push_str("</span>");
+    }
+
+    fn text(&mut self, text: &str, output: &mut String) {
+        write!(output, "{}", Escape(text)).expect("writing to a String never fails");
+    }
+}
+
+/// Convenience method that creates a full highlighted HTML snippet for
+/// a string (which can contain many lines), using inline `style` attributes.
+///
+/// Uses [`HighlightLines`] with [`ThemeScopeRenderer`] and
+/// [`InlineHtmlStyleWriter`] internally, which correctly handles
+/// branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
@@ -337,24 +395,23 @@ pub fn highlighted_html_for_string(
     syntax: &SyntaxReference,
     theme: &Theme,
 ) -> Result<String, Error> {
-    let mut highlight = ThemeHighlight::new(syntax, theme);
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-
+    let writer = InlineHtmlStyleWriter::new(bg);
+    let mut h = HighlightLines::new_styled(syntax, ss, theme, writer);
     for line in LinesWithEndings::from(s) {
-        let regions = highlight.highlight_line(line, ss)?;
-        append_highlighted_html_for_styled_line(
-            &regions[..],
-            IncludeBackground::IfDifferent(bg),
-            &mut output,
-        )?;
+        h.highlight_line(line)?;
     }
+    output.push_str(&String::from_utf8(h.finalize()).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
     Ok(output)
 }
 
-/// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
-/// and `HighlightFile` from `syntect::easy` to create a full highlighted HTML snippet for
-/// a file.
+/// Convenience method that creates a full highlighted HTML snippet for
+/// a file, using inline `style` attributes.
+///
+/// Uses [`HighlightLines`] with [`ThemeScopeRenderer`] and
+/// [`InlineHtmlStyleWriter`] internally, which correctly handles
+/// branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
@@ -363,21 +420,22 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     ss: &SyntaxSet,
     theme: &Theme,
 ) -> Result<String, Error> {
-    let mut highlighter = HighlightFile::new(path, ss, theme)?;
-    let (mut output, bg) = start_highlighted_html_snippet(theme);
+    let path_ref: &Path = path.as_ref();
+    let f = std::fs::File::open(path_ref)?;
+    let syntax = ss
+        .find_syntax_for_file(path_ref)?
+        .unwrap_or_else(|| ss.find_syntax_plain_text());
 
+    let (mut output, bg) = start_highlighted_html_snippet(theme);
+    let writer = InlineHtmlStyleWriter::new(bg);
+    let mut h = HighlightLines::new_styled(syntax, ss, theme, writer);
+    let mut reader = std::io::BufReader::new(f);
     let mut line = String::new();
-    while highlighter.reader.read_line(&mut line)? > 0 {
-        {
-            let regions = highlighter.highlight_line(&line, ss)?;
-            append_highlighted_html_for_styled_line(
-                &regions[..],
-                IncludeBackground::IfDifferent(bg),
-                &mut output,
-            )?;
-        }
+    while reader.read_line(&mut line)? > 0 {
+        h.highlight_line(&line)?;
         line.clear();
     }
+    output.push_str(&String::from_utf8(h.finalize()).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
     Ok(output)
 }
@@ -443,17 +501,20 @@ fn write_css_color(s: &mut String, c: Color) {
 /// # Examples
 ///
 /// ```
-/// use syntect::easy::ThemeHighlight;
-/// use syntect::highlighting::{ThemeSet, Style};
-/// use syntect::parsing::SyntaxSet;
+/// use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter, Style, ThemeSet};
+/// use syntect::parsing::{ParseState, ScopeStack, SyntaxSet};
 /// use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
 ///
 /// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
-/// let mut h = ThemeHighlight::new(syntax, &ts.themes["base16-ocean.dark"]);
-/// let regions: Vec<(Style, &str)> = h.highlight_line("5", &ps).unwrap();
+/// let mut parse_state = ParseState::new(syntax);
+/// let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
+/// let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+/// let ops = parse_state.parse_line("5", &ps).unwrap().ops;
+/// let iter = HighlightIterator::new(&mut highlight_state, &ops, "5", &highlighter);
+/// let regions: Vec<(Style, &str)> = iter.collect();
 /// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No).unwrap();
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```
@@ -756,7 +817,7 @@ fn main() {
         let renderer = CapturingRenderer {
             captured: RefCell::new(Vec::new()),
         };
-        let mut gen = crate::easy::HighlightLines::new(syntax, &syntax_set, renderer);
+        let mut gen = crate::easy::HighlightLines::new_with_renderer(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
             gen.highlight_line(line).expect("#[cfg(test)]");
         }

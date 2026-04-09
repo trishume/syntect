@@ -2,12 +2,12 @@
 //! Prints the highlighted output to stdout.
 
 use rayon::prelude::*;
-use syntect::easy::HighlightFile;
-use syntect::highlighting::{Style, ThemeSet};
+use syntect::easy::HighlightLines;
+use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 
 fn main() {
     let files: Vec<String> = std::env::args().skip(1).collect();
@@ -37,33 +37,30 @@ fn main() {
         })
         .collect();
 
-    // ...so that the highlighted regions have valid lifetimes...
-    let regions: Vec<Vec<(Style, &str)>> = files
+    // ...then highlight each file in parallel, collecting rendered output...
+    let outputs: Vec<Vec<u8>> = files
         .par_iter()
         .zip(&contents)
         .map(|(filename, contents)| {
-            let mut regions = Vec::new();
             let theme = &theme_set.themes["base16-ocean.dark"];
-            let mut highlighter = HighlightFile::new(filename, &syntax_set, theme).unwrap();
+            let syntax = syntax_set
+                .find_syntax_for_file(filename)
+                .unwrap()
+                .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+            let mut h = HighlightLines::new(syntax, &syntax_set, theme);
 
             for line in contents {
-                for region in highlighter
-                    .highlight_line(line, &syntax_set)
-                    .unwrap()
-                {
-                    regions.push(region);
-                }
+                h.highlight_line(line).unwrap();
             }
 
-            regions
+            h.finalize()
         })
         .collect();
 
     // ...and then print them all out.
-    for file_regions in regions {
-        print!(
-            "{}",
-            syntect::util::as_24_bit_terminal_escaped(&file_regions[..], true)
-        );
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    for output in outputs {
+        out.write_all(&output).unwrap();
     }
 }

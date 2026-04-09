@@ -26,13 +26,13 @@ impl AnsiScopeRenderer {
 
     fn color_for_scope(atoms: &[&str]) -> &'static str {
         match atoms.first().copied() {
-            Some("comment") => "\x1b[38;5;242m", // gray
-            Some("keyword") => "\x1b[38;5;197m", // pink
-            Some("string") => "\x1b[38;5;114m",  // green
-            Some("constant") => "\x1b[38;5;209m", // orange
-            Some("storage") => "\x1b[38;5;81m",  // cyan
-            Some("entity") => "\x1b[38;5;81m",   // cyan
-            Some("support") => "\x1b[38;5;149m", // lime
+            Some("comment") => "\x1b[38;5;242m",     // gray
+            Some("keyword") => "\x1b[38;5;197m",     // pink
+            Some("string") => "\x1b[38;5;114m",      // green
+            Some("constant") => "\x1b[38;5;209m",    // orange
+            Some("storage") => "\x1b[38;5;81m",      // cyan
+            Some("entity") => "\x1b[38;5;81m",       // cyan
+            Some("support") => "\x1b[38;5;149m",     // lime
             Some("punctuation") => "\x1b[38;5;252m", // light gray
             _ => RESET,
         }
@@ -74,7 +74,8 @@ fn main() {
 
     // Stream directly to stdout — no intermediate String accumulation.
     let stdout = BufWriter::new(io::stdout().lock());
-    let mut gen = HighlightLines::new_with_output(syntax, &ss, AnsiScopeRenderer::new(), stdout);
+    let mut gen =
+        HighlightLines::new_with_renderer_and_output(syntax, &ss, AnsiScopeRenderer::new(), stdout);
 
     for line in LinesWithEndings::from(code) {
         gen.highlight_line(line).unwrap();

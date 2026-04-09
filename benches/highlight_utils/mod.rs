@@ -1,4 +1,4 @@
-use syntect::easy::ThemeHighlight;
+use syntect::easy::HighlightLines;
 use syntect::highlighting::Theme;
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
@@ -10,11 +10,9 @@ pub fn do_highlight(
     syntax: &SyntaxReference,
     theme: &Theme,
 ) -> usize {
-    let mut highlight = ThemeHighlight::new(syntax, theme);
-    let mut count = 0;
+    let mut highlight = HighlightLines::new(syntax, syntax_set, theme);
     for line in LinesWithEndings::from(s) {
-        let regions = highlight.highlight_line(line, syntax_set).unwrap();
-        count += regions.len();
+        highlight.highlight_line(line).unwrap();
     }
-    count
+    highlight.finalize().len()
 }

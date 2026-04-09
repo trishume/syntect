@@ -10,7 +10,7 @@ use std::fmt::Write;
 use std::ops::Range;
 
 #[inline]
-fn blend_fg_color(fg: Color, bg: Color) -> Color {
+pub(crate) fn blend_fg_color(fg: Color, bg: Color) -> Color {
     if fg.a == 0xff {
         return fg;
     }
@@ -61,9 +61,8 @@ const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\
 /// Usage is similar to the `as_24_bit_terminal_escaped` function:
 ///
 /// ```
-/// use syntect::easy::ThemeHighlight;
-/// use syntect::highlighting::{ThemeSet, Style};
-/// use syntect::parsing::SyntaxSet;
+/// use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter, Style, ThemeSet};
+/// use syntect::parsing::{ParseState, ScopeStack, SyntaxSet};
 /// use syntect::util::{as_latex_escaped, LinesWithEndings};
 ///
 /// let ps = SyntaxSet::load_defaults_newlines();
@@ -72,9 +71,13 @@ const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\
 /// let syntax = ps.find_syntax_by_extension("rs").unwrap();
 /// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 ///
-/// let mut h = ThemeHighlight::new(syntax, &ts.themes["InspiredGitHub"]);
+/// let mut parse_state = ParseState::new(syntax);
+/// let highlighter = Highlighter::new(&ts.themes["InspiredGitHub"]);
+/// let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
 /// for line in LinesWithEndings::from(s) {
-///     let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
+///     let ops = parse_state.parse_line(line, &ps).unwrap().ops;
+///     let iter = HighlightIterator::new(&mut highlight_state, &ops, line, &highlighter);
+///     let ranges: Vec<(Style, &str)> = iter.collect();
 ///     let escaped = as_latex_escaped(&ranges[..]);
 ///     println!("{}", escaped);
 /// }

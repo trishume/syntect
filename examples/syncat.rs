@@ -1,12 +1,11 @@
 use getopts::Options;
 use std::borrow::Cow;
-use std::io::BufRead;
+use std::io::{self, BufRead, Write};
 use std::path::Path;
 use syntect::dumps::{dump_to_file, from_dump_file};
 use syntect::easy::HighlightFile;
-use syntect::highlighting::{Style, Theme, ThemeSet};
+use syntect::highlighting::{Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
-use syntect::util::as_24_bit_terminal_escaped;
 
 fn load_theme(tm_file: &str, enable_caching: bool) -> Theme {
     let tm_path = Path::new(tm_file);
@@ -122,18 +121,15 @@ fn main() {
                 if no_newlines && line.ends_with('\n') {
                     let _ = line.pop();
                 }
-
-                {
-                    let regions: Vec<(Style, &str)> =
-                        highlighter.highlight_line(&line, &ss).unwrap();
-                    print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
-                }
+                highlighter.highlight_line(&line).unwrap();
                 line.clear();
-
                 if no_newlines {
                     println!();
                 }
             }
+
+            let output = highlighter.finalize();
+            io::stdout().write_all(&output).unwrap();
 
             // Clear the formatting
             println!("\x1b[0m");
