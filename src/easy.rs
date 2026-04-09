@@ -7,14 +7,13 @@
 //! speculative parsing.
 //!
 //! For theme-based highlighting (resolving scopes to colors),
-//! [`ThemeScopeRenderer`] bridges the gap between scope-based rendering
-//! and the [`Highlighter`](crate::highlighting::Highlighter). The output
-//! format is determined by a [`StyleWriter`] implementation:
-//! [`AnsiStyleWriter`] for terminal output (the default), or custom
-//! implementations for other formats.
+//! [`ThemedANSIScopeRenderer`] resolves scopes to styles via the
+//! [`Highlighter`](crate::highlighting::Highlighter) and emits ANSI 24-bit
+//! color escape codes (the default renderer for [`HighlightLines`]).
 //!
-//! For HTML output with CSS classes, see [`crate::html::ClassedHTMLGenerator`]
-//! and [`crate::html::HTMLScopeRenderer`].
+//! For HTML output, see [`crate::html::ClassedHTMLGenerator`],
+//! [`crate::html::ClassedHTMLScopeRenderer`], and
+//! [`crate::html::InlineHTMLScopeRenderer`].
 
 use crate::highlighting::{Highlighter, Style, Theme};
 use crate::parsing::{
@@ -37,7 +36,7 @@ use std::path::Path;
 /// The methods receive pre-resolved scope atom strings so implementations
 /// never need to interact with the scope repository directly.
 ///
-/// See [`crate::html::HTMLScopeRenderer`] for an HTML implementation that produces
+/// See [`crate::html::ClassedHTMLScopeRenderer`] for an HTML implementation that produces
 /// `<span class="...">` elements.
 pub trait ScopeRenderer {
     /// Called at the start of each line, before any tokens.
@@ -155,73 +154,6 @@ pub fn render_line<R: ScopeRenderer>(
 }
 
 // ---------------------------------------------------------------------------
-// StyleWriter — format-specific output for theme-aware rendering
-// ---------------------------------------------------------------------------
-
-/// Defines how styled text is rendered in a specific output format.
-///
-/// Used by [`ThemeScopeRenderer`] to produce format-specific output.
-/// Adjacent text tokens with the same resolved [`Style`] are merged
-/// automatically — [`open`] and [`close`] are only called when the
-/// style actually changes.
-///
-/// [`open`]: StyleWriter::open
-/// [`close`]: StyleWriter::close
-pub trait StyleWriter {
-    /// Open a new styled region (e.g. ANSI escape, `<span style="...">`).
-    fn open(&mut self, style: Style, output: &mut String);
-
-    /// Close the current styled region (e.g. ANSI reset, `</span>`).
-    fn close(&mut self, output: &mut String);
-
-    /// Write text content, applying format-specific escaping if needed.
-    fn text(&mut self, text: &str, output: &mut String);
-}
-
-/// A [`StyleWriter`] that emits ANSI 24-bit color escape codes.
-///
-/// Foreground alpha is blended against the background color.
-/// When `include_bg` is true, the background color is also set.
-///
-/// [`close`](StyleWriter::close) is a no-op because each
-/// [`open`](StyleWriter::open) overwrites the previous color.
-pub struct AnsiStyleWriter {
-    include_bg: bool,
-}
-
-impl AnsiStyleWriter {
-    /// Create a new ANSI style writer.
-    ///
-    /// If `include_bg` is true, the background color escape code is emitted.
-    pub fn new(include_bg: bool) -> Self {
-        Self { include_bg }
-    }
-}
-
-impl StyleWriter for AnsiStyleWriter {
-    fn open(&mut self, style: Style, output: &mut String) {
-        if self.include_bg {
-            write!(
-                output,
-                "\x1b[48;2;{};{};{}m",
-                style.background.r, style.background.g, style.background.b
-            )
-            .unwrap();
-        }
-        let fg = blend_fg_color(style.foreground, style.background);
-        write!(output, "\x1b[38;2;{};{};{}m", fg.r, fg.g, fg.b).unwrap();
-    }
-
-    fn close(&mut self, _output: &mut String) {
-        // No-op: next open() overwrites the color.
-    }
-
-    fn text(&mut self, text: &str, output: &mut String) {
-        output.push_str(text);
-    }
-}
-
-// ---------------------------------------------------------------------------
 // HighlightLines — the main highlighting driver
 // ---------------------------------------------------------------------------
 
@@ -230,7 +162,7 @@ impl StyleWriter for AnsiStyleWriter {
 /// This struct parses lines of code and emits rendering events (scope push/pop,
 /// text content, line boundaries) to a pluggable renderer. The output format
 /// is determined entirely by the `R` parameter, which defaults to
-/// [`ThemeScopeRenderer`] for theme-based ANSI terminal output.
+/// [`ThemedANSIScopeRenderer`] for theme-based ANSI terminal output.
 ///
 /// When the parser is in speculative mode (inside a branch point),
 /// `HighlightLines` buffers output internally and flushes it only once the
@@ -268,20 +200,24 @@ impl StyleWriter for AnsiStyleWriter {
 ///
 /// ```
 /// use syntect::easy::HighlightLines;
-/// use syntect::html::{HTMLScopeRenderer, ClassStyle};
+/// use syntect::html::{ClassedHTMLScopeRenderer, ClassStyle};
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::util::LinesWithEndings;
 ///
 /// let ss = SyntaxSet::load_defaults_newlines();
 /// let syntax = ss.find_syntax_by_name("R").unwrap();
-/// let renderer = HTMLScopeRenderer::new(ClassStyle::Spaced);
+/// let renderer = ClassedHTMLScopeRenderer::new(ClassStyle::Spaced);
 /// let mut h = HighlightLines::new_with_renderer(syntax, &ss, renderer);
 /// for line in LinesWithEndings::from("x <- 5\n") {
 ///     h.highlight_line(line).unwrap();
 /// }
 /// let html = String::from_utf8(h.finalize()).unwrap();
 /// ```
-pub struct HighlightLines<'a, R: ScopeRenderer = ThemeScopeRenderer<'a>, W: io::Write = Vec<u8>> {
+pub struct HighlightLines<
+    'a,
+    R: ScopeRenderer = ThemedANSIScopeRenderer<'a>,
+    W: io::Write = Vec<u8>,
+> {
     syntax_set: &'a SyntaxSet,
     open_scopes: isize,
     parse_state: ParseState,
@@ -299,9 +235,8 @@ pub struct HighlightLines<'a, R: ScopeRenderer = ThemeScopeRenderer<'a>, W: io::
 impl<'a> HighlightLines<'a> {
     /// Create a new highlighting driver with default ANSI terminal output.
     ///
-    /// Uses [`ThemeScopeRenderer`] with [`AnsiStyleWriter`] to produce
-    /// 24-bit color ANSI escape codes. The output is collected into a
-    /// `Vec<u8>` returned by [`finalize`].
+    /// Uses [`ThemedANSIScopeRenderer`] to produce 24-bit color ANSI escape
+    /// codes. The output is collected into a `Vec<u8>` returned by [`finalize`].
     ///
     /// [`finalize`]: HighlightLines::finalize
     pub fn new(
@@ -309,24 +244,7 @@ impl<'a> HighlightLines<'a> {
         syntax_set: &'a SyntaxSet,
         theme: &'a Theme,
     ) -> HighlightLines<'a> {
-        let renderer = ThemeScopeRenderer::new(theme, AnsiStyleWriter::new(false));
-        Self::new_with_renderer_and_output(syntax_reference, syntax_set, renderer, Vec::new())
-    }
-}
-
-impl<'a, S: StyleWriter> HighlightLines<'a, ThemeScopeRenderer<'a, S>> {
-    /// Create a new highlighting driver with a custom [`StyleWriter`].
-    ///
-    /// The output is collected into a `Vec<u8>` returned by [`finalize`].
-    ///
-    /// [`finalize`]: HighlightLines::finalize
-    pub fn new_styled(
-        syntax_reference: &'a SyntaxReference,
-        syntax_set: &'a SyntaxSet,
-        theme: &'a Theme,
-        writer: S,
-    ) -> HighlightLines<'a, ThemeScopeRenderer<'a, S>> {
-        let renderer = ThemeScopeRenderer::new(theme, writer);
+        let renderer = ThemedANSIScopeRenderer::new(theme, false);
         Self::new_with_renderer_and_output(syntax_reference, syntax_set, renderer, Vec::new())
     }
 }
@@ -537,18 +455,18 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
 }
 
 // ---------------------------------------------------------------------------
-// ThemeScopeRenderer — theme-aware highlighting via ScopeRenderer
+// ThemedANSIScopeRenderer — theme-aware ANSI terminal rendering
 // ---------------------------------------------------------------------------
 
 /// A [`ScopeRenderer`] that resolves styles from a theme via
-/// [`Highlighter`](crate::highlighting::Highlighter).
-///
-/// The output format is determined by the [`StyleWriter`] `S`, which defaults
-/// to [`AnsiStyleWriter`] for ANSI 24-bit color terminal output.
+/// [`Highlighter`](crate::highlighting::Highlighter) and emits ANSI 24-bit
+/// color escape codes.
 ///
 /// Adjacent text tokens with the same resolved [`Style`] are automatically
-/// merged — the writer's [`open`](StyleWriter::open)/[`close`](StyleWriter::close)
-/// are only called when the style actually changes.
+/// merged — ANSI escape codes are only emitted when the style actually changes.
+///
+/// Foreground alpha is blended against the background color. When `include_bg`
+/// is true, the background color escape code is also emitted.
 ///
 /// # Example
 ///
@@ -570,23 +488,25 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
 /// let output = String::from_utf8(h.finalize()).unwrap();
 /// assert!(output.contains("\x1b[38;2;"));
 /// ```
-pub struct ThemeScopeRenderer<'a, S: StyleWriter = AnsiStyleWriter> {
+pub struct ThemedANSIScopeRenderer<'a> {
     highlighter: Highlighter<'a>,
     style_stack: Vec<Style>,
     last_written_style: Option<Style>,
-    writer: S,
+    include_bg: bool,
 }
 
-impl<'a, S: StyleWriter> ThemeScopeRenderer<'a, S> {
-    /// Create a new theme-aware renderer with the given [`StyleWriter`].
-    pub fn new(theme: &'a Theme, writer: S) -> Self {
+impl<'a> ThemedANSIScopeRenderer<'a> {
+    /// Create a new ANSI theme renderer.
+    ///
+    /// If `include_bg` is true, the background color escape code is emitted.
+    pub fn new(theme: &'a Theme, include_bg: bool) -> Self {
         let highlighter = Highlighter::new(theme);
         let default_style = highlighter.style_for_stack(&[]);
         Self {
             highlighter,
             style_stack: vec![default_style],
             last_written_style: None,
-            writer,
+            include_bg,
         }
     }
 
@@ -594,19 +514,9 @@ impl<'a, S: StyleWriter> ThemeScopeRenderer<'a, S> {
     pub fn current_style(&self) -> Style {
         self.style_stack.last().copied().unwrap_or_default()
     }
-
-    /// Returns a reference to the underlying [`StyleWriter`].
-    pub fn writer(&self) -> &S {
-        &self.writer
-    }
-
-    /// Returns a mutable reference to the underlying [`StyleWriter`].
-    pub fn writer_mut(&mut self) -> &mut S {
-        &mut self.writer
-    }
 }
 
-impl<S: StyleWriter> ScopeRenderer for ThemeScopeRenderer<'_, S> {
+impl ScopeRenderer for ThemedANSIScopeRenderer<'_> {
     fn begin_scope(
         &mut self,
         _atom_strs: &[&str],
@@ -616,8 +526,6 @@ impl<S: StyleWriter> ScopeRenderer for ThemeScopeRenderer<'_, S> {
     ) -> bool {
         let style = self.highlighter.style_for_stack(scope_stack);
         self.style_stack.push(style);
-        // Return false: we don't write scope delimiters. Styling is applied
-        // per-token in write_text via the StyleWriter.
         false
     }
 
@@ -626,21 +534,30 @@ impl<S: StyleWriter> ScopeRenderer for ThemeScopeRenderer<'_, S> {
     }
 
     fn write_text(&mut self, text: &str, output: &mut String) {
+        if text.is_empty() {
+            return;
+        }
         let style = self.current_style();
         if self.last_written_style != Some(style) {
-            if self.last_written_style.is_some() {
-                self.writer.close(output);
+            // ANSI: no close needed, next open overwrites the color.
+            if self.include_bg {
+                write!(
+                    output,
+                    "\x1b[48;2;{};{};{}m",
+                    style.background.r, style.background.g, style.background.b
+                )
+                .unwrap();
             }
-            self.writer.open(style, output);
+            let fg = blend_fg_color(style.foreground, style.background);
+            write!(output, "\x1b[38;2;{};{};{}m", fg.r, fg.g, fg.b).unwrap();
             self.last_written_style = Some(style);
         }
-        self.writer.text(text, output);
+        output.push_str(text);
     }
 
-    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], output: &mut String) {
-        if self.last_written_style.take().is_some() {
-            self.writer.close(output);
-        }
+    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], _output: &mut String) {
+        // Reset style tracking at line boundaries so the next line re-emits.
+        self.last_written_style = None;
     }
 }
 
@@ -651,7 +568,7 @@ impl<S: StyleWriter> ScopeRenderer for ThemeScopeRenderer<'_, S> {
 /// Convenience struct wrapping a buffered file reader and a [`HighlightLines`]
 /// driver, auto-detecting the syntax from the file extension.
 ///
-/// Defaults to theme-based ANSI terminal output via [`ThemeScopeRenderer`].
+/// Defaults to theme-based ANSI terminal output via [`ThemedANSIScopeRenderer`].
 ///
 /// # Example
 ///
@@ -676,7 +593,8 @@ impl<S: StyleWriter> ScopeRenderer for ThemeScopeRenderer<'_, S> {
 /// # Ok(())
 /// # }
 /// ```
-pub struct HighlightFile<'a, R: ScopeRenderer = ThemeScopeRenderer<'a>, W: io::Write = Vec<u8>> {
+pub struct HighlightFile<'a, R: ScopeRenderer = ThemedANSIScopeRenderer<'a>, W: io::Write = Vec<u8>>
+{
     /// The buffered file reader.
     pub reader: BufReader<File>,
     /// The highlighting driver.
@@ -700,28 +618,6 @@ impl<'a> HighlightFile<'a> {
         Ok(HighlightFile {
             reader: BufReader::new(f),
             highlight_lines: HighlightLines::new(syntax, ss, theme),
-        })
-    }
-}
-
-impl<'a, S: StyleWriter> HighlightFile<'a, ThemeScopeRenderer<'a, S>> {
-    /// Constructs a file reader and highlighting driver with a custom
-    /// [`StyleWriter`], auto-detecting the syntax from the file extension.
-    pub fn new_styled<P: AsRef<Path>>(
-        path_obj: P,
-        ss: &'a SyntaxSet,
-        theme: &'a Theme,
-        writer: S,
-    ) -> io::Result<HighlightFile<'a, ThemeScopeRenderer<'a, S>>> {
-        let path: &Path = path_obj.as_ref();
-        let f = File::open(path)?;
-        let syntax = ss
-            .find_syntax_for_file(path)?
-            .unwrap_or_else(|| ss.find_syntax_plain_text());
-
-        Ok(HighlightFile {
-            reader: BufReader::new(f),
-            highlight_lines: HighlightLines::new_styled(syntax, ss, theme, writer),
         })
     }
 }

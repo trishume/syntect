@@ -1,34 +1,80 @@
 use std::fmt::Write;
-use syntect::easy::{HighlightLines, StyleWriter};
-use syntect::highlighting::{Style, ThemeSet};
-use syntect::parsing::SyntaxSet;
+use syntect::easy::{HighlightLines, ScopeRenderer};
+use syntect::highlighting::{Highlighter, Style, ThemeSet};
+use syntect::parsing::{Scope, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
 const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\\}")];
 
-/// A [`StyleWriter`] that produces LaTeX `\textcolor[RGB]{r,g,b}{...}` output.
-struct LatexStyleWriter;
+/// A [`ScopeRenderer`] that resolves theme styles and produces LaTeX
+/// `\textcolor[RGB]{r,g,b}{...}` output.
+struct LatexScopeRenderer<'a> {
+    highlighter: Highlighter<'a>,
+    style_stack: Vec<Style>,
+    last_written_style: Option<Style>,
+}
 
-impl StyleWriter for LatexStyleWriter {
-    fn open(&mut self, style: Style, output: &mut String) {
-        write!(
-            output,
-            "\\textcolor[RGB]{{{},{},{}}}{{",
-            style.foreground.r, style.foreground.g, style.foreground.b
-        )
-        .unwrap();
+impl<'a> LatexScopeRenderer<'a> {
+    fn new(theme: &'a syntect::highlighting::Theme) -> Self {
+        let highlighter = Highlighter::new(theme);
+        let default_style = highlighter.style_for_stack(&[]);
+        Self {
+            highlighter,
+            style_stack: vec![default_style],
+            last_written_style: None,
+        }
     }
 
-    fn close(&mut self, output: &mut String) {
-        output.push('}');
+    fn current_style(&self) -> Style {
+        self.style_stack.last().copied().unwrap_or_default()
+    }
+}
+
+impl ScopeRenderer for LatexScopeRenderer<'_> {
+    fn begin_scope(
+        &mut self,
+        _atom_strs: &[&str],
+        _scope: Scope,
+        scope_stack: &[Scope],
+        _output: &mut String,
+    ) -> bool {
+        let style = self.highlighter.style_for_stack(scope_stack);
+        self.style_stack.push(style);
+        false
     }
 
-    fn text(&mut self, text: &str, output: &mut String) {
+    fn end_scope(&mut self, _output: &mut String) {
+        self.style_stack.pop();
+    }
+
+    fn write_text(&mut self, text: &str, output: &mut String) {
+        if text.is_empty() {
+            return;
+        }
+        let style = self.current_style();
+        if self.last_written_style != Some(style) {
+            if self.last_written_style.is_some() {
+                output.push('}');
+            }
+            write!(
+                output,
+                "\\textcolor[RGB]{{{},{},{}}}{{",
+                style.foreground.r, style.foreground.g, style.foreground.b
+            )
+            .unwrap();
+            self.last_written_style = Some(style);
+        }
         let mut content = text.to_string();
         for &(old, new) in LATEX_REPLACE.iter() {
             content = content.replace(old, new);
         }
         output.push_str(&content);
+    }
+
+    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], output: &mut String) {
+        if self.last_written_style.take().is_some() {
+            output.push('}');
+        }
     }
 }
 
@@ -39,8 +85,11 @@ fn main() {
     let syntax = ps.find_syntax_by_extension("rs").unwrap();
     let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 
-    let mut highlight =
-        HighlightLines::new_styled(syntax, &ps, &ts.themes["InspiredGitHub"], LatexStyleWriter);
+    let mut highlight = HighlightLines::new_with_renderer(
+        syntax,
+        &ps,
+        LatexScopeRenderer::new(&ts.themes["InspiredGitHub"]),
+    );
     for line in LinesWithEndings::from(s) {
         highlight.highlight_line(line).unwrap();
     }

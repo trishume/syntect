@@ -1,6 +1,7 @@
 //! Rendering highlighted code as HTML+CSS
-use crate::easy::{render_line, HighlightLines, ScopeRenderer, StyleWriter};
+use crate::easy::{render_line, HighlightLines, ScopeRenderer};
 use crate::escape::Escape;
+use crate::highlighting::Highlighter;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
 use crate::parsing::{
     lock_global_scope_repo, Scope, ScopeRepository, ScopeStack, ScopeStackOp, SyntaxReference,
@@ -15,17 +16,17 @@ use std::path::Path;
 
 /// An HTML renderer that produces `<span class="...">` elements with
 /// CSS class names derived from scope atoms.
-pub struct HTMLScopeRenderer {
+pub struct ClassedHTMLScopeRenderer {
     style: ClassStyle,
 }
 
-impl HTMLScopeRenderer {
+impl ClassedHTMLScopeRenderer {
     pub fn new(style: ClassStyle) -> Self {
         Self { style }
     }
 }
 
-impl ScopeRenderer for HTMLScopeRenderer {
+impl ScopeRenderer for ClassedHTMLScopeRenderer {
     fn begin_scope(
         &mut self,
         atom_strs: &[&str],
@@ -61,7 +62,7 @@ impl ScopeRenderer for HTMLScopeRenderer {
 
 /// HTML-specific convenience wrapper around [`HighlightLines`].
 ///
-/// Uses [`HTMLScopeRenderer`] to produce `<span class="...">` output with
+/// Uses [`ClassedHTMLScopeRenderer`] to produce `<span class="...">` output with
 /// CSS class names derived from scope atoms.
 ///
 /// Note that because CSS classes have slightly different matching semantics
@@ -96,7 +97,7 @@ impl ScopeRenderer for HTMLScopeRenderer {
 /// let output_html = html_generator.finalize();
 /// ```
 pub struct ClassedHTMLGenerator<'a> {
-    inner: HighlightLines<'a, HTMLScopeRenderer>,
+    inner: HighlightLines<'a, ClassedHTMLScopeRenderer>,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
@@ -117,7 +118,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
             inner: HighlightLines::new_with_renderer(
                 syntax_reference,
                 syntax_set,
-                HTMLScopeRenderer::new(style),
+                ClassedHTMLScopeRenderer::new(style),
             ),
         }
     }
@@ -321,36 +322,50 @@ pub fn line_tokens_to_classed_spans(
     style: ClassStyle,
     stack: &mut ScopeStack,
 ) -> Result<(String, isize), Error> {
-    let mut renderer = HTMLScopeRenderer::new(style);
+    let mut renderer = ClassedHTMLScopeRenderer::new(style);
     render_line(line, ops, stack, &mut renderer, 0)
 }
 
 // ---------------------------------------------------------------------------
-// InlineHtmlStyleWriter — inline-styled HTML via StyleWriter
+// InlineHTMLScopeRenderer — inline-styled HTML via ScopeRenderer
 // ---------------------------------------------------------------------------
 
-/// A [`StyleWriter`] that produces `<span style="...">` elements with
-/// inline CSS for foreground color, background color, and font style.
+/// A [`ScopeRenderer`] that resolves styles from a theme via
+/// [`Highlighter`](crate::highlighting::Highlighter) and produces
+/// `<span style="...">` elements with inline CSS.
 ///
-/// Adjacent tokens with the same style are merged into a single `<span>`.
-/// Text is HTML-escaped.
-pub struct InlineHtmlStyleWriter {
+/// Adjacent text tokens with the same resolved [`Style`] are automatically
+/// merged into a single `<span>`. Text is HTML-escaped.
+pub struct InlineHTMLScopeRenderer<'a> {
+    highlighter: Highlighter<'a>,
+    style_stack: Vec<Style>,
+    last_written_style: Option<Style>,
     default_bg: Color,
 }
 
-impl InlineHtmlStyleWriter {
-    /// Create a new inline HTML style writer.
+impl<'a> InlineHTMLScopeRenderer<'a> {
+    /// Create a new inline HTML renderer.
     ///
     /// `default_bg` is the background color of the containing element;
-    /// the background-color CSS property is only emitted when the token's
+    /// the `background-color` CSS property is only emitted when the token's
     /// background differs from this default.
-    pub fn new(default_bg: Color) -> Self {
-        Self { default_bg }
+    pub fn new(theme: &'a Theme, default_bg: Color) -> Self {
+        let highlighter = Highlighter::new(theme);
+        let default_style = highlighter.style_for_stack(&[]);
+        Self {
+            highlighter,
+            style_stack: vec![default_style],
+            last_written_style: None,
+            default_bg,
+        }
     }
-}
 
-impl StyleWriter for InlineHtmlStyleWriter {
-    fn open(&mut self, style: Style, output: &mut String) {
+    /// Returns the currently active style.
+    pub fn current_style(&self) -> Style {
+        self.style_stack.last().copied().unwrap_or_default()
+    }
+
+    fn open_span(&self, style: Style, output: &mut String) {
         output.push_str("<span style=\"");
         if style.background != self.default_bg {
             output.push_str("background-color:");
@@ -370,22 +385,52 @@ impl StyleWriter for InlineHtmlStyleWriter {
         write_css_color(output, style.foreground);
         output.push_str(";\">");
     }
+}
 
-    fn close(&mut self, output: &mut String) {
-        output.push_str("</span>");
+impl ScopeRenderer for InlineHTMLScopeRenderer<'_> {
+    fn begin_scope(
+        &mut self,
+        _atom_strs: &[&str],
+        _scope: Scope,
+        scope_stack: &[Scope],
+        _output: &mut String,
+    ) -> bool {
+        let style = self.highlighter.style_for_stack(scope_stack);
+        self.style_stack.push(style);
+        false
     }
 
-    fn text(&mut self, text: &str, output: &mut String) {
+    fn end_scope(&mut self, _output: &mut String) {
+        self.style_stack.pop();
+    }
+
+    fn write_text(&mut self, text: &str, output: &mut String) {
+        if text.is_empty() {
+            return;
+        }
+        let style = self.current_style();
+        if self.last_written_style != Some(style) {
+            if self.last_written_style.is_some() {
+                output.push_str("</span>");
+            }
+            self.open_span(style, output);
+            self.last_written_style = Some(style);
+        }
         write!(output, "{}", Escape(text)).expect("writing to a String never fails");
+    }
+
+    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], output: &mut String) {
+        if self.last_written_style.take().is_some() {
+            output.push_str("</span>");
+        }
     }
 }
 
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a string (which can contain many lines), using inline `style` attributes.
 ///
-/// Uses [`HighlightLines`] with [`ThemeScopeRenderer`] and
-/// [`InlineHtmlStyleWriter`] internally, which correctly handles
-/// branch-point backtracking.
+/// Uses [`HighlightLines`] with [`InlineHTMLScopeRenderer`] internally,
+/// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
@@ -396,8 +441,8 @@ pub fn highlighted_html_for_string(
     theme: &Theme,
 ) -> Result<String, Error> {
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-    let writer = InlineHtmlStyleWriter::new(bg);
-    let mut h = HighlightLines::new_styled(syntax, ss, theme, writer);
+    let renderer = InlineHTMLScopeRenderer::new(theme, bg);
+    let mut h = HighlightLines::new_with_renderer(syntax, ss, renderer);
     for line in LinesWithEndings::from(s) {
         h.highlight_line(line)?;
     }
@@ -409,9 +454,8 @@ pub fn highlighted_html_for_string(
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a file, using inline `style` attributes.
 ///
-/// Uses [`HighlightLines`] with [`ThemeScopeRenderer`] and
-/// [`InlineHtmlStyleWriter`] internally, which correctly handles
-/// branch-point backtracking.
+/// Uses [`HighlightLines`] with [`InlineHTMLScopeRenderer`] internally,
+/// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
@@ -427,8 +471,8 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
         .unwrap_or_else(|| ss.find_syntax_plain_text());
 
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-    let writer = InlineHtmlStyleWriter::new(bg);
-    let mut h = HighlightLines::new_styled(syntax, ss, theme, writer);
+    let renderer = InlineHTMLScopeRenderer::new(theme, bg);
+    let mut h = HighlightLines::new_with_renderer(syntax, ss, renderer);
     let mut reader = std::io::BufReader::new(f);
     let mut line = String::new();
     while reader.read_line(&mut line)? > 0 {
