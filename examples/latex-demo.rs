@@ -85,14 +85,15 @@ fn main() {
     let syntax = ps.find_syntax_by_extension("rs").unwrap();
     let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 
-    let mut highlight = HighlightDriver::new_with_renderer(
+    let out = std::io::stdout().lock();
+    let mut highlight = HighlightDriver::new_with_renderer_and_output(
         syntax,
         &ps,
         LatexScopeRenderer::new(&ts.themes["InspiredGitHub"]),
+        out,
     );
     for line in LinesWithEndings::from(s) {
         highlight.highlight_line(line).unwrap();
     }
-    let output = String::from_utf8(highlight.finalize()).unwrap();
-    println!("{}", output);
+    highlight.finalize();
 }

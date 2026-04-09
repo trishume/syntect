@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 use syntect::dumps::{dump_to_file, from_dump_file};
-use syntect::easy::HighlightDriver;
+use syntect::easy::{HighlightDriver, ThemedANSIScopeRenderer};
 use syntect::highlighting::{Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
@@ -116,7 +116,10 @@ fn main() {
                 .find_syntax_for_file(path)
                 .unwrap()
                 .unwrap_or_else(|| ss.find_syntax_plain_text());
-            let mut highlighter = HighlightDriver::new(syntax, &ss, &theme);
+            let renderer = ThemedANSIScopeRenderer::new(&theme, false);
+            let out = io::stdout().lock();
+            let mut highlighter =
+                HighlightDriver::new_with_renderer_and_output(syntax, &ss, renderer, out);
             let mut reader = io::BufReader::new(f);
 
             // We use read_line instead of `for line in reader.lines()` because that
@@ -135,11 +138,10 @@ fn main() {
                 }
             }
 
-            let output = highlighter.finalize();
-            io::stdout().write_all(&output).unwrap();
+            let mut out = highlighter.finalize();
 
             // Clear the formatting
-            println!("\x1b[0m");
+            out.write_all(b"\x1b[0m\n").unwrap();
         }
     }
 }
