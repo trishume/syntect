@@ -301,12 +301,25 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
         parse_state: ParseState,
         scope_stack: ScopeStack,
         syntax_set: &'a SyntaxSet,
-        renderer: R,
+        mut renderer: R,
         output: W,
     ) -> HighlightLines<'a, R, W> {
+        // Replay the existing scope stack to the renderer so that its
+        // internal state (e.g. style stack) matches the restored scopes.
+        {
+            let repo = lock_global_scope_repo();
+            let scopes = &scope_stack.scopes;
+            for (i, &scope) in scopes.iter().enumerate() {
+                let atom_strs = resolve_atom_strs(scope, &repo);
+                let stack_slice = &scopes[..=i];
+                let mut dummy = String::new();
+                renderer.begin_scope(&atom_strs, scope, stack_slice, &mut dummy);
+            }
+        }
+        let open_scopes = scope_stack.scopes.len() as isize;
         HighlightLines {
             syntax_set,
-            open_scopes: 0,
+            open_scopes,
             parse_state,
             scope_stack,
             output,
@@ -832,6 +845,45 @@ mod tests {
         // Style merging means we should NOT see consecutive identical ANSI
         // escape codes with no text between them.
         assert!(!output.contains("m\x1b[38;2;"));
+    }
+
+    #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
+    #[test]
+    fn can_start_again_from_previous_state() {
+        let ss = SyntaxSet::load_defaults_newlines();
+        let ts = ThemeSet::load_defaults();
+        let theme = &ts.themes["base16-ocean.dark"];
+        let mut highlighter =
+            HighlightLines::new(ss.find_syntax_by_extension("py").unwrap(), &ss, theme);
+
+        let lines = ["\"\"\"\n", "def foo():\n", "\"\"\"\n"];
+
+        highlighter.highlight_line(lines[0]).expect("#[cfg(test)]");
+
+        let (parse_state, scope_stack) = highlighter.state();
+        let (parse_state, scope_stack) = (parse_state.clone(), scope_stack.clone());
+        let first_output = String::from_utf8(highlighter.finalize()).unwrap();
+
+        let mut other_highlighter = HighlightLines::from_state(
+            parse_state,
+            scope_stack,
+            &ss,
+            ThemedANSIScopeRenderer::new(theme, false),
+            Vec::new(),
+        );
+
+        other_highlighter
+            .highlight_line(lines[1])
+            .expect("#[cfg(test)]");
+        let second_output = String::from_utf8(other_highlighter.finalize()).unwrap();
+
+        // The second line should be highlighted as a docstring (same style as
+        // the first line's triple-quote) because the parse state carries the
+        // string context forward.
+        assert!(!second_output.is_empty());
+        let extract_fg =
+            |s: &str| -> Option<String> { s.find("\x1b[38;2;").map(|i| s[i..i + 16].to_string()) };
+        assert_eq!(extract_fg(&first_output), extract_fg(&second_output));
     }
 
     #[cfg(feature = "default-syntaxes")]
