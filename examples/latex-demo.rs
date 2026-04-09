@@ -51,6 +51,12 @@ impl ScopeRenderer for LatexScopeRenderer<'_> {
         if text.is_empty() {
             return;
         }
+        // Pass whitespace through without wrapping in \textcolor,
+        // matching the behavior of `as_latex_escaped`.
+        if text == " " || text == "\n" {
+            output.push_str(text);
+            return;
+        }
         let style = self.current_style();
         if self.last_written_style != Some(style) {
             if self.last_written_style.is_some() {
@@ -93,7 +99,10 @@ fn main() {
         out,
     );
     for line in LinesWithEndings::from(s) {
+        println!("\n{:?}", line);
         highlight.highlight_line(line).unwrap();
+        // Each line's rendered output is flushed; print a blank line after it.
+        println!();
     }
     highlight.finalize();
 }

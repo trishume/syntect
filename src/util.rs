@@ -110,8 +110,8 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
             "{}\\textcolor[RGB]{{{},{},{}}}{{",
             if first { "" } else { "}" },
             style.foreground.r,
-            style.foreground.b,
-            style.foreground.g
+            style.foreground.g,
+            style.foreground.b
         )
     }
     for &(style, text) in v.iter() {
