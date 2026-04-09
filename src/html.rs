@@ -7,7 +7,7 @@ use crate::parsing::{
     lock_global_scope_repo, Scope, ScopeRepository, ScopeStack, ScopeStackOp, SyntaxReference,
     SyntaxSet,
 };
-use crate::renderer::render_line;
+use crate::renderer::{render_line, ScopeRenderer};
 use crate::util::LinesWithEndings;
 use crate::Error;
 use std::fmt::Write;
@@ -15,8 +15,53 @@ use std::fmt::Write;
 use std::io::BufRead;
 use std::path::Path;
 
-mod renderer;
-pub use renderer::*;
+/// An HTML renderer that produces `<span class="...">` elements with
+/// CSS class names derived from scope atoms.
+///
+/// This produces identical output to the original `ClassedHTMLGenerator`.
+pub struct HTMLScopeRenderer {
+    style: ClassStyle,
+}
+
+impl HTMLScopeRenderer {
+    pub fn new(style: ClassStyle) -> Self {
+        Self { style }
+    }
+}
+
+impl ScopeRenderer for HTMLScopeRenderer {
+    fn begin_scope(
+        &mut self,
+        atom_strs: &[&str],
+        _scope: Scope,
+        _scope_stack: &[Scope],
+        output: &mut String,
+    ) -> bool {
+        output.push_str("<span class=\"");
+        for (i, atom) in atom_strs.iter().enumerate() {
+            if i != 0 {
+                output.push(' ');
+            }
+            match self.style {
+                ClassStyle::Spaced => {}
+                ClassStyle::SpacedPrefixed { prefix } => {
+                    output.push_str(prefix);
+                }
+            }
+            output.push_str(atom);
+        }
+        output.push_str("\">");
+        true
+    }
+
+    fn end_scope(&mut self, output: &mut String) {
+        output.push_str("</span>");
+    }
+
+    fn write_text(&mut self, text: &str, output: &mut String) {
+        write!(output, "{}", Escape(text)).expect("writing to a String never fails");
+    }
+}
 
 /// HTML-specific convenience wrapper around [`DocumentGenerator`].
 ///
@@ -524,7 +569,7 @@ mod tests {
             line_tokens_to_classed_spans(line, &ops[..], ClassStyle::Spaced, &mut stack)
                 .expect("#[cfg(test)]");
         println!("{}", html);
-        assert_eq!(html, include_str!("../../testdata/test2.html").trim_end());
+        assert_eq!(html, include_str!("../testdata/test2.html").trim_end());
 
         let ts = ThemeSet::load_defaults();
         let highlighter = Highlighter::new(&ts.themes["InspiredGitHub"]);
@@ -535,19 +580,19 @@ mod tests {
         let html2 = styled_line_to_highlighted_html(&regions[..], IncludeBackground::Yes)
             .expect("#[cfg(test)]");
         println!("{}", html2);
-        assert_eq!(html2, include_str!("../../testdata/test1.html").trim_end());
+        assert_eq!(html2, include_str!("../testdata/test1.html").trim_end());
     }
 
     #[test]
     fn strings() {
         let ss = SyntaxSet::load_defaults_newlines();
         let ts = ThemeSet::load_defaults();
-        let s = include_str!("../../testdata/highlight_test.erb");
+        let s = include_str!("../testdata/highlight_test.erb");
         let syntax = ss.find_syntax_by_extension("erb").unwrap();
         let html = highlighted_html_for_string(s, &ss, syntax, &ts.themes["base16-ocean.dark"])
             .expect("#[cfg(test)]");
         // println!("{}", html);
-        assert_eq!(html, include_str!("../../testdata/test3.html"));
+        assert_eq!(html, include_str!("../testdata/test3.html"));
         let html2 = highlighted_html_for_file(
             "testdata/highlight_test.erb",
             &ss,
@@ -564,7 +609,7 @@ mod tests {
         )
         .unwrap();
         println!("{}", html3);
-        assert_eq!(html3, include_str!("../../testdata/test4.html"));
+        assert_eq!(html3, include_str!("../testdata/test4.html"));
     }
 
     #[test]
@@ -582,14 +627,14 @@ mod tests {
         )
         .unwrap();
         println!("{}", html);
-        assert_eq!(html, include_str!("../../testdata/test5.html"));
+        assert_eq!(html, include_str!("../testdata/test5.html"));
     }
 
     #[test]
     fn test_classed_html_generator_doesnt_panic() {
         let current_code = "{\n    \"headers\": [\"Number\", \"Title\"],\n    \"records\": [\n        [\"1\", \"Gutenberg\"],\n        [\"2\", \"Printing\"]\n    ],\n}\n";
         let syntax_def = SyntaxDefinition::load_from_str(
-            include_str!("../../testdata/JSON.sublime-syntax"),
+            include_str!("../testdata/JSON.sublime-syntax"),
             true,
             None,
         )
