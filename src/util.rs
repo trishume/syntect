@@ -61,21 +61,24 @@ const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\
 /// Usage is similar to the `as_24_bit_terminal_escaped` function:
 ///
 /// ```
-/// use syntect::easy::HighlightLines;
-/// use syntect::parsing::SyntaxSet;
-/// use syntect::highlighting::{ThemeSet,Style};
-/// use syntect::util::{as_latex_escaped,LinesWithEndings};
+/// use syntect::parsing::{SyntaxSet, ParseState, ScopeStack};
+/// use syntect::highlighting::{ThemeSet, Style, Highlighter, HighlightState, HighlightIterator};
+/// use syntect::util::{as_latex_escaped, LinesWithEndings};
 ///
-/// // Load these once at the start of your program
 /// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_extension("rs").unwrap();
 /// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 ///
-/// let mut h = HighlightLines::new(syntax, &ts.themes["InspiredGitHub"]);
-/// for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
-///     let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
+/// let highlighter = Highlighter::new(&ts.themes["InspiredGitHub"]);
+/// let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+/// let mut parse_state = ParseState::new(syntax);
+/// for line in LinesWithEndings::from(s) {
+///     let ops = parse_state.parse_line(line, &ps).unwrap().ops;
+///     let ranges: Vec<(Style, &str)> = HighlightIterator::new(
+///         &mut highlight_state, &ops[..], line, &highlighter,
+///     ).collect();
 ///     let escaped = as_latex_escaped(&ranges[..]);
 ///     println!("{}", escaped);
 /// }

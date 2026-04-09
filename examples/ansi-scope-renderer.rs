@@ -4,9 +4,8 @@
 //! Run with: `cargo run --example ansi-scope-renderer`
 
 use std::io::{self, BufWriter, Write};
-use syntect::generator::DocumentGenerator;
+use syntect::easy::{HighlightLines, ScopeRenderer};
 use syntect::parsing::{Scope, SyntaxSet};
-use syntect::renderer::ScopeRenderer;
 use syntect::util::LinesWithEndings;
 
 /// A `ScopeRenderer` that emits ANSI 256-color escape codes based on scope names.
@@ -75,10 +74,10 @@ fn main() {
 
     // Stream directly to stdout — no intermediate String accumulation.
     let stdout = BufWriter::new(io::stdout().lock());
-    let mut gen = DocumentGenerator::new_with_output(syntax, &ss, AnsiScopeRenderer::new(), stdout);
+    let mut gen = HighlightLines::new_with_output(syntax, &ss, AnsiScopeRenderer::new(), stdout);
 
     for line in LinesWithEndings::from(code) {
-        gen.parse_line(line).unwrap();
+        gen.highlight_line(line).unwrap();
     }
 
     let mut writer = gen.finalize();

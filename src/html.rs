@@ -1,13 +1,11 @@
 //! Rendering highlighted code as HTML+CSS
-use crate::easy::{HighlightFile, HighlightLines};
+use crate::easy::{render_line, HighlightFile, HighlightLines, ScopeRenderer};
 use crate::escape::Escape;
-use crate::generator::DocumentGenerator;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
 use crate::parsing::{
     lock_global_scope_repo, Scope, ScopeRepository, ScopeStack, ScopeStackOp, SyntaxReference,
     SyntaxSet,
 };
-use crate::renderer::{render_line, ScopeRenderer};
 use crate::util::LinesWithEndings;
 use crate::Error;
 use std::fmt::Write;
@@ -61,7 +59,7 @@ impl ScopeRenderer for HTMLScopeRenderer {
     }
 }
 
-/// HTML-specific convenience wrapper around [`DocumentGenerator`].
+/// HTML-specific convenience wrapper around [`HighlightLines`].
 ///
 /// Uses [`HTMLScopeRenderer`] to produce `<span class="...">` output with
 /// CSS class names derived from scope atoms.
@@ -98,7 +96,7 @@ impl ScopeRenderer for HTMLScopeRenderer {
 /// let output_html = html_generator.finalize();
 /// ```
 pub struct ClassedHTMLGenerator<'a> {
-    inner: DocumentGenerator<'a, HTMLScopeRenderer>,
+    inner: HighlightLines<'a, HTMLScopeRenderer>,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
@@ -116,7 +114,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
         ClassedHTMLGenerator {
-            inner: DocumentGenerator::new(
+            inner: HighlightLines::new(
                 syntax_reference,
                 syntax_set,
                 HTMLScopeRenderer::new(style),
@@ -129,7 +127,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
     /// *Note:* This function requires `line` to include a newline at the end and
     /// also use of the `load_defaults_newlines` version of the syntaxes.
     pub fn parse_html_for_line_which_includes_newline(&mut self, line: &str) -> Result<(), Error> {
-        self.inner.parse_line(line)
+        self.inner.highlight_line(line)
     }
 
     /// Parse the line of code and update the internal HTML buffer with tagged HTML
@@ -339,11 +337,18 @@ pub fn highlighted_html_for_string(
     syntax: &SyntaxReference,
     theme: &Theme,
 ) -> Result<String, Error> {
-    let mut highlighter = HighlightLines::new(syntax, theme);
+    use crate::highlighting::{HighlightIterator, HighlightState, Highlighter};
+    use crate::parsing::ParseState;
+
+    let highlighter = Highlighter::new(theme);
+    let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+    let mut parse_state = ParseState::new(syntax);
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
     for line in LinesWithEndings::from(s) {
-        let regions = highlighter.highlight_line(line, ss)?;
+        let ops = parse_state.parse_line(line, ss)?.ops;
+        let regions: Vec<(Style, &str)> =
+            HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter).collect();
         append_highlighted_html_for_styled_line(
             &regions[..],
             IncludeBackground::IfDifferent(bg),
@@ -371,7 +376,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     let mut line = String::new();
     while highlighter.reader.read_line(&mut line)? > 0 {
         {
-            let regions = highlighter.highlight_lines.highlight_line(&line, ss)?;
+            let regions = highlighter.highlight_line(&line, ss)?;
             append_highlighted_html_for_styled_line(
                 &regions[..],
                 IncludeBackground::IfDifferent(bg),
@@ -445,18 +450,21 @@ fn write_css_color(s: &mut String, c: Color) {
 /// # Examples
 ///
 /// ```
-/// use syntect::easy::HighlightLines;
-/// use syntect::parsing::SyntaxSet;
-/// use syntect::highlighting::{ThemeSet, Style};
+/// use syntect::parsing::{SyntaxSet, ParseState, ScopeStack};
+/// use syntect::highlighting::{ThemeSet, Style, Highlighter, HighlightState, HighlightIterator};
 /// use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
 ///
-/// // Load these once at the start of your program
 /// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
-/// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
-/// let regions = h.highlight_line("5", &ps).unwrap();
+/// let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
+/// let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+/// let mut parse_state = ParseState::new(syntax);
+/// let ops = parse_state.parse_line("5", &ps).unwrap().ops;
+/// let regions: Vec<(Style, &str)> = HighlightIterator::new(
+///     &mut highlight_state, &ops[..], "5", &highlighter,
+/// ).collect();
 /// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No).unwrap();
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```
@@ -728,7 +736,7 @@ fn main() {
 
     #[test]
     fn test_custom_renderer_receives_atom_strs() {
-        use crate::renderer::ScopeRenderer;
+        use crate::easy::ScopeRenderer;
         use std::cell::RefCell;
 
         struct CapturingRenderer {
@@ -759,9 +767,9 @@ fn main() {
         let renderer = CapturingRenderer {
             captured: RefCell::new(Vec::new()),
         };
-        let mut gen = crate::generator::DocumentGenerator::new(syntax, &syntax_set, renderer);
+        let mut gen = crate::easy::HighlightLines::new(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
-            gen.parse_line(line).expect("#[cfg(test)]");
+            gen.highlight_line(line).expect("#[cfg(test)]");
         }
 
         // The R syntax should produce "source r" as the first scope

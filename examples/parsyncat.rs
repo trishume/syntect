@@ -48,7 +48,6 @@ fn main() {
 
             for line in contents {
                 for region in highlighter
-                    .highlight_lines
                     .highlight_line(line, &syntax_set)
                     .unwrap()
                 {
