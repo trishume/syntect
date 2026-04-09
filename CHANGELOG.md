@@ -4,8 +4,7 @@
 
 ### Breaking changes
 
-- `HighlightLines` replaced with `HighlightLines<'a, R: ScopeRenderer, W: io::Write>` — the old theme-based `highlight_line` returning `Vec<(Style, &str)>` is removed [#627]
-- `HighlightFile` restructured: `highlight_lines` field removed, use `highlight_line()` method directly [#627]
+- `HighlightLines` and `HighlightFile` deprecated since 6.0.0 — use `HighlightDriver` instead [#627]
 - `SCOPE_REPO` removed from public API (was already deprecated since 5.3.0) [#627]
 - `ParseState::parse_line` now returns `Result<ParseLineOutput, ParsingError>` instead of a bare `Vec` [#614]
 - `MatchOperation` enum: new `Branch`, `Fail` [#614], and `Embed` [#615] variants
@@ -18,16 +17,15 @@
 
 ### Improvements
 
-- Evolve `HighlightLines` into `HighlightLines<'a, R: ScopeRenderer, W: io::Write>` (`syntect::easy`), a format-agnostic parsing + rendering driver with branch-point backtracking support, generic over the output sink (`Vec<u8>` by default, or any `io::Write` for streaming) [#627]
+- Add `HighlightDriver<'a, R: ScopeRenderer, W: io::Write>` (`syntect::easy`), a format-agnostic parsing + rendering driver with branch-point backtracking support, generic over the output sink (`Vec<u8>` by default, or any `io::Write` for streaming) [#627]
 - Add `ScopeRenderer` trait (`syntect::easy`) for pluggable scope-based rendering with pre-resolved atom strings [#627]
 - Add `render_line()` core rendering loop that drives a `ScopeRenderer` [#627]
 - Add `ThemedANSIScopeRenderer` (`syntect::easy`) for theme-aware ANSI terminal rendering with style merging (adjacent same-style tokens coalesced) [#627]
 - Add `ClassedHTMLScopeRenderer` (`syntect::html`) for `<span class="...">` output with CSS classes derived from scope atoms [#627]
 - Add `InlineHTMLScopeRenderer` (`syntect::html`) for theme-aware inline-styled `<span style="...">` HTML output with style merging [#627]
 - Add `Scope::with_atom_strs()` closure-based API for reading atom strings without direct repository access [#627]
-- `ClassedHTMLGenerator` preserved as backward-compatible wrapper around `HighlightLines` [#627]
-- `HighlightFile` restructured as generic wrapper around `HighlightLines`, defaults to ANSI terminal output [#627]
-- `highlighted_html_for_string`/`highlighted_html_for_file` reworked to use `HighlightLines` with `InlineHTMLScopeRenderer` [#627]
+- `ClassedHTMLGenerator` preserved as backward-compatible wrapper around `HighlightDriver` [#627]
+- `highlighted_html_for_string`/`highlighted_html_for_file` reworked to use `HighlightDriver` with `InlineHTMLScopeRenderer` [#627]
 - Implement sublime-syntax Build 4075 features: `extends` (single and multiple inheritance), `meta_prepend`/`meta_append`, `apply_prototype`, `version: 2`, and `first_line_match` variable resolution [#610] [#612]
 - Implement `branch_point`/`branch`/`fail` backtracking with cross-line replay support [#614]
 - Implement native `embed`/`escape` support, fixing cases where embedded context patterns could consume escape characters first [#615]

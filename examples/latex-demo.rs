@@ -1,5 +1,5 @@
 use std::fmt::Write;
-use syntect::easy::{HighlightLines, ScopeRenderer};
+use syntect::easy::{HighlightDriver, ScopeRenderer};
 use syntect::highlighting::{Highlighter, Style, ThemeSet};
 use syntect::parsing::{Scope, SyntaxSet};
 use syntect::util::LinesWithEndings;
@@ -85,7 +85,7 @@ fn main() {
     let syntax = ps.find_syntax_by_extension("rs").unwrap();
     let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 
-    let mut highlight = HighlightLines::new_with_renderer(
+    let mut highlight = HighlightDriver::new_with_renderer(
         syntax,
         &ps,
         LatexScopeRenderer::new(&ts.themes["InspiredGitHub"]),

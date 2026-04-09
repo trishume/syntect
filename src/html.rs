@@ -1,5 +1,5 @@
 //! Rendering highlighted code as HTML+CSS
-use crate::easy::{render_line, HighlightLines, ScopeRenderer};
+use crate::easy::{render_line, HighlightDriver, ScopeRenderer};
 use crate::escape::Escape;
 use crate::highlighting::Highlighter;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
@@ -60,7 +60,7 @@ impl ScopeRenderer for ClassedHTMLScopeRenderer {
     }
 }
 
-/// HTML-specific convenience wrapper around [`HighlightLines`].
+/// HTML-specific convenience wrapper around [`HighlightDriver`].
 ///
 /// Uses [`ClassedHTMLScopeRenderer`] to produce `<span class="...">` output with
 /// CSS class names derived from scope atoms.
@@ -97,7 +97,7 @@ impl ScopeRenderer for ClassedHTMLScopeRenderer {
 /// let output_html = html_generator.finalize();
 /// ```
 pub struct ClassedHTMLGenerator<'a> {
-    inner: HighlightLines<'a, ClassedHTMLScopeRenderer>,
+    inner: HighlightDriver<'a, ClassedHTMLScopeRenderer>,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
@@ -115,7 +115,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
         ClassedHTMLGenerator {
-            inner: HighlightLines::new_with_renderer(
+            inner: HighlightDriver::new_with_renderer(
                 syntax_reference,
                 syntax_set,
                 ClassedHTMLScopeRenderer::new(style),
@@ -438,7 +438,7 @@ impl ScopeRenderer for InlineHTMLScopeRenderer<'_> {
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a string (which can contain many lines), using inline `style` attributes.
 ///
-/// Uses [`HighlightLines`] with [`InlineHTMLScopeRenderer`] internally,
+/// Uses [`HighlightDriver`] with [`InlineHTMLScopeRenderer`] internally,
 /// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
@@ -451,7 +451,7 @@ pub fn highlighted_html_for_string(
 ) -> Result<String, Error> {
     let (mut output, bg) = start_highlighted_html_snippet(theme);
     let renderer = InlineHTMLScopeRenderer::new(theme, bg);
-    let mut h = HighlightLines::new_with_renderer(syntax, ss, renderer);
+    let mut h = HighlightDriver::new_with_renderer(syntax, ss, renderer);
     for line in LinesWithEndings::from(s) {
         h.highlight_line(line)?;
     }
@@ -463,7 +463,7 @@ pub fn highlighted_html_for_string(
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a file, using inline `style` attributes.
 ///
-/// Uses [`HighlightLines`] with [`InlineHTMLScopeRenderer`] internally,
+/// Uses [`HighlightDriver`] with [`InlineHTMLScopeRenderer`] internally,
 /// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
@@ -481,7 +481,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
 
     let (mut output, bg) = start_highlighted_html_snippet(theme);
     let renderer = InlineHTMLScopeRenderer::new(theme, bg);
-    let mut h = HighlightLines::new_with_renderer(syntax, ss, renderer);
+    let mut h = HighlightDriver::new_with_renderer(syntax, ss, renderer);
     let mut reader = std::io::BufReader::new(f);
     let mut line = String::new();
     while reader.read_line(&mut line)? > 0 {
@@ -870,7 +870,8 @@ fn main() {
         let renderer = CapturingRenderer {
             captured: RefCell::new(Vec::new()),
         };
-        let mut gen = crate::easy::HighlightLines::new_with_renderer(syntax, &syntax_set, renderer);
+        let mut gen =
+            crate::easy::HighlightDriver::new_with_renderer(syntax, &syntax_set, renderer);
         for line in LinesWithEndings::from(code) {
             gen.highlight_line(line).expect("#[cfg(test)]");
         }

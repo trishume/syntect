@@ -1,7 +1,7 @@
 //! Core highlighting API: scope-based rendering, theme-aware highlighting,
 //! and convenience wrappers for common use cases.
 //!
-//! The central type is [`HighlightLines`], which drives syntax parsing and
+//! The central type is [`HighlightDriver`], which drives syntax parsing and
 //! delegates rendering to a pluggable [`ScopeRenderer`]. It handles
 //! branch-point backtracking transparently by buffering output during
 //! speculative parsing.
@@ -9,13 +9,17 @@
 //! For theme-based highlighting (resolving scopes to colors),
 //! [`ThemedANSIScopeRenderer`] resolves scopes to styles via the
 //! [`Highlighter`] and emits ANSI 24-bit
-//! color escape codes (the default renderer for [`HighlightLines`]).
+//! color escape codes (the default renderer for [`HighlightDriver`]).
 //!
 //! For HTML output, see [`crate::html::ClassedHTMLGenerator`],
 //! [`crate::html::ClassedHTMLScopeRenderer`], and
 //! [`crate::html::InlineHTMLScopeRenderer`].
+//!
+//! The legacy [`HighlightLines`] and [`HighlightFile`] types are preserved
+//! for backward compatibility but deprecated since 6.0.0. Use
+//! [`HighlightDriver`] instead.
 
-use crate::highlighting::{Highlighter, Style, Theme};
+use crate::highlighting::{HighlightIterator, HighlightState, Highlighter, Style, Theme};
 use crate::parsing::{
     lock_global_scope_repo, BasicScopeStackOp, ParseState, Scope, ScopeRepository, ScopeStack,
     ScopeStackOp, SyntaxReference, SyntaxSet,
@@ -154,7 +158,7 @@ pub fn render_line<R: ScopeRenderer>(
 }
 
 // ---------------------------------------------------------------------------
-// HighlightLines — the main highlighting driver
+// HighlightDriver — the main highlighting driver
 // ---------------------------------------------------------------------------
 
 /// Drives syntax parsing and delegates rendering to a [`ScopeRenderer`].
@@ -165,7 +169,7 @@ pub fn render_line<R: ScopeRenderer>(
 /// [`ThemedANSIScopeRenderer`] for theme-based ANSI terminal output.
 ///
 /// When the parser is in speculative mode (inside a branch point),
-/// `HighlightLines` buffers output internally and flushes it only once the
+/// `HighlightDriver` buffers output internally and flushes it only once the
 /// speculation resolves, replaying corrected operations if a cross-line
 /// `fail` occurred.
 ///
@@ -179,7 +183,7 @@ pub fn render_line<R: ScopeRenderer>(
 /// Theme-based highlighting (default renderer):
 ///
 /// ```
-/// use syntect::easy::HighlightLines;
+/// use syntect::easy::HighlightDriver;
 /// use syntect::highlighting::ThemeSet;
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::util::LinesWithEndings;
@@ -188,7 +192,7 @@ pub fn render_line<R: ScopeRenderer>(
 /// let ts = ThemeSet::load_defaults();
 /// let syntax = ss.find_syntax_by_extension("rs").unwrap();
 ///
-/// let mut h = HighlightLines::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
+/// let mut h = HighlightDriver::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
 /// for line in LinesWithEndings::from("fn main() {}\n") {
 ///     h.highlight_line(line).unwrap();
 /// }
@@ -199,7 +203,7 @@ pub fn render_line<R: ScopeRenderer>(
 /// Custom renderer (CSS-classed HTML):
 ///
 /// ```
-/// use syntect::easy::HighlightLines;
+/// use syntect::easy::HighlightDriver;
 /// use syntect::html::{ClassedHTMLScopeRenderer, ClassStyle};
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::util::LinesWithEndings;
@@ -207,13 +211,13 @@ pub fn render_line<R: ScopeRenderer>(
 /// let ss = SyntaxSet::load_defaults_newlines();
 /// let syntax = ss.find_syntax_by_name("R").unwrap();
 /// let renderer = ClassedHTMLScopeRenderer::new(ClassStyle::Spaced);
-/// let mut h = HighlightLines::new_with_renderer(syntax, &ss, renderer);
+/// let mut h = HighlightDriver::new_with_renderer(syntax, &ss, renderer);
 /// for line in LinesWithEndings::from("x <- 5\n") {
 ///     h.highlight_line(line).unwrap();
 /// }
 /// let html = String::from_utf8(h.finalize()).unwrap();
 /// ```
-pub struct HighlightLines<
+pub struct HighlightDriver<
     'a,
     R: ScopeRenderer = ThemedANSIScopeRenderer<'a>,
     W: io::Write = Vec<u8>,
@@ -232,42 +236,42 @@ pub struct HighlightLines<
     open_scopes_snapshot: Option<isize>,
 }
 
-impl<'a> HighlightLines<'a> {
+impl<'a> HighlightDriver<'a> {
     /// Create a new highlighting driver with default ANSI terminal output.
     ///
     /// Uses [`ThemedANSIScopeRenderer`] to produce 24-bit color ANSI escape
     /// codes. The output is collected into a `Vec<u8>` returned by [`finalize`].
     ///
-    /// [`finalize`]: HighlightLines::finalize
+    /// [`finalize`]: HighlightDriver::finalize
     pub fn new(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         theme: &'a Theme,
-    ) -> HighlightLines<'a> {
+    ) -> HighlightDriver<'a> {
         let renderer = ThemedANSIScopeRenderer::new(theme, false);
         Self::new_with_renderer_and_output(syntax_reference, syntax_set, renderer, Vec::new())
     }
 }
 
-impl<'a, R: ScopeRenderer> HighlightLines<'a, R> {
+impl<'a, R: ScopeRenderer> HighlightDriver<'a, R> {
     /// Create a new highlighting driver with a custom [`ScopeRenderer`].
     ///
     /// The output is collected into a `Vec<u8>` returned by [`finalize`].
     /// Use [`new_with_renderer_and_output`] to stream to an arbitrary
     /// [`io::Write`] sink instead.
     ///
-    /// [`finalize`]: HighlightLines::finalize
-    /// [`new_with_renderer_and_output`]: HighlightLines::new_with_renderer_and_output
+    /// [`finalize`]: HighlightDriver::finalize
+    /// [`new_with_renderer_and_output`]: HighlightDriver::new_with_renderer_and_output
     pub fn new_with_renderer(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         renderer: R,
-    ) -> HighlightLines<'a, R> {
+    ) -> HighlightDriver<'a, R> {
         Self::new_with_renderer_and_output(syntax_reference, syntax_set, renderer, Vec::new())
     }
 }
 
-impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
+impl<'a, R: ScopeRenderer, W: io::Write> HighlightDriver<'a, R, W> {
     /// Create a new highlighting driver that writes to the given output sink.
     ///
     /// This allows streaming rendered output directly to a file, socket,
@@ -277,8 +281,8 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
         syntax_set: &'a SyntaxSet,
         renderer: R,
         output: W,
-    ) -> HighlightLines<'a, R, W> {
-        HighlightLines {
+    ) -> HighlightDriver<'a, R, W> {
+        HighlightDriver {
             syntax_set,
             open_scopes: 0,
             parse_state: ParseState::new(syntax_reference),
@@ -303,7 +307,7 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
         syntax_set: &'a SyntaxSet,
         mut renderer: R,
         output: W,
-    ) -> HighlightLines<'a, R, W> {
+    ) -> HighlightDriver<'a, R, W> {
         // Replay the existing scope stack to the renderer so that its
         // internal state (e.g. style stack) matches the restored scopes.
         {
@@ -317,7 +321,7 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
             }
         }
         let open_scopes = scope_stack.scopes.len() as isize;
-        HighlightLines {
+        HighlightDriver {
             syntax_set,
             open_scopes,
             parse_state,
@@ -484,7 +488,7 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
 /// # Example
 ///
 /// ```
-/// use syntect::easy::HighlightLines;
+/// use syntect::easy::HighlightDriver;
 /// use syntect::highlighting::ThemeSet;
 /// use syntect::parsing::SyntaxSet;
 /// use syntect::util::LinesWithEndings;
@@ -493,8 +497,8 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
 /// let ts = ThemeSet::load_defaults();
 /// let syntax = ss.find_syntax_by_extension("rs").unwrap();
 ///
-/// // Default ANSI output via HighlightLines::new
-/// let mut h = HighlightLines::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
+/// // Default ANSI output via HighlightDriver::new
+/// let mut h = HighlightDriver::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
 /// for line in LinesWithEndings::from("fn main() {}\n") {
 ///     h.highlight_line(line).unwrap();
 /// }
@@ -575,51 +579,118 @@ impl ScopeRenderer for ThemedANSIScopeRenderer<'_> {
 }
 
 // ---------------------------------------------------------------------------
-// HighlightFile — convenience for file highlighting
+// Deprecated legacy API — HighlightLines and HighlightFile
 // ---------------------------------------------------------------------------
 
-/// Convenience struct wrapping a buffered file reader and a [`HighlightLines`]
-/// driver, auto-detecting the syntax from the file extension.
+/// Simple way to go directly from lines of text to colored tokens.
 ///
-/// Defaults to theme-based ANSI terminal output via [`ThemedANSIScopeRenderer`].
+/// Depending on how you load the syntaxes (see the [`SyntaxSet`] docs), this can either take
+/// strings with trailing `\n`s or without.
 ///
-/// # Example
+/// # Examples
+///
+/// Prints colored lines of a string to the terminal
 ///
 /// ```
+/// #[allow(deprecated)]
+/// use syntect::easy::HighlightLines;
 /// use syntect::parsing::SyntaxSet;
-/// use syntect::highlighting::ThemeSet;
-/// use syntect::easy::HighlightFile;
-/// use std::io::BufRead;
+/// use syntect::highlighting::{ThemeSet, Style};
+/// use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
 ///
-/// # use std::io;
-/// # fn foo() -> io::Result<()> {
-/// let ss = SyntaxSet::load_defaults_newlines();
+/// // Load these once at the start of your program
+/// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
-/// let mut highlighter = HighlightFile::new("testdata/parser.rs", &ss, &ts.themes["base16-ocean.dark"]).unwrap();
-/// let mut line = String::new();
-/// while highlighter.reader.read_line(&mut line)? > 0 {
-///     highlighter.highlight_line(&line).unwrap();
-///     line.clear();
+/// let syntax = ps.find_syntax_by_extension("rs").unwrap();
+/// #[allow(deprecated)]
+/// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+/// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}";
+/// for line in LinesWithEndings::from(s) {
+///     let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
+///     let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
+///     print!("{}", escaped);
 /// }
-/// let output = String::from_utf8(highlighter.finalize()).unwrap();
-/// # Ok(())
-/// # }
 /// ```
-pub struct HighlightFile<'a, R: ScopeRenderer = ThemedANSIScopeRenderer<'a>, W: io::Write = Vec<u8>>
-{
-    /// The buffered file reader.
-    pub reader: BufReader<File>,
-    /// The highlighting driver.
-    pub highlight_lines: HighlightLines<'a, R, W>,
+#[deprecated(
+    since = "6.0.0",
+    note = "Use `HighlightDriver` instead, which supports pluggable renderers and branch-point backtracking"
+)]
+pub struct HighlightLines<'a> {
+    highlighter: Highlighter<'a>,
+    parse_state: ParseState,
+    highlight_state: HighlightState,
 }
 
+#[allow(deprecated)]
+impl<'a> HighlightLines<'a> {
+    pub fn new(syntax: &SyntaxReference, theme: &'a Theme) -> HighlightLines<'a> {
+        let highlighter = Highlighter::new(theme);
+        let highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+        HighlightLines {
+            highlighter,
+            parse_state: ParseState::new(syntax),
+            highlight_state,
+        }
+    }
+
+    /// Highlights a line of a file
+    pub fn highlight_line<'b>(
+        &mut self,
+        line: &'b str,
+        syntax_set: &SyntaxSet,
+    ) -> Result<Vec<(Style, &'b str)>, Error> {
+        let ops = self.parse_state.parse_line(line, syntax_set)?.ops;
+        let iter =
+            HighlightIterator::new(&mut self.highlight_state, &ops[..], line, &self.highlighter);
+        Ok(iter.collect())
+    }
+
+    /// This starts again from a previous state, useful for highlighting a file incrementally for
+    /// which you've cached the highlight and parse state.
+    pub fn from_state(
+        theme: &'a Theme,
+        highlight_state: HighlightState,
+        parse_state: ParseState,
+    ) -> HighlightLines<'a> {
+        HighlightLines {
+            highlighter: Highlighter::new(theme),
+            parse_state,
+            highlight_state,
+        }
+    }
+
+    /// Returns the current highlight and parse states, useful for caching and incremental highlighting.
+    pub fn state(self) -> (HighlightState, ParseState) {
+        (self.highlight_state, self.parse_state)
+    }
+}
+
+/// Convenience struct containing everything you need to highlight a file.
+///
+/// Use the `reader` to get the lines of the file and the `highlight_lines` to highlight them.
+/// See the [`new`] method docs for more information.
+///
+/// [`new`]: #method.new
+#[deprecated(
+    since = "6.0.0",
+    note = "Use `HighlightDriver` instead, which supports pluggable renderers and branch-point backtracking"
+)]
+pub struct HighlightFile<'a> {
+    pub reader: BufReader<File>,
+    #[allow(deprecated)]
+    pub highlight_lines: HighlightLines<'a>,
+}
+
+#[allow(deprecated)]
 impl<'a> HighlightFile<'a> {
-    /// Constructs a file reader and highlighting driver with default ANSI
-    /// output, auto-detecting the syntax from the file extension.
+    /// Constructs a file reader and a line highlighter to get you reading files as fast as possible.
+    ///
+    /// This auto-detects the syntax from the extension and constructs a [`HighlightLines`] with the
+    /// correct syntax and theme.
     pub fn new<P: AsRef<Path>>(
         path_obj: P,
-        ss: &'a SyntaxSet,
+        ss: &SyntaxSet,
         theme: &'a Theme,
     ) -> io::Result<HighlightFile<'a>> {
         let path: &Path = path_obj.as_ref();
@@ -630,45 +701,8 @@ impl<'a> HighlightFile<'a> {
 
         Ok(HighlightFile {
             reader: BufReader::new(f),
-            highlight_lines: HighlightLines::new(syntax, ss, theme),
+            highlight_lines: HighlightLines::new(syntax, theme),
         })
-    }
-}
-
-impl<'a, R: ScopeRenderer> HighlightFile<'a, R> {
-    /// Constructs a file reader and highlighting driver with a custom
-    /// [`ScopeRenderer`], auto-detecting the syntax from the file extension.
-    pub fn new_with_renderer<P: AsRef<Path>>(
-        path_obj: P,
-        ss: &'a SyntaxSet,
-        renderer: R,
-    ) -> io::Result<HighlightFile<'a, R>> {
-        let path: &Path = path_obj.as_ref();
-        let f = File::open(path)?;
-        let syntax = ss
-            .find_syntax_for_file(path)?
-            .unwrap_or_else(|| ss.find_syntax_plain_text());
-
-        Ok(HighlightFile {
-            reader: BufReader::new(f),
-            highlight_lines: HighlightLines::new_with_renderer(syntax, ss, renderer),
-        })
-    }
-}
-
-impl<'a, R: ScopeRenderer, W: io::Write> HighlightFile<'a, R, W> {
-    /// Parse and render a single line.
-    ///
-    /// Delegates to [`HighlightLines::highlight_line`].
-    pub fn highlight_line(&mut self, line: &str) -> Result<(), Error> {
-        self.highlight_lines.highlight_line(line)
-    }
-
-    /// Close any remaining open scopes and return the finished output sink.
-    ///
-    /// Delegates to [`HighlightLines::finalize`].
-    pub fn finalize(self) -> W {
-        self.highlight_lines.finalize()
     }
 }
 
@@ -785,6 +819,7 @@ mod tests {
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
+    #[allow(deprecated)]
     fn can_highlight_file() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
@@ -798,23 +833,43 @@ mod tests {
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
+    #[allow(deprecated)]
     fn can_highlight_file_line_by_line() {
         use std::io::BufRead;
         let ss = SyntaxSet::load_defaults_newlines();
         let ts = ThemeSet::load_defaults();
-        let mut hf = HighlightFile::new(
+        let mut highlighter = HighlightFile::new(
             "testdata/highlight_test.erb",
             &ss,
             &ts.themes["base16-ocean.dark"],
         )
         .unwrap();
         let mut line = String::new();
-        while hf.reader.read_line(&mut line).unwrap() > 0 {
-            hf.highlight_line(&line).unwrap();
+        while highlighter.reader.read_line(&mut line).unwrap() > 0 {
+            {
+                let regions: Vec<(crate::highlighting::Style, &str)> = highlighter
+                    .highlight_lines
+                    .highlight_line(&line, &ss)
+                    .unwrap();
+                assert!(!regions.is_empty());
+            }
             line.clear();
         }
-        let output = String::from_utf8(hf.finalize()).unwrap();
-        assert!(!output.is_empty());
+    }
+
+    #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
+    #[test]
+    #[allow(deprecated)]
+    fn legacy_highlight_lines_api() {
+        let ss = SyntaxSet::load_defaults_newlines();
+        let ts = ThemeSet::load_defaults();
+        let syntax = ss.find_syntax_by_extension("rs").unwrap();
+
+        let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+        let ranges = h
+            .highlight_line("pub struct Wow { hi: u64 }\n", &ss)
+            .unwrap();
+        assert!(!ranges.is_empty());
     }
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
@@ -824,7 +879,7 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
 
-        let mut h = HighlightLines::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
+        let mut h = HighlightDriver::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
         h.highlight_line("pub struct Wow { hi: u64 }\n").unwrap();
         let output = String::from_utf8(h.finalize()).unwrap();
         assert!(!output.is_empty());
@@ -838,7 +893,7 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
 
-        let mut h = HighlightLines::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
+        let mut h = HighlightDriver::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
         h.highlight_line("fn main() {}\n").unwrap();
         let output = String::from_utf8(h.finalize()).unwrap();
 
@@ -854,7 +909,7 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let theme = &ts.themes["base16-ocean.dark"];
         let mut highlighter =
-            HighlightLines::new(ss.find_syntax_by_extension("py").unwrap(), &ss, theme);
+            HighlightDriver::new(ss.find_syntax_by_extension("py").unwrap(), &ss, theme);
 
         let lines = ["\"\"\"\n", "def foo():\n", "\"\"\"\n"];
 
@@ -864,7 +919,7 @@ mod tests {
         let (parse_state, scope_stack) = (parse_state.clone(), scope_stack.clone());
         let first_output = String::from_utf8(highlighter.finalize()).unwrap();
 
-        let mut other_highlighter = HighlightLines::from_state(
+        let mut other_highlighter = HighlightDriver::from_state(
             parse_state,
             scope_stack,
             &ss,

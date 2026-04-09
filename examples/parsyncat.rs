@@ -2,7 +2,7 @@
 //! Prints the highlighted output to stdout.
 
 use rayon::prelude::*;
-use syntect::easy::HighlightLines;
+use syntect::easy::HighlightDriver;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 
@@ -47,7 +47,7 @@ fn main() {
                 .find_syntax_for_file(filename)
                 .unwrap()
                 .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
-            let mut h = HighlightLines::new(syntax, &syntax_set, theme);
+            let mut h = HighlightDriver::new(syntax, &syntax_set, theme);
 
             for line in contents {
                 h.highlight_line(line).unwrap();

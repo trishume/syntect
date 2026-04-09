@@ -27,42 +27,49 @@ pub fn syntect::dumps::from_reader<T: serde_core::de::DeserializeOwned, R: std::
 pub fn syntect::dumps::from_uncompressed_data<T: serde_core::de::DeserializeOwned>(v: &[u8]) -> core::result::Result<T, syntect::dumps::DumpError>
 pub fn syntect::dumps::from_uncompressed_dump_file<T: serde_core::de::DeserializeOwned, P: core::convert::AsRef<std::path::Path>>(path: P) -> core::result::Result<T, syntect::dumps::DumpError>
 pub mod syntect::easy
-pub struct syntect::easy::HighlightFile<'a, R: syntect::easy::ScopeRenderer, W: std::io::Write>
-pub syntect::easy::HighlightFile::highlight_lines: syntect::easy::HighlightLines<'a, R, W>
+pub struct syntect::easy::HighlightDriver<'a, R: syntect::easy::ScopeRenderer, W: std::io::Write>
+impl<'a, R: syntect::easy::ScopeRenderer, W: std::io::Write> syntect::easy::HighlightDriver<'a, R, W>
+pub fn syntect::easy::HighlightDriver<'a, R, W>::finalize(self) -> W
+pub fn syntect::easy::HighlightDriver<'a, R, W>::from_state(parse_state: syntect::parsing::ParseState, scope_stack: syntect::parsing::ScopeStack, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R, output: W) -> syntect::easy::HighlightDriver<'a, R, W>
+pub fn syntect::easy::HighlightDriver<'a, R, W>::highlight_line(&mut self, line: &str) -> core::result::Result<(), syntect::Error>
+pub fn syntect::easy::HighlightDriver<'a, R, W>::into_parts(self) -> (syntect::parsing::ParseState, syntect::parsing::ScopeStack, R, W)
+pub fn syntect::easy::HighlightDriver<'a, R, W>::new_with_renderer_and_output(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R, output: W) -> syntect::easy::HighlightDriver<'a, R, W>
+pub fn syntect::easy::HighlightDriver<'a, R, W>::renderer(&self) -> &R
+pub fn syntect::easy::HighlightDriver<'a, R, W>::renderer_mut(&mut self) -> &mut R
+pub fn syntect::easy::HighlightDriver<'a, R, W>::state(&self) -> (&syntect::parsing::ParseState, &syntect::parsing::ScopeStack)
+impl<'a, R: syntect::easy::ScopeRenderer> syntect::easy::HighlightDriver<'a, R>
+pub fn syntect::easy::HighlightDriver<'a, R>::new_with_renderer(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R) -> syntect::easy::HighlightDriver<'a, R>
+impl<'a> syntect::easy::HighlightDriver<'a>
+pub fn syntect::easy::HighlightDriver<'a>::new(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, theme: &'a syntect::highlighting::Theme) -> syntect::easy::HighlightDriver<'a>
+impl<'a, R, W> core::marker::Freeze for syntect::easy::HighlightDriver<'a, R, W> where W: core::marker::Freeze, R: core::marker::Freeze
+impl<'a, R, W> !core::marker::Send for syntect::easy::HighlightDriver<'a, R, W>
+impl<'a, R, W> !core::marker::Sync for syntect::easy::HighlightDriver<'a, R, W>
+impl<'a, R, W> core::marker::Unpin for syntect::easy::HighlightDriver<'a, R, W> where W: core::marker::Unpin, R: core::marker::Unpin
+impl<'a, R, W> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::HighlightDriver<'a, R, W> where W: core::panic::unwind_safe::RefUnwindSafe, R: core::panic::unwind_safe::RefUnwindSafe
+impl<'a, R, W> core::panic::unwind_safe::UnwindSafe for syntect::easy::HighlightDriver<'a, R, W> where W: core::panic::unwind_safe::UnwindSafe, R: core::panic::unwind_safe::UnwindSafe
+pub struct syntect::easy::HighlightFile<'a>
+pub syntect::easy::HighlightFile::highlight_lines: syntect::easy::HighlightLines<'a>
 pub syntect::easy::HighlightFile::reader: std::io::buffered::bufreader::BufReader<std::fs::File>
-impl<'a, R: syntect::easy::ScopeRenderer, W: std::io::Write> syntect::easy::HighlightFile<'a, R, W>
-pub fn syntect::easy::HighlightFile<'a, R, W>::finalize(self) -> W
-pub fn syntect::easy::HighlightFile<'a, R, W>::highlight_line(&mut self, line: &str) -> core::result::Result<(), syntect::Error>
-impl<'a, R: syntect::easy::ScopeRenderer> syntect::easy::HighlightFile<'a, R>
-pub fn syntect::easy::HighlightFile<'a, R>::new_with_renderer<P: core::convert::AsRef<std::path::Path>>(path_obj: P, ss: &'a syntect::parsing::SyntaxSet, renderer: R) -> std::io::error::Result<syntect::easy::HighlightFile<'a, R>>
 impl<'a> syntect::easy::HighlightFile<'a>
-pub fn syntect::easy::HighlightFile<'a>::new<P: core::convert::AsRef<std::path::Path>>(path_obj: P, ss: &'a syntect::parsing::SyntaxSet, theme: &'a syntect::highlighting::Theme) -> std::io::error::Result<syntect::easy::HighlightFile<'a>>
-impl<'a, R, W> core::marker::Freeze for syntect::easy::HighlightFile<'a, R, W> where W: core::marker::Freeze, R: core::marker::Freeze
-impl<'a, R, W> !core::marker::Send for syntect::easy::HighlightFile<'a, R, W>
-impl<'a, R, W> !core::marker::Sync for syntect::easy::HighlightFile<'a, R, W>
-impl<'a, R, W> core::marker::Unpin for syntect::easy::HighlightFile<'a, R, W> where W: core::marker::Unpin, R: core::marker::Unpin
-impl<'a, R, W> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::HighlightFile<'a, R, W> where W: core::panic::unwind_safe::RefUnwindSafe, R: core::panic::unwind_safe::RefUnwindSafe
-impl<'a, R, W> core::panic::unwind_safe::UnwindSafe for syntect::easy::HighlightFile<'a, R, W> where W: core::panic::unwind_safe::UnwindSafe, R: core::panic::unwind_safe::UnwindSafe
-pub struct syntect::easy::HighlightLines<'a, R: syntect::easy::ScopeRenderer, W: std::io::Write>
-impl<'a, R: syntect::easy::ScopeRenderer, W: std::io::Write> syntect::easy::HighlightLines<'a, R, W>
-pub fn syntect::easy::HighlightLines<'a, R, W>::finalize(self) -> W
-pub fn syntect::easy::HighlightLines<'a, R, W>::from_state(parse_state: syntect::parsing::ParseState, scope_stack: syntect::parsing::ScopeStack, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R, output: W) -> syntect::easy::HighlightLines<'a, R, W>
-pub fn syntect::easy::HighlightLines<'a, R, W>::highlight_line(&mut self, line: &str) -> core::result::Result<(), syntect::Error>
-pub fn syntect::easy::HighlightLines<'a, R, W>::into_parts(self) -> (syntect::parsing::ParseState, syntect::parsing::ScopeStack, R, W)
-pub fn syntect::easy::HighlightLines<'a, R, W>::new_with_renderer_and_output(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R, output: W) -> syntect::easy::HighlightLines<'a, R, W>
-pub fn syntect::easy::HighlightLines<'a, R, W>::renderer(&self) -> &R
-pub fn syntect::easy::HighlightLines<'a, R, W>::renderer_mut(&mut self) -> &mut R
-pub fn syntect::easy::HighlightLines<'a, R, W>::state(&self) -> (&syntect::parsing::ParseState, &syntect::parsing::ScopeStack)
-impl<'a, R: syntect::easy::ScopeRenderer> syntect::easy::HighlightLines<'a, R>
-pub fn syntect::easy::HighlightLines<'a, R>::new_with_renderer(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R) -> syntect::easy::HighlightLines<'a, R>
+pub fn syntect::easy::HighlightFile<'a>::new<P: core::convert::AsRef<std::path::Path>>(path_obj: P, ss: &syntect::parsing::SyntaxSet, theme: &'a syntect::highlighting::Theme) -> std::io::error::Result<syntect::easy::HighlightFile<'a>>
+impl<'a> core::marker::Freeze for syntect::easy::HighlightFile<'a>
+impl<'a> !core::marker::Send for syntect::easy::HighlightFile<'a>
+impl<'a> !core::marker::Sync for syntect::easy::HighlightFile<'a>
+impl<'a> core::marker::Unpin for syntect::easy::HighlightFile<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::HighlightFile<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::HighlightFile<'a>
+pub struct syntect::easy::HighlightLines<'a>
 impl<'a> syntect::easy::HighlightLines<'a>
-pub fn syntect::easy::HighlightLines<'a>::new(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, theme: &'a syntect::highlighting::Theme) -> syntect::easy::HighlightLines<'a>
-impl<'a, R, W> core::marker::Freeze for syntect::easy::HighlightLines<'a, R, W> where W: core::marker::Freeze, R: core::marker::Freeze
-impl<'a, R, W> !core::marker::Send for syntect::easy::HighlightLines<'a, R, W>
-impl<'a, R, W> !core::marker::Sync for syntect::easy::HighlightLines<'a, R, W>
-impl<'a, R, W> core::marker::Unpin for syntect::easy::HighlightLines<'a, R, W> where W: core::marker::Unpin, R: core::marker::Unpin
-impl<'a, R, W> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::HighlightLines<'a, R, W> where W: core::panic::unwind_safe::RefUnwindSafe, R: core::panic::unwind_safe::RefUnwindSafe
-impl<'a, R, W> core::panic::unwind_safe::UnwindSafe for syntect::easy::HighlightLines<'a, R, W> where W: core::panic::unwind_safe::UnwindSafe, R: core::panic::unwind_safe::UnwindSafe
+pub fn syntect::easy::HighlightLines<'a>::from_state(theme: &'a syntect::highlighting::Theme, highlight_state: syntect::highlighting::HighlightState, parse_state: syntect::parsing::ParseState) -> syntect::easy::HighlightLines<'a>
+pub fn syntect::easy::HighlightLines<'a>::highlight_line<'b>(&mut self, line: &'b str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<alloc::vec::Vec<(syntect::highlighting::Style, &'b str)>, syntect::Error>
+pub fn syntect::easy::HighlightLines<'a>::new(syntax: &syntect::parsing::SyntaxReference, theme: &'a syntect::highlighting::Theme) -> syntect::easy::HighlightLines<'a>
+pub fn syntect::easy::HighlightLines<'a>::state(self) -> (syntect::highlighting::HighlightState, syntect::parsing::ParseState)
+impl<'a> core::marker::Freeze for syntect::easy::HighlightLines<'a>
+impl<'a> !core::marker::Send for syntect::easy::HighlightLines<'a>
+impl<'a> !core::marker::Sync for syntect::easy::HighlightLines<'a>
+impl<'a> core::marker::Unpin for syntect::easy::HighlightLines<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::HighlightLines<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::HighlightLines<'a>
 pub struct syntect::easy::ScopeRangeIterator<'a>
 impl<'a> syntect::easy::ScopeRangeIterator<'a>
 pub fn syntect::easy::ScopeRangeIterator<'a>::new(ops: &'a [(usize, syntect::parsing::ScopeStackOp)], line: &'a str) -> syntect::easy::ScopeRangeIterator<'a>

@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 use syntect::dumps::{dump_to_file, from_dump_file};
-use syntect::easy::HighlightFile;
+use syntect::easy::HighlightDriver;
 use syntect::highlighting::{Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
@@ -110,14 +110,21 @@ fn main() {
                 println!("==> {} <==", src);
             }
 
-            let mut highlighter = HighlightFile::new(src, &ss, &theme).unwrap();
+            let path = std::path::Path::new(src);
+            let f = std::fs::File::open(path).unwrap();
+            let syntax = ss
+                .find_syntax_for_file(path)
+                .unwrap()
+                .unwrap_or_else(|| ss.find_syntax_plain_text());
+            let mut highlighter = HighlightDriver::new(syntax, &ss, &theme);
+            let mut reader = io::BufReader::new(f);
 
-            // We use read_line instead of `for line in highlighter.reader.lines()` because that
+            // We use read_line instead of `for line in reader.lines()` because that
             // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
             // See the documentation for `SyntaxSetBuilder::add_from_folder`.
             // It also allows re-using the line buffer, which should be a tiny bit faster.
             let mut line = String::new();
-            while highlighter.reader.read_line(&mut line).unwrap() > 0 {
+            while reader.read_line(&mut line).unwrap() > 0 {
                 if no_newlines && line.ends_with('\n') {
                     let _ = line.pop();
                 }
