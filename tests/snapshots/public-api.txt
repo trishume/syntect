@@ -28,6 +28,7 @@ pub fn syntect::dumps::from_uncompressed_data<T: serde_core::de::DeserializeOwne
 pub fn syntect::dumps::from_uncompressed_dump_file<T: serde_core::de::DeserializeOwned, P: core::convert::AsRef<std::path::Path>>(path: P) -> core::result::Result<T, syntect::dumps::DumpError>
 pub mod syntect::easy
 pub struct syntect::easy::HighlightFile<'a>
+pub syntect::easy::HighlightFile::highlight: syntect::easy::ThemeHighlight<'a>
 pub syntect::easy::HighlightFile::reader: std::io::buffered::bufreader::BufReader<std::fs::File>
 impl<'a> syntect::easy::HighlightFile<'a>
 pub fn syntect::easy::HighlightFile<'a>::highlight_line<'b>(&mut self, line: &'b str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<alloc::vec::Vec<(syntect::highlighting::Style, &'b str)>, syntect::Error>
@@ -84,6 +85,16 @@ impl<'a> core::marker::Sync for syntect::easy::ScopeRegionIterator<'a>
 impl<'a> core::marker::Unpin for syntect::easy::ScopeRegionIterator<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::ScopeRegionIterator<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::ScopeRegionIterator<'a>
+pub struct syntect::easy::ThemeHighlight<'a>
+impl<'a> syntect::easy::ThemeHighlight<'a>
+pub fn syntect::easy::ThemeHighlight<'a>::highlight_line<'b>(&mut self, line: &'b str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<alloc::vec::Vec<(syntect::highlighting::Style, &'b str)>, syntect::Error>
+pub fn syntect::easy::ThemeHighlight<'a>::new(syntax: &syntect::parsing::SyntaxReference, theme: &'a syntect::highlighting::Theme) -> syntect::easy::ThemeHighlight<'a>
+impl<'a> core::marker::Freeze for syntect::easy::ThemeHighlight<'a>
+impl<'a> !core::marker::Send for syntect::easy::ThemeHighlight<'a>
+impl<'a> !core::marker::Sync for syntect::easy::ThemeHighlight<'a>
+impl<'a> core::marker::Unpin for syntect::easy::ThemeHighlight<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::easy::ThemeHighlight<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::easy::ThemeHighlight<'a>
 pub struct syntect::easy::ThemeScopeRenderer<'a, F: core::ops::function::FnMut(syntect::highlighting::Style, &str, &mut alloc::string::String)>
 impl<'a, F: core::ops::function::FnMut(syntect::highlighting::Style, &str, &mut alloc::string::String)> syntect::easy::ThemeScopeRenderer<'a, F>
 pub fn syntect::easy::ThemeScopeRenderer<'a, F>::current_style(&self) -> syntect::highlighting::Style

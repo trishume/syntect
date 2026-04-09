@@ -1,5 +1,5 @@
 //! Rendering highlighted code as HTML+CSS
-use crate::easy::{render_line, HighlightFile, HighlightLines, ScopeRenderer};
+use crate::easy::{render_line, HighlightFile, HighlightLines, ScopeRenderer, ThemeHighlight};
 use crate::escape::Escape;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
 use crate::parsing::{
@@ -337,18 +337,11 @@ pub fn highlighted_html_for_string(
     syntax: &SyntaxReference,
     theme: &Theme,
 ) -> Result<String, Error> {
-    use crate::highlighting::{HighlightIterator, HighlightState, Highlighter};
-    use crate::parsing::ParseState;
-
-    let highlighter = Highlighter::new(theme);
-    let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
-    let mut parse_state = ParseState::new(syntax);
+    let mut highlight = ThemeHighlight::new(syntax, theme);
     let (mut output, bg) = start_highlighted_html_snippet(theme);
 
     for line in LinesWithEndings::from(s) {
-        let ops = parse_state.parse_line(line, ss)?.ops;
-        let regions: Vec<(Style, &str)> =
-            HighlightIterator::new(&mut highlight_state, &ops[..], line, &highlighter).collect();
+        let regions = highlight.highlight_line(line, ss)?;
         append_highlighted_html_for_styled_line(
             &regions[..],
             IncludeBackground::IfDifferent(bg),
@@ -450,21 +443,17 @@ fn write_css_color(s: &mut String, c: Color) {
 /// # Examples
 ///
 /// ```
-/// use syntect::parsing::{SyntaxSet, ParseState, ScopeStack};
-/// use syntect::highlighting::{ThemeSet, Style, Highlighter, HighlightState, HighlightIterator};
+/// use syntect::easy::ThemeHighlight;
+/// use syntect::highlighting::{ThemeSet, Style};
+/// use syntect::parsing::SyntaxSet;
 /// use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
 ///
 /// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
-/// let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
-/// let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
-/// let mut parse_state = ParseState::new(syntax);
-/// let ops = parse_state.parse_line("5", &ps).unwrap().ops;
-/// let regions: Vec<(Style, &str)> = HighlightIterator::new(
-///     &mut highlight_state, &ops[..], "5", &highlighter,
-/// ).collect();
+/// let mut h = ThemeHighlight::new(syntax, &ts.themes["base16-ocean.dark"]);
+/// let regions: Vec<(Style, &str)> = h.highlight_line("5", &ps).unwrap();
 /// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No).unwrap();
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```

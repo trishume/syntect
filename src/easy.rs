@@ -499,11 +499,82 @@ impl<F: FnMut(Style, &str, &mut String)> ScopeRenderer for ThemeScopeRenderer<'_
 }
 
 // ---------------------------------------------------------------------------
+// ThemeHighlight — theme-based line-by-line highlighting
+// ---------------------------------------------------------------------------
+
+/// Theme-based highlighter that parses lines and returns styled regions.
+///
+/// This is the high-level API for highlighting strings with a theme. For each
+/// line, it parses the syntax and resolves scopes to [`Style`] values using
+/// the theme's [`Highlighter`](crate::highlighting::Highlighter).
+///
+/// For file highlighting, see [`HighlightFile`] which wraps this with a
+/// buffered file reader.
+///
+/// # Example
+///
+/// ```
+/// use syntect::easy::ThemeHighlight;
+/// use syntect::highlighting::{ThemeSet, Style};
+/// use syntect::parsing::SyntaxSet;
+/// use syntect::util::LinesWithEndings;
+///
+/// let ss = SyntaxSet::load_defaults_newlines();
+/// let ts = ThemeSet::load_defaults();
+/// let syntax = ss.find_syntax_by_extension("rs").unwrap();
+///
+/// let mut h = ThemeHighlight::new(syntax, &ts.themes["base16-ocean.dark"]);
+/// for line in LinesWithEndings::from("fn main() {}\n") {
+///     let regions: Vec<(Style, &str)> = h.highlight_line(line, &ss).unwrap();
+///     assert!(!regions.is_empty());
+/// }
+/// ```
+pub struct ThemeHighlight<'a> {
+    highlighter: Highlighter<'a>,
+    parse_state: ParseState,
+    highlight_state: HighlightState,
+}
+
+impl<'a> ThemeHighlight<'a> {
+    /// Create a new theme-based highlighter for the given syntax and theme.
+    pub fn new(syntax: &SyntaxReference, theme: &'a Theme) -> ThemeHighlight<'a> {
+        let highlighter = Highlighter::new(theme);
+        let highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+        ThemeHighlight {
+            highlighter,
+            parse_state: ParseState::new(syntax),
+            highlight_state,
+        }
+    }
+
+    /// Highlights a single line, returning styled regions.
+    ///
+    /// Parses the line and resolves scopes to [`Style`] values using the theme.
+    pub fn highlight_line<'b>(
+        &mut self,
+        line: &'b str,
+        syntax_set: &SyntaxSet,
+    ) -> Result<Vec<(Style, &'b str)>, Error> {
+        let ops = self.parse_state.parse_line(line, syntax_set)?.ops;
+        let iter = HighlightIterator::new(
+            &mut self.highlight_state,
+            &ops[..],
+            line,
+            &self.highlighter,
+        );
+        Ok(iter.collect())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // HighlightFile — convenience for theme-based file highlighting
 // ---------------------------------------------------------------------------
 
 /// Convenience struct containing everything you need to highlight a file
 /// using theme-based highlighting.
+///
+/// Wraps a [`ThemeHighlight`] with a buffered file reader, auto-detecting the
+/// syntax from the file extension.
 ///
 /// # Example
 ///
@@ -534,9 +605,8 @@ impl<F: FnMut(Style, &str, &mut String)> ScopeRenderer for ThemeScopeRenderer<'_
 pub struct HighlightFile<'a> {
     /// The buffered file reader.
     pub reader: BufReader<File>,
-    highlighter: Highlighter<'a>,
-    parse_state: ParseState,
-    highlight_state: HighlightState,
+    /// The theme-based highlighter.
+    pub highlight: ThemeHighlight<'a>,
 }
 
 impl<'a> HighlightFile<'a> {
@@ -552,34 +622,22 @@ impl<'a> HighlightFile<'a> {
         let syntax = ss
             .find_syntax_for_file(path)?
             .unwrap_or_else(|| ss.find_syntax_plain_text());
-        let highlighter = Highlighter::new(theme);
-        let highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
 
         Ok(HighlightFile {
             reader: BufReader::new(f),
-            highlighter,
-            parse_state: ParseState::new(syntax),
-            highlight_state,
+            highlight: ThemeHighlight::new(syntax, theme),
         })
     }
 
     /// Highlights a single line, returning styled regions.
     ///
-    /// This uses the theme-based [`Highlighter`](crate::highlighting::Highlighter)
-    /// to resolve scopes to [`Style`] values.
+    /// This delegates to [`ThemeHighlight::highlight_line`].
     pub fn highlight_line<'b>(
         &mut self,
         line: &'b str,
         syntax_set: &SyntaxSet,
     ) -> Result<Vec<(Style, &'b str)>, Error> {
-        let ops = self.parse_state.parse_line(line, syntax_set)?.ops;
-        let iter = HighlightIterator::new(
-            &mut self.highlight_state,
-            &ops[..],
-            line,
-            &self.highlighter,
-        );
-        Ok(iter.collect())
+        self.highlight.highlight_line(line, syntax_set)
     }
 }
 
