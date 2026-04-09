@@ -409,7 +409,16 @@ impl ScopeRenderer for InlineHTMLScopeRenderer<'_> {
             return;
         }
         let style = self.current_style();
-        if self.last_written_style != Some(style) {
+        // Merge into the previous span when styles match exactly, or when
+        // the text is only whitespace and the background colours agree
+        // (matching the legacy `append_highlighted_html_for_styled_line` behaviour).
+        let can_merge = match self.last_written_style {
+            Some(prev) => {
+                style == prev || (style.background == prev.background && text.trim().is_empty())
+            }
+            None => false,
+        };
+        if !can_merge {
             if self.last_written_style.is_some() {
                 output.push_str("</span>");
             }
