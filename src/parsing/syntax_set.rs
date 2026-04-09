@@ -35,6 +35,10 @@ pub struct SyntaxSet {
     /// Stores the syntax index for every path that was loaded
     path_syntaxes: Vec<(String, usize)>,
 
+    /// Warnings collected during syntax loading and linking.
+    #[serde(skip_serializing, skip_deserializing, default)]
+    warnings: Vec<String>,
+
     #[serde(skip_serializing, skip_deserializing, default = "OnceLock::new")]
     first_line_cache: OnceLock<FirstLineCache>,
     /// Metadata, e.g. indent and commenting information.
@@ -91,6 +95,7 @@ pub(crate) struct LazyContexts {
 pub struct SyntaxSetBuilder {
     syntaxes: Vec<SyntaxDefinition>,
     path_syntaxes: Vec<(String, usize)>,
+    warnings: Vec<String>,
     #[cfg(feature = "metadata")]
     raw_metadata: LoadMetadata,
 
@@ -121,6 +126,7 @@ impl Clone for SyntaxSet {
         SyntaxSet {
             syntaxes: self.syntaxes.clone(),
             path_syntaxes: self.path_syntaxes.clone(),
+            warnings: self.warnings.clone(),
             // Will need to be re-initialized
             first_line_cache: OnceLock::new(),
             #[cfg(feature = "metadata")]
@@ -134,6 +140,7 @@ impl Default for SyntaxSet {
         SyntaxSet {
             syntaxes: Vec::new(),
             path_syntaxes: Vec::new(),
+            warnings: Vec::new(),
             first_line_cache: OnceLock::new(),
             #[cfg(feature = "metadata")]
             metadata: Metadata::default(),
@@ -160,6 +167,14 @@ impl SyntaxSet {
         let mut builder = SyntaxSetBuilder::new();
         builder.add_from_folder(folder, false)?;
         Ok(builder.build())
+    }
+
+    /// Warnings collected during syntax loading and linking.
+    ///
+    /// These include issues like skipped files, version mismatches, and
+    /// unresolved `extends` references.
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// The list of syntaxes in the set
@@ -386,6 +401,7 @@ impl SyntaxSet {
         SyntaxSetBuilder {
             syntaxes: builder_syntaxes,
             path_syntaxes,
+            warnings: Vec::new(),
             #[cfg(feature = "metadata")]
             existing_metadata: Some(metadata),
             #[cfg(feature = "metadata")]
@@ -498,6 +514,14 @@ impl SyntaxSetBuilder {
         &self.syntaxes[..]
     }
 
+    /// Warnings collected during syntax loading and linking.
+    ///
+    /// These include issues like skipped files, version mismatches, and
+    /// unresolved `extends` references that were previously printed to stderr.
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
+
     /// A rarely useful method that loads in a syntax with no highlighting rules for plain text
     ///
     /// Exists mainly for adding the plain text syntax to syntax set dumps, because for some reason
@@ -551,7 +575,8 @@ impl SyntaxSetBuilder {
                         self.syntaxes.push(syntax);
                     }
                     Err(err) => {
-                        eprintln!("Warning: skipping {:?}: {}", entry.path(), err);
+                        self.warnings
+                            .push(format!("skipping {:?}: {}", entry.path(), err));
                     }
                 }
             }
@@ -596,17 +621,21 @@ impl SyntaxSetBuilder {
         let SyntaxSetBuilder {
             syntaxes: syntax_definitions,
             path_syntaxes,
+            mut warnings,
         } = self;
         #[cfg(feature = "metadata")]
         let SyntaxSetBuilder {
             syntaxes: syntax_definitions,
             path_syntaxes,
+            mut warnings,
             raw_metadata,
             existing_metadata,
         } = self;
 
         // Extends resolution phase: merge parent contexts/variables into children
-        let syntax_definitions = Self::resolve_extends(syntax_definitions, &path_syntaxes);
+        let (syntax_definitions, extends_warnings) =
+            Self::resolve_extends(syntax_definitions, &path_syntaxes);
+        warnings.extend(extends_warnings);
 
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
         let mut all_context_ids = Vec::new();
@@ -737,6 +766,7 @@ impl SyntaxSetBuilder {
         SyntaxSet {
             syntaxes,
             path_syntaxes,
+            warnings,
             first_line_cache: OnceLock::new(),
             #[cfg(feature = "metadata")]
             metadata,
@@ -748,8 +778,8 @@ impl SyntaxSetBuilder {
     fn resolve_extends(
         syntax_definitions: Vec<SyntaxDefinition>,
         _path_syntaxes: &[(String, usize)],
-    ) -> Vec<SyntaxDefinition> {
-        syntax_definitions
+    ) -> (Vec<SyntaxDefinition>, Vec<String>) {
+        (syntax_definitions, Vec::new())
     }
 
     /// Resolve `extends` relationships between syntax definitions.
@@ -760,7 +790,9 @@ impl SyntaxSetBuilder {
     fn resolve_extends(
         mut syntax_definitions: Vec<SyntaxDefinition>,
         path_syntaxes: &[(String, usize)],
-    ) -> Vec<SyntaxDefinition> {
+    ) -> (Vec<SyntaxDefinition>, Vec<String>) {
+        let mut warnings = Vec::new();
+
         // Build lookup maps: name -> index and path-suffix -> index
         let mut name_to_index: HashMap<String, usize> = HashMap::new();
         for (i, sd) in syntax_definitions.iter().enumerate() {
@@ -776,7 +808,7 @@ impl SyntaxSetBuilder {
         }
 
         if unresolved.is_empty() {
-            return syntax_definitions;
+            return (syntax_definitions, warnings);
         }
 
         // Track root ancestor for each syntax (syntaxes with no extends are their own root)
@@ -830,11 +862,11 @@ impl SyntaxSetBuilder {
                     .iter()
                     .all(|&pi| syntax_definitions[pi].version == child_version);
                 if !version_ok {
-                    eprintln!(
-                        "Warning: syntax '{}' has a version mismatch with one or more parents; \
+                    warnings.push(format!(
+                        "syntax '{}' has a version mismatch with one or more parents; \
                          extends will not be applied",
                         syntax_definitions[child_idx].name
-                    );
+                    ));
                     unresolved.remove(&child_idx);
                     syntax_roots.insert(child_idx, child_idx);
                     made_progress = true;
@@ -848,11 +880,11 @@ impl SyntaxSetBuilder {
                     .collect();
                 let common_root = parent_roots[0];
                 if !parent_roots.iter().all(|&r| r == common_root) {
-                    eprintln!(
-                        "Warning: syntax '{}' extends parents that derive from different base syntaxes; \
+                    warnings.push(format!(
+                        "syntax '{}' extends parents that derive from different base syntaxes; \
                          extends will not be applied",
                         syntax_definitions[child_idx].name
-                    );
+                    ));
                     unresolved.remove(&child_idx);
                     syntax_roots.insert(child_idx, child_idx);
                     made_progress = true;
@@ -950,10 +982,10 @@ impl SyntaxSetBuilder {
                 }
 
                 if let Err(e) = crate::parsing::yaml_load::re_resolve_all_regexes(child, false) {
-                    eprintln!(
-                        "Warning: failed to re-resolve regexes for '{}' after extends: {}",
+                    warnings.push(format!(
+                        "failed to re-resolve regexes for '{}' after extends: {}",
                         child.name, e
-                    );
+                    ));
                 }
 
                 syntax_roots.insert(child_idx, common_root);
@@ -971,11 +1003,10 @@ impl SyntaxSetBuilder {
                 } else {
                     e.join(", ")
                 };
-                eprintln!(
-                    "Warning: syntax '{}' extends '{}' but parent was not found or has circular dependency",
-                    syntax.name,
-                    extends_str,
-                );
+                warnings.push(format!(
+                    "syntax '{}' extends '{}' but parent was not found or has circular dependency",
+                    syntax.name, extends_str,
+                ));
                 // Mark broken syntaxes as hidden so they won't be found by
                 // name/extension lookups and won't cause panics when used.
                 syntax.hidden = true;
@@ -1006,7 +1037,7 @@ impl SyntaxSetBuilder {
             }
         }
 
-        syntax_definitions
+        (syntax_definitions, warnings)
     }
 
     /// Find the index of a parent syntax by matching the extends path.

@@ -19,6 +19,7 @@
 - Implement `branch_point`/`branch`/`fail` backtracking with cross-line replay support [#614]
 - Implement native `embed`/`escape` support, fixing cases where embedded context patterns could consume escape characters first [#615]
 - Gracefully skip syntax files that fail to load and hide syntaxes with unresolved `extends` parents [#610]
+- Add `warnings()` API on `SyntaxSetBuilder` and `SyntaxSet` to replace `eprintln!` warnings with programmatic access [#619]
 
 ## [Version 5.3.0](https://github.com/trishume/syntect/compare/v5.2.0...v5.3.0)
 
