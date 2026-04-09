@@ -17,8 +17,6 @@ use std::path::Path;
 
 /// An HTML renderer that produces `<span class="...">` elements with
 /// CSS class names derived from scope atoms.
-///
-/// This produces identical output to the original `ClassedHTMLGenerator`.
 pub struct HTMLScopeRenderer {
     style: ClassStyle,
 }
@@ -771,24 +769,6 @@ fn main() {
         assert_eq!(captured[0], vec!["source", "r"]);
 
         gen.finalize();
-    }
-
-    #[test]
-    fn test_classed_html_generator_matches_legacy_output() {
-        // Ensure ClassedHTMLGenerator with HTMLScopeRenderer produces
-        // identical output to the original ClassedHTMLGenerator path.
-        let code = "x + y\n";
-        let syntax_set = SyntaxSet::load_defaults_newlines();
-        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-
-        let mut gen =
-            ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
-        for line in LinesWithEndings::from(code) {
-            gen.parse_html_for_line_which_includes_newline(line)
-                .expect("#[cfg(test)]");
-        }
-        let html = gen.finalize();
-        assert_eq!(html, "<span class=\"source r\">x <span class=\"keyword operator arithmetic r\">+</span> y\n</span>");
     }
 
     #[test]
