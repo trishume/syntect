@@ -8,7 +8,7 @@
 //!
 //! For theme-based highlighting (resolving scopes to colors),
 //! [`ThemedANSIScopeRenderer`] resolves scopes to styles via the
-//! [`Highlighter`](crate::highlighting::Highlighter) and emits ANSI 24-bit
+//! [`Highlighter`] and emits ANSI 24-bit
 //! color escape codes (the default renderer for [`HighlightLines`]).
 //!
 //! For HTML output, see [`crate::html::ClassedHTMLGenerator`],
@@ -472,7 +472,7 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightLines<'a, R, W> {
 // ---------------------------------------------------------------------------
 
 /// A [`ScopeRenderer`] that resolves styles from a theme via
-/// [`Highlighter`](crate::highlighting::Highlighter) and emits ANSI 24-bit
+/// [`Highlighter`] and emits ANSI 24-bit
 /// color escape codes.
 ///
 /// Adjacent text tokens with the same resolved [`Style`] are automatically

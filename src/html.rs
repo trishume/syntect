@@ -331,7 +331,7 @@ pub fn line_tokens_to_classed_spans(
 // ---------------------------------------------------------------------------
 
 /// A [`ScopeRenderer`] that resolves styles from a theme via
-/// [`Highlighter`](crate::highlighting::Highlighter) and produces
+/// [`Highlighter`] and produces
 /// `<span style="...">` elements with inline CSS.
 ///
 /// Adjacent text tokens with the same resolved [`Style`] are automatically
