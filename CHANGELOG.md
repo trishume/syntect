@@ -6,8 +6,6 @@
 
 - `HighlightLines` replaced with `HighlightLines<'a, R: ScopeRenderer, W: io::Write>` — the old theme-based `highlight_line` returning `Vec<(Style, &str)>` is removed [#627]
 - `HighlightFile` restructured: `highlight_lines` field removed, use `highlight_line()` method directly [#627]
-- `syntect::generator` module removed (`DocumentGenerator` merged into `HighlightLines`) [#627]
-- `syntect::renderer` module removed (`ScopeRenderer`, `render_line` moved to `syntect::easy`) [#627]
 - `SCOPE_REPO` removed from public API (was already deprecated since 5.3.0) [#627]
 - `ParseState::parse_line` now returns `Result<ParseLineOutput, ParsingError>` instead of a bare `Vec` [#614]
 - `MatchOperation` enum: new `Branch`, `Fail` [#614], and `Embed` [#615] variants
