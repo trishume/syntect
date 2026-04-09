@@ -1267,6 +1267,7 @@ pub fn syntect::parsing::SyntaxSet::into_builder(self) -> syntect::parsing::Synt
 pub fn syntect::parsing::SyntaxSet::load_from_folder<P: core::convert::AsRef<std::path::Path>>(folder: P) -> core::result::Result<syntect::parsing::SyntaxSet, syntect::LoadingError>
 pub fn syntect::parsing::SyntaxSet::new() -> syntect::parsing::SyntaxSet
 pub fn syntect::parsing::SyntaxSet::syntaxes(&self) -> &[syntect::parsing::SyntaxReference]
+pub fn syntect::parsing::SyntaxSet::warnings(&self) -> &[alloc::string::String]
 impl syntect::parsing::SyntaxSet
 pub fn syntect::parsing::SyntaxSet::load_defaults_newlines() -> syntect::parsing::SyntaxSet
 pub fn syntect::parsing::SyntaxSet::load_defaults_nonewlines() -> syntect::parsing::SyntaxSet
@@ -1294,6 +1295,7 @@ pub fn syntect::parsing::SyntaxSetBuilder::add_plain_text_syntax(&mut self)
 pub fn syntect::parsing::SyntaxSetBuilder::build(self) -> syntect::parsing::SyntaxSet
 pub fn syntect::parsing::SyntaxSetBuilder::new() -> syntect::parsing::SyntaxSetBuilder
 pub fn syntect::parsing::SyntaxSetBuilder::syntaxes(&self) -> &[syntect::parsing::syntax_definition::SyntaxDefinition]
+pub fn syntect::parsing::SyntaxSetBuilder::warnings(&self) -> &[alloc::string::String]
 impl core::clone::Clone for syntect::parsing::SyntaxSetBuilder
 pub fn syntect::parsing::SyntaxSetBuilder::clone(&self) -> syntect::parsing::SyntaxSetBuilder
 impl core::default::Default for syntect::parsing::SyntaxSetBuilder
