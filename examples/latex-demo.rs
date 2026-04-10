@@ -1,92 +1,49 @@
 use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
-use syntect::highlighting::{Highlighter, Style, ThemeSet};
-use syntect::io::{HighlightedWriter, ScopeRenderer};
-use syntect::parsing::{Scope, SyntaxSet};
+use syntect::highlighting::{Style, ThemeSet};
+use syntect::io::HighlightedWriter;
+use syntect::parsing::SyntaxSet;
+use syntect::rendering::{StyledOutput, ThemedRenderer};
 
-const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\\}")];
+/// A [`StyledOutput`] that produces LaTeX `\textcolor[RGB]{r,g,b}{...}`
+/// output. Wrap with [`ThemedRenderer`] (or pass to
+/// [`HighlightedWriter::with_themed`]) to plug it into a highlighter.
+struct LatexStyledOutput;
 
-/// A [`ScopeRenderer`] that resolves theme styles and produces LaTeX
-/// `\textcolor[RGB]{r,g,b}{...}` output.
-struct LatexScopeRenderer<'a> {
-    highlighter: Highlighter<'a>,
-    style_stack: Vec<Style>,
-    last_written_style: Option<Style>,
-}
-
-impl<'a> LatexScopeRenderer<'a> {
-    fn new(theme: &'a syntect::highlighting::Theme) -> Self {
-        let highlighter = Highlighter::new(theme);
-        let default_style = highlighter.style_for_stack(&[]);
-        Self {
-            highlighter,
-            style_stack: vec![default_style],
-            last_written_style: None,
-        }
+impl StyledOutput for LatexStyledOutput {
+    fn begin_style(&mut self, style: Style, output: &mut String) {
+        write!(
+            output,
+            "\\textcolor[RGB]{{{},{},{}}}{{",
+            style.foreground.r, style.foreground.g, style.foreground.b
+        )
+        .unwrap();
     }
 
-    fn current_style(&self) -> Style {
-        self.style_stack.last().copied().unwrap_or_default()
-    }
-}
-
-impl ScopeRenderer for LatexScopeRenderer<'_> {
-    fn begin_scope(
-        &mut self,
-        _atom_strs: &[&str],
-        _scope: Scope,
-        scope_stack: &[Scope],
-        _output: &mut String,
-    ) -> bool {
-        let style = self.highlighter.style_for_stack(scope_stack);
-        self.style_stack.push(style);
-        false
-    }
-
-    fn end_scope(&mut self, _output: &mut String) {
-        self.style_stack.pop();
+    fn end_style(&mut self, output: &mut String) {
+        output.push('}');
     }
 
     fn write_text(&mut self, text: &str, output: &mut String) {
-        if text.is_empty() {
-            return;
-        }
-        // Pass spaces through without wrapping in \textcolor and skip
-        // newlines (line breaks are emitted by end_line), matching the
-        // behavior of `as_latex_escaped`.
-        match text {
-            " " => {
-                output.push(' ');
-                return;
+        // Because we opt into `closes_at_line_boundaries`, the adapter
+        // guarantees `text` never contains '\n', so we only need to escape
+        // LaTeX's three special characters.
+        for ch in text.chars() {
+            match ch {
+                '\\' => output.push_str("\\\\"),
+                '{' => output.push_str("\\{"),
+                '}' => output.push_str("\\}"),
+                _ => output.push(ch),
             }
-            "\n" => return,
-            _ => {}
         }
-        let style = self.current_style();
-        if self.last_written_style != Some(style) {
-            if self.last_written_style.is_some() {
-                output.push('}');
-            }
-            write!(
-                output,
-                "\\textcolor[RGB]{{{},{},{}}}{{",
-                style.foreground.r, style.foreground.g, style.foreground.b
-            )
-            .unwrap();
-            self.last_written_style = Some(style);
-        }
-        let mut content = text.to_string();
-        for &(old, new) in LATEX_REPLACE.iter() {
-            content = content.replace(old, new);
-        }
-        output.push_str(&content);
     }
 
-    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], output: &mut String) {
-        if self.last_written_style.take().is_some() {
-            output.push('}');
-        }
-        output.push('\n');
+    fn closes_at_line_boundaries(&self) -> bool {
+        // fancyvrb's Verbatim environment processes lines independently, so
+        // a `\textcolor[RGB]{...}{` opened on one line and closed by `}` on
+        // the next would break. Force the adapter to close styles at line
+        // boundaries and emit '\n' between spans.
+        true
     }
 }
 
@@ -96,13 +53,13 @@ fn main() {
     let ts = ThemeSet::load_defaults();
 
     let syntax = ps.find_syntax_by_extension("rs").unwrap();
+    let renderer = ThemedRenderer::new(&ts.themes["InspiredGitHub"], LatexStyledOutput);
 
-    let out = std::io::stdout().lock();
-    let mut highlight = HighlightedWriter::new_with_renderer_and_output(
+    let mut highlight = HighlightedWriter::with_renderer_and_output(
         syntax,
         &ps,
-        LatexScopeRenderer::new(&ts.themes["InspiredGitHub"]),
-        out,
+        renderer,
+        std::io::stdout().lock(),
     );
     writeln!(highlight, "pub struct Wow {{ hi: u64 }}").unwrap();
     writeln!(highlight, "fn blah() -> u64 {{}}").unwrap();

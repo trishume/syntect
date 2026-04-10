@@ -17,16 +17,19 @@
 
 ### Improvements
 
-- Add `syntect::io` module [#627]
-- Add `HighlightedWriter<'a, R: ScopeRenderer, W: io::Write>` (`syntect::io`), a streaming highlighter that implements `std::io::Write` and drives parsing + pluggable rendering with branch-point backtracking support, generic over the output sink (`Vec<u8>` by default, or any `io::Write` for streaming) [#627]
-- Add `ScopeRenderer` trait (`syntect::io`) for pluggable scope-based rendering with pre-resolved atom strings [#627]
-- Add `render_line()` core rendering loop that drives a `ScopeRenderer` [#627]
-- Add `ThemedANSIScopeRenderer` (`syntect::io`) for theme-aware ANSI terminal rendering with style merging (adjacent same-style tokens coalesced) [#627]
-- Add `ClassedHTMLScopeRenderer` (`syntect::html`) for `<span class="...">` output with CSS classes derived from scope atoms [#627]
-- Add `ThemedHTMLScopeRenderer` (`syntect::html`) for theme-aware inline-styled `<span style="...">` HTML output with style merging [#627]
+- Add `syntect::io` module containing `HighlightedWriter<'a, R, W>`, a streaming highlighter that implements `std::io::Write` and handles branch-point backtracking, generic over the output sink (`Vec<u8>` by default, or any `io::Write` for streaming) [#627]
+- Add `syntect::rendering` module with a layered renderer trait design [#627]:
+    - `ScopeMarkup` — slim trait for stateless renderers that map scope structure 1:1 to output structure (e.g. CSS-classed HTML); receives only pre-resolved atom strings
+    - `StyledOutput` — small trait for theme-aware renderers (e.g. ANSI, inline-styled HTML, LaTeX `\textcolor`); only describes how to begin/end a styled span and write text
+    - `ThemedRenderer<O>` — adapter that turns any `StyledOutput` into a `ScopeRenderer` by managing the `Highlighter`, the style stack, and adjacent-token style merging
+    - `ScopeRenderer` — low-level engine trait kept as an escape hatch for advanced cases that need raw `Scope` / `&[Scope]` access
+    - `AnsiStyledOutput` — built-in 24-bit ANSI colour emitter (default for `HighlightedWriter::new`)
+- Add `HighlightedWriter::with_markup`, `with_themed`, `with_renderer`, `with_renderer_and_output` constructor families to pair the writer with each rendering layer [#627]
+- Add `ClassedHTMLScopeRenderer` (`syntect::html`) implementing `ScopeMarkup` for `<span class="...">` output with CSS classes derived from scope atoms [#627]
+- Add `HtmlStyledOutput` (`syntect::html`) implementing `StyledOutput` for theme-aware inline-styled `<span style="...">` HTML output with whitespace-merge optimization [#627]
 - Add `Scope::with_atom_strs()` closure-based API for reading atom strings without direct repository access [#627]
-- `ClassedHTMLGenerator` preserved as backward-compatible wrapper around `HighlightedWriter` [#627]
-- `highlighted_html_for_string`/`highlighted_html_for_file` reworked to use `HighlightedWriter` with `ThemedHTMLScopeRenderer` [#627]
+- `ClassedHTMLGenerator` preserved as backward-compatible wrapper around `HighlightedWriter` (now driven by `MarkupAdapter<ClassedHTMLScopeRenderer>`) [#627]
+- `highlighted_html_for_string`/`highlighted_html_for_file` reworked to use `HighlightedWriter::with_themed` and `HtmlStyledOutput` [#627]
 - Implement sublime-syntax Build 4075 features: `extends` (single and multiple inheritance), `meta_prepend`/`meta_append`, `apply_prototype`, `version: 2`, and `first_line_match` variable resolution [#610] [#612]
 - Implement `branch_point`/`branch`/`fail` backtracking with cross-line replay support [#614]
 - Implement native `embed`/`escape` support, fixing cases where embedded context patterns could consume escape characters first [#615]

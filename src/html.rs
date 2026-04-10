@@ -1,12 +1,12 @@
 //! Rendering highlighted code as HTML+CSS
 use crate::escape::Escape;
-use crate::highlighting::Highlighter;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
-use crate::io::{render_line, HighlightedWriter, ScopeRenderer};
+use crate::io::HighlightedWriter;
 use crate::parsing::{
     lock_global_scope_repo, Scope, ScopeRepository, ScopeStack, ScopeStackOp, SyntaxReference,
     SyntaxSet,
 };
+use crate::rendering::{render_line, MarkupAdapter, ScopeMarkup, StyledOutput};
 use crate::Error;
 use std::fmt::Write;
 
@@ -25,29 +25,19 @@ impl ClassedHTMLScopeRenderer {
     }
 }
 
-impl ScopeRenderer for ClassedHTMLScopeRenderer {
-    fn begin_scope(
-        &mut self,
-        atom_strs: &[&str],
-        _scope: Scope,
-        _scope_stack: &[Scope],
-        output: &mut String,
-    ) -> bool {
+impl ScopeMarkup for ClassedHTMLScopeRenderer {
+    fn begin_scope(&mut self, atom_strs: &[&str], output: &mut String) {
         output.push_str("<span class=\"");
         for (i, atom) in atom_strs.iter().enumerate() {
             if i != 0 {
                 output.push(' ');
             }
-            match self.style {
-                ClassStyle::Spaced => {}
-                ClassStyle::SpacedPrefixed { prefix } => {
-                    output.push_str(prefix);
-                }
+            if let ClassStyle::SpacedPrefixed { prefix } = self.style {
+                output.push_str(prefix);
             }
             output.push_str(atom);
         }
         output.push_str("\">");
-        true
     }
 
     fn end_scope(&mut self, output: &mut String) {
@@ -96,7 +86,7 @@ impl ScopeRenderer for ClassedHTMLScopeRenderer {
 /// let output_html = html_generator.finalize();
 /// ```
 pub struct ClassedHTMLGenerator<'a> {
-    inner: HighlightedWriter<'a, ClassedHTMLScopeRenderer>,
+    inner: HighlightedWriter<'a, MarkupAdapter<ClassedHTMLScopeRenderer>>,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
@@ -114,7 +104,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
         ClassedHTMLGenerator {
-            inner: HighlightedWriter::new_with_renderer(
+            inner: HighlightedWriter::with_markup(
                 syntax_reference,
                 syntax_set,
                 ClassedHTMLScopeRenderer::new(style),
@@ -329,50 +319,49 @@ pub fn line_tokens_to_classed_spans(
     style: ClassStyle,
     stack: &mut ScopeStack,
 ) -> Result<(String, isize), Error> {
-    let mut renderer = ClassedHTMLScopeRenderer::new(style);
+    let mut renderer = MarkupAdapter::new(ClassedHTMLScopeRenderer::new(style));
     render_line(line, ops, stack, &mut renderer, 0)
 }
 
 // ---------------------------------------------------------------------------
-// ThemedHTMLScopeRenderer — inline-styled HTML via ScopeRenderer
+// HtmlStyledOutput — inline-styled HTML via StyledOutput
 // ---------------------------------------------------------------------------
 
-/// A [`ScopeRenderer`] that resolves styles from a theme via
-/// [`Highlighter`] and produces
-/// `<span style="...">` elements with inline CSS.
+/// A [`StyledOutput`] that produces `<span style="...">` elements with
+/// inline CSS resolved from a theme.
+///
+/// Wrap with [`crate::rendering::ThemedRenderer`] to use it as a
+/// [`crate::rendering::ScopeRenderer`], or pass directly to
+/// [`HighlightedWriter::with_themed`].
+///
+/// `default_bg` is the background colour of the containing element; the
+/// `background-color` CSS property is only emitted when the token's
+/// background differs from this default.
 ///
 /// Adjacent text tokens with the same resolved [`Style`] are automatically
-/// merged into a single `<span>`. Text is HTML-escaped.
-pub struct ThemedHTMLScopeRenderer<'a> {
-    highlighter: Highlighter<'a>,
-    style_stack: Vec<Style>,
-    last_written_style: Option<Style>,
+/// merged into a single `<span>`. Whitespace-only tokens additionally fold
+/// into the previous span when their backgrounds match, even when the
+/// foreground differs — whitespace doesn't reveal a foreground difference.
+pub struct HtmlStyledOutput {
     default_bg: Color,
 }
 
-impl<'a> ThemedHTMLScopeRenderer<'a> {
-    /// Create a new inline HTML renderer.
+impl HtmlStyledOutput {
+    /// Create a new inline HTML emitter.
     ///
-    /// `default_bg` is the background color of the containing element;
-    /// the `background-color` CSS property is only emitted when the token's
-    /// background differs from this default.
-    pub fn new(theme: &'a Theme, default_bg: Color) -> Self {
-        let highlighter = Highlighter::new(theme);
-        let default_style = highlighter.style_for_stack(&[]);
-        Self {
-            highlighter,
-            style_stack: vec![default_style],
-            last_written_style: None,
-            default_bg,
-        }
+    /// `default_bg` is the background colour of the containing element.
+    pub fn new(default_bg: Color) -> Self {
+        Self { default_bg }
     }
 
-    /// Returns the currently active style.
-    pub fn current_style(&self) -> Style {
-        self.style_stack.last().copied().unwrap_or_default()
+    /// Returns the configured default background colour.
+    pub fn default_bg(&self) -> Color {
+        self.default_bg
     }
+}
 
-    fn open_span(&self, style: Style, output: &mut String) {
+impl StyledOutput for HtmlStyledOutput {
+    fn begin_style(&mut self, style: Style, output: &mut String) {
         output.push_str("<span style=\"");
         if style.background != self.default_bg {
             output.push_str("background-color:");
@@ -392,60 +381,28 @@ impl<'a> ThemedHTMLScopeRenderer<'a> {
         write_css_color(output, style.foreground);
         output.push_str(";\">");
     }
-}
 
-impl ScopeRenderer for ThemedHTMLScopeRenderer<'_> {
-    fn begin_scope(
-        &mut self,
-        _atom_strs: &[&str],
-        _scope: Scope,
-        scope_stack: &[Scope],
-        _output: &mut String,
-    ) -> bool {
-        let style = self.highlighter.style_for_stack(scope_stack);
-        self.style_stack.push(style);
-        false
-    }
-
-    fn end_scope(&mut self, _output: &mut String) {
-        self.style_stack.pop();
+    fn end_style(&mut self, output: &mut String) {
+        output.push_str("</span>");
     }
 
     fn write_text(&mut self, text: &str, output: &mut String) {
-        if text.is_empty() {
-            return;
-        }
-        let style = self.current_style();
-        // Merge into the previous span when styles match exactly, or when
-        // the text is only whitespace and the background colours agree
-        // (matching the legacy `append_highlighted_html_for_styled_line` behaviour).
-        let can_merge = match self.last_written_style {
-            Some(prev) => {
-                style == prev || (style.background == prev.background && text.trim().is_empty())
-            }
-            None => false,
-        };
-        if !can_merge {
-            if self.last_written_style.is_some() {
-                output.push_str("</span>");
-            }
-            self.open_span(style, output);
-            self.last_written_style = Some(style);
-        }
         write!(output, "{}", Escape(text)).expect("writing to a String never fails");
     }
 
-    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], output: &mut String) {
-        if self.last_written_style.take().is_some() {
-            output.push_str("</span>");
-        }
+    fn should_merge(&self, prev: Style, next: Style, text: &str) -> bool {
+        // Merge into the previous span when styles match exactly, or when
+        // the text is only whitespace and the background colours agree.
+        // Whitespace reveals no foreground difference, so collapsing the
+        // boundary is safe and produces smaller output.
+        prev == next || (prev.background == next.background && text.trim().is_empty())
     }
 }
 
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a string (which can contain many lines), using inline `style` attributes.
 ///
-/// Uses [`HighlightedWriter`] with [`ThemedHTMLScopeRenderer`] internally,
+/// Uses [`HighlightedWriter`] with [`HtmlStyledOutput`] internally,
 /// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
@@ -457,8 +414,7 @@ pub fn highlighted_html_for_string(
     theme: &Theme,
 ) -> Result<String, Error> {
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-    let renderer = ThemedHTMLScopeRenderer::new(theme, bg);
-    let mut w = HighlightedWriter::new_with_renderer(syntax, ss, renderer);
+    let mut w = HighlightedWriter::with_themed(syntax, ss, theme, HtmlStyledOutput::new(bg));
     w.write_all(s.as_bytes())?;
     output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
@@ -468,7 +424,7 @@ pub fn highlighted_html_for_string(
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a file, using inline `style` attributes.
 ///
-/// Uses [`HighlightedWriter`] with [`ThemedHTMLScopeRenderer`] internally,
+/// Uses [`HighlightedWriter`] with [`HtmlStyledOutput`] internally,
 /// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
@@ -485,8 +441,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
         .unwrap_or_else(|| ss.find_syntax_plain_text());
 
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-    let renderer = ThemedHTMLScopeRenderer::new(theme, bg);
-    let mut w = HighlightedWriter::new_with_renderer(syntax, ss, renderer);
+    let mut w = HighlightedWriter::with_themed(syntax, ss, theme, HtmlStyledOutput::new(bg));
     std::io::copy(&mut f, &mut w)?;
     output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
@@ -839,25 +794,18 @@ fn main() {
 
     #[test]
     fn test_custom_renderer_receives_atom_strs() {
-        use crate::io::ScopeRenderer;
+        use crate::rendering::ScopeMarkup;
         use std::cell::RefCell;
 
-        struct CapturingRenderer {
+        struct CapturingMarkup {
             captured: RefCell<Vec<Vec<String>>>,
         }
-        impl ScopeRenderer for CapturingRenderer {
-            fn begin_scope(
-                &mut self,
-                atom_strs: &[&str],
-                _scope: Scope,
-                _scope_stack: &[Scope],
-                output: &mut String,
-            ) -> bool {
+        impl ScopeMarkup for CapturingMarkup {
+            fn begin_scope(&mut self, atom_strs: &[&str], output: &mut String) {
                 self.captured
                     .borrow_mut()
                     .push(atom_strs.iter().map(|s| s.to_string()).collect());
                 output.push_str("<span>");
-                true
             }
             fn end_scope(&mut self, output: &mut String) {
                 output.push_str("</span>");
@@ -867,15 +815,14 @@ fn main() {
         let code = "x + y\n";
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
-        let renderer = CapturingRenderer {
+        let markup = CapturingMarkup {
             captured: RefCell::new(Vec::new()),
         };
-        let mut gen =
-            crate::io::HighlightedWriter::new_with_renderer(syntax, &syntax_set, renderer);
+        let mut gen = crate::io::HighlightedWriter::with_markup(syntax, &syntax_set, markup);
         gen.write_all(code.as_bytes()).expect("#[cfg(test)]");
 
         // The R syntax should produce "source r" as the first scope
-        let captured = gen.renderer().captured.borrow().clone();
+        let captured = gen.renderer().inner().captured.borrow().clone();
         assert!(!captured.is_empty());
         assert_eq!(captured[0], vec!["source", "r"]);
 

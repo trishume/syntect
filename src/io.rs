@@ -6,150 +6,31 @@
 //! into complete lines and forwarded to the highlighter; rendered output is
 //! streamed to the inner sink.
 //!
-//! For theme-based highlighting (resolving scopes to colors),
-//! [`ThemedANSIScopeRenderer`] resolves scopes to styles via
-//! [`Highlighter`] and emits ANSI 24-bit color escape codes (the default
-//! renderer for [`HighlightedWriter`]).
+//! Renderer plumbing — the [`ScopeRenderer`] / [`ScopeMarkup`] /
+//! [`StyledOutput`] traits, the [`ThemedRenderer`] adapter, and the built-in
+//! [`AnsiStyledOutput`] — lives in [`crate::rendering`]. Most users construct
+//! a `HighlightedWriter` via one of the convenience constructors below
+//! ([`new`], [`with_markup`], [`with_themed`]) without touching the
+//! lower-level types directly.
 //!
 //! For HTML output, see [`crate::html::ClassedHTMLGenerator`],
 //! [`crate::html::ClassedHTMLScopeRenderer`], and
-//! [`crate::html::ThemedHTMLScopeRenderer`].
+//! [`crate::html::HtmlStyledOutput`].
+//!
+//! [`new`]: HighlightedWriter::new
+//! [`with_markup`]: HighlightedWriter::with_markup
+//! [`with_themed`]: HighlightedWriter::with_themed
 
-use crate::highlighting::{Highlighter, Style, Theme};
+use crate::highlighting::Theme;
 use crate::parsing::{
-    lock_global_scope_repo, BasicScopeStackOp, ParseState, Scope, ScopeRepository, ScopeStack,
-    ScopeStackOp, SyntaxReference, SyntaxSet,
+    lock_global_scope_repo, ParseState, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet,
 };
-use crate::util::blend_fg_color;
+use crate::rendering::{
+    render_line, resolve_atom_strs, AnsiStyledOutput, MarkupAdapter, ScopeMarkup, ScopeRenderer,
+    StyledOutput, ThemedRenderer,
+};
 use crate::Error;
-use std::fmt::Write as FmtWrite;
 use std::io::{self, Write};
-
-// ---------------------------------------------------------------------------
-// ScopeRenderer trait and render_line
-// ---------------------------------------------------------------------------
-
-/// Trait for customizing the output of scope-based syntax highlighting.
-///
-/// The methods receive pre-resolved scope atom strings so implementations
-/// never need to interact with the scope repository directly.
-///
-/// See [`crate::html::ClassedHTMLScopeRenderer`] for an HTML implementation that produces
-/// `<span class="...">` elements.
-pub trait ScopeRenderer {
-    /// Called at the start of each line, before any tokens.
-    ///
-    /// `line_index` is 0-based. `scope_stack` is the current scope stack carried
-    /// over from the previous line.
-    fn begin_line(&mut self, _line_index: usize, _scope_stack: &[Scope], _output: &mut String) {}
-
-    /// Called at the end of each line, after all tokens.
-    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], _output: &mut String) {}
-
-    /// Called when a new scope is pushed onto the stack.
-    ///
-    /// - `atom_strs`: the individual atom strings of the scope
-    ///   (e.g., `["keyword", "operator", "arithmetic", "r"]` for `keyword.operator.arithmetic.r`)
-    /// - `scope`: the raw [`Scope`] value, for advanced matching
-    /// - `scope_stack`: the full stack after the push
-    /// - `output`: the buffer to write to
-    ///
-    /// Return `true` if output was written (meaning [`end_scope`] will be called
-    /// to close it), or `false` to skip this scope (no matching `end_scope` call).
-    ///
-    /// [`end_scope`]: ScopeRenderer::end_scope
-    fn begin_scope(
-        &mut self,
-        atom_strs: &[&str],
-        scope: Scope,
-        scope_stack: &[Scope],
-        output: &mut String,
-    ) -> bool;
-
-    /// Called when a scope is popped, only if the corresponding [`begin_scope`]
-    /// returned `true`.
-    ///
-    /// [`begin_scope`]: ScopeRenderer::begin_scope
-    fn end_scope(&mut self, output: &mut String);
-
-    /// Called for text content between scope operations.
-    ///
-    /// The default implementation passes text through unchanged.
-    fn write_text(&mut self, text: &str, output: &mut String) {
-        output.push_str(text);
-    }
-}
-
-/// Resolve atom strings for a scope from a locked repository.
-pub(crate) fn resolve_atom_strs<'a>(scope: Scope, repo: &'a ScopeRepository) -> Vec<&'a str> {
-    (0..scope.len() as usize)
-        .map(|i| repo.atom_str(scope.atom_at(i)))
-        .collect()
-}
-
-/// Core rendering loop that drives a [`ScopeRenderer`].
-///
-/// Locks the global scope repository once per line. Applies the transparent
-/// empty-scope optimization: if a scope push/pop pair contains no text, the
-/// push output is truncated rather than emitting an empty element.
-pub fn render_line<R: ScopeRenderer>(
-    line: &str,
-    ops: &[(usize, ScopeStackOp)],
-    stack: &mut ScopeStack,
-    renderer: &mut R,
-    line_index: usize,
-) -> Result<(String, isize), Error> {
-    let mut s = String::with_capacity(line.len() + ops.len() * 8);
-    let mut cur_index = 0;
-    let mut scope_delta = 0;
-
-    // Empty-scope optimization tracking
-    let mut scope_empty = false;
-    let mut scope_start = 0;
-
-    // begin_line is called without the repo lock held, so renderers can
-    // safely lock the repo themselves if needed.
-    renderer.begin_line(line_index, &stack.scopes, &mut s);
-
-    {
-        let repo = lock_global_scope_repo();
-        for &(i, ref op) in ops {
-            if i > cur_index {
-                scope_empty = false;
-                renderer.write_text(&line[cur_index..i], &mut s);
-                cur_index = i;
-            }
-            stack.apply_with_hook(op, |basic_op, stack_slice| match basic_op {
-                BasicScopeStackOp::Push(scope) => {
-                    let atom_strs = resolve_atom_strs(scope, &repo);
-                    scope_start = s.len();
-                    scope_empty = true;
-                    let wrote = renderer.begin_scope(&atom_strs, scope, stack_slice, &mut s);
-                    if wrote {
-                        scope_delta += 1;
-                    } else {
-                        scope_empty = false;
-                    }
-                }
-                BasicScopeStackOp::Pop => {
-                    if scope_empty {
-                        s.truncate(scope_start);
-                    } else {
-                        renderer.end_scope(&mut s);
-                    }
-                    scope_delta -= 1;
-                    scope_empty = false;
-                }
-            })?;
-        }
-        renderer.write_text(&line[cur_index..line.len()], &mut s);
-    }
-
-    // end_line is called without the repo lock held.
-    renderer.end_line(line_index, &stack.scopes, &mut s);
-
-    Ok((s, scope_delta))
-}
 
 // ---------------------------------------------------------------------------
 // HighlightedWriter — io::Write-based highlighting driver
@@ -159,7 +40,18 @@ pub fn render_line<R: ScopeRenderer>(
 ///
 /// Bytes written into the writer are accumulated until a newline is seen,
 /// at which point each complete line is parsed, rendered through the
-/// configured [`ScopeRenderer`], and forwarded to the inner [`Write`] sink.
+/// configured renderer, and forwarded to the inner [`Write`] sink.
+///
+/// Most users construct a `HighlightedWriter` via one of the convenience
+/// constructors:
+///
+/// - [`new`] — ANSI 24-bit colour output for a given [`Theme`] (the default).
+/// - [`with_markup`] — pass any [`ScopeMarkup`] (stateless markup renderer
+///   like CSS-classed HTML).
+/// - [`with_themed`] — pass any [`StyledOutput`] (theme-aware emitter like
+///   inline-styled HTML or LaTeX `\textcolor`).
+/// - [`with_renderer`] / [`with_renderer_and_output`] — low-level escape
+///   hatch that takes a raw [`ScopeRenderer`].
 ///
 /// When the parser is in speculative mode (inside a branch point),
 /// `HighlightedWriter` buffers rendered output internally and flushes it
@@ -171,6 +63,11 @@ pub fn render_line<R: ScopeRenderer>(
 /// called. [`finalize`] **must** be called to flush that trailing line and
 /// to close any open scopes.
 ///
+/// [`new`]: HighlightedWriter::new
+/// [`with_markup`]: HighlightedWriter::with_markup
+/// [`with_themed`]: HighlightedWriter::with_themed
+/// [`with_renderer`]: HighlightedWriter::with_renderer
+/// [`with_renderer_and_output`]: HighlightedWriter::with_renderer_and_output
 /// [`finalize`]: HighlightedWriter::finalize
 ///
 /// # Examples
@@ -183,23 +80,24 @@ pub fn render_line<R: ScopeRenderer>(
 /// use syntect::io::HighlightedWriter;
 /// use syntect::highlighting::ThemeSet;
 /// use syntect::parsing::SyntaxSet;
+/// use syntect::rendering::AnsiStyledOutput;
 ///
 /// let ss = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 /// let syntax = ss.find_syntax_by_extension("rs").unwrap();
 ///
 /// let mut f = std::fs::File::open("examples/parsyncat.rs").unwrap();
-/// let mut w = HighlightedWriter::new_with_renderer_and_output(
+/// let mut w = HighlightedWriter::with_themed(
 ///     syntax,
 ///     &ss,
-///     syntect::io::ThemedANSIScopeRenderer::new(&ts.themes["base16-ocean.dark"], false),
-///     io::stdout().lock(),
+///     &ts.themes["base16-ocean.dark"],
+///     AnsiStyledOutput::new(false),
 /// );
 /// io::copy(&mut f, &mut w).unwrap();
 /// w.finalize().unwrap();
 /// ```
 ///
-/// Highlighting an in-memory string:
+/// Highlighting an in-memory string with the convenience default:
 ///
 /// ```
 /// use std::io::Write;
@@ -219,7 +117,7 @@ pub fn render_line<R: ScopeRenderer>(
 #[must_use = "HighlightedWriter holds buffered output that requires `finalize()` to flush"]
 pub struct HighlightedWriter<
     'a,
-    R: ScopeRenderer = ThemedANSIScopeRenderer<'a>,
+    R: ScopeRenderer = ThemedRenderer<'a, AnsiStyledOutput>,
     W: io::Write = Vec<u8>,
 > {
     syntax_set: &'a SyntaxSet,
@@ -240,44 +138,105 @@ pub struct HighlightedWriter<
 impl<'a> HighlightedWriter<'a> {
     /// Create a new highlighting writer with default ANSI terminal output.
     ///
-    /// Uses [`ThemedANSIScopeRenderer`] to produce 24-bit color ANSI escape
-    /// codes. The output is collected into a `Vec<u8>` returned by [`finalize`].
+    /// Internally constructs `ThemedRenderer::new(theme, AnsiStyledOutput::new(false))`
+    /// to produce 24-bit colour ANSI escape codes. The output is collected
+    /// into a `Vec<u8>` returned by [`finalize`].
     ///
     /// [`finalize`]: HighlightedWriter::finalize
     pub fn new(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         theme: &'a Theme,
-    ) -> HighlightedWriter<'a> {
-        let renderer = ThemedANSIScopeRenderer::new(theme, false);
-        Self::new_with_renderer_and_output(syntax_reference, syntax_set, renderer, Vec::new())
+    ) -> HighlightedWriter<'a, ThemedRenderer<'a, AnsiStyledOutput>> {
+        Self::with_themed(
+            syntax_reference,
+            syntax_set,
+            theme,
+            AnsiStyledOutput::new(false),
+        )
+    }
+}
+
+impl<'a, M: ScopeMarkup> HighlightedWriter<'a, MarkupAdapter<M>> {
+    /// Create a new highlighting writer driven by a [`ScopeMarkup`]
+    /// implementation.
+    ///
+    /// The markup renderer is wrapped in an internal adapter that bridges it
+    /// to the engine's [`ScopeRenderer`] trait. Output is collected into a
+    /// `Vec<u8>` returned by [`finalize`].
+    ///
+    /// Use this for stateless renderers that map scope structure 1:1 to
+    /// output structure (e.g. [`crate::html::ClassedHTMLScopeRenderer`]).
+    ///
+    /// [`finalize`]: HighlightedWriter::finalize
+    pub fn with_markup(
+        syntax_reference: &'a SyntaxReference,
+        syntax_set: &'a SyntaxSet,
+        markup: M,
+    ) -> HighlightedWriter<'a, MarkupAdapter<M>> {
+        Self::with_renderer(syntax_reference, syntax_set, MarkupAdapter::new(markup))
+    }
+}
+
+impl<'a, O: StyledOutput> HighlightedWriter<'a, ThemedRenderer<'a, O>> {
+    /// Create a new highlighting writer driven by a [`StyledOutput`]
+    /// implementation paired with a [`Theme`].
+    ///
+    /// The styled output is wrapped in a [`ThemedRenderer`] that resolves
+    /// scopes to styles via the theme and merges adjacent same-styled
+    /// tokens. Output is collected into a `Vec<u8>` returned by [`finalize`].
+    ///
+    /// Use this for theme-aware renderers like [`AnsiStyledOutput`],
+    /// [`crate::html::HtmlStyledOutput`], or your own format.
+    ///
+    /// [`finalize`]: HighlightedWriter::finalize
+    pub fn with_themed(
+        syntax_reference: &'a SyntaxReference,
+        syntax_set: &'a SyntaxSet,
+        theme: &'a Theme,
+        output: O,
+    ) -> HighlightedWriter<'a, ThemedRenderer<'a, O>> {
+        Self::with_renderer(
+            syntax_reference,
+            syntax_set,
+            ThemedRenderer::new(theme, output),
+        )
     }
 }
 
 impl<'a, R: ScopeRenderer> HighlightedWriter<'a, R> {
     /// Create a new highlighting writer with a custom [`ScopeRenderer`].
     ///
+    /// This is the **low-level** escape hatch — most users want
+    /// [`with_markup`] (for stateless markup) or [`with_themed`] (for
+    /// theme-aware emitters) instead.
+    ///
     /// The output is collected into a `Vec<u8>` returned by [`finalize`].
-    /// Use [`new_with_renderer_and_output`] to stream to an arbitrary
+    /// Use [`with_renderer_and_output`] to stream to an arbitrary
     /// [`io::Write`] sink instead.
     ///
+    /// [`with_markup`]: HighlightedWriter::with_markup
+    /// [`with_themed`]: HighlightedWriter::with_themed
     /// [`finalize`]: HighlightedWriter::finalize
-    /// [`new_with_renderer_and_output`]: HighlightedWriter::new_with_renderer_and_output
-    pub fn new_with_renderer(
+    /// [`with_renderer_and_output`]: HighlightedWriter::with_renderer_and_output
+    pub fn with_renderer(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         renderer: R,
     ) -> HighlightedWriter<'a, R> {
-        Self::new_with_renderer_and_output(syntax_reference, syntax_set, renderer, Vec::new())
+        Self::with_renderer_and_output(syntax_reference, syntax_set, renderer, Vec::new())
     }
 }
 
 impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriter<'a, R, W> {
     /// Create a new highlighting writer that writes to the given output sink.
     ///
-    /// This allows streaming rendered output directly to a file, socket,
-    /// or buffered writer without intermediate allocation.
-    pub fn new_with_renderer_and_output(
+    /// This is the **low-level** escape hatch with explicit output sink —
+    /// most users should reach for [`with_markup`] or [`with_themed`].
+    ///
+    /// [`with_markup`]: HighlightedWriter::with_markup
+    /// [`with_themed`]: HighlightedWriter::with_themed
+    pub fn with_renderer_and_output(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         renderer: R,
@@ -508,116 +467,12 @@ impl<'a, R: ScopeRenderer, W: io::Write> Write for HighlightedWriter<'a, R, W> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// ThemedANSIScopeRenderer — theme-aware ANSI terminal rendering
-// ---------------------------------------------------------------------------
-
-/// A [`ScopeRenderer`] that resolves styles from a theme via
-/// [`Highlighter`] and emits ANSI 24-bit
-/// color escape codes.
-///
-/// Adjacent text tokens with the same resolved [`Style`] are automatically
-/// merged — ANSI escape codes are only emitted when the style actually changes.
-///
-/// Foreground alpha is blended against the background color. When `include_bg`
-/// is true, the background color escape code is also emitted.
-///
-/// # Example
-///
-/// ```
-/// use std::io::Write;
-/// use syntect::io::HighlightedWriter;
-/// use syntect::highlighting::ThemeSet;
-/// use syntect::parsing::SyntaxSet;
-///
-/// let ss = SyntaxSet::load_defaults_newlines();
-/// let ts = ThemeSet::load_defaults();
-/// let syntax = ss.find_syntax_by_extension("rs").unwrap();
-///
-/// // Default ANSI output via HighlightedWriter::new
-/// let mut w = HighlightedWriter::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
-/// w.write_all(b"fn main() {}\n").unwrap();
-/// let output = String::from_utf8(w.finalize().unwrap()).unwrap();
-/// assert!(output.contains("\x1b[38;2;"));
-/// ```
-pub struct ThemedANSIScopeRenderer<'a> {
-    highlighter: Highlighter<'a>,
-    style_stack: Vec<Style>,
-    last_written_style: Option<Style>,
-    include_bg: bool,
-}
-
-impl<'a> ThemedANSIScopeRenderer<'a> {
-    /// Create a new ANSI theme renderer.
-    ///
-    /// If `include_bg` is true, the background color escape code is emitted.
-    pub fn new(theme: &'a Theme, include_bg: bool) -> Self {
-        let highlighter = Highlighter::new(theme);
-        let default_style = highlighter.style_for_stack(&[]);
-        Self {
-            highlighter,
-            style_stack: vec![default_style],
-            last_written_style: None,
-            include_bg,
-        }
-    }
-
-    /// Returns the currently active style.
-    pub fn current_style(&self) -> Style {
-        self.style_stack.last().copied().unwrap_or_default()
-    }
-}
-
-impl ScopeRenderer for ThemedANSIScopeRenderer<'_> {
-    fn begin_scope(
-        &mut self,
-        _atom_strs: &[&str],
-        _scope: Scope,
-        scope_stack: &[Scope],
-        _output: &mut String,
-    ) -> bool {
-        let style = self.highlighter.style_for_stack(scope_stack);
-        self.style_stack.push(style);
-        false
-    }
-
-    fn end_scope(&mut self, _output: &mut String) {
-        self.style_stack.pop();
-    }
-
-    fn write_text(&mut self, text: &str, output: &mut String) {
-        if text.is_empty() {
-            return;
-        }
-        let style = self.current_style();
-        if self.last_written_style != Some(style) {
-            // ANSI: no close needed, next open overwrites the color.
-            if self.include_bg {
-                write!(
-                    output,
-                    "\x1b[48;2;{};{};{}m",
-                    style.background.r, style.background.g, style.background.b
-                )
-                .unwrap();
-            }
-            let fg = blend_fg_color(style.foreground, style.background);
-            write!(output, "\x1b[38;2;{};{};{}m", fg.r, fg.g, fg.b).unwrap();
-            self.last_written_style = Some(style);
-        }
-        output.push_str(text);
-    }
-
-    fn end_line(&mut self, _line_index: usize, _scope_stack: &[Scope], _output: &mut String) {
-        // Reset style tracking at line boundaries so the next line re-emits.
-        self.last_written_style = None;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::highlighting::ThemeSet;
     use crate::parsing::SyntaxSet;
+    use crate::rendering::{AnsiStyledOutput, ThemedRenderer};
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
@@ -703,7 +558,7 @@ mod tests {
             parse_state,
             scope_stack,
             &ss,
-            ThemedANSIScopeRenderer::new(theme, false),
+            ThemedRenderer::new(theme, AnsiStyledOutput::new(false)),
             Vec::new(),
         );
         other.write_all(lines[1].as_bytes()).unwrap();

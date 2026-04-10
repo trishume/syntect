@@ -4,8 +4,9 @@ use std::io::{self, Write};
 use std::path::Path;
 use syntect::dumps::{dump_to_file, from_dump_file};
 use syntect::highlighting::{Theme, ThemeSet};
-use syntect::io::{HighlightedWriter, ThemedANSIScopeRenderer};
+use syntect::io::HighlightedWriter;
 use syntect::parsing::SyntaxSet;
+use syntect::rendering::AnsiStyledOutput;
 
 fn load_theme(tm_file: &str, enable_caching: bool) -> Theme {
     let tm_path = Path::new(tm_file);
@@ -116,10 +117,13 @@ fn main() {
                 .find_syntax_for_file(path)
                 .unwrap()
                 .unwrap_or_else(|| ss.find_syntax_plain_text());
-            let renderer = ThemedANSIScopeRenderer::new(&theme, false);
             let out = io::stdout().lock();
-            let mut highlighter =
-                HighlightedWriter::new_with_renderer_and_output(syntax, &ss, renderer, out);
+            let mut highlighter = HighlightedWriter::with_renderer_and_output(
+                syntax,
+                &ss,
+                syntect::rendering::ThemedRenderer::new(&theme, AnsiStyledOutput::new(false)),
+                out,
+            );
 
             // HighlightedWriter implements `io::Write`, so we can stream the
             // file straight through it without managing line buffers.
