@@ -13,7 +13,7 @@
 //!
 //! For HTML output, see [`crate::html::ClassedHTMLGenerator`],
 //! [`crate::html::ClassedHTMLScopeRenderer`], and
-//! [`crate::html::InlineHTMLScopeRenderer`].
+//! [`crate::html::ThemedHTMLScopeRenderer`].
 
 use crate::highlighting::{Highlighter, Style, Theme};
 use crate::parsing::{

@@ -334,7 +334,7 @@ pub fn line_tokens_to_classed_spans(
 }
 
 // ---------------------------------------------------------------------------
-// InlineHTMLScopeRenderer — inline-styled HTML via ScopeRenderer
+// ThemedHTMLScopeRenderer — inline-styled HTML via ScopeRenderer
 // ---------------------------------------------------------------------------
 
 /// A [`ScopeRenderer`] that resolves styles from a theme via
@@ -343,14 +343,14 @@ pub fn line_tokens_to_classed_spans(
 ///
 /// Adjacent text tokens with the same resolved [`Style`] are automatically
 /// merged into a single `<span>`. Text is HTML-escaped.
-pub struct InlineHTMLScopeRenderer<'a> {
+pub struct ThemedHTMLScopeRenderer<'a> {
     highlighter: Highlighter<'a>,
     style_stack: Vec<Style>,
     last_written_style: Option<Style>,
     default_bg: Color,
 }
 
-impl<'a> InlineHTMLScopeRenderer<'a> {
+impl<'a> ThemedHTMLScopeRenderer<'a> {
     /// Create a new inline HTML renderer.
     ///
     /// `default_bg` is the background color of the containing element;
@@ -394,7 +394,7 @@ impl<'a> InlineHTMLScopeRenderer<'a> {
     }
 }
 
-impl ScopeRenderer for InlineHTMLScopeRenderer<'_> {
+impl ScopeRenderer for ThemedHTMLScopeRenderer<'_> {
     fn begin_scope(
         &mut self,
         _atom_strs: &[&str],
@@ -445,7 +445,7 @@ impl ScopeRenderer for InlineHTMLScopeRenderer<'_> {
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a string (which can contain many lines), using inline `style` attributes.
 ///
-/// Uses [`HighlightedWriter`] with [`InlineHTMLScopeRenderer`] internally,
+/// Uses [`HighlightedWriter`] with [`ThemedHTMLScopeRenderer`] internally,
 /// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
@@ -457,7 +457,7 @@ pub fn highlighted_html_for_string(
     theme: &Theme,
 ) -> Result<String, Error> {
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-    let renderer = InlineHTMLScopeRenderer::new(theme, bg);
+    let renderer = ThemedHTMLScopeRenderer::new(theme, bg);
     let mut w = HighlightedWriter::new_with_renderer(syntax, ss, renderer);
     w.write_all(s.as_bytes())?;
     output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));
@@ -468,7 +468,7 @@ pub fn highlighted_html_for_string(
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a file, using inline `style` attributes.
 ///
-/// Uses [`HighlightedWriter`] with [`InlineHTMLScopeRenderer`] internally,
+/// Uses [`HighlightedWriter`] with [`ThemedHTMLScopeRenderer`] internally,
 /// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
@@ -485,7 +485,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
         .unwrap_or_else(|| ss.find_syntax_plain_text());
 
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-    let renderer = InlineHTMLScopeRenderer::new(theme, bg);
+    let renderer = ThemedHTMLScopeRenderer::new(theme, bg);
     let mut w = HighlightedWriter::new_with_renderer(syntax, ss, renderer);
     std::io::copy(&mut f, &mut w)?;
     output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));

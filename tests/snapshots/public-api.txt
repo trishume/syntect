@@ -650,21 +650,21 @@ impl core::marker::Sync for syntect::html::ClassedHTMLScopeRenderer
 impl core::marker::Unpin for syntect::html::ClassedHTMLScopeRenderer
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::html::ClassedHTMLScopeRenderer
 impl core::panic::unwind_safe::UnwindSafe for syntect::html::ClassedHTMLScopeRenderer
-pub struct syntect::html::InlineHTMLScopeRenderer<'a>
-impl<'a> syntect::html::InlineHTMLScopeRenderer<'a>
-pub fn syntect::html::InlineHTMLScopeRenderer<'a>::current_style(&self) -> syntect::highlighting::Style
-pub fn syntect::html::InlineHTMLScopeRenderer<'a>::new(theme: &'a syntect::highlighting::Theme, default_bg: syntect::highlighting::Color) -> Self
-impl syntect::io::ScopeRenderer for syntect::html::InlineHTMLScopeRenderer<'_>
-pub fn syntect::html::InlineHTMLScopeRenderer<'_>::begin_scope(&mut self, _atom_strs: &[&str], _scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String) -> bool
-pub fn syntect::html::InlineHTMLScopeRenderer<'_>::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
-pub fn syntect::html::InlineHTMLScopeRenderer<'_>::end_scope(&mut self, _output: &mut alloc::string::String)
-pub fn syntect::html::InlineHTMLScopeRenderer<'_>::write_text(&mut self, text: &str, output: &mut alloc::string::String)
-impl<'a> core::marker::Freeze for syntect::html::InlineHTMLScopeRenderer<'a>
-impl<'a> core::marker::Send for syntect::html::InlineHTMLScopeRenderer<'a>
-impl<'a> core::marker::Sync for syntect::html::InlineHTMLScopeRenderer<'a>
-impl<'a> core::marker::Unpin for syntect::html::InlineHTMLScopeRenderer<'a>
-impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::html::InlineHTMLScopeRenderer<'a>
-impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::html::InlineHTMLScopeRenderer<'a>
+pub struct syntect::html::ThemedHTMLScopeRenderer<'a>
+impl<'a> syntect::html::ThemedHTMLScopeRenderer<'a>
+pub fn syntect::html::ThemedHTMLScopeRenderer<'a>::current_style(&self) -> syntect::highlighting::Style
+pub fn syntect::html::ThemedHTMLScopeRenderer<'a>::new(theme: &'a syntect::highlighting::Theme, default_bg: syntect::highlighting::Color) -> Self
+impl syntect::io::ScopeRenderer for syntect::html::ThemedHTMLScopeRenderer<'_>
+pub fn syntect::html::ThemedHTMLScopeRenderer<'_>::begin_scope(&mut self, _atom_strs: &[&str], _scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String) -> bool
+pub fn syntect::html::ThemedHTMLScopeRenderer<'_>::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
+pub fn syntect::html::ThemedHTMLScopeRenderer<'_>::end_scope(&mut self, _output: &mut alloc::string::String)
+pub fn syntect::html::ThemedHTMLScopeRenderer<'_>::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl<'a> core::marker::Freeze for syntect::html::ThemedHTMLScopeRenderer<'a>
+impl<'a> core::marker::Send for syntect::html::ThemedHTMLScopeRenderer<'a>
+impl<'a> core::marker::Sync for syntect::html::ThemedHTMLScopeRenderer<'a>
+impl<'a> core::marker::Unpin for syntect::html::ThemedHTMLScopeRenderer<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::html::ThemedHTMLScopeRenderer<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::html::ThemedHTMLScopeRenderer<'a>
 pub fn syntect::html::append_highlighted_html_for_styled_line(v: &[(syntect::highlighting::Style, &str)], bg: syntect::html::IncludeBackground, s: &mut alloc::string::String) -> core::result::Result<(), syntect::Error>
 pub fn syntect::html::css_for_theme(theme: &syntect::highlighting::Theme) -> alloc::string::String
 pub fn syntect::html::css_for_theme_with_class_style(theme: &syntect::highlighting::Theme, style: syntect::html::ClassStyle) -> core::result::Result<alloc::string::String, syntect::Error>
@@ -723,11 +723,11 @@ impl syntect::io::ScopeRenderer for syntect::html::ClassedHTMLScopeRenderer
 pub fn syntect::html::ClassedHTMLScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], _scope: syntect::parsing::Scope, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String) -> bool
 pub fn syntect::html::ClassedHTMLScopeRenderer::end_scope(&mut self, output: &mut alloc::string::String)
 pub fn syntect::html::ClassedHTMLScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::string::String)
-impl syntect::io::ScopeRenderer for syntect::html::InlineHTMLScopeRenderer<'_>
-pub fn syntect::html::InlineHTMLScopeRenderer<'_>::begin_scope(&mut self, _atom_strs: &[&str], _scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String) -> bool
-pub fn syntect::html::InlineHTMLScopeRenderer<'_>::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
-pub fn syntect::html::InlineHTMLScopeRenderer<'_>::end_scope(&mut self, _output: &mut alloc::string::String)
-pub fn syntect::html::InlineHTMLScopeRenderer<'_>::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl syntect::io::ScopeRenderer for syntect::html::ThemedHTMLScopeRenderer<'_>
+pub fn syntect::html::ThemedHTMLScopeRenderer<'_>::begin_scope(&mut self, _atom_strs: &[&str], _scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String) -> bool
+pub fn syntect::html::ThemedHTMLScopeRenderer<'_>::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
+pub fn syntect::html::ThemedHTMLScopeRenderer<'_>::end_scope(&mut self, _output: &mut alloc::string::String)
+pub fn syntect::html::ThemedHTMLScopeRenderer<'_>::write_text(&mut self, text: &str, output: &mut alloc::string::String)
 impl syntect::io::ScopeRenderer for syntect::io::ThemedANSIScopeRenderer<'_>
 pub fn syntect::io::ThemedANSIScopeRenderer<'_>::begin_scope(&mut self, _atom_strs: &[&str], _scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String) -> bool
 pub fn syntect::io::ThemedANSIScopeRenderer<'_>::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String)
