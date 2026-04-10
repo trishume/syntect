@@ -1,8 +1,8 @@
-use std::fmt::Write;
-use syntect::easy::{HighlightDriver, ScopeRenderer};
+use std::fmt::Write as FmtWrite;
+use std::io::Write as IoWrite;
 use syntect::highlighting::{Highlighter, Style, ThemeSet};
+use syntect::io::{HighlightedWriter, ScopeRenderer};
 use syntect::parsing::{Scope, SyntaxSet};
-use syntect::util::LinesWithEndings;
 
 const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\\}")];
 
@@ -98,17 +98,12 @@ fn main() {
     let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 
     let out = std::io::stdout().lock();
-    let mut highlight = HighlightDriver::new_with_renderer_and_output(
+    let mut highlight = HighlightedWriter::new_with_renderer_and_output(
         syntax,
         &ps,
         LatexScopeRenderer::new(&ts.themes["InspiredGitHub"]),
         out,
     );
-    for line in LinesWithEndings::from(s) {
-        println!("\n{:?}", line);
-        highlight.highlight_line(line).unwrap();
-        // Each line's rendered output is flushed; print a blank line after it.
-        println!();
-    }
-    let _ = highlight.finalize();
+    highlight.write_all(s.as_bytes()).unwrap();
+    let _ = highlight.finalize().unwrap();
 }

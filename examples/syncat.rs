@@ -1,10 +1,10 @@
 use getopts::Options;
 use std::borrow::Cow;
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::path::Path;
 use syntect::dumps::{dump_to_file, from_dump_file};
-use syntect::easy::{HighlightDriver, ThemedANSIScopeRenderer};
 use syntect::highlighting::{Theme, ThemeSet};
+use syntect::io::{HighlightedWriter, ThemedANSIScopeRenderer};
 use syntect::parsing::SyntaxSet;
 
 fn load_theme(tm_file: &str, enable_caching: bool) -> Theme {
@@ -111,7 +111,7 @@ fn main() {
             }
 
             let path = std::path::Path::new(src);
-            let f = std::fs::File::open(path).unwrap();
+            let mut f = std::fs::File::open(path).unwrap();
             let syntax = ss
                 .find_syntax_for_file(path)
                 .unwrap()
@@ -119,26 +119,13 @@ fn main() {
             let renderer = ThemedANSIScopeRenderer::new(&theme, false);
             let out = io::stdout().lock();
             let mut highlighter =
-                HighlightDriver::new_with_renderer_and_output(syntax, &ss, renderer, out);
-            let mut reader = io::BufReader::new(f);
+                HighlightedWriter::new_with_renderer_and_output(syntax, &ss, renderer, out);
 
-            // We use read_line instead of `for line in reader.lines()` because that
-            // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
-            // See the documentation for `SyntaxSetBuilder::add_from_folder`.
-            // It also allows re-using the line buffer, which should be a tiny bit faster.
-            let mut line = String::new();
-            while reader.read_line(&mut line).unwrap() > 0 {
-                if no_newlines && line.ends_with('\n') {
-                    let _ = line.pop();
-                }
-                highlighter.highlight_line(&line).unwrap();
-                line.clear();
-                if no_newlines {
-                    println!();
-                }
-            }
+            // HighlightedWriter implements `io::Write`, so we can stream the
+            // file straight through it without managing line buffers.
+            io::copy(&mut f, &mut highlighter).unwrap();
 
-            let mut out = highlighter.finalize();
+            let mut out = highlighter.finalize().unwrap();
 
             // Clear the formatting
             out.write_all(b"\x1b[0m\n").unwrap();

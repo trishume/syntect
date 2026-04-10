@@ -1,17 +1,16 @@
 //! Rendering highlighted code as HTML+CSS
-use crate::easy::{render_line, HighlightDriver, ScopeRenderer};
 use crate::escape::Escape;
 use crate::highlighting::Highlighter;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
+use crate::io::{render_line, HighlightedWriter, ScopeRenderer};
 use crate::parsing::{
     lock_global_scope_repo, Scope, ScopeRepository, ScopeStack, ScopeStackOp, SyntaxReference,
     SyntaxSet,
 };
-use crate::util::LinesWithEndings;
 use crate::Error;
 use std::fmt::Write;
 
-use std::io::BufRead;
+use std::io::Write as IoWrite;
 use std::path::Path;
 
 /// An HTML renderer that produces `<span class="...">` elements with
@@ -60,7 +59,7 @@ impl ScopeRenderer for ClassedHTMLScopeRenderer {
     }
 }
 
-/// HTML-specific convenience wrapper around [`HighlightDriver`].
+/// HTML-specific convenience wrapper around [`HighlightedWriter`].
 ///
 /// Uses [`ClassedHTMLScopeRenderer`] to produce `<span class="...">` output with
 /// CSS class names derived from scope atoms.
@@ -97,7 +96,7 @@ impl ScopeRenderer for ClassedHTMLScopeRenderer {
 /// let output_html = html_generator.finalize();
 /// ```
 pub struct ClassedHTMLGenerator<'a> {
-    inner: HighlightDriver<'a, ClassedHTMLScopeRenderer>,
+    inner: HighlightedWriter<'a, ClassedHTMLScopeRenderer>,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
@@ -115,7 +114,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
         ClassedHTMLGenerator {
-            inner: HighlightDriver::new_with_renderer(
+            inner: HighlightedWriter::new_with_renderer(
                 syntax_reference,
                 syntax_set,
                 ClassedHTMLScopeRenderer::new(style),
@@ -128,7 +127,8 @@ impl<'a> ClassedHTMLGenerator<'a> {
     /// *Note:* This function requires `line` to include a newline at the end and
     /// also use of the `load_defaults_newlines` version of the syntaxes.
     pub fn parse_html_for_line_which_includes_newline(&mut self, line: &str) -> Result<(), Error> {
-        self.inner.highlight_line(line)
+        self.inner.write_all(line.as_bytes())?;
+        Ok(())
     }
 
     /// Parse the line of code and update the internal HTML buffer with tagged HTML
@@ -145,15 +145,22 @@ impl<'a> ClassedHTMLGenerator<'a> {
         note = "Please use `parse_html_for_line_which_includes_newline` instead"
     )]
     pub fn parse_html_for_line(&mut self, line: &str) {
-        self.parse_html_for_line_which_includes_newline(line)
+        // The deprecated quirk: append a newline so the renderer treats the
+        // input as a complete line and the output ends with `\n`.
+        let mut owned = String::with_capacity(line.len() + 1);
+        owned.push_str(line);
+        owned.push('\n');
+        self.inner
+            .write_all(owned.as_bytes())
             .expect("Please use `parse_html_for_line_which_includes_newline` instead");
-        // retain newline — this is a quirk of the deprecated API
-        self.inner.push_output('\n');
     }
 
     /// Close any remaining open `<span>` tags and return the finished HTML.
     pub fn finalize(self) -> String {
-        let bytes = self.inner.finalize();
+        let bytes = self
+            .inner
+            .finalize()
+            .expect("renderer produces valid UTF-8");
         String::from_utf8(bytes).expect("renderer produces valid UTF-8")
     }
 }
@@ -438,7 +445,7 @@ impl ScopeRenderer for InlineHTMLScopeRenderer<'_> {
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a string (which can contain many lines), using inline `style` attributes.
 ///
-/// Uses [`HighlightDriver`] with [`InlineHTMLScopeRenderer`] internally,
+/// Uses [`HighlightedWriter`] with [`InlineHTMLScopeRenderer`] internally,
 /// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
@@ -451,11 +458,9 @@ pub fn highlighted_html_for_string(
 ) -> Result<String, Error> {
     let (mut output, bg) = start_highlighted_html_snippet(theme);
     let renderer = InlineHTMLScopeRenderer::new(theme, bg);
-    let mut h = HighlightDriver::new_with_renderer(syntax, ss, renderer);
-    for line in LinesWithEndings::from(s) {
-        h.highlight_line(line)?;
-    }
-    output.push_str(&String::from_utf8(h.finalize()).expect("renderer produces valid UTF-8"));
+    let mut w = HighlightedWriter::new_with_renderer(syntax, ss, renderer);
+    w.write_all(s.as_bytes())?;
+    output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
     Ok(output)
 }
@@ -463,7 +468,7 @@ pub fn highlighted_html_for_string(
 /// Convenience method that creates a full highlighted HTML snippet for
 /// a file, using inline `style` attributes.
 ///
-/// Uses [`HighlightDriver`] with [`InlineHTMLScopeRenderer`] internally,
+/// Uses [`HighlightedWriter`] with [`InlineHTMLScopeRenderer`] internally,
 /// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
@@ -474,21 +479,16 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     theme: &Theme,
 ) -> Result<String, Error> {
     let path_ref: &Path = path.as_ref();
-    let f = std::fs::File::open(path_ref)?;
+    let mut f = std::fs::File::open(path_ref)?;
     let syntax = ss
         .find_syntax_for_file(path_ref)?
         .unwrap_or_else(|| ss.find_syntax_plain_text());
 
     let (mut output, bg) = start_highlighted_html_snippet(theme);
     let renderer = InlineHTMLScopeRenderer::new(theme, bg);
-    let mut h = HighlightDriver::new_with_renderer(syntax, ss, renderer);
-    let mut reader = std::io::BufReader::new(f);
-    let mut line = String::new();
-    while reader.read_line(&mut line)? > 0 {
-        h.highlight_line(&line)?;
-        line.clear();
-    }
-    output.push_str(&String::from_utf8(h.finalize()).expect("renderer produces valid UTF-8"));
+    let mut w = HighlightedWriter::new_with_renderer(syntax, ss, renderer);
+    std::io::copy(&mut f, &mut w)?;
+    output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
     Ok(output)
 }
@@ -839,7 +839,7 @@ fn main() {
 
     #[test]
     fn test_custom_renderer_receives_atom_strs() {
-        use crate::easy::ScopeRenderer;
+        use crate::io::ScopeRenderer;
         use std::cell::RefCell;
 
         struct CapturingRenderer {
@@ -871,17 +871,15 @@ fn main() {
             captured: RefCell::new(Vec::new()),
         };
         let mut gen =
-            crate::easy::HighlightDriver::new_with_renderer(syntax, &syntax_set, renderer);
-        for line in LinesWithEndings::from(code) {
-            gen.highlight_line(line).expect("#[cfg(test)]");
-        }
+            crate::io::HighlightedWriter::new_with_renderer(syntax, &syntax_set, renderer);
+        gen.write_all(code.as_bytes()).expect("#[cfg(test)]");
 
         // The R syntax should produce "source r" as the first scope
         let captured = gen.renderer().captured.borrow().clone();
         assert!(!captured.is_empty());
         assert_eq!(captured[0], vec!["source", "r"]);
 
-        gen.finalize();
+        gen.finalize().expect("#[cfg(test)]");
     }
 
     #[test]
