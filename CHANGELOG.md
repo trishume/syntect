@@ -33,6 +33,15 @@
 - Gracefully skip syntax files that fail to load and hide syntaxes with unresolved `extends` parents [#610]
 - Add `warnings()` API on `SyntaxSetBuilder` and `SyntaxSet` to replace `eprintln!` warnings with programmatic access [#619]
 
+[#512]: https://github.com/trishume/syntect/pull/512
+[#576]: https://github.com/trishume/syntect/pull/576
+[#610]: https://github.com/trishume/syntect/pull/610
+[#612]: https://github.com/trishume/syntect/pull/612
+[#614]: https://github.com/trishume/syntect/pull/614
+[#615]: https://github.com/trishume/syntect/pull/615
+[#619]: https://github.com/trishume/syntect/pull/619
+[#627]: https://github.com/trishume/syntect/pull/627
+
 ## [Version 5.3.0](https://github.com/trishume/syntect/compare/v5.2.0...v5.3.0)
 
 ### Improvements
@@ -107,7 +116,6 @@
 [#596]: https://github.com/trishume/syntect/pull/596
 [#597]: https://github.com/trishume/syntect/pull/597
 [#598]: https://github.com/trishume/syntect/pull/598
-[#627]: https://github.com/trishume/syntect/pull/627
 
 ## [Version 5.2.0](https://github.com/trishume/syntect/compare/v5.1.0...v5.2.0) (2024-02-07)
 
