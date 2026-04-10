@@ -1424,7 +1424,6 @@ pub fn syntect::rendering::ThemedRenderer<'a, O>::end_scope(&mut self, _output: 
 pub fn syntect::rendering::ThemedRenderer<'a, O>::write_text(&mut self, text: &str, output: &mut alloc::string::String)
 pub trait syntect::rendering::StyledOutput
 pub fn syntect::rendering::StyledOutput::begin_style(&mut self, style: syntect::highlighting::Style, output: &mut alloc::string::String)
-pub fn syntect::rendering::StyledOutput::closes_at_line_boundaries(&self) -> bool
 pub fn syntect::rendering::StyledOutput::end_style(&mut self, output: &mut alloc::string::String)
 pub fn syntect::rendering::StyledOutput::should_merge(&self, prev: syntect::highlighting::Style, next: syntect::highlighting::Style, _text: &str) -> bool
 pub fn syntect::rendering::StyledOutput::write_text(&mut self, text: &str, output: &mut alloc::string::String)

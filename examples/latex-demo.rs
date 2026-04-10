@@ -25,9 +25,10 @@ impl StyledOutput for LatexStyledOutput {
     }
 
     fn write_text(&mut self, text: &str, output: &mut String) {
-        // Because we opt into `closes_at_line_boundaries`, the adapter
-        // guarantees `text` never contains '\n', so we only need to escape
-        // LaTeX's three special characters.
+        // The `ThemedRenderer` adapter guarantees `text` never contains
+        // '\n' (line breaks are split out and emitted between styled
+        // spans), so we only need to escape LaTeX's three special
+        // characters.
         for ch in text.chars() {
             match ch {
                 '\\' => output.push_str("\\\\"),
@@ -36,14 +37,6 @@ impl StyledOutput for LatexStyledOutput {
                 _ => output.push(ch),
             }
         }
-    }
-
-    fn closes_at_line_boundaries(&self) -> bool {
-        // fancyvrb's Verbatim environment processes lines independently, so
-        // a `\textcolor[RGB]{...}{` opened on one line and closed by `}` on
-        // the next would break. Force the adapter to close styles at line
-        // boundaries and emit '\n' between spans.
-        true
     }
 }
 

@@ -378,33 +378,18 @@ pub trait StyledOutput {
     /// Write literal text inside the currently-open styled span. Implementors
     /// handle any format-specific escaping here.
     ///
-    /// By default the text passed in may contain newlines, which are emitted
-    /// verbatim inside the styled span. Override
-    /// [`closes_at_line_boundaries`] to instead have the [`ThemedRenderer`]
-    /// adapter split text on newline boundaries, close the styled span, and
-    /// write the `'\n'` literal to `output` between spans.
-    ///
-    /// [`closes_at_line_boundaries`]: StyledOutput::closes_at_line_boundaries
-    fn write_text(&mut self, text: &str, output: &mut String);
-
-    /// Whether styled spans must be closed at line boundaries.
-    ///
-    /// When `true`, the [`ThemedRenderer`] adapter splits text on `'\n'`:
-    /// it emits the pre-newline portion under the current style, calls
-    /// [`end_style`] to close the span, writes the `'\n'` literal directly
-    /// to `output`, then resumes with the post-newline portion. This keeps
-    /// every styled span self-contained on a single line — necessary for
+    /// **Invariant:** `text` never contains a newline (`\n`). The
+    /// [`ThemedRenderer`] adapter always splits text on newline boundaries,
+    /// emits the pre-newline portion under the current style, closes the
+    /// styled span via [`end_style`], writes the `'\n'` literal directly to
+    /// `output`, and then resumes with the post-newline portion. This keeps
+    /// every styled span self-contained on a single line — required for
     /// nested-group formats like LaTeX `\textcolor{...}{...}` where a
     /// newline inside the group breaks line-oriented tooling (e.g.
-    /// fancyvrb's `Verbatim` environment).
-    ///
-    /// The default is `false`, which is correct for ANSI escape codes and
-    /// HTML `<span>` (whitespace inside a span is harmless in both formats).
+    /// fancyvrb's `Verbatim` environment) and harmless for ANSI / HTML.
     ///
     /// [`end_style`]: StyledOutput::end_style
-    fn closes_at_line_boundaries(&self) -> bool {
-        false
-    }
+    fn write_text(&mut self, text: &str, output: &mut String);
 
     /// Whether a text token should be folded into the previously-emitted
     /// styled span without closing and reopening it. Default: only when the
@@ -539,14 +524,12 @@ impl<'a, O: StyledOutput> ScopeRenderer for ThemedRenderer<'a, O> {
         if text.is_empty() {
             return;
         }
-        if !self.output.closes_at_line_boundaries() {
-            // Default path: pass text through verbatim, including newlines.
-            self.write_text_chunk(text, output);
-            return;
-        }
-        // Opt-in: split on '\n' so styled spans never straddle a line
-        // boundary. Emit the pre-newline portion under the current style,
-        // close the span, write '\n' literally, then resume.
+        // Split on '\n' so styled spans never straddle a line boundary.
+        // Emit the pre-newline portion under the current style, close the
+        // span, write '\n' literally to `output`, then resume with the
+        // post-newline portion. This keeps formats with nested groups
+        // (LaTeX `\textcolor{...}{...}`, HTML `<span>...</span>`)
+        // well-formed and is harmless for ANSI escape codes.
         let mut rest = text;
         while let Some(nl) = rest.find('\n') {
             self.write_text_chunk(&rest[..nl], output);
