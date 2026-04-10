@@ -17,7 +17,7 @@
 
 ### Improvements
 
-- Add `syntect::io` module containing `HighlightedWriter<'a, R, W>`, a streaming highlighter that implements `std::io::Write` and handles branch-point backtracking, generic over the output sink (`Vec<u8>` by default, or any `io::Write` for streaming). Constructed via the new `HighlightedWriterBuilder`: pick a renderer category with `HighlightedWriter::from_themed` / `from_markup` / `from_renderer`, then chain `.with_output(...)` / `.with_state(...)` and finish with `.build()` [#627]
+- Add `syntect::io` module containing `HighlightedWriter<'a, R, W>`, a streaming highlighter that implements `std::io::Write` and handles branch-point backtracking, generic over the output sink (`Vec<u8>` by default, or any `io::Write` for streaming). Constructed via the new `HighlightedWriterBuilder`: pick a renderer category with `HighlightedWriter::from_themed` / `from_markup` / `from_renderer`, then chain `.with_output(...)` / `.with_state(...)` and finish with `.build()`. End-of-input cleanup runs implicitly via `Drop` on a best-effort basis; call `into_inner` explicitly when you need the inner sink back or want errors propagated [#627]
 - Add `syntect::rendering` module with a layered renderer trait design [#627]:
     - `ScopeMarkup` — slim trait for stateless renderers that map scope structure 1:1 to output structure (e.g. CSS-classed HTML); receives only pre-resolved atom strings
     - `StyledOutput` — small trait for theme-aware renderers (e.g. ANSI, inline-styled HTML, LaTeX `\textcolor`); only describes how to begin/end a styled span and write text

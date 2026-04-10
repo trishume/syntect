@@ -17,5 +17,5 @@ pub fn do_highlight(
     for line in s.lines() {
         writeln!(highlight, "{}", line).unwrap();
     }
-    highlight.finalize().unwrap().len()
+    highlight.into_inner().unwrap().len()
 }

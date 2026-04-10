@@ -150,7 +150,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
     pub fn finalize(self) -> String {
         let bytes = self
             .inner
-            .finalize()
+            .into_inner()
             .expect("renderer produces valid UTF-8");
         String::from_utf8(bytes).expect("renderer produces valid UTF-8")
     }
@@ -418,7 +418,7 @@ pub fn highlighted_html_for_string(
     let mut w =
         HighlightedWriter::from_themed(syntax, ss, theme, HtmlStyledOutput::new(bg)).build();
     w.write_all(s.as_bytes())?;
-    output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));
+    output.push_str(&String::from_utf8(w.into_inner()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
     Ok(output)
 }
@@ -446,7 +446,7 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     let mut w =
         HighlightedWriter::from_themed(syntax, ss, theme, HtmlStyledOutput::new(bg)).build();
     std::io::copy(&mut f, &mut w)?;
-    output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));
+    output.push_str(&String::from_utf8(w.into_inner()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
     Ok(output)
 }
@@ -830,7 +830,7 @@ fn main() {
         assert!(!captured.is_empty());
         assert_eq!(captured[0], vec!["source", "r"]);
 
-        gen.finalize().expect("#[cfg(test)]");
+        gen.into_inner().expect("#[cfg(test)]");
     }
 
     #[test]

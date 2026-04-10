@@ -40,7 +40,7 @@ fn main() {
             )
             .build();
             io::copy(&mut f, &mut w).unwrap();
-            w.finalize().unwrap()
+            w.into_inner().unwrap()
         })
         .collect();
 

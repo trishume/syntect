@@ -61,9 +61,17 @@ use std::io::{self, Write};
 /// cross-line `fail` occurred.
 ///
 /// A trailing partial line (one that did not end with `\n`) is held in the
-/// internal buffer until either another `\n` arrives or [`finalize`] is
-/// called. [`finalize`] **must** be called to flush that trailing line and
-/// to close any open scopes.
+/// internal buffer until either another `\n` arrives or end-of-input cleanup
+/// runs. End-of-input cleanup runs in two ways:
+///
+/// - **Implicitly**, in [`Drop`], on a best-effort basis when the writer
+///   falls out of scope. Errors are silently swallowed. This is the natural
+///   choice when you don't need the inner sink back and don't care about
+///   error reporting.
+/// - **Explicitly**, via [`into_inner`], which consumes the writer and
+///   returns the inner sink (`io::Result<W>`) so you can both inspect any
+///   errors and recover the bytes (the default `Vec<u8>` sink is the common
+///   case).
 ///
 /// [`from_themed`]: HighlightedWriter::from_themed
 /// [`from_markup`]: HighlightedWriter::from_markup
@@ -71,7 +79,7 @@ use std::io::{self, Write};
 /// [`Builder::with_output`]: HighlightedWriterBuilder::with_output
 /// [`Builder::with_state`]: HighlightedWriterBuilder::with_state
 /// [`Builder::build`]: HighlightedWriterBuilder::build
-/// [`finalize`]: HighlightedWriter::finalize
+/// [`into_inner`]: HighlightedWriter::into_inner
 ///
 /// # Examples
 ///
@@ -99,7 +107,7 @@ use std::io::{self, Write};
 /// .with_output(io::stdout().lock())
 /// .build();
 /// io::copy(&mut f, &mut w).unwrap();
-/// w.finalize().unwrap();
+/// w.into_inner().unwrap();
 /// ```
 ///
 /// Highlighting an in-memory string with the default `Vec<u8>` sink:
@@ -123,10 +131,9 @@ use std::io::{self, Write};
 /// )
 /// .build();
 /// w.write_all(b"fn main() {}\n").unwrap();
-/// let output = String::from_utf8(w.finalize().unwrap()).unwrap();
+/// let output = String::from_utf8(w.into_inner().unwrap()).unwrap();
 /// assert!(output.contains("\x1b[38;2;"));
 /// ```
-#[must_use = "HighlightedWriter holds buffered output that requires `finalize()` to flush"]
 pub struct HighlightedWriter<
     'a,
     R: ScopeRenderer = ThemedRenderer<'a, AnsiStyledOutput>,
@@ -136,7 +143,10 @@ pub struct HighlightedWriter<
     open_scopes: isize,
     parse_state: ParseState,
     scope_stack: ScopeStack,
-    output: W,
+    // Wrapped in `Option` so that `into_inner` can take ownership of the
+    // sink via `&mut self`, and so that `Drop` can detect whether `into_inner`
+    // has already been called and skip the cleanup if so.
+    output: Option<W>,
     renderer: R,
     line_index: usize,
     line_buf: Vec<u8>,
@@ -279,7 +289,7 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriterBuilder<'a, R, W> {
                 open_scopes: 0,
                 parse_state: ParseState::new(syntax_reference),
                 scope_stack: ScopeStack::new(),
-                output,
+                output: Some(output),
                 renderer,
                 line_index: 0,
                 line_buf: Vec::new(),
@@ -308,7 +318,7 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriterBuilder<'a, R, W> {
                     open_scopes,
                     parse_state,
                     scope_stack,
-                    output,
+                    output: Some(output),
                     renderer,
                     line_index: 0,
                     line_buf: Vec::new(),
@@ -338,23 +348,6 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriter<'a, R, W> {
         (&self.parse_state, &self.scope_stack)
     }
 
-    /// Consume the writer and return its parts.
-    ///
-    /// Any pending buffered output is flushed before returning. The trailing
-    /// partial line (if any) and any open scopes are **not** closed by this
-    /// method — use [`finalize`] for that.
-    ///
-    /// [`finalize`]: HighlightedWriter::finalize
-    pub fn into_parts(mut self) -> (ParseState, ScopeStack, R, W) {
-        let _ = self.flush_pending();
-        (
-            self.parse_state,
-            self.scope_stack,
-            self.renderer,
-            self.output,
-        )
-    }
-
     /// Parse one complete line and forward the rendered output to the sink.
     ///
     /// This is the inner per-line entry point used by the [`Write`]
@@ -382,7 +375,10 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriter<'a, R, W> {
                 self.line_index,
             )?;
             self.open_scopes += delta;
-            self.output.write_all(formatted.as_bytes())?;
+            self.output
+                .as_mut()
+                .expect("output already taken")
+                .write_all(formatted.as_bytes())?;
             self.line_index += 1;
             return Ok(());
         }
@@ -426,7 +422,10 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriter<'a, R, W> {
                 line_index_offset + i,
             )?;
             open_scopes += delta;
-            self.output.write_all(formatted.as_bytes())?;
+            self.output
+                .as_mut()
+                .expect("output already taken")
+                .write_all(formatted.as_bytes())?;
         }
 
         self.scope_stack = scope_stack;
@@ -436,14 +435,32 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriter<'a, R, W> {
         Ok(())
     }
 
-    /// Flush any trailing partial line, close open scopes, and return the
-    /// inner output sink.
+    /// Run end-of-input cleanup and return the inner sink.
     ///
-    /// This **must** be called to drain a final line that was written without
-    /// a trailing `\n`, and to emit the closing tags for any scopes still open
-    /// at end-of-input.
-    pub fn finalize(mut self) -> io::Result<W> {
-        // Drain a trailing partial line, if any.
+    /// This is the explicit, error-propagating counterpart to the implicit
+    /// best-effort cleanup that runs in [`Drop`]. Call this when you need:
+    ///
+    /// - the inner sink back (the default `Vec<u8>` sink is the common case),
+    /// - error handling for any failures during the trailing-line drain,
+    ///   the speculative-line flush, or the close-scopes emission.
+    ///
+    /// Otherwise, you can let the writer fall out of scope and `Drop` will
+    /// run the same cleanup on a best-effort basis (errors are silently
+    /// swallowed).
+    pub fn into_inner(mut self) -> io::Result<W> {
+        self.finalize_inner()
+    }
+
+    /// Internal cleanup pathway shared by [`into_inner`] and `Drop::drop`.
+    ///
+    /// Drains the trailing partial line, flushes any pending speculatively
+    /// buffered lines, emits close markers for scopes still open at EOF,
+    /// then `take`s the inner sink and returns it. After this returns,
+    /// `self.output` is `None`.
+    ///
+    /// [`into_inner`]: HighlightedWriter::into_inner
+    fn finalize_inner(&mut self) -> io::Result<W> {
+        // 1. Drain a trailing partial line, if any.
         if !self.line_buf.is_empty() {
             let line_bytes = std::mem::take(&mut self.line_buf);
             let line = std::str::from_utf8(&line_bytes)
@@ -451,14 +468,34 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriter<'a, R, W> {
             self.highlight_line(line)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         }
+
+        // 2. Flush any pending speculatively-buffered lines.
         self.flush_pending()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        // 3. Emit close markers for any scopes still open at EOF.
         let mut buf = String::new();
         for _ in 0..self.open_scopes {
             self.renderer.end_scope(&mut buf);
         }
-        self.output.write_all(buf.as_bytes())?;
-        Ok(self.output)
+        self.open_scopes = 0;
+        self.output
+            .as_mut()
+            .expect("output already taken")
+            .write_all(buf.as_bytes())?;
+
+        // 4. Take the sink out, leaving the field as `None`.
+        Ok(self.output.take().expect("output already taken"))
+    }
+}
+
+impl<'a, R: ScopeRenderer, W: io::Write> Drop for HighlightedWriter<'a, R, W> {
+    fn drop(&mut self) {
+        // Best-effort cleanup. If `into_inner` has already been called,
+        // `self.output` is `None` and there's nothing to do.
+        if self.output.is_some() {
+            let _ = self.finalize_inner();
+        }
     }
 }
 
@@ -486,9 +523,9 @@ impl<'a, R: ScopeRenderer, W: io::Write> Write for HighlightedWriter<'a, R, W> {
 
     /// Forwards to the inner sink. Partial trailing lines remain buffered;
     /// they are not highlightable until terminated by `\n` or by
-    /// [`finalize`](HighlightedWriter::finalize).
+    /// [`into_inner`](HighlightedWriter::into_inner) (or implicitly by `Drop`).
     fn flush(&mut self) -> io::Result<()> {
-        self.output.flush()
+        self.output.as_mut().expect("output already taken").flush()
     }
 }
 
@@ -514,7 +551,7 @@ mod tests {
         )
         .build();
         w.write_all(b"pub struct Wow { hi: u64 }\n").unwrap();
-        let output = String::from_utf8(w.finalize().unwrap()).unwrap();
+        let output = String::from_utf8(w.into_inner().unwrap()).unwrap();
         assert!(!output.is_empty());
         assert!(output.contains("\x1b[38;2;"));
     }
@@ -534,7 +571,7 @@ mod tests {
         )
         .build();
         w.write_all(b"fn main() {}\n").unwrap();
-        let output = String::from_utf8(w.finalize().unwrap()).unwrap();
+        let output = String::from_utf8(w.into_inner().unwrap()).unwrap();
 
         // Style merging means we should NOT see consecutive identical ANSI
         // escape codes with no text between them.
@@ -561,7 +598,7 @@ mod tests {
         w.write_all(b"}\n").unwrap();
         // And a trailing line that finalize must flush.
         w.write_all(b"struct S;").unwrap();
-        let output = String::from_utf8(w.finalize().unwrap()).unwrap();
+        let output = String::from_utf8(w.into_inner().unwrap()).unwrap();
         assert!(output.contains("fn"));
         assert!(output.contains("main"));
         assert!(output.contains("struct"));
@@ -584,7 +621,7 @@ mod tests {
         // 'é' is two bytes (0xC3 0xA9). Split between writes.
         w.write_all(b"// caf\xC3").unwrap();
         w.write_all(b"\xA9\n").unwrap();
-        let output = String::from_utf8(w.finalize().unwrap()).unwrap();
+        let output = String::from_utf8(w.into_inner().unwrap()).unwrap();
         assert!(output.contains("café"));
     }
 
@@ -607,7 +644,7 @@ mod tests {
 
         let (parse_state, scope_stack) = w.state();
         let (parse_state, scope_stack) = (parse_state.clone(), scope_stack.clone());
-        let first_output = String::from_utf8(w.finalize().unwrap()).unwrap();
+        let first_output = String::from_utf8(w.into_inner().unwrap()).unwrap();
 
         let mut other = HighlightedWriter::from_themed(
             ss.find_syntax_by_extension("py").unwrap(),
@@ -618,7 +655,7 @@ mod tests {
         .with_state(parse_state, scope_stack)
         .build();
         other.write_all(lines[1].as_bytes()).unwrap();
-        let second_output = String::from_utf8(other.finalize().unwrap()).unwrap();
+        let second_output = String::from_utf8(other.into_inner().unwrap()).unwrap();
 
         // The second line should be highlighted as a docstring (same style as
         // the first line's triple-quote) because the parse state carries the
@@ -627,5 +664,62 @@ mod tests {
         let extract_fg =
             |s: &str| -> Option<String> { s.find("\x1b[38;2;").map(|i| s[i..i + 16].to_string()) };
         assert_eq!(extract_fg(&first_output), extract_fg(&second_output));
+    }
+
+    #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
+    #[test]
+    fn drop_runs_cleanup_when_into_inner_is_skipped() {
+        // Verify that letting a `HighlightedWriter` fall out of scope without
+        // calling `into_inner` still drains a trailing partial line and emits
+        // close markers for any open scopes — i.e. that `Drop` runs the same
+        // cleanup as `into_inner`. We compare the bytes a borrowed sink ends
+        // up with against the bytes the same input produces under explicit
+        // `into_inner`.
+        let ss = SyntaxSet::load_defaults_newlines();
+        let syntax = ss.find_syntax_by_extension("rs").unwrap();
+
+        // The input deliberately ends WITHOUT a trailing newline, so the
+        // last token sits in `line_buf` until cleanup. The classed-HTML
+        // markup renderer also leaves the outer `<span class="source rust">`
+        // open at end-of-input, exercising the close-scopes path.
+        let input = b"fn main()";
+
+        // 1. Reference: explicit `into_inner`.
+        let mut explicit = HighlightedWriter::from_markup(
+            syntax,
+            &ss,
+            crate::html::ClassedHTMLScopeRenderer::new(crate::html::ClassStyle::Spaced),
+        )
+        .build();
+        explicit.write_all(input).unwrap();
+        let explicit_bytes = explicit.into_inner().unwrap();
+
+        // 2. Drop-only: borrow a sink, write input, let the writer fall out
+        // of scope without calling `into_inner`.
+        let mut implicit_buf: Vec<u8> = Vec::new();
+        {
+            let mut implicit = HighlightedWriter::from_markup(
+                syntax,
+                &ss,
+                crate::html::ClassedHTMLScopeRenderer::new(crate::html::ClassStyle::Spaced),
+            )
+            .with_output(&mut implicit_buf)
+            .build();
+            implicit.write_all(input).unwrap();
+            // No `into_inner` here. `implicit` drops at the end of this
+            // scope and `Drop` runs cleanup against the borrowed sink.
+        }
+
+        assert_eq!(
+            explicit_bytes, implicit_buf,
+            "Drop should produce identical bytes to an explicit into_inner"
+        );
+        // Sanity-check that cleanup actually happened: the markup output
+        // should contain the closing tag for the outer source scope.
+        let s = String::from_utf8(implicit_buf).unwrap();
+        assert!(
+            s.ends_with("</span>"),
+            "expected outer </span> to be emitted by cleanup, got: {s}"
+        );
     }
 }

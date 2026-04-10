@@ -444,7 +444,7 @@ pub trait StyledOutput {
 /// )
 /// .build();
 /// w.write_all(b"fn main() {}\n").unwrap();
-/// let output = String::from_utf8(w.finalize().unwrap()).unwrap();
+/// let output = String::from_utf8(w.into_inner().unwrap()).unwrap();
 /// assert!(output.contains("\x1b[38;2;"));
 /// ```
 pub struct ThemedRenderer<'a, O: StyledOutput> {

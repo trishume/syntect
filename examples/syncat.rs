@@ -126,7 +126,7 @@ fn main() {
             // file straight through it without managing line buffers.
             io::copy(&mut f, &mut highlighter).unwrap();
 
-            let mut out = highlighter.finalize().unwrap();
+            let mut out = highlighter.into_inner().unwrap();
 
             // Clear the formatting
             out.write_all(b"\x1b[0m\n").unwrap();

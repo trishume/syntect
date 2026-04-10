@@ -53,6 +53,11 @@ fn main() {
     let ts = ThemeSet::load_defaults();
 
     let syntax = ps.find_syntax_by_extension("rs").unwrap();
+    // No explicit `into_inner` needed at the end: we don't need the
+    // `StdoutLock` back, and `Drop` runs the close-scopes / partial-line
+    // cleanup on a best-effort basis when `highlight` falls out of scope.
+    // Examples that *do* need the inner sink back (e.g. `parsyncat` collecting
+    // a `Vec<u8>` per file) call `into_inner` explicitly to propagate errors.
     let mut highlight = HighlightedWriter::from_themed(
         syntax,
         &ps,
@@ -63,5 +68,4 @@ fn main() {
     .build();
     writeln!(highlight, "pub struct Wow {{ hi: u64 }}").unwrap();
     writeln!(highlight, "fn blah() -> u64 {{}}").unwrap();
-    let _ = highlight.finalize().unwrap();
 }
