@@ -11,6 +11,8 @@ pub fn do_highlight(
     theme: &Theme,
 ) -> usize {
     let mut highlight = HighlightedWriter::new(syntax, syntax_set, theme);
-    highlight.write_all(s.as_bytes()).unwrap();
+    for line in s.lines() {
+        writeln!(highlight, "{}", line).unwrap();
+    }
     highlight.finalize().unwrap().len()
 }
