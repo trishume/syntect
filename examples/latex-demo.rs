@@ -3,7 +3,7 @@ use std::io::Write as IoWrite;
 use syntect::highlighting::{Style, ThemeSet};
 use syntect::io::HighlightedWriter;
 use syntect::parsing::SyntaxSet;
-use syntect::rendering::{StyledOutput, ThemedRenderer};
+use syntect::rendering::StyledOutput;
 
 /// A [`StyledOutput`] that produces LaTeX `\textcolor[RGB]{r,g,b}{...}`
 /// output. Wrap with [`ThemedRenderer`] (or pass to
@@ -53,14 +53,14 @@ fn main() {
     let ts = ThemeSet::load_defaults();
 
     let syntax = ps.find_syntax_by_extension("rs").unwrap();
-    let renderer = ThemedRenderer::new(&ts.themes["InspiredGitHub"], LatexStyledOutput);
-
-    let mut highlight = HighlightedWriter::with_renderer_and_output(
+    let mut highlight = HighlightedWriter::from_themed(
         syntax,
         &ps,
-        renderer,
-        std::io::stdout().lock(),
-    );
+        &ts.themes["InspiredGitHub"],
+        LatexStyledOutput,
+    )
+    .with_output(std::io::stdout().lock())
+    .build();
     writeln!(highlight, "pub struct Wow {{ hi: u64 }}").unwrap();
     writeln!(highlight, "fn blah() -> u64 {{}}").unwrap();
     let _ = highlight.finalize().unwrap();

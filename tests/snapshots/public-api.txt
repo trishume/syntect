@@ -677,22 +677,16 @@ pub fn syntect::html::tokens_to_classed_html(line: &str, ops: &[(usize, syntect:
 pub fn syntect::html::tokens_to_classed_spans(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], style: syntect::html::ClassStyle) -> (alloc::string::String, isize)
 pub mod syntect::io
 pub struct syntect::io::HighlightedWriter<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write>
-impl<'a, M: syntect::rendering::ScopeMarkup> syntect::io::HighlightedWriter<'a, crate::rendering::MarkupAdapter<M>>
-pub fn syntect::io::HighlightedWriter<'a, crate::rendering::MarkupAdapter<M>>::with_markup(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, markup: M) -> syntect::io::HighlightedWriter<'a, MarkupAdapter<M>>
-impl<'a, O: syntect::rendering::StyledOutput> syntect::io::HighlightedWriter<'a, syntect::rendering::ThemedRenderer<'a, O>>
-pub fn syntect::io::HighlightedWriter<'a, syntect::rendering::ThemedRenderer<'a, O>>::with_themed(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, theme: &'a syntect::highlighting::Theme, output: O) -> syntect::io::HighlightedWriter<'a, syntect::rendering::ThemedRenderer<'a, O>>
 impl<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write> syntect::io::HighlightedWriter<'a, R, W>
 pub fn syntect::io::HighlightedWriter<'a, R, W>::finalize(self) -> std::io::error::Result<W>
-pub fn syntect::io::HighlightedWriter<'a, R, W>::from_state(parse_state: syntect::parsing::ParseState, scope_stack: syntect::parsing::ScopeStack, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R, output: W) -> syntect::io::HighlightedWriter<'a, R, W>
 pub fn syntect::io::HighlightedWriter<'a, R, W>::into_parts(self) -> (syntect::parsing::ParseState, syntect::parsing::ScopeStack, R, W)
 pub fn syntect::io::HighlightedWriter<'a, R, W>::renderer(&self) -> &R
 pub fn syntect::io::HighlightedWriter<'a, R, W>::renderer_mut(&mut self) -> &mut R
 pub fn syntect::io::HighlightedWriter<'a, R, W>::state(&self) -> (&syntect::parsing::ParseState, &syntect::parsing::ScopeStack)
-pub fn syntect::io::HighlightedWriter<'a, R, W>::with_renderer_and_output(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R, output: W) -> syntect::io::HighlightedWriter<'a, R, W>
-impl<'a, R: syntect::rendering::ScopeRenderer> syntect::io::HighlightedWriter<'a, R>
-pub fn syntect::io::HighlightedWriter<'a, R>::with_renderer(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R) -> syntect::io::HighlightedWriter<'a, R>
 impl<'a> syntect::io::HighlightedWriter<'a>
-pub fn syntect::io::HighlightedWriter<'a>::new(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, theme: &'a syntect::highlighting::Theme) -> syntect::io::HighlightedWriter<'a, syntect::rendering::ThemedRenderer<'a, syntect::rendering::AnsiStyledOutput>>
+pub fn syntect::io::HighlightedWriter<'a>::from_markup<M: syntect::rendering::ScopeMarkup>(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, markup: M) -> syntect::io::HighlightedWriterBuilder<'a, MarkupAdapter<M>>
+pub fn syntect::io::HighlightedWriter<'a>::from_renderer<R: syntect::rendering::ScopeRenderer>(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R) -> syntect::io::HighlightedWriterBuilder<'a, R>
+pub fn syntect::io::HighlightedWriter<'a>::from_themed<O: syntect::rendering::StyledOutput>(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, theme: &'a syntect::highlighting::Theme, output: O) -> syntect::io::HighlightedWriterBuilder<'a, syntect::rendering::ThemedRenderer<'a, O>>
 impl<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write> std::io::Write for syntect::io::HighlightedWriter<'a, R, W>
 pub fn syntect::io::HighlightedWriter<'a, R, W>::flush(&mut self) -> std::io::error::Result<()>
 pub fn syntect::io::HighlightedWriter<'a, R, W>::write(&mut self, buf: &[u8]) -> std::io::error::Result<usize>
@@ -702,6 +696,17 @@ impl<'a, R, W> !core::marker::Sync for syntect::io::HighlightedWriter<'a, R, W>
 impl<'a, R, W> core::marker::Unpin for syntect::io::HighlightedWriter<'a, R, W> where W: core::marker::Unpin, R: core::marker::Unpin
 impl<'a, R, W> core::panic::unwind_safe::RefUnwindSafe for syntect::io::HighlightedWriter<'a, R, W> where W: core::panic::unwind_safe::RefUnwindSafe, R: core::panic::unwind_safe::RefUnwindSafe
 impl<'a, R, W> core::panic::unwind_safe::UnwindSafe for syntect::io::HighlightedWriter<'a, R, W> where W: core::panic::unwind_safe::UnwindSafe, R: core::panic::unwind_safe::UnwindSafe
+pub struct syntect::io::HighlightedWriterBuilder<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write>
+impl<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write> syntect::io::HighlightedWriterBuilder<'a, R, W>
+pub fn syntect::io::HighlightedWriterBuilder<'a, R, W>::build(self) -> syntect::io::HighlightedWriter<'a, R, W>
+pub fn syntect::io::HighlightedWriterBuilder<'a, R, W>::with_output<W2: std::io::Write>(self, output: W2) -> syntect::io::HighlightedWriterBuilder<'a, R, W2>
+pub fn syntect::io::HighlightedWriterBuilder<'a, R, W>::with_state(self, parse_state: syntect::parsing::ParseState, scope_stack: syntect::parsing::ScopeStack) -> Self
+impl<'a, R, W> core::marker::Freeze for syntect::io::HighlightedWriterBuilder<'a, R, W> where R: core::marker::Freeze, W: core::marker::Freeze
+impl<'a, R, W> !core::marker::Send for syntect::io::HighlightedWriterBuilder<'a, R, W>
+impl<'a, R, W> !core::marker::Sync for syntect::io::HighlightedWriterBuilder<'a, R, W>
+impl<'a, R, W> core::marker::Unpin for syntect::io::HighlightedWriterBuilder<'a, R, W> where R: core::marker::Unpin, W: core::marker::Unpin
+impl<'a, R, W> core::panic::unwind_safe::RefUnwindSafe for syntect::io::HighlightedWriterBuilder<'a, R, W> where R: core::panic::unwind_safe::RefUnwindSafe, W: core::panic::unwind_safe::RefUnwindSafe
+impl<'a, R, W> core::panic::unwind_safe::UnwindSafe for syntect::io::HighlightedWriterBuilder<'a, R, W> where R: core::panic::unwind_safe::UnwindSafe, W: core::panic::unwind_safe::UnwindSafe
 pub mod syntect::parsing
 pub mod syntect::parsing::syntax_definition
 #[non_exhaustive] pub enum syntect::parsing::syntax_definition::ContextReference

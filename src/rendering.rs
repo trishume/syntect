@@ -18,8 +18,9 @@
 //!   should pick one of the layered traits above.
 //!
 //! Built-in implementations:
-//! - [`AnsiStyledOutput`] — 24-bit ANSI colour escapes (the default for
-//!   [`crate::io::HighlightedWriter::new`]).
+//! - [`AnsiStyledOutput`] — 24-bit ANSI colour escapes. Pair with
+//!   [`crate::io::HighlightedWriter::from_themed`] for the standard terminal
+//!   output use case.
 //! - [`crate::html::ClassedHTMLScopeRenderer`] — CSS-classed HTML
 //!   (`ScopeMarkup`).
 //! - [`crate::html::HtmlStyledOutput`] — inline-styled HTML
@@ -245,7 +246,7 @@ pub trait ScopeMarkup {
 /// Internal adapter that bridges any [`ScopeMarkup`] to the low-level
 /// [`ScopeRenderer`] trait the engine consumes.
 ///
-/// Construct one indirectly via [`crate::io::HighlightedWriter::with_markup`]
+/// Construct one indirectly via [`crate::io::HighlightedWriter::from_markup`]
 /// — there's no reason to instantiate this type by hand.
 #[doc(hidden)]
 pub struct MarkupAdapter<M: ScopeMarkup> {
@@ -315,7 +316,7 @@ impl<M: ScopeMarkup> ScopeRenderer for MarkupAdapter<M> {
 /// that resolve to the same style.
 ///
 /// Implementations are plugged into [`crate::io::HighlightedWriter`] via
-/// [`crate::io::HighlightedWriter::with_themed`], which constructs the
+/// [`crate::io::HighlightedWriter::from_themed`], which constructs the
 /// `ThemedRenderer` wrapper for you.
 ///
 /// # Example
@@ -418,9 +419,9 @@ pub trait StyledOutput {
 /// adjacent text tokens that resolve to the same style.
 ///
 /// Construct one with [`ThemedRenderer::new`] passing a [`Theme`] and a
-/// [`StyledOutput`] implementation. The result plugs into
-/// [`crate::io::HighlightedWriter::with_themed`] (or any other
-/// [`ScopeRenderer`] consumer).
+/// [`StyledOutput`] implementation. Most callers don't construct one
+/// directly: [`crate::io::HighlightedWriter::from_themed`] takes a `Theme` and a
+/// `StyledOutput` and wraps them in a `ThemedRenderer` automatically.
 ///
 /// # Example
 ///
@@ -429,14 +430,19 @@ pub trait StyledOutput {
 /// use syntect::io::HighlightedWriter;
 /// use syntect::highlighting::ThemeSet;
 /// use syntect::parsing::SyntaxSet;
-/// use syntect::rendering::{AnsiStyledOutput, ThemedRenderer};
+/// use syntect::rendering::AnsiStyledOutput;
 ///
 /// let ss = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 /// let syntax = ss.find_syntax_by_extension("rs").unwrap();
 ///
-/// let renderer = ThemedRenderer::new(&ts.themes["base16-ocean.dark"], AnsiStyledOutput::new(false));
-/// let mut w = HighlightedWriter::with_renderer(syntax, &ss, renderer);
+/// let mut w = HighlightedWriter::from_themed(
+///     syntax,
+///     &ss,
+///     &ts.themes["base16-ocean.dark"],
+///     AnsiStyledOutput::new(false),
+/// )
+/// .build();
 /// w.write_all(b"fn main() {}\n").unwrap();
 /// let output = String::from_utf8(w.finalize().unwrap()).unwrap();
 /// assert!(output.contains("\x1b[38;2;"));
@@ -557,9 +563,11 @@ impl<'a, O: StyledOutput> ScopeRenderer for ThemedRenderer<'a, O> {
 
 /// A [`StyledOutput`] that emits ANSI 24-bit colour escape codes.
 ///
-/// Wrap with [`ThemedRenderer`] to use it as a [`ScopeRenderer`]. The default
-/// renderer of [`crate::io::HighlightedWriter::new`] is
-/// `ThemedRenderer<AnsiStyledOutput>`.
+/// Pair with [`crate::io::HighlightedWriter::from_themed`] (which wraps the
+/// emitter in a [`ThemedRenderer`] for you) to highlight straight to a
+/// terminal. Pass `AnsiStyledOutput::new(false)` for foreground-only output,
+/// or `AnsiStyledOutput::new(true)` to additionally include background
+/// colour escapes.
 ///
 /// Foreground alpha is blended against the background colour. When
 /// `include_bg` is `true`, the background colour escape code is also emitted.

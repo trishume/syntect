@@ -117,13 +117,10 @@ fn main() {
                 .find_syntax_for_file(path)
                 .unwrap()
                 .unwrap_or_else(|| ss.find_syntax_plain_text());
-            let out = io::stdout().lock();
-            let mut highlighter = HighlightedWriter::with_renderer_and_output(
-                syntax,
-                &ss,
-                syntect::rendering::ThemedRenderer::new(&theme, AnsiStyledOutput::new(false)),
-                out,
-            );
+            let mut highlighter =
+                HighlightedWriter::from_themed(syntax, &ss, &theme, AnsiStyledOutput::new(false))
+                    .with_output(io::stdout().lock())
+                    .build();
 
             // HighlightedWriter implements `io::Write`, so we can stream the
             // file straight through it without managing line buffers.

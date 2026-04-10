@@ -104,11 +104,12 @@ impl<'a> ClassedHTMLGenerator<'a> {
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
         ClassedHTMLGenerator {
-            inner: HighlightedWriter::with_markup(
+            inner: HighlightedWriter::from_markup(
                 syntax_reference,
                 syntax_set,
                 ClassedHTMLScopeRenderer::new(style),
-            ),
+            )
+            .build(),
         }
     }
 
@@ -332,7 +333,7 @@ pub fn line_tokens_to_classed_spans(
 ///
 /// Wrap with [`crate::rendering::ThemedRenderer`] to use it as a
 /// [`crate::rendering::ScopeRenderer`], or pass directly to
-/// [`HighlightedWriter::with_themed`].
+/// [`HighlightedWriter::from_themed`].
 ///
 /// `default_bg` is the background colour of the containing element; the
 /// `background-color` CSS property is only emitted when the token's
@@ -414,7 +415,8 @@ pub fn highlighted_html_for_string(
     theme: &Theme,
 ) -> Result<String, Error> {
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-    let mut w = HighlightedWriter::with_themed(syntax, ss, theme, HtmlStyledOutput::new(bg));
+    let mut w =
+        HighlightedWriter::from_themed(syntax, ss, theme, HtmlStyledOutput::new(bg)).build();
     w.write_all(s.as_bytes())?;
     output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
@@ -441,7 +443,8 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
         .unwrap_or_else(|| ss.find_syntax_plain_text());
 
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-    let mut w = HighlightedWriter::with_themed(syntax, ss, theme, HtmlStyledOutput::new(bg));
+    let mut w =
+        HighlightedWriter::from_themed(syntax, ss, theme, HtmlStyledOutput::new(bg)).build();
     std::io::copy(&mut f, &mut w)?;
     output.push_str(&String::from_utf8(w.finalize()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
@@ -818,7 +821,8 @@ fn main() {
         let markup = CapturingMarkup {
             captured: RefCell::new(Vec::new()),
         };
-        let mut gen = crate::io::HighlightedWriter::with_markup(syntax, &syntax_set, markup);
+        let mut gen =
+            crate::io::HighlightedWriter::from_markup(syntax, &syntax_set, markup).build();
         gen.write_all(code.as_bytes()).expect("#[cfg(test)]");
 
         // The R syntax should produce "source r" as the first scope

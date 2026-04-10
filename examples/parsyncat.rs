@@ -5,6 +5,7 @@ use rayon::prelude::*;
 use syntect::highlighting::ThemeSet;
 use syntect::io::HighlightedWriter;
 use syntect::parsing::SyntaxSet;
+use syntect::rendering::AnsiStyledOutput;
 
 use std::fs::File;
 use std::io::{self, Write};
@@ -31,7 +32,13 @@ fn main() {
                 .unwrap()
                 .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
             let mut f = File::open(filename).unwrap();
-            let mut w = HighlightedWriter::new(syntax, &syntax_set, theme);
+            let mut w = HighlightedWriter::from_themed(
+                syntax,
+                &syntax_set,
+                theme,
+                AnsiStyledOutput::new(false),
+            )
+            .build();
             io::copy(&mut f, &mut w).unwrap();
             w.finalize().unwrap()
         })

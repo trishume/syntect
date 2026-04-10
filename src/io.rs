@@ -8,18 +8,15 @@
 //!
 //! Renderer plumbing — the [`ScopeRenderer`] / [`ScopeMarkup`] /
 //! [`StyledOutput`] traits, the [`ThemedRenderer`] adapter, and the built-in
-//! [`AnsiStyledOutput`] — lives in [`crate::rendering`]. Most users construct
-//! a `HighlightedWriter` via one of the convenience constructors below
-//! ([`new`], [`with_markup`], [`with_themed`]) without touching the
-//! lower-level types directly.
+//! [`AnsiStyledOutput`] — lives in [`crate::rendering`]. Construct a
+//! `HighlightedWriter` by calling one of [`HighlightedWriter::from_themed`],
+//! [`HighlightedWriter::from_markup`], or [`HighlightedWriter::from_renderer`] to
+//! get a [`HighlightedWriterBuilder`], then chain `.with_output(...)` /
+//! `.with_state(...)` as needed and finish with `.build()`.
 //!
 //! For HTML output, see [`crate::html::ClassedHTMLGenerator`],
 //! [`crate::html::ClassedHTMLScopeRenderer`], and
 //! [`crate::html::HtmlStyledOutput`].
-//!
-//! [`new`]: HighlightedWriter::new
-//! [`with_markup`]: HighlightedWriter::with_markup
-//! [`with_themed`]: HighlightedWriter::with_themed
 
 use crate::highlighting::Theme;
 use crate::parsing::{
@@ -42,16 +39,21 @@ use std::io::{self, Write};
 /// at which point each complete line is parsed, rendered through the
 /// configured renderer, and forwarded to the inner [`Write`] sink.
 ///
-/// Most users construct a `HighlightedWriter` via one of the convenience
-/// constructors:
+/// Construct one via the [`HighlightedWriterBuilder`]. There are three
+/// entry points, one per renderer category:
 ///
-/// - [`new`] — ANSI 24-bit colour output for a given [`Theme`] (the default).
-/// - [`with_markup`] — pass any [`ScopeMarkup`] (stateless markup renderer
-///   like CSS-classed HTML).
-/// - [`with_themed`] — pass any [`StyledOutput`] (theme-aware emitter like
-///   inline-styled HTML or LaTeX `\textcolor`).
-/// - [`with_renderer`] / [`with_renderer_and_output`] — low-level escape
-///   hatch that takes a raw [`ScopeRenderer`].
+/// - [`from_themed`] — pair a [`Theme`] with any [`StyledOutput`] (the
+///   standard choice for terminal colours via [`AnsiStyledOutput`],
+///   inline-styled HTML, LaTeX `\textcolor`, etc.).
+/// - [`from_markup`] — pass any [`ScopeMarkup`] (stateless renderer like
+///   CSS-classed HTML).
+/// - [`from_renderer`] — low-level escape hatch that takes a raw
+///   [`ScopeRenderer`].
+///
+/// Each entry point returns a [`HighlightedWriterBuilder`] pre-populated
+/// with a `Vec<u8>` sink and no resume state. Configure further with
+/// [`Builder::with_output`] / [`Builder::with_state`] and finish with
+/// [`Builder::build`].
 ///
 /// When the parser is in speculative mode (inside a branch point),
 /// `HighlightedWriter` buffers rendered output internally and flushes it
@@ -63,16 +65,17 @@ use std::io::{self, Write};
 /// called. [`finalize`] **must** be called to flush that trailing line and
 /// to close any open scopes.
 ///
-/// [`new`]: HighlightedWriter::new
-/// [`with_markup`]: HighlightedWriter::with_markup
-/// [`with_themed`]: HighlightedWriter::with_themed
-/// [`with_renderer`]: HighlightedWriter::with_renderer
-/// [`with_renderer_and_output`]: HighlightedWriter::with_renderer_and_output
+/// [`from_themed`]: HighlightedWriter::from_themed
+/// [`from_markup`]: HighlightedWriter::from_markup
+/// [`from_renderer`]: HighlightedWriter::from_renderer
+/// [`Builder::with_output`]: HighlightedWriterBuilder::with_output
+/// [`Builder::with_state`]: HighlightedWriterBuilder::with_state
+/// [`Builder::build`]: HighlightedWriterBuilder::build
 /// [`finalize`]: HighlightedWriter::finalize
 ///
 /// # Examples
 ///
-/// Theme-based highlighting (default renderer), composing with
+/// Theme-based ANSI highlighting streamed straight to a sink, composing with
 /// [`std::io::copy`]:
 ///
 /// ```no_run
@@ -87,29 +90,38 @@ use std::io::{self, Write};
 /// let syntax = ss.find_syntax_by_extension("rs").unwrap();
 ///
 /// let mut f = std::fs::File::open("examples/parsyncat.rs").unwrap();
-/// let mut w = HighlightedWriter::with_themed(
+/// let mut w = HighlightedWriter::from_themed(
 ///     syntax,
 ///     &ss,
 ///     &ts.themes["base16-ocean.dark"],
 ///     AnsiStyledOutput::new(false),
-/// );
+/// )
+/// .with_output(io::stdout().lock())
+/// .build();
 /// io::copy(&mut f, &mut w).unwrap();
 /// w.finalize().unwrap();
 /// ```
 ///
-/// Highlighting an in-memory string with the convenience default:
+/// Highlighting an in-memory string with the default `Vec<u8>` sink:
 ///
 /// ```
 /// use std::io::Write;
 /// use syntect::io::HighlightedWriter;
 /// use syntect::highlighting::ThemeSet;
 /// use syntect::parsing::SyntaxSet;
+/// use syntect::rendering::AnsiStyledOutput;
 ///
 /// let ss = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 /// let syntax = ss.find_syntax_by_extension("rs").unwrap();
 ///
-/// let mut w = HighlightedWriter::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
+/// let mut w = HighlightedWriter::from_themed(
+///     syntax,
+///     &ss,
+///     &ts.themes["base16-ocean.dark"],
+///     AnsiStyledOutput::new(false),
+/// )
+/// .build();
 /// w.write_all(b"fn main() {}\n").unwrap();
 /// let output = String::from_utf8(w.finalize().unwrap()).unwrap();
 /// assert!(output.contains("\x1b[38;2;"));
@@ -136,168 +148,181 @@ pub struct HighlightedWriter<
 }
 
 impl<'a> HighlightedWriter<'a> {
-    /// Create a new highlighting writer with default ANSI terminal output.
+    /// Start a builder for a theme-aware renderer.
     ///
-    /// Internally constructs `ThemedRenderer::new(theme, AnsiStyledOutput::new(false))`
-    /// to produce 24-bit colour ANSI escape codes. The output is collected
-    /// into a `Vec<u8>` returned by [`finalize`].
+    /// Pairs the given [`Theme`] with any [`StyledOutput`] (`AnsiStyledOutput`,
+    /// `HtmlStyledOutput`, or your own format) and returns a
+    /// [`HighlightedWriterBuilder`] that you can further configure with
+    /// [`with_output`] / [`with_state`] before calling [`build`].
     ///
-    /// [`finalize`]: HighlightedWriter::finalize
-    pub fn new(
-        syntax_reference: &'a SyntaxReference,
-        syntax_set: &'a SyntaxSet,
-        theme: &'a Theme,
-    ) -> HighlightedWriter<'a, ThemedRenderer<'a, AnsiStyledOutput>> {
-        Self::with_themed(
-            syntax_reference,
-            syntax_set,
-            theme,
-            AnsiStyledOutput::new(false),
-        )
-    }
-}
-
-impl<'a, M: ScopeMarkup> HighlightedWriter<'a, MarkupAdapter<M>> {
-    /// Create a new highlighting writer driven by a [`ScopeMarkup`]
-    /// implementation.
+    /// For ANSI 24-bit terminal colours, pass `AnsiStyledOutput::new(false)`.
     ///
-    /// The markup renderer is wrapped in an internal adapter that bridges it
-    /// to the engine's [`ScopeRenderer`] trait. Output is collected into a
-    /// `Vec<u8>` returned by [`finalize`].
-    ///
-    /// Use this for stateless renderers that map scope structure 1:1 to
-    /// output structure (e.g. [`crate::html::ClassedHTMLScopeRenderer`]).
-    ///
-    /// [`finalize`]: HighlightedWriter::finalize
-    pub fn with_markup(
-        syntax_reference: &'a SyntaxReference,
-        syntax_set: &'a SyntaxSet,
-        markup: M,
-    ) -> HighlightedWriter<'a, MarkupAdapter<M>> {
-        Self::with_renderer(syntax_reference, syntax_set, MarkupAdapter::new(markup))
-    }
-}
-
-impl<'a, O: StyledOutput> HighlightedWriter<'a, ThemedRenderer<'a, O>> {
-    /// Create a new highlighting writer driven by a [`StyledOutput`]
-    /// implementation paired with a [`Theme`].
-    ///
-    /// The styled output is wrapped in a [`ThemedRenderer`] that resolves
-    /// scopes to styles via the theme and merges adjacent same-styled
-    /// tokens. Output is collected into a `Vec<u8>` returned by [`finalize`].
-    ///
-    /// Use this for theme-aware renderers like [`AnsiStyledOutput`],
-    /// [`crate::html::HtmlStyledOutput`], or your own format.
-    ///
-    /// [`finalize`]: HighlightedWriter::finalize
-    pub fn with_themed(
+    /// [`with_output`]: HighlightedWriterBuilder::with_output
+    /// [`with_state`]: HighlightedWriterBuilder::with_state
+    /// [`build`]: HighlightedWriterBuilder::build
+    pub fn from_themed<O: StyledOutput>(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         theme: &'a Theme,
         output: O,
-    ) -> HighlightedWriter<'a, ThemedRenderer<'a, O>> {
-        Self::with_renderer(
+    ) -> HighlightedWriterBuilder<'a, ThemedRenderer<'a, O>> {
+        HighlightedWriterBuilder::new(
             syntax_reference,
             syntax_set,
             ThemedRenderer::new(theme, output),
         )
     }
-}
 
-impl<'a, R: ScopeRenderer> HighlightedWriter<'a, R> {
-    /// Create a new highlighting writer with a custom [`ScopeRenderer`].
+    /// Start a builder for a stateless markup renderer.
     ///
-    /// This is the **low-level** escape hatch — most users want
-    /// [`with_markup`] (for stateless markup) or [`with_themed`] (for
-    /// theme-aware emitters) instead.
+    /// The given [`ScopeMarkup`] implementation is wrapped in an internal
+    /// adapter that bridges it to the engine's low-level renderer trait.
+    /// Use this for renderers that map scope structure 1:1 to output
+    /// structure (e.g. [`crate::html::ClassedHTMLScopeRenderer`]).
+    pub fn from_markup<M: ScopeMarkup>(
+        syntax_reference: &'a SyntaxReference,
+        syntax_set: &'a SyntaxSet,
+        markup: M,
+    ) -> HighlightedWriterBuilder<'a, MarkupAdapter<M>> {
+        HighlightedWriterBuilder::new(syntax_reference, syntax_set, MarkupAdapter::new(markup))
+    }
+
+    /// Start a builder with a low-level [`ScopeRenderer`].
     ///
-    /// The output is collected into a `Vec<u8>` returned by [`finalize`].
-    /// Use [`with_renderer_and_output`] to stream to an arbitrary
-    /// [`io::Write`] sink instead.
+    /// This is the escape hatch for advanced cases that need raw [`Scope`]
+    /// / `&[Scope]` access or selective `bool` returns from `begin_scope`.
+    /// Most users should reach for [`from_themed`] or [`from_markup`] instead.
     ///
-    /// [`with_markup`]: HighlightedWriter::with_markup
-    /// [`with_themed`]: HighlightedWriter::with_themed
-    /// [`finalize`]: HighlightedWriter::finalize
-    /// [`with_renderer_and_output`]: HighlightedWriter::with_renderer_and_output
-    pub fn with_renderer(
+    /// [`Scope`]: crate::parsing::Scope
+    /// [`from_themed`]: HighlightedWriter::from_themed
+    /// [`from_markup`]: HighlightedWriter::from_markup
+    pub fn from_renderer<R: ScopeRenderer>(
         syntax_reference: &'a SyntaxReference,
         syntax_set: &'a SyntaxSet,
         renderer: R,
-    ) -> HighlightedWriter<'a, R> {
-        Self::with_renderer_and_output(syntax_reference, syntax_set, renderer, Vec::new())
+    ) -> HighlightedWriterBuilder<'a, R> {
+        HighlightedWriterBuilder::new(syntax_reference, syntax_set, renderer)
+    }
+}
+
+/// Fluent builder for a [`HighlightedWriter`].
+///
+/// Construct one via [`HighlightedWriter::from_themed`],
+/// [`HighlightedWriter::from_markup`], or
+/// [`HighlightedWriter::from_renderer`] — each picks a renderer category and
+/// returns a builder pre-populated with a default `Vec<u8>` output sink and
+/// no resume state. Configure further with [`with_output`] (replace the sink)
+/// and [`with_state`] (resume from a saved checkpoint), then call [`build`]
+/// to materialise the writer.
+///
+/// [`with_output`]: HighlightedWriterBuilder::with_output
+/// [`with_state`]: HighlightedWriterBuilder::with_state
+/// [`build`]: HighlightedWriterBuilder::build
+#[must_use = "HighlightedWriterBuilder produces nothing until `.build()` is called"]
+pub struct HighlightedWriterBuilder<'a, R: ScopeRenderer, W: io::Write = Vec<u8>> {
+    syntax_reference: &'a SyntaxReference,
+    syntax_set: &'a SyntaxSet,
+    renderer: R,
+    output: W,
+    state: Option<(ParseState, ScopeStack)>,
+}
+
+impl<'a, R: ScopeRenderer> HighlightedWriterBuilder<'a, R, Vec<u8>> {
+    fn new(syntax_reference: &'a SyntaxReference, syntax_set: &'a SyntaxSet, renderer: R) -> Self {
+        Self {
+            syntax_reference,
+            syntax_set,
+            renderer,
+            output: Vec::new(),
+            state: None,
+        }
+    }
+}
+
+impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriterBuilder<'a, R, W> {
+    /// Replace the default `Vec<u8>` output sink with an arbitrary
+    /// [`io::Write`].
+    pub fn with_output<W2: io::Write>(self, output: W2) -> HighlightedWriterBuilder<'a, R, W2> {
+        HighlightedWriterBuilder {
+            syntax_reference: self.syntax_reference,
+            syntax_set: self.syntax_set,
+            renderer: self.renderer,
+            output,
+            state: self.state,
+        }
+    }
+
+    /// Resume highlighting from a previously saved parse + scope state.
+    ///
+    /// Useful for incremental highlighting where you cache the state at
+    /// checkpoints and want to pick up from where a previous run left off.
+    /// The renderer's internal state (e.g. a `ThemedRenderer`'s style stack)
+    /// is replayed to match the restored scope stack.
+    pub fn with_state(mut self, parse_state: ParseState, scope_stack: ScopeStack) -> Self {
+        self.state = Some((parse_state, scope_stack));
+        self
+    }
+
+    /// Materialise the configured [`HighlightedWriter`].
+    pub fn build(self) -> HighlightedWriter<'a, R, W> {
+        let HighlightedWriterBuilder {
+            syntax_reference,
+            syntax_set,
+            mut renderer,
+            output,
+            state,
+        } = self;
+
+        match state {
+            None => HighlightedWriter {
+                syntax_set,
+                open_scopes: 0,
+                parse_state: ParseState::new(syntax_reference),
+                scope_stack: ScopeStack::new(),
+                output,
+                renderer,
+                line_index: 0,
+                line_buf: Vec::new(),
+                pending_lines: Vec::new(),
+                pending_ops: Vec::new(),
+                scope_stack_snapshot: None,
+                open_scopes_snapshot: None,
+            },
+            Some((parse_state, scope_stack)) => {
+                // Replay the existing scope stack to the renderer so that
+                // its internal state (e.g. a ThemedRenderer's style stack)
+                // matches the restored scopes.
+                {
+                    let repo = lock_global_scope_repo();
+                    let scopes = &scope_stack.scopes;
+                    for (i, &scope) in scopes.iter().enumerate() {
+                        let atom_strs = resolve_atom_strs(scope, &repo);
+                        let stack_slice = &scopes[..=i];
+                        let mut dummy = String::new();
+                        renderer.begin_scope(&atom_strs, scope, stack_slice, &mut dummy);
+                    }
+                }
+                let open_scopes = scope_stack.scopes.len() as isize;
+                HighlightedWriter {
+                    syntax_set,
+                    open_scopes,
+                    parse_state,
+                    scope_stack,
+                    output,
+                    renderer,
+                    line_index: 0,
+                    line_buf: Vec::new(),
+                    pending_lines: Vec::new(),
+                    pending_ops: Vec::new(),
+                    scope_stack_snapshot: None,
+                    open_scopes_snapshot: None,
+                }
+            }
+        }
     }
 }
 
 impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriter<'a, R, W> {
-    /// Create a new highlighting writer that writes to the given output sink.
-    ///
-    /// This is the **low-level** escape hatch with explicit output sink —
-    /// most users should reach for [`with_markup`] or [`with_themed`].
-    ///
-    /// [`with_markup`]: HighlightedWriter::with_markup
-    /// [`with_themed`]: HighlightedWriter::with_themed
-    pub fn with_renderer_and_output(
-        syntax_reference: &'a SyntaxReference,
-        syntax_set: &'a SyntaxSet,
-        renderer: R,
-        output: W,
-    ) -> HighlightedWriter<'a, R, W> {
-        HighlightedWriter {
-            syntax_set,
-            open_scopes: 0,
-            parse_state: ParseState::new(syntax_reference),
-            scope_stack: ScopeStack::new(),
-            output,
-            renderer,
-            line_index: 0,
-            line_buf: Vec::new(),
-            pending_lines: Vec::new(),
-            pending_ops: Vec::new(),
-            scope_stack_snapshot: None,
-            open_scopes_snapshot: None,
-        }
-    }
-
-    /// Resume highlighting from a previously saved state.
-    ///
-    /// This is useful for incremental highlighting where you cache the
-    /// parse and scope state at checkpoints.
-    pub fn from_state(
-        parse_state: ParseState,
-        scope_stack: ScopeStack,
-        syntax_set: &'a SyntaxSet,
-        mut renderer: R,
-        output: W,
-    ) -> HighlightedWriter<'a, R, W> {
-        // Replay the existing scope stack to the renderer so that its
-        // internal state (e.g. style stack) matches the restored scopes.
-        {
-            let repo = lock_global_scope_repo();
-            let scopes = &scope_stack.scopes;
-            for (i, &scope) in scopes.iter().enumerate() {
-                let atom_strs = resolve_atom_strs(scope, &repo);
-                let stack_slice = &scopes[..=i];
-                let mut dummy = String::new();
-                renderer.begin_scope(&atom_strs, scope, stack_slice, &mut dummy);
-            }
-        }
-        let open_scopes = scope_stack.scopes.len() as isize;
-        HighlightedWriter {
-            syntax_set,
-            open_scopes,
-            parse_state,
-            scope_stack,
-            output,
-            renderer,
-            line_index: 0,
-            line_buf: Vec::new(),
-            pending_lines: Vec::new(),
-            pending_ops: Vec::new(),
-            scope_stack_snapshot: None,
-            open_scopes_snapshot: None,
-        }
-    }
-
     /// Returns a reference to the renderer.
     pub fn renderer(&self) -> &R {
         &self.renderer
@@ -472,7 +497,7 @@ mod tests {
     use super::*;
     use crate::highlighting::ThemeSet;
     use crate::parsing::SyntaxSet;
-    use crate::rendering::{AnsiStyledOutput, ThemedRenderer};
+    use crate::rendering::AnsiStyledOutput;
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
@@ -481,7 +506,13 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
 
-        let mut w = HighlightedWriter::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
+        let mut w = HighlightedWriter::from_themed(
+            syntax,
+            &ss,
+            &ts.themes["base16-ocean.dark"],
+            AnsiStyledOutput::new(false),
+        )
+        .build();
         w.write_all(b"pub struct Wow { hi: u64 }\n").unwrap();
         let output = String::from_utf8(w.finalize().unwrap()).unwrap();
         assert!(!output.is_empty());
@@ -495,7 +526,13 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
 
-        let mut w = HighlightedWriter::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
+        let mut w = HighlightedWriter::from_themed(
+            syntax,
+            &ss,
+            &ts.themes["base16-ocean.dark"],
+            AnsiStyledOutput::new(false),
+        )
+        .build();
         w.write_all(b"fn main() {}\n").unwrap();
         let output = String::from_utf8(w.finalize().unwrap()).unwrap();
 
@@ -511,7 +548,13 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
 
-        let mut w = HighlightedWriter::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
+        let mut w = HighlightedWriter::from_themed(
+            syntax,
+            &ss,
+            &ts.themes["base16-ocean.dark"],
+            AnsiStyledOutput::new(false),
+        )
+        .build();
         // Write a line in three chunks, with the newline arriving last.
         w.write_all(b"fn main").unwrap();
         w.write_all(b"() {").unwrap();
@@ -531,7 +574,13 @@ mod tests {
         let ts = ThemeSet::load_defaults();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
 
-        let mut w = HighlightedWriter::new(syntax, &ss, &ts.themes["base16-ocean.dark"]);
+        let mut w = HighlightedWriter::from_themed(
+            syntax,
+            &ss,
+            &ts.themes["base16-ocean.dark"],
+            AnsiStyledOutput::new(false),
+        )
+        .build();
         // 'é' is two bytes (0xC3 0xA9). Split between writes.
         w.write_all(b"// caf\xC3").unwrap();
         w.write_all(b"\xA9\n").unwrap();
@@ -545,7 +594,13 @@ mod tests {
         let ss = SyntaxSet::load_defaults_newlines();
         let ts = ThemeSet::load_defaults();
         let theme = &ts.themes["base16-ocean.dark"];
-        let mut w = HighlightedWriter::new(ss.find_syntax_by_extension("py").unwrap(), &ss, theme);
+        let mut w = HighlightedWriter::from_themed(
+            ss.find_syntax_by_extension("py").unwrap(),
+            &ss,
+            theme,
+            AnsiStyledOutput::new(false),
+        )
+        .build();
 
         let lines = ["\"\"\"\n", "def foo():\n", "\"\"\"\n"];
         w.write_all(lines[0].as_bytes()).unwrap();
@@ -554,13 +609,14 @@ mod tests {
         let (parse_state, scope_stack) = (parse_state.clone(), scope_stack.clone());
         let first_output = String::from_utf8(w.finalize().unwrap()).unwrap();
 
-        let mut other = HighlightedWriter::from_state(
-            parse_state,
-            scope_stack,
+        let mut other = HighlightedWriter::from_themed(
+            ss.find_syntax_by_extension("py").unwrap(),
             &ss,
-            ThemedRenderer::new(theme, AnsiStyledOutput::new(false)),
-            Vec::new(),
-        );
+            theme,
+            AnsiStyledOutput::new(false),
+        )
+        .with_state(parse_state, scope_stack)
+        .build();
         other.write_all(lines[1].as_bytes()).unwrap();
         let second_output = String::from_utf8(other.finalize().unwrap()).unwrap();
 
