@@ -91,11 +91,11 @@ impl ScopeRenderer for LatexScopeRenderer<'_> {
 }
 
 fn main() {
+    // Load these once at the start of your program
     let ps = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
 
     let syntax = ps.find_syntax_by_extension("rs").unwrap();
-    let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 
     let out = std::io::stdout().lock();
     let mut highlight = HighlightedWriter::new_with_renderer_and_output(
@@ -104,6 +104,7 @@ fn main() {
         LatexScopeRenderer::new(&ts.themes["InspiredGitHub"]),
         out,
     );
-    highlight.write_all(s.as_bytes()).unwrap();
+    writeln!(highlight, "pub struct Wow {{ hi: u64 }}").unwrap();
+    writeln!(highlight, "fn blah() -> u64 {{}}").unwrap();
     let _ = highlight.finalize().unwrap();
 }
