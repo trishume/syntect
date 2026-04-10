@@ -1437,7 +1437,6 @@ impl syntect::rendering::StyledOutput for syntect::rendering::AnsiStyledOutput
 pub fn syntect::rendering::AnsiStyledOutput::begin_style(&mut self, style: syntect::highlighting::Style, output: &mut alloc::string::String)
 pub fn syntect::rendering::AnsiStyledOutput::end_style(&mut self, _output: &mut alloc::string::String)
 pub fn syntect::rendering::AnsiStyledOutput::write_text(&mut self, text: &str, output: &mut alloc::string::String)
-pub fn syntect::rendering::render_line<R: syntect::rendering::ScopeRenderer>(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], stack: &mut syntect::parsing::ScopeStack, renderer: &mut R, line_index: usize) -> core::result::Result<(alloc::string::String, isize), syntect::Error>
 pub mod syntect::util
 pub struct syntect::util::LinesWithEndings<'a>
 impl<'a> syntect::util::LinesWithEndings<'a>

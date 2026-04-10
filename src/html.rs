@@ -304,16 +304,21 @@ fn escape_css_identifier(identifier: &str) -> String {
 /// like the scope stack and the scopes are mapped to classes based
 /// on the `ClassStyle` (see it's docs).
 ///
-/// See [`ClassedHTMLGenerator`] for a more convenient wrapper, this is the advanced
-/// version of the function that gives more control over the parsing flow.
-///
-/// For this to work correctly you must concatenate all the lines in a `<pre>`
-/// tag since some span tags opened on a line may not be closed on that line
-/// and later lines may close tags from previous lines.
+/// **Deprecated.** This function cannot correctly handle cross-line
+/// branch-point failures: when the parser retroactively replays a span of
+/// previously-emitted ops, the rendered output for those lines has already
+/// been written to the caller and cannot be retracted. Use
+/// [`ClassedHTMLGenerator`] (or [`crate::io::HighlightedWriter::from_markup`]
+/// directly) instead — both buffer rendered output during speculative
+/// parsing and replay corrected ops once speculation resolves.
 ///
 /// Returns the HTML string and the number of `<span>` tags opened
 /// (negative for closed). So that you can emit the correct number of closing
 /// tags at the end.
+#[deprecated(
+    since = "6.0.0",
+    note = "Cannot correctly handle cross-line branch-point failures. Use `ClassedHTMLGenerator` or `HighlightedWriter::from_markup` instead, which buffer rendered output during speculative parsing and replay corrected ops."
+)]
 pub fn line_tokens_to_classed_spans(
     line: &str,
     ops: &[(usize, ScopeStackOp)],
@@ -451,36 +456,33 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     Ok(output)
 }
 
-/// Preserved for compatibility, always use `line_tokens_to_classed_spans`
-/// and keep a `ScopeStack` between lines for correct highlighting that won't
-/// sometimes crash.
+/// Preserved for compatibility. Use [`ClassedHTMLGenerator`] instead.
 #[deprecated(
     since = "4.6.0",
-    note = "Use `line_tokens_to_classed_spans` instead, this can panic and highlight incorrectly"
+    note = "Use `ClassedHTMLGenerator` instead, this can panic and highlight incorrectly and cannot handle cross-line branch-point failures"
 )]
+#[allow(deprecated)]
 pub fn tokens_to_classed_spans(
     line: &str,
     ops: &[(usize, ScopeStackOp)],
     style: ClassStyle,
 ) -> (String, isize) {
-    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new()).expect(
-        "Use `line_tokens_to_classed_spans` instead, this can panic and highlight incorrectly",
-    )
+    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new())
+        .expect("Use `ClassedHTMLGenerator` instead")
 }
 
 #[deprecated(
     since = "3.1.0",
-    note = "Use `line_tokens_to_classed_spans` instead to avoid incorrect highlighting and panics"
+    note = "Use `ClassedHTMLGenerator` instead to avoid incorrect highlighting, panics, and cross-line branch-point failures"
 )]
+#[allow(deprecated)]
 pub fn tokens_to_classed_html(
     line: &str,
     ops: &[(usize, ScopeStackOp)],
     style: ClassStyle,
 ) -> String {
     line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new())
-        .expect(
-            "Use `line_tokens_to_classed_spans` instead to avoid incorrect highlighting and panics",
-        )
+        .expect("Use `ClassedHTMLGenerator` instead")
         .0
 }
 
@@ -622,6 +624,7 @@ mod tests {
     use crate::parsing::{ParseState, ScopeStack, SyntaxDefinition, SyntaxSet, SyntaxSetBuilder};
     use crate::util::LinesWithEndings;
     #[test]
+    #[allow(deprecated)]
     fn tokens() {
         let ss = SyntaxSet::load_defaults_newlines();
         let syntax = ss.find_syntax_by_name("Markdown").unwrap();

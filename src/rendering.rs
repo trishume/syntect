@@ -110,7 +110,16 @@ pub(crate) fn resolve_atom_strs<'a>(scope: Scope, repo: &'a ScopeRepository) -> 
 /// Locks the global scope repository once per line. Applies the transparent
 /// empty-scope optimization: if a scope push/pop pair contains no text, the
 /// push output is truncated rather than emitting an empty element.
-pub fn render_line<R: ScopeRenderer>(
+///
+/// **Internal-only.** This function is not exposed to downstream users
+/// because calling it line-by-line cannot correctly handle cross-line
+/// branch-point failures: when the parser retroactively replays a span of
+/// previously-emitted ops, the rendered output for those lines has already
+/// been written and cannot be retracted. The only legitimate caller is
+/// [`crate::io::HighlightedWriter`], which buffers rendered output during
+/// speculative parsing and only invokes `render_line` once the ops are
+/// final.
+pub(crate) fn render_line<R: ScopeRenderer>(
     line: &str,
     ops: &[(usize, ScopeStackOp)],
     stack: &mut ScopeStack,

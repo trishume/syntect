@@ -5,6 +5,7 @@
 ### Breaking changes
 
 - `HighlightLines` and `HighlightFile` deprecated since 6.0.0 — use `syntect::io::HighlightedWriter` instead [#627]
+- `line_tokens_to_classed_spans` (`syntect::html`) deprecated since 6.0.0 — cannot correctly handle cross-line branch-point failures (the rendered output for earlier lines is already in the caller's hands when the parser retroactively replays). Use `ClassedHTMLGenerator` or `HighlightedWriter::from_markup` instead, both of which buffer rendered output during speculative parsing and replay corrected ops [#627]
 - `SCOPE_REPO` removed from public API (was already deprecated since 5.3.0) [#627]
 - `ParseState::parse_line` now returns `Result<ParseLineOutput, ParsingError>` instead of a bare `Vec` [#614]
 - `MatchOperation` enum: new `Branch`, `Fail` [#614], and `Embed` [#615] variants
