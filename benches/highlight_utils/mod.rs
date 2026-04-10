@@ -1,7 +1,7 @@
-use syntect::easy::HighlightLines;
+use std::io::Write;
 use syntect::highlighting::Theme;
+use syntect::io::HighlightedWriter;
 use syntect::parsing::{SyntaxReference, SyntaxSet};
-use syntect::util::LinesWithEndings;
 
 /// Common helper for benchmarking highlighting.
 pub fn do_highlight(
@@ -10,9 +10,7 @@ pub fn do_highlight(
     syntax: &SyntaxReference,
     theme: &Theme,
 ) -> usize {
-    let mut highlight = HighlightLines::new(syntax, syntax_set, theme);
-    for line in LinesWithEndings::from(s) {
-        highlight.highlight_line(line).unwrap();
-    }
-    highlight.finalize().len()
+    let mut highlight = HighlightedWriter::new(syntax, syntax_set, theme);
+    highlight.write_all(s.as_bytes()).unwrap();
+    highlight.finalize().unwrap().len()
 }
