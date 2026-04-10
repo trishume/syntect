@@ -51,11 +51,16 @@ impl ScopeRenderer for LatexScopeRenderer<'_> {
         if text.is_empty() {
             return;
         }
-        // Pass whitespace through without wrapping in \textcolor,
-        // matching the behavior of `as_latex_escaped`.
-        if text == " " || text == "\n" {
-            output.push_str(text);
-            return;
+        // Pass spaces through without wrapping in \textcolor and skip
+        // newlines (line breaks are emitted by end_line), matching the
+        // behavior of `as_latex_escaped`.
+        match text {
+            " " => {
+                output.push(' ');
+                return;
+            }
+            "\n" => return,
+            _ => {}
         }
         let style = self.current_style();
         if self.last_written_style != Some(style) {
@@ -81,6 +86,7 @@ impl ScopeRenderer for LatexScopeRenderer<'_> {
         if self.last_written_style.take().is_some() {
             output.push('}');
         }
+        output.push('\n');
     }
 }
 
@@ -104,5 +110,5 @@ fn main() {
         // Each line's rendered output is flushed; print a blank line after it.
         println!();
     }
-    highlight.finalize();
+    let _ = highlight.finalize();
 }
