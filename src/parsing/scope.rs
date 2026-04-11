@@ -733,4 +733,38 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn with_atom_strs_passes_atoms_in_order_with_correct_length() {
+        // Pin the exact length and order of the slice handed to the closure.
+        // Catches mutants that drop atoms, reorder them, return an empty
+        // vector, or replace the closure return with `Default::default()`.
+        let scope = Scope::new("keyword.operator.arithmetic").unwrap();
+
+        let len: usize = scope.with_atom_strs(|atoms| atoms.len());
+        assert_eq!(len, 3);
+
+        let atoms: Vec<String> =
+            scope.with_atom_strs(|atoms| atoms.iter().map(|s| (*s).to_string()).collect());
+        assert_eq!(atoms, vec!["keyword", "operator", "arithmetic"]);
+
+        // Closure-return identity: the value returned by `with_atom_strs` is
+        // the value the closure returned (catches `Default::default()`
+        // substitution mutants).
+        let marker: u32 = scope.with_atom_strs(|_| 0xC0FFEE);
+        assert_eq!(marker, 0xC0FFEE);
+    }
+
+    #[test]
+    fn with_atom_strs_handles_empty_and_single_atom_scopes() {
+        let empty = Scope::new("").unwrap();
+        let empty_atoms: Vec<String> =
+            empty.with_atom_strs(|atoms| atoms.iter().map(|s| (*s).to_string()).collect());
+        assert!(empty_atoms.is_empty());
+
+        let single = Scope::new("source").unwrap();
+        let single_atoms: Vec<String> =
+            single.with_atom_strs(|atoms| atoms.iter().map(|s| (*s).to_string()).collect());
+        assert_eq!(single_atoms, vec!["source"]);
+    }
 }

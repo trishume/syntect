@@ -23,3 +23,8 @@ synhtml-css-classes.html
 synhtml-css-classes.css
 theme-dark.css
 theme-light.css
+
+# cargo-mutants
+mutants.out/
+mutants.out.old/
+master.diff

@@ -99,7 +99,7 @@ pub trait ScopeRenderer {
 }
 
 /// Resolve atom strings for a scope from a locked repository.
-pub(crate) fn resolve_atom_strs<'a>(scope: Scope, repo: &'a ScopeRepository) -> Vec<&'a str> {
+pub(crate) fn resolve_atom_strs(scope: Scope, repo: &ScopeRepository) -> Vec<&str> {
     (0..scope.len() as usize)
         .map(|i| repo.atom_str(scope.atom_at(i)))
         .collect()
@@ -607,5 +607,103 @@ impl StyledOutput for AnsiStyledOutput {
 
     fn write_text(&mut self, text: &str, output: &mut String) {
         output.push_str(text);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::highlighting::{Color, FontStyle, Style};
+
+    /// A minimal `ScopeRenderer` that overrides only the required methods,
+    /// inheriting `write_text`/`begin_line`/`end_line` from the trait
+    /// defaults. Used to test those default implementations directly.
+    struct BareScopeRenderer;
+    impl ScopeRenderer for BareScopeRenderer {
+        fn begin_scope(
+            &mut self,
+            _atom_strs: &[&str],
+            _scope: Scope,
+            _scope_stack: &[Scope],
+            _output: &mut String,
+        ) -> bool {
+            true
+        }
+        fn end_scope(&mut self, _output: &mut String) {}
+    }
+
+    #[test]
+    fn scope_renderer_default_write_text_passes_text_through() {
+        // Catches: rendering.rs:97 ScopeRenderer::write_text default with ()
+        let mut r = BareScopeRenderer;
+        let mut out = String::new();
+        r.write_text("hello", &mut out);
+        assert_eq!(out, "hello");
+    }
+
+    /// Same idea for `ScopeMarkup`.
+    struct BareScopeMarkup;
+    impl ScopeMarkup for BareScopeMarkup {
+        fn begin_scope(&mut self, _atom_strs: &[&str], _output: &mut String) {}
+        fn end_scope(&mut self, _output: &mut String) {}
+    }
+
+    #[test]
+    fn scope_markup_default_write_text_passes_text_through() {
+        // Catches: rendering.rs:241 ScopeMarkup::write_text default with ()
+        let mut m = BareScopeMarkup;
+        let mut out = String::new();
+        m.write_text("hello", &mut out);
+        assert_eq!(out, "hello");
+    }
+
+    /// Minimal `StyledOutput` that overrides only the required methods,
+    /// inheriting `should_merge` from the trait default.
+    struct BareStyledOutput;
+    impl StyledOutput for BareStyledOutput {
+        fn begin_style(&mut self, _style: Style, _output: &mut String) {}
+        fn end_style(&mut self, _output: &mut String) {}
+        fn write_text(&mut self, _text: &str, _output: &mut String) {}
+    }
+
+    fn make_style(r: u8, g: u8, b: u8) -> Style {
+        Style {
+            foreground: Color { r, g, b, a: 0xff },
+            background: Color {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 0xff,
+            },
+            font_style: FontStyle::empty(),
+        }
+    }
+
+    #[test]
+    fn styled_output_default_should_merge_compares_styles_for_equality() {
+        // Catches all three mutants on the default impl:
+        //   - L403 should_merge with true
+        //   - L403 should_merge with false
+        //   - L403 == replaced with !=
+        let b = BareStyledOutput;
+        let a = make_style(1, 2, 3);
+        let same = make_style(1, 2, 3);
+        let other = make_style(9, 8, 7);
+
+        assert!(
+            b.should_merge(a, same, "x"),
+            "default impl must merge identical styles"
+        );
+        assert!(
+            !b.should_merge(a, other, "x"),
+            "default impl must NOT merge styles with different foreground"
+        );
+    }
+
+    #[test]
+    fn ansi_styled_output_include_bg_accessor_returns_constructor_arg() {
+        // Catches: rendering.rs:586 AnsiStyledOutput::include_bg with true/false
+        assert!(!AnsiStyledOutput::new(false).include_bg());
+        assert!(AnsiStyledOutput::new(true).include_bg());
     }
 }

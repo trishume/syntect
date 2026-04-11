@@ -356,12 +356,17 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriter<'a, R, W> {
     fn highlight_line(&mut self, line: &str) -> Result<(), Error> {
         let parse_output = self.parse_state.parse_line(line, self.syntax_set)?;
 
-        // If replayed ops arrived, patch the pending buffer.
+        // If replayed ops arrived, patch the pending buffer in place. The
+        // parser invariant guarantees `replayed.len() <= pending_ops.len()`,
+        // and `iter_mut().zip(...)` short-circuits at the shorter side, so
+        // no defensive bound check is needed.
         if !parse_output.replayed.is_empty() {
-            for (i, ops) in parse_output.replayed.into_iter().enumerate() {
-                if i < self.pending_ops.len() {
-                    self.pending_ops[i] = ops;
-                }
+            for (slot, ops) in self
+                .pending_ops
+                .iter_mut()
+                .zip(parse_output.replayed.into_iter())
+            {
+                *slot = ops;
             }
         }
 
@@ -465,13 +470,11 @@ impl<'a, R: ScopeRenderer, W: io::Write> HighlightedWriter<'a, R, W> {
             let line_bytes = std::mem::take(&mut self.line_buf);
             let line = std::str::from_utf8(&line_bytes)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-            self.highlight_line(line)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            self.highlight_line(line).map_err(io::Error::other)?;
         }
 
         // 2. Flush any pending speculatively-buffered lines.
-        self.flush_pending()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        self.flush_pending().map_err(io::Error::other)?;
 
         // 3. Emit close markers for any scopes still open at EOF.
         let mut buf = String::new();
@@ -514,8 +517,7 @@ impl<'a, R: ScopeRenderer, W: io::Write> Write for HighlightedWriter<'a, R, W> {
             let s = std::str::from_utf8(&completed)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             for line in s.split_inclusive('\n') {
-                self.highlight_line(line)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                self.highlight_line(line).map_err(io::Error::other)?;
             }
         }
         Ok(buf.len())
@@ -721,5 +723,832 @@ mod tests {
             s.ends_with("</span>"),
             "expected outer </span> to be emitted by cleanup, got: {s}"
         );
+    }
+
+    // ── Phase B mutation-killing tests ────────────────────────────────────
+
+    /// Capturing `ScopeMarkup` that records the exact sequence of method
+    /// invocations. Used by tests below to assert on `begin_line`/`end_line`
+    /// pairing, monotonic line indices, and atom-string forwarding.
+    ///
+    /// Events are stored behind an `Rc<RefCell<…>>` so the test can hold its
+    /// own handle to them, drop the writer (triggering the implicit Drop
+    /// cleanup which itself emits more events), and then read the final
+    /// event log without depending on the writer being alive.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum MarkupEvent {
+        BeginLine(usize),
+        EndLine(usize),
+        BeginScope(Vec<String>),
+        EndScope,
+        Text(String),
+    }
+
+    type SharedEvents = std::rc::Rc<std::cell::RefCell<Vec<MarkupEvent>>>;
+
+    struct CapturingMarkup {
+        events: SharedEvents,
+    }
+
+    impl CapturingMarkup {
+        fn new() -> (Self, SharedEvents) {
+            let events: SharedEvents = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            (
+                Self {
+                    events: events.clone(),
+                },
+                events,
+            )
+        }
+    }
+
+    impl ScopeMarkup for CapturingMarkup {
+        fn begin_line(&mut self, line_index: usize, _output: &mut String) {
+            self.events
+                .borrow_mut()
+                .push(MarkupEvent::BeginLine(line_index));
+        }
+        fn end_line(&mut self, line_index: usize, _output: &mut String) {
+            self.events
+                .borrow_mut()
+                .push(MarkupEvent::EndLine(line_index));
+        }
+        fn begin_scope(&mut self, atom_strs: &[&str], _output: &mut String) {
+            self.events.borrow_mut().push(MarkupEvent::BeginScope(
+                atom_strs.iter().map(|s| (*s).to_string()).collect(),
+            ));
+        }
+        fn end_scope(&mut self, _output: &mut String) {
+            self.events.borrow_mut().push(MarkupEvent::EndScope);
+        }
+        fn write_text(&mut self, text: &str, _output: &mut String) {
+            self.events
+                .borrow_mut()
+                .push(MarkupEvent::Text(text.to_string()));
+        }
+    }
+
+    #[cfg(feature = "default-syntaxes")]
+    #[test]
+    fn markup_receives_paired_line_hooks_with_monotonic_line_index() {
+        // Three lines of Rust → exactly three begin_line/end_line pairs with
+        // line indices 0, 1, 2 in order. Catches mutants that drop the calls,
+        // emit a wrong line index, mutate `+= 1` on `line_index`, or replace
+        // `line_index_offset + i` arithmetic in `flush_pending`.
+        let ss = SyntaxSet::load_defaults_newlines();
+        let syntax = ss.find_syntax_by_extension("rs").unwrap();
+
+        let (capture, events) = CapturingMarkup::new();
+        let mut w = HighlightedWriter::from_markup(syntax, &ss, capture).build();
+        w.write_all(b"fn a() {}\nfn b() {}\nfn c() {}\n").unwrap();
+        // Drop the writer first so any cleanup-time events are recorded
+        // BEFORE we read them.
+        drop(w);
+        let events = events.borrow().clone();
+
+        let line_starts: Vec<usize> = events
+            .iter()
+            .filter_map(|e| match e {
+                MarkupEvent::BeginLine(i) => Some(*i),
+                _ => None,
+            })
+            .collect();
+        let line_ends: Vec<usize> = events
+            .iter()
+            .filter_map(|e| match e {
+                MarkupEvent::EndLine(i) => Some(*i),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            line_starts,
+            vec![0, 1, 2],
+            "begin_line must fire once per line with monotonically increasing 0-based indices"
+        );
+        assert_eq!(
+            line_ends,
+            vec![0, 1, 2],
+            "end_line must fire once per line with the same indices as begin_line"
+        );
+
+        // begin_line(i) must precede the matching end_line(i) and the
+        // pairing must alternate (no two starts in a row, no two ends in a
+        // row, no end before its start).
+        let mut open: Option<usize> = None;
+        for ev in &events {
+            match ev {
+                MarkupEvent::BeginLine(i) => {
+                    assert!(open.is_none(), "nested begin_line for {i}: prev still open");
+                    open = Some(*i);
+                }
+                MarkupEvent::EndLine(i) => {
+                    assert_eq!(open, Some(*i), "end_line({i}) without matching begin_line");
+                    open = None;
+                }
+                _ => {}
+            }
+        }
+        assert!(open.is_none(), "trailing begin_line with no end_line");
+    }
+
+    #[cfg(feature = "default-syntaxes")]
+    #[test]
+    fn markup_forwards_atom_strs_and_pairs_scopes() {
+        // Catches: MarkupAdapter::begin_scope dropping atom_strs derivation,
+        // MarkupAdapter::write_text being replaced with (), and
+        // resolve_atom_strs returning vec![] / vec![""] / vec!["xyzzy"].
+        let ss = SyntaxSet::load_defaults_newlines();
+        let syntax = ss.find_syntax_by_name("R").unwrap();
+
+        let (capture, events) = CapturingMarkup::new();
+        let mut w = HighlightedWriter::from_markup(syntax, &ss, capture).build();
+        w.write_all(b"x + y\n").unwrap();
+        drop(w);
+        let events = events.borrow().clone();
+
+        // The first scope must be ["source", "r"].
+        let first_scope = events
+            .iter()
+            .find_map(|e| match e {
+                MarkupEvent::BeginScope(atoms) => Some(atoms.clone()),
+                _ => None,
+            })
+            .expect("expected at least one begin_scope event");
+        assert_eq!(first_scope, vec!["source".to_string(), "r".to_string()]);
+
+        // begin_scope and end_scope must be paired (count equal).
+        let begins = events
+            .iter()
+            .filter(|e| matches!(e, MarkupEvent::BeginScope(_)))
+            .count();
+        let ends = events
+            .iter()
+            .filter(|e| matches!(e, MarkupEvent::EndScope))
+            .count();
+        assert_eq!(begins, ends, "begin_scope/end_scope must be paired");
+        assert!(begins > 0, "expected at least one scope to be opened");
+
+        // The literal text "x" must be passed verbatim to write_text.
+        // (Catches MarkupAdapter::write_text being replaced with ().)
+        let text_concat: String = events
+            .iter()
+            .filter_map(|e| match e {
+                MarkupEvent::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            text_concat.contains('x') && text_concat.contains('y'),
+            "expected literal x and y to flow through write_text, got: {text_concat:?}"
+        );
+    }
+
+    #[test]
+    fn ansi_output_is_byte_exact_for_known_input() {
+        // Use a hand-built one-syntax SyntaxSet and a tiny synthetic theme so
+        // the test isn't sensitive to bundled-syntax/theme drift. Pin the
+        // exact ANSI byte sequence so any constant or channel mutation in
+        // AnsiStyledOutput::begin_style is observable. Catches:
+        //   - rendering.rs:592 begin_style replaced with ()
+        //   - constant or channel mutations in the \x1b[38;2;R;G;B m literal
+        //   - rendering.rs:540 + → - / + → * in write_text newline split
+        use crate::highlighting::{
+            Color, FontStyle, ScopeSelectors, StyleModifier, Theme, ThemeItem, ThemeSettings,
+        };
+        use crate::parsing::{SyntaxDefinition, SyntaxSetBuilder};
+        use std::str::FromStr;
+
+        let syntax_str = r#"
+name: PlainPing
+scope: source.ping
+contexts:
+  main:
+    - match: 'ping'
+      scope: kw.ping
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+        let syntax_ref = &ss.syntaxes()[0];
+
+        let theme = Theme {
+            name: Some("ansi-test".into()),
+            author: None,
+            settings: ThemeSettings {
+                foreground: Some(Color {
+                    r: 200,
+                    g: 100,
+                    b: 50,
+                    a: 0xff,
+                }),
+                background: Some(Color {
+                    r: 0,
+                    g: 0,
+                    b: 0,
+                    a: 0xff,
+                }),
+                ..Default::default()
+            },
+            scopes: vec![ThemeItem {
+                scope: ScopeSelectors::from_str("kw").unwrap(),
+                style: StyleModifier {
+                    foreground: Some(Color {
+                        r: 10,
+                        g: 20,
+                        b: 30,
+                        a: 0xff,
+                    }),
+                    background: None,
+                    font_style: Some(FontStyle::empty()),
+                },
+            }],
+        };
+
+        let mut w =
+            HighlightedWriter::from_themed(syntax_ref, &ss, &theme, AnsiStyledOutput::new(false))
+                .build();
+        w.write_all(b"ping\n").unwrap();
+        let output = String::from_utf8(w.into_inner().unwrap()).unwrap();
+
+        // Exactly: open span with kw style, "ping", close span (no-op for
+        // ANSI), then "\n".
+        assert_eq!(output, "\x1b[38;2;10;20;30mping\n");
+    }
+
+    #[test]
+    fn ansi_output_with_background_emits_both_escapes() {
+        // Catches AnsiStyledOutput::begin_style with `include_bg = true` being
+        // mutated (e.g. swapping the order, dropping one escape, swapping
+        // 38/48 codes, channel swaps).
+        use crate::highlighting::{
+            Color, FontStyle, ScopeSelectors, StyleModifier, Theme, ThemeItem, ThemeSettings,
+        };
+        use crate::parsing::{SyntaxDefinition, SyntaxSetBuilder};
+        use std::str::FromStr;
+
+        let syntax_str = r#"
+name: PlainPing
+scope: source.ping
+contexts:
+  main:
+    - match: 'ping'
+      scope: kw.ping
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+        let syntax_ref = &ss.syntaxes()[0];
+
+        let theme = Theme {
+            name: Some("ansi-bg-test".into()),
+            author: None,
+            settings: ThemeSettings::default(),
+            scopes: vec![ThemeItem {
+                scope: ScopeSelectors::from_str("kw").unwrap(),
+                style: StyleModifier {
+                    foreground: Some(Color {
+                        r: 11,
+                        g: 22,
+                        b: 33,
+                        a: 0xff,
+                    }),
+                    background: Some(Color {
+                        r: 44,
+                        g: 55,
+                        b: 66,
+                        a: 0xff,
+                    }),
+                    font_style: Some(FontStyle::empty()),
+                },
+            }],
+        };
+
+        let mut w =
+            HighlightedWriter::from_themed(syntax_ref, &ss, &theme, AnsiStyledOutput::new(true))
+                .build();
+        w.write_all(b"ping\n").unwrap();
+        let output = String::from_utf8(w.into_inner().unwrap()).unwrap();
+
+        // The background escape (48) must come first, followed by foreground
+        // (38), then the literal text, then the trailing newline. The kw
+        // style ought to apply to "ping" precisely.
+        assert!(
+            output.contains("\x1b[48;2;44;55;66m\x1b[38;2;11;22;33mping"),
+            "expected bg+fg pair around 'ping', got {output:?}"
+        );
+        assert!(output.ends_with('\n'));
+    }
+
+    #[cfg(feature = "default-syntaxes")]
+    #[test]
+    fn line_index_is_threaded_correctly_across_branch_point_replay() {
+        // The hardest-to-reach gap: cross-line branch-point speculation.
+        // Build a custom syntax that triggers `fail: bp` on line 2, forcing
+        // the parser to retroactively replay line 1 under the fallback
+        // alternative. The streaming writer must:
+        //   1. Buffer line 1's output until speculation resolves.
+        //   2. Render line 1 once, with the corrected ops, with line_index=0.
+        //   3. Render line 2 with line_index=1.
+        //   4. Emit no `try.word` scope (the wrong-alternative result).
+        //   5. Pass `begin_line(0)` BEFORE `begin_line(1)` to the renderer.
+        //
+        // Catches mutants in highlight_line, flush_pending, line_index_offset
+        // arithmetic, the speculative buffering branch, and the replay patch.
+        use crate::parsing::{SyntaxDefinition, SyntaxSetBuilder};
+
+        let syntax_str = r#"
+name: CrossLineBranchTest
+scope: source.clbt
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+        let syntax_ref = &ss.syntaxes()[0];
+
+        let (capture, events) = CapturingMarkup::new();
+        let mut w = HighlightedWriter::from_markup(syntax_ref, &ss, capture).build();
+        // Line 1 triggers branch_point. Line 2 triggers fail: bp, forcing
+        // retroactive replay of line 1 under fallback-ctx.
+        w.write_all(b"TRY\nFAIL\n").unwrap();
+        drop(w);
+        let events = events.borrow().clone();
+
+        // 1. begin_line indices must be 0 then 1, in order.
+        let line_starts: Vec<usize> = events
+            .iter()
+            .filter_map(|e| match e {
+                MarkupEvent::BeginLine(i) => Some(*i),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            line_starts,
+            vec![0, 1],
+            "begin_line should fire for both lines after speculation flush, in order"
+        );
+
+        // 2. The wrong-alternative scope `try.word` must NOT appear.
+        let saw_try_word = events.iter().any(|e| match e {
+            MarkupEvent::BeginScope(atoms) => atoms.iter().any(|a| a == "try"),
+            _ => false,
+        });
+        assert!(
+            !saw_try_word,
+            "the speculation-failed `try.*` scope must not surface in rendered output"
+        );
+
+        // 3. The corrected `fallback.content` scope MUST appear.
+        let saw_fallback = events.iter().any(|e| match e {
+            MarkupEvent::BeginScope(atoms) => atoms.iter().any(|a| a == "fallback"),
+            _ => false,
+        });
+        assert!(
+            saw_fallback,
+            "expected the post-replay `fallback.content` scope in rendered output"
+        );
+
+        // 4. begin_line(0) must precede begin_line(1).
+        let pos0 = events
+            .iter()
+            .position(|e| matches!(e, MarkupEvent::BeginLine(0)))
+            .expect("begin_line(0) missing");
+        let pos1 = events
+            .iter()
+            .position(|e| matches!(e, MarkupEvent::BeginLine(1)))
+            .expect("begin_line(1) missing");
+        assert!(pos0 < pos1, "line 0 events must precede line 1 events");
+    }
+
+    #[cfg(feature = "default-syntaxes")]
+    #[test]
+    fn drop_flushes_pending_speculation_buffer() {
+        // Variant of `drop_runs_cleanup_when_into_inner_is_skipped` that also
+        // exercises the speculative-line flush path inside `finalize_inner`.
+        // Construct a writer over a syntax with cross-line branch-point
+        // failures, feed it input that leaves `pending_lines` non-empty (the
+        // branch is still active), drop the writer without `into_inner`, and
+        // assert that the borrowed sink contains both rendered lines.
+        use crate::parsing::{SyntaxDefinition, SyntaxSetBuilder};
+
+        let syntax_str = r#"
+name: PendingDropTest
+scope: source.pdt
+contexts:
+  main:
+    - match: 'OPEN'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '.*'
+      scope: main.other
+  try-ctx:
+    - match: '\n'
+    - match: '\w+'
+      scope: try.word
+      pop: true
+  fallback-ctx:
+    - match: '.*'
+      scope: fallback.content
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+        let syntax_ref = &ss.syntaxes()[0];
+
+        // Reference output: explicit `into_inner` after writing input that
+        // *does* trigger speculation but never resolves it before EOF.
+        let mut explicit = HighlightedWriter::from_markup(
+            syntax_ref,
+            &ss,
+            crate::html::ClassedHTMLScopeRenderer::new(crate::html::ClassStyle::Spaced),
+        )
+        .build();
+        explicit.write_all(b"OPEN\n").unwrap();
+        let explicit_bytes = explicit.into_inner().unwrap();
+
+        // Drop-only path: borrowed sink, identical input, no into_inner call.
+        let mut implicit_buf: Vec<u8> = Vec::new();
+        {
+            let mut implicit = HighlightedWriter::from_markup(
+                syntax_ref,
+                &ss,
+                crate::html::ClassedHTMLScopeRenderer::new(crate::html::ClassStyle::Spaced),
+            )
+            .with_output(&mut implicit_buf)
+            .build();
+            implicit.write_all(b"OPEN\n").unwrap();
+        }
+
+        assert_eq!(
+            explicit_bytes, implicit_buf,
+            "Drop must flush pending speculative lines just like into_inner"
+        );
+        // Sanity: the buffer must not be empty (catches Drop replaced with ()
+        // and finalize_inner replaced with `Ok(Default::default())`).
+        assert!(
+            !implicit_buf.is_empty(),
+            "Drop cleanup produced no output; pending-line flush must have been skipped"
+        );
+        let s = String::from_utf8(implicit_buf).unwrap();
+        assert!(
+            s.contains("OPEN"),
+            "expected the speculative line content to surface after Drop, got: {s}"
+        );
+        // Absolute span balance: every opened classed span must be balanced
+        // by a closing tag in the FLUSHED output. This is the assertion that
+        // catches `open_scopes += delta → -=/*=` in flush_pending — both the
+        // explicit and implicit paths route through `flush_pending`, so a
+        // byte-equality check would treat the mutated count as a no-op (both
+        // sides produce the same wrong output). Tag balance is an absolute
+        // invariant, mutation-blind.
+        let opens = s.matches("<span class=\"").count();
+        let closes = s.matches("</span>").count();
+        assert_eq!(
+            opens, closes,
+            "post-flush span balance must hold (opens={opens}, closes={closes}); flush_pending's open_scopes accumulator likely wrong: {s}"
+        );
+    }
+
+    #[cfg(feature = "default-syntaxes")]
+    #[test]
+    fn empty_scope_optimisation_truncates_push_pop_with_no_text() {
+        // The render_line empty-scope optimisation: a push/pop pair with no
+        // intervening text must NOT emit a corresponding markup pair.
+        // Catches mutations in `scope_empty` tracking inside render_line:
+        //   - rendering.rs:144 > → ==/</>= (the `i > cur_index` test that
+        //     resets scope_empty)
+        //   - rendering.rs:156 += / -= / *= on scope_delta when `wrote==true`
+        //   - rendering.rs:167 -= → += / /= on scope_delta when popping
+        //
+        // We use `ClassedHTMLGenerator` rather than CapturingMarkup so that
+        // we can observe the *truncated* output buffer directly: the
+        // empty-scope optimization happens at the `String` level inside
+        // `render_line` and only its result is observable through the bytes
+        // that the inner sink ends up holding.
+        //
+        // Empty-scope is triggered when a Push and a matching Pop occur at
+        // the same byte position with no intervening write_text. The
+        // bundled Rust syntax exercises this naturally for a function with
+        // an empty body — there are several adjacent push/pop pairs around
+        // the brace and parenthesis tokens.
+        let ss = SyntaxSet::load_defaults_newlines();
+        let syntax = ss.find_syntax_by_extension("rs").unwrap();
+        let mut g = crate::html::ClassedHTMLGenerator::new_with_class_style(
+            syntax,
+            &ss,
+            crate::html::ClassStyle::Spaced,
+        );
+        g.parse_html_for_line_which_includes_newline("fn f() {}\n")
+            .unwrap();
+        let html = g.finalize();
+
+        // No empty `<span class="…"></span>` pair should appear in the
+        // output (where … contains no whitespace, indicating an
+        // immediately-closed pushed scope). Catches mutants that flip the
+        // truncation logic in `render_line`'s `scope_empty` tracking and
+        // would cause empty span pairs to leak into the output.
+        //
+        // The regex check is intentionally conservative: any pair of the
+        // form `<span class="WORDCHARS">.</span>` would be a leak, where
+        // `.` matches any single non-newline character. We use a simple
+        // string contains check on the simplest possible empty pattern
+        // because Rust's syntax highlighting doesn't produce empty class
+        // names; if the optimisation is broken, the parser's empty scope
+        // pushes/pops would surface as `<span class="X"></span>` for some
+        // class `X`.
+        let mut found_empty = false;
+        let mut idx = 0;
+        while let Some(open_start) = html[idx..].find("<span class=\"") {
+            let abs_start = idx + open_start;
+            let after_open_tag = abs_start + "<span class=\"".len();
+            // Find the closing `">` of the open tag.
+            if let Some(rel_close) = html[after_open_tag..].find("\">") {
+                let content_start = after_open_tag + rel_close + 2;
+                // Empty if the very next characters are "</span>".
+                if html[content_start..].starts_with("</span>") {
+                    found_empty = true;
+                    break;
+                }
+                idx = content_start;
+            } else {
+                break;
+            }
+        }
+        assert!(
+            !found_empty,
+            "empty-scope optimisation must prevent <span class=\"…\"></span> pairs from leaking, got HTML:\n{html}"
+        );
+
+        // Sanity: the output must still contain *some* nontrivial spans
+        // (otherwise we'd be passing trivially because nothing was
+        // emitted at all).
+        assert!(
+            html.contains("<span class=\""),
+            "expected at least one classed span in the output, got: {html}"
+        );
+    }
+
+    #[test]
+    fn themed_renderer_closes_styled_span_on_trailing_partial_line() {
+        // Catches: rendering.rs:546 ThemedRenderer::end_line replaced with ().
+        // For a line that ends with `\n`, the styled-span close happens
+        // INSIDE write_text (when it splits on the newline), so end_line
+        // has nothing to do. The end_line code path only fires for a
+        // *trailing partial line* that doesn't end in '\n' — those flow
+        // through finalize_inner's drain logic, and end_line is the only
+        // place that closes the open styled span.
+        //
+        // We feed input WITHOUT a trailing newline and assert the output
+        // ends with the closing bracket of the styled span. For HTML this
+        // is `</span>`; for ANSI it's a no-op (end_style is empty), so we
+        // use HtmlStyledOutput.
+        use crate::highlighting::{
+            Color, FontStyle, ScopeSelectors, StyleModifier, Theme, ThemeItem, ThemeSettings,
+        };
+        use crate::parsing::{SyntaxDefinition, SyntaxSetBuilder};
+        use std::str::FromStr;
+
+        let syntax_str = r#"
+name: PingNoop
+scope: source.ping
+contexts:
+  main:
+    - match: 'ping'
+      scope: kw.ping
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+        let syntax_ref = &ss.syntaxes()[0];
+
+        let bg = Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0xff,
+        };
+        let theme = Theme {
+            name: Some("end-line-test".into()),
+            author: None,
+            settings: ThemeSettings {
+                foreground: Some(Color {
+                    r: 200,
+                    g: 200,
+                    b: 200,
+                    a: 0xff,
+                }),
+                background: Some(bg),
+                ..Default::default()
+            },
+            scopes: vec![ThemeItem {
+                scope: ScopeSelectors::from_str("kw").unwrap(),
+                style: StyleModifier {
+                    foreground: Some(Color {
+                        r: 11,
+                        g: 22,
+                        b: 33,
+                        a: 0xff,
+                    }),
+                    background: None,
+                    font_style: Some(FontStyle::empty()),
+                },
+            }],
+        };
+
+        let mut w = HighlightedWriter::from_themed(
+            syntax_ref,
+            &ss,
+            &theme,
+            crate::html::HtmlStyledOutput::new(bg),
+        )
+        .build();
+        // No trailing newline → drained via finalize_inner → ThemedRenderer
+        // ::end_line is the only path that can close the open span.
+        w.write_all(b"ping").unwrap();
+        let bytes = w.into_inner().unwrap();
+        let html = String::from_utf8(bytes).unwrap();
+
+        // The styled span around "ping" must be closed at end-of-input.
+        assert!(
+            html.contains("<span style=\""),
+            "expected an opening styled span around 'ping', got: {html}"
+        );
+        assert_eq!(
+            html.matches("<span").count(),
+            html.matches("</span>").count(),
+            "every <span ...> must be balanced by a </span>; missing close means end_line was skipped: {html}"
+        );
+        assert!(
+            html.ends_with("</span>"),
+            "expected output to end with the trailing </span>, got: {html:?}"
+        );
+    }
+
+    /// `io::Write` sink that records every call. Used to assert that
+    /// `HighlightedWriter::flush` actually delegates to the inner sink and
+    /// that bytes propagate.
+    struct CountingSink {
+        inner: Vec<u8>,
+        flush_count: std::rc::Rc<std::cell::Cell<usize>>,
+    }
+
+    impl io::Write for CountingSink {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.inner.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            self.flush_count.set(self.flush_count.get() + 1);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn flush_delegates_to_inner_sink() {
+        // Catches: io.rs:528 <impl Write>::flush replaced with Ok(()).
+        // The wrapper must call the inner sink's flush, not return Ok(())
+        // unconditionally.
+        use crate::parsing::{SyntaxDefinition, SyntaxSetBuilder};
+
+        let syntax_str = r#"
+name: PingNoop
+scope: source.ping
+contexts:
+  main:
+    - match: 'ping'
+      scope: kw.ping
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+        let syntax_ref = &ss.syntaxes()[0];
+
+        let flush_count = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let sink = CountingSink {
+            inner: Vec::new(),
+            flush_count: flush_count.clone(),
+        };
+        let (capture, _events) = CapturingMarkup::new();
+        let mut w = HighlightedWriter::from_markup(syntax_ref, &ss, capture)
+            .with_output(sink)
+            .build();
+        w.write_all(b"ping\n").unwrap();
+        assert_eq!(
+            flush_count.get(),
+            0,
+            "flush should not be called by write_all"
+        );
+
+        w.flush().unwrap();
+        assert_eq!(
+            flush_count.get(),
+            1,
+            "HighlightedWriter::flush must delegate to the inner sink exactly once"
+        );
+
+        w.flush().unwrap();
+        assert_eq!(flush_count.get(), 2);
+    }
+
+    #[cfg(feature = "default-syntaxes")]
+    #[test]
+    fn drop_emits_exact_count_of_close_tags_for_open_scopes() {
+        // Catches: io.rs:424 `open_scopes += delta` mutated to -= or *= in
+        // flush_pending. The cleanup loop in finalize_inner emits exactly
+        // `open_scopes` end_scope calls; if `open_scopes` is wrong, the wrong
+        // number of `</span>` tags are emitted at EOF.
+        //
+        // We use the bundled Rust syntax with a tiny input. The expected
+        // closing-tag count is pinned absolutely (not relative to a "matching"
+        // explicit-into_inner reference) so that any sign/factor mutation in
+        // the count surfaces in the assertion.
+        let ss = SyntaxSet::load_defaults_newlines();
+        let syntax = ss.find_syntax_by_extension("rs").unwrap();
+
+        let mut w = HighlightedWriter::from_markup(
+            syntax,
+            &ss,
+            crate::html::ClassedHTMLScopeRenderer::new(crate::html::ClassStyle::Spaced),
+        )
+        .build();
+        // Trailing newline so the line is fully highlighted; the only scope
+        // still open at EOF is the outer source.rust meta-scope.
+        w.write_all(b"fn main() {}\n").unwrap();
+        let bytes = w.into_inner().unwrap();
+        let html = String::from_utf8(bytes).unwrap();
+
+        let opens = html.matches("<span class=\"").count();
+        let closes = html.matches("</span>").count();
+        assert!(opens > 0, "expected at least one opening span, got: {html}");
+        assert_eq!(
+            opens, closes,
+            "every opened classed span must be balanced by a closing tag (opens={opens}, closes={closes}); cleanup tag count likely wrong"
+        );
+
+        // The output must end with </span>\n (the outer source.rust meta-scope
+        // closing tag plus the trailing newline that ended the input line).
+        // This is the most direct test of the cleanup-emit-end_scope path.
+        assert!(
+            html.ends_with("</span>\n") || html.ends_with("</span>"),
+            "expected output to end with the outermost </span>, got: {html:?}"
+        );
+    }
+
+    #[test]
+    fn write_returns_full_buffer_length_for_nonempty_input() {
+        // Pin the io::Write contract: write() must return the number of
+        // bytes consumed, which equals buf.len() for HighlightedWriter
+        // (it never partially-accepts a buffer). Catches:
+        //   - io.rs:504 write() returning Ok(0) or Ok(1)
+        //   - io.rs:512 == → != on the newline check (empty buf returns 0)
+        use crate::parsing::{SyntaxDefinition, SyntaxSetBuilder};
+
+        let syntax_str = r#"
+name: PingNoop
+scope: source.ping
+contexts:
+  main:
+    - match: 'ping'
+      scope: kw.ping
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+        let syntax_ref = &ss.syntaxes()[0];
+
+        let (capture, _events) = CapturingMarkup::new();
+        let mut w = HighlightedWriter::from_markup(syntax_ref, &ss, capture).build();
+        let buf = b"ping\n";
+        let n = w.write(buf).unwrap();
+        assert_eq!(n, buf.len());
+
+        // Empty buffer must return 0 (and NOT accidentally process anything).
+        let n_empty = w.write(b"").unwrap();
+        assert_eq!(n_empty, 0);
     }
 }

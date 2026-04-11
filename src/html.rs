@@ -843,4 +843,287 @@ fn main() {
             scope.with_atom_strs(|atoms| atoms.iter().map(|s| s.to_string()).collect());
         assert_eq!(atoms, vec!["keyword", "operator", "arithmetic"]);
     }
+
+    /// Synthetic syntax + theme used by `HtmlStyledOutput` byte-exact tests.
+    /// Defining them inline (rather than relying on bundled defaults) keeps
+    /// the assertions stable across syntax/theme updates.
+    #[allow(clippy::type_complexity)]
+    fn make_pinned_ss_and_theme() -> (SyntaxSet, Theme, crate::highlighting::Color) {
+        use crate::highlighting::{
+            Color, FontStyle, ScopeSelectors, StyleModifier, Theme, ThemeItem, ThemeSettings,
+        };
+        use std::str::FromStr;
+
+        let syntax_str = r#"
+name: PingThing
+scope: source.ping
+contexts:
+  main:
+    - match: 'ping'
+      scope: kw.ping
+    - match: 'thing'
+      scope: lit.thing
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        let bg = Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0xff,
+        };
+        let theme = Theme {
+            name: Some("html-pin".into()),
+            author: None,
+            settings: ThemeSettings {
+                foreground: Some(Color {
+                    r: 200,
+                    g: 200,
+                    b: 200,
+                    a: 0xff,
+                }),
+                background: Some(bg),
+                ..Default::default()
+            },
+            scopes: vec![
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("kw").unwrap(),
+                    style: StyleModifier {
+                        foreground: Some(Color {
+                            r: 11,
+                            g: 22,
+                            b: 33,
+                            a: 0xff,
+                        }),
+                        background: None,
+                        font_style: Some(FontStyle::BOLD),
+                    },
+                },
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("lit").unwrap(),
+                    style: StyleModifier {
+                        foreground: Some(Color {
+                            r: 44,
+                            g: 55,
+                            b: 66,
+                            a: 0xff,
+                        }),
+                        background: None,
+                        font_style: Some(FontStyle::ITALIC),
+                    },
+                },
+            ],
+        };
+        (ss, theme, bg)
+    }
+
+    #[test]
+    fn html_styled_output_emits_byte_exact_inline_spans() {
+        // Pin the exact `<span style="…">` markup for a known input. Catches
+        // mutants in `HtmlStyledOutput::begin_style` (e.g. dropping the
+        // `color:` attribute, swapping `background-color` for `color`, omitting
+        // the closing `;\">`), in `should_merge` (the boolean flips would
+        // either over-merge into one big span or under-merge into many tiny
+        // ones), and in `end_style` (which must emit `</span>`).
+        let (ss, theme, _bg) = make_pinned_ss_and_theme();
+        let syntax = &ss.syntaxes()[0];
+
+        let html = highlighted_html_for_string("ping thing\n", &ss, syntax, &theme).unwrap();
+
+        // Pin the entire snippet (including the `<pre>` wrapper) so any
+        // change in the styled spans, the merge boundary between the kw
+        // span and the trailing space, or the line-break handling will
+        // surface immediately.
+        //
+        // Layout: bold "ping " (the trailing space merges into the kw
+        // span via the whitespace-folding `should_merge` predicate),
+        // then italic "thing", then a literal `\n` outside any styled
+        // span (because `ThemedRenderer::write_text` always splits on
+        // newline).
+        assert_eq!(
+            html,
+            "<pre style=\"background-color:#000000;\">\n\
+             <span style=\"font-weight:bold;color:#0b1621;\">ping </span>\
+             <span style=\"font-style:italic;color:#2c3742;\">thing</span>\n\
+             </pre>\n"
+        );
+    }
+
+    #[test]
+    fn html_styled_output_should_merge_whitespace_into_previous_span() {
+        // Verify that the `should_merge` whitespace-fold path is actually
+        // exercised: the trailing space after "ping" must end up *inside*
+        // the kw span, NOT in its own span. This is the observable
+        // difference between `should_merge` returning true (correct,
+        // whitespace folds) and the mutant `should_merge -> false`
+        // (whitespace would get its own span with the default fg colour).
+        let (ss, theme, _bg) = make_pinned_ss_and_theme();
+        let syntax = &ss.syntaxes()[0];
+
+        let html = highlighted_html_for_string("ping thing\n", &ss, syntax, &theme).unwrap();
+
+        // The kw span (bold) must contain "ping " (with trailing space).
+        // If the merge predicate is broken, the space would land in a
+        // separate `color:#c8c8c8;` span instead.
+        assert!(
+            html.contains("<span style=\"font-weight:bold;color:#0b1621;\">ping </span>"),
+            "expected the trailing space to merge into the kw span, got: {html}"
+        );
+        assert!(
+            !html.contains("<span style=\"color:#c8c8c8;\">"),
+            "the default-foreground span for whitespace must not appear (the space should fold into the kw span), got: {html}"
+        );
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_parse_html_for_line_emits_nontrivial_html() {
+        // Catches: html.rs:141 ClassedHTMLGenerator::parse_html_for_line with ()
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let mut g =
+            ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
+        // Note: this deprecated function takes a line WITHOUT a trailing
+        // newline (the function appends one internally — see its doc).
+        g.parse_html_for_line("x + y");
+        let html = g.finalize();
+        // The output must contain the literal token text and a classed span;
+        // a `with ()` mutant would skip the parse and the output would only
+        // hold the trailing newline appended by the (broken) function.
+        assert!(
+            html.contains("<span class=\""),
+            "expected at least one classed span, got: {html}"
+        );
+        assert!(
+            html.contains('x'),
+            "expected literal 'x' in output, got: {html}"
+        );
+        assert!(
+            html.contains('y'),
+            "expected literal 'y' in output, got: {html}"
+        );
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_tokens_to_classed_spans_pins_output_and_delta() {
+        // Catches all six mutants on html.rs:470 tokens_to_classed_spans:
+        //   - replace with (String::new() / "xyzzy".into(), 0 / 1 / -1)
+        // Pin both halves of the tuple so any constant or string substitution
+        // is observable.
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let mut state = ParseState::new(syntax);
+        let line = "x + y\n";
+        let ops = state.parse_line(line, &syntax_set).unwrap().ops;
+
+        let (html, delta) = tokens_to_classed_spans(line, &ops, ClassStyle::Spaced);
+        // The R syntax produces a known nesting: the source.r meta scope plus
+        // an arithmetic operator span around `+`.
+        assert_eq!(
+            html,
+            "<span class=\"source r\">x <span class=\"keyword operator arithmetic r\">+</span> y\n"
+        );
+        // delta is +1 because exactly one scope (source.r) is left open at
+        // end of line.
+        assert_eq!(delta, 1);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_tokens_to_classed_html_returns_html_string_only() {
+        // Catches: html.rs:484 tokens_to_classed_html with String::new() / "xyzzy".into()
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let mut state = ParseState::new(syntax);
+        let line = "x + y\n";
+        let ops = state.parse_line(line, &syntax_set).unwrap().ops;
+
+        let html = tokens_to_classed_html(line, &ops, ClassStyle::Spaced);
+        assert_eq!(
+            html,
+            "<span class=\"source r\">x <span class=\"keyword operator arithmetic r\">+</span> y\n"
+        );
+    }
+
+    #[test]
+    fn html_styled_output_emits_background_when_distinct_from_default() {
+        // When a token style has a background different from the containing
+        // element's default background, `HtmlStyledOutput::begin_style` must
+        // emit a `background-color:` declaration before the `color:` one.
+        // Catches mutants in the `style.background != self.default_bg`
+        // branch (replacing != with == would invert the emission).
+        use crate::highlighting::{
+            Color, FontStyle, ScopeSelectors, StyleModifier, Theme, ThemeItem, ThemeSettings,
+        };
+        use std::str::FromStr;
+
+        let syntax_str = r#"
+name: PingThing
+scope: source.ping
+contexts:
+  main:
+    - match: 'ping'
+      scope: kw.ping
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        let bg = Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0xff,
+        };
+        let theme = Theme {
+            name: Some("html-pin-bg".into()),
+            author: None,
+            settings: ThemeSettings {
+                foreground: Some(Color {
+                    r: 200,
+                    g: 200,
+                    b: 200,
+                    a: 0xff,
+                }),
+                background: Some(bg),
+                ..Default::default()
+            },
+            scopes: vec![ThemeItem {
+                scope: ScopeSelectors::from_str("kw").unwrap(),
+                style: StyleModifier {
+                    foreground: Some(Color {
+                        r: 11,
+                        g: 22,
+                        b: 33,
+                        a: 0xff,
+                    }),
+                    background: Some(Color {
+                        r: 99,
+                        g: 88,
+                        b: 77,
+                        a: 0xff,
+                    }),
+                    font_style: Some(FontStyle::empty()),
+                },
+            }],
+        };
+
+        let syntax_ref = &ss.syntaxes()[0];
+        let html = highlighted_html_for_string("ping\n", &ss, syntax_ref, &theme).unwrap();
+        // Search the inner part — outside the `<pre>` wrapper.
+        assert!(
+            html.contains("background-color:#63584d;"),
+            "expected per-token background-color declaration, got: {html}"
+        );
+        // The order must be: background-color first, then color.
+        assert!(
+            html.contains("background-color:#63584d;color:#0b1621;"),
+            "expected `background-color:` before `color:` in begin_style emission, got: {html}"
+        );
+    }
 }

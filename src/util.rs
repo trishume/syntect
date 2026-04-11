@@ -415,4 +415,61 @@ mod tests {
         let s = as_24_bit_terminal_escaped(&[(style, "hello")], true);
         assert_eq!(s, "\x1b[48;2;0;0;0m\x1b[38;2;128;128;128mhello");
     }
+
+    #[test]
+    fn test_as_latex_escaped_channel_order() {
+        // Pin the exact RGB channel order in the emitted \textcolor[RGB]{r,g,b}
+        // wrapper. Use three distinct values so that any channel swap (e.g. the
+        // historical G/B bug) is observable in the output.
+        let style = Style {
+            foreground: Color {
+                r: 10,
+                g: 20,
+                b: 30,
+                a: 0xff,
+            },
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+        let s = as_latex_escaped(&[(style, "hi")]);
+        assert_eq!(s, "\\textcolor[RGB]{10,20,30}{hi}");
+    }
+
+    #[test]
+    fn test_as_latex_escaped_escapes_specials_and_runs() {
+        // Cover: specials escaping (\, {, }), the " " short-circuit, the "\n"
+        // skip, and adjacent same-style merging via the prev_style branch.
+        let style_a = Style {
+            foreground: Color {
+                r: 1,
+                g: 2,
+                b: 3,
+                a: 0xff,
+            },
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+        let style_b = Style {
+            foreground: Color {
+                r: 9,
+                g: 8,
+                b: 7,
+                a: 0xff,
+            },
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+        let s = as_latex_escaped(&[
+            (style_a, "a"),
+            (style_a, " "),
+            (style_a, "b"),
+            (style_b, "{c}"),
+            (style_b, "\n"),
+            (style_b, "d\\e"),
+        ]);
+        assert_eq!(
+            s,
+            "\\textcolor[RGB]{1,2,3}{a b}\\textcolor[RGB]{9,8,7}{\\{c\\}d\\\\e}"
+        );
+    }
 }
