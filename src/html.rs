@@ -981,7 +981,10 @@ contexts:
     #[test]
     #[allow(deprecated)]
     fn deprecated_parse_html_for_line_emits_nontrivial_html() {
-        // Catches: html.rs:141 ClassedHTMLGenerator::parse_html_for_line with ()
+        // The deprecated line-parsing entry point must still drive the
+        // underlying parser and emit highlighted markup. A bug that turns
+        // it into a silent no-op would only surface as missing token
+        // markup in the finalized output.
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
         let mut g =
@@ -1010,10 +1013,12 @@ contexts:
     #[test]
     #[allow(deprecated)]
     fn deprecated_tokens_to_classed_spans_pins_output_and_delta() {
-        // Catches all six mutants on html.rs:470 tokens_to_classed_spans:
-        //   - replace with (String::new() / "xyzzy".into(), 0 / 1 / -1)
-        // Pin both halves of the tuple so any constant or string substitution
-        // is observable.
+        // Pin both halves of the returned (html, delta) tuple. The HTML
+        // string must contain real classed spans for the parsed tokens
+        // (not an empty or sentinel string), and the scope-delta must
+        // reflect exactly one scope left open at end-of-line for the
+        // chosen input. Catches any silent degradation of the function
+        // body to a stub return value.
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
         let mut state = ParseState::new(syntax);
@@ -1035,7 +1040,9 @@ contexts:
     #[test]
     #[allow(deprecated)]
     fn deprecated_tokens_to_classed_html_returns_html_string_only() {
-        // Catches: html.rs:484 tokens_to_classed_html with String::new() / "xyzzy".into()
+        // The HTML-only convenience wrapper must produce the exact same
+        // markup as the spans variant for the same input. Catches a
+        // degenerate body that returns an empty or sentinel string.
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let syntax = syntax_set.find_syntax_by_name("R").unwrap();
         let mut state = ParseState::new(syntax);

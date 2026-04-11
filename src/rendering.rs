@@ -634,7 +634,10 @@ mod tests {
 
     #[test]
     fn scope_renderer_default_write_text_passes_text_through() {
-        // Catches: rendering.rs:97 ScopeRenderer::write_text default with ()
+        // The default `write_text` body must actually copy text into the
+        // output buffer when an implementor doesn't override it. A silently
+        // empty default would lose all literal token text for renderers
+        // that rely on the trait default.
         let mut r = BareScopeRenderer;
         let mut out = String::new();
         r.write_text("hello", &mut out);
@@ -650,7 +653,10 @@ mod tests {
 
     #[test]
     fn scope_markup_default_write_text_passes_text_through() {
-        // Catches: rendering.rs:241 ScopeMarkup::write_text default with ()
+        // Same invariant as the low-level trait: an implementor that does
+        // not override `write_text` must still see literal text reach the
+        // output buffer. A silently empty default would drop all token
+        // text for stateless markup renderers that rely on the default.
         let mut m = BareScopeMarkup;
         let mut out = String::new();
         m.write_text("hello", &mut out);
@@ -681,10 +687,12 @@ mod tests {
 
     #[test]
     fn styled_output_default_should_merge_compares_styles_for_equality() {
-        // Catches all three mutants on the default impl:
-        //   - L403 should_merge with true
-        //   - L403 should_merge with false
-        //   - L403 == replaced with !=
+        // The default merge predicate must fold adjacent same-style tokens
+        // into a single styled span and must NOT fold tokens whose styles
+        // differ. A predicate that always returns true would collapse
+        // every adjacent token into one span; one that always returns
+        // false would emit one span per token; one that compares for
+        // inequality would invert the merge boundaries entirely.
         let b = BareStyledOutput;
         let a = make_style(1, 2, 3);
         let same = make_style(1, 2, 3);
@@ -702,7 +710,10 @@ mod tests {
 
     #[test]
     fn ansi_styled_output_include_bg_accessor_returns_constructor_arg() {
-        // Catches: rendering.rs:586 AnsiStyledOutput::include_bg with true/false
+        // The accessor must round-trip the constructor argument so that
+        // callers can introspect whether the emitter is configured to
+        // emit background-colour escapes. A constant accessor would
+        // erase that distinction.
         assert!(!AnsiStyledOutput::new(false).include_bg());
         assert!(AnsiStyledOutput::new(true).include_bg());
     }

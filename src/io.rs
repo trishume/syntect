@@ -905,13 +905,15 @@ mod tests {
 
     #[test]
     fn ansi_output_is_byte_exact_for_known_input() {
-        // Use a hand-built one-syntax SyntaxSet and a tiny synthetic theme so
-        // the test isn't sensitive to bundled-syntax/theme drift. Pin the
-        // exact ANSI byte sequence so any constant or channel mutation in
-        // AnsiStyledOutput::begin_style is observable. Catches:
-        //   - rendering.rs:592 begin_style replaced with ()
-        //   - constant or channel mutations in the \x1b[38;2;R;G;B m literal
-        //   - rendering.rs:540 + → - / + → * in write_text newline split
+        // Use a hand-built one-syntax SyntaxSet and a tiny synthetic theme
+        // so the test isn't sensitive to bundled-syntax/theme drift. Pin
+        // the exact ANSI byte sequence emitted for a known token. This
+        // locks down: that the foreground escape is emitted at all (a
+        // silently-empty `begin_style` would produce just the literal
+        // text), that the RGB channels appear in the right order with
+        // the right separators, and that the post-token newline
+        // splitting in the streaming layer advances past the newline
+        // rather than getting stuck on it.
         use crate::highlighting::{
             Color, FontStyle, ScopeSelectors, StyleModifier, Theme, ThemeItem, ThemeSettings,
         };
@@ -1227,32 +1229,33 @@ contexts:
         let closes = s.matches("</span>").count();
         assert_eq!(
             opens, closes,
-            "post-flush span balance must hold (opens={opens}, closes={closes}); flush_pending's open_scopes accumulator likely wrong: {s}"
+            "post-flush span balance must hold (opens={opens}, closes={closes}); the cleanup-tag accumulator inside the speculative-flush path is likely wrong: {s}"
         );
     }
 
     #[cfg(feature = "default-syntaxes")]
     #[test]
     fn empty_scope_optimisation_truncates_push_pop_with_no_text() {
-        // The render_line empty-scope optimisation: a push/pop pair with no
-        // intervening text must NOT emit a corresponding markup pair.
-        // Catches mutations in `scope_empty` tracking inside render_line:
-        //   - rendering.rs:144 > → ==/</>= (the `i > cur_index` test that
-        //     resets scope_empty)
-        //   - rendering.rs:156 += / -= / *= on scope_delta when `wrote==true`
-        //   - rendering.rs:167 -= → += / /= on scope_delta when popping
+        // The empty-scope optimisation: when the parser pushes a scope and
+        // immediately pops it at the same byte position with no intervening
+        // text, the renderer must NOT emit a corresponding markup pair.
+        // The optimisation hinges on tracking when a scope is "still
+        // empty" between its push and its matching pop, and on driving
+        // the open-scope count consistently in both directions; any of
+        // those bookkeeping invariants going wrong would surface here as
+        // empty span pairs leaking into the output.
         //
-        // We use `ClassedHTMLGenerator` rather than CapturingMarkup so that
-        // we can observe the *truncated* output buffer directly: the
-        // empty-scope optimization happens at the `String` level inside
-        // `render_line` and only its result is observable through the bytes
-        // that the inner sink ends up holding.
+        // We use the high-level HTML generator rather than a capturing
+        // markup so that we observe the *truncated* output buffer
+        // directly: the optimisation happens at the rendered-string
+        // level, and only the bytes that survive truncation reach the
+        // inner sink.
         //
-        // Empty-scope is triggered when a Push and a matching Pop occur at
-        // the same byte position with no intervening write_text. The
-        // bundled Rust syntax exercises this naturally for a function with
-        // an empty body — there are several adjacent push/pop pairs around
-        // the brace and parenthesis tokens.
+        // Empty-scope cases are triggered when a Push and a matching Pop
+        // occur at the same byte position with no intervening text. The
+        // bundled Rust syntax exercises this naturally for a function
+        // with an empty body — there are several adjacent push/pop pairs
+        // around the brace and parenthesis tokens.
         let ss = SyntaxSet::load_defaults_newlines();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
         let mut g = crate::html::ClassedHTMLGenerator::new_with_class_style(
@@ -1312,18 +1315,21 @@ contexts:
 
     #[test]
     fn themed_renderer_closes_styled_span_on_trailing_partial_line() {
-        // Catches: rendering.rs:546 ThemedRenderer::end_line replaced with ().
-        // For a line that ends with `\n`, the styled-span close happens
-        // INSIDE write_text (when it splits on the newline), so end_line
-        // has nothing to do. The end_line code path only fires for a
-        // *trailing partial line* that doesn't end in '\n' — those flow
-        // through finalize_inner's drain logic, and end_line is the only
-        // place that closes the open styled span.
+        // For a line that ends with a newline, the streaming layer
+        // already closes the active styled span when it splits on the
+        // newline character — so the end-of-line hook on the themed
+        // renderer has nothing to do in that case. The hook only does
+        // useful work for a *trailing partial line* (input without a
+        // closing newline), which flows through end-of-input cleanup.
+        // If the hook were silently a no-op, the styled span around the
+        // partial line would never get its closing tag and the output
+        // would be unbalanced.
         //
-        // We feed input WITHOUT a trailing newline and assert the output
-        // ends with the closing bracket of the styled span. For HTML this
-        // is `</span>`; for ANSI it's a no-op (end_style is empty), so we
-        // use HtmlStyledOutput.
+        // We feed input without a trailing newline and assert that the
+        // output is span-balanced and ends with the closing tag. We use
+        // an inline-styled HTML emitter rather than ANSI because ANSI's
+        // close-style is intentionally a no-op and would not surface
+        // the bug.
         use crate::highlighting::{
             Color, FontStyle, ScopeSelectors, StyleModifier, Theme, ThemeItem, ThemeSettings,
         };
@@ -1428,9 +1434,11 @@ contexts:
 
     #[test]
     fn flush_delegates_to_inner_sink() {
-        // Catches: io.rs:528 <impl Write>::flush replaced with Ok(()).
-        // The wrapper must call the inner sink's flush, not return Ok(())
-        // unconditionally.
+        // The streaming writer's `flush` must call through to the inner
+        // sink's `flush`, not silently succeed. A no-op `flush` would
+        // leave buffered downstream sinks (e.g. a `BufWriter` wrapped
+        // around a file) holding bytes after the caller had asked for
+        // them to be made durable.
         use crate::parsing::{SyntaxDefinition, SyntaxSetBuilder};
 
         let syntax_str = r#"
@@ -1477,15 +1485,15 @@ contexts:
     #[cfg(feature = "default-syntaxes")]
     #[test]
     fn drop_emits_exact_count_of_close_tags_for_open_scopes() {
-        // Catches: io.rs:424 `open_scopes += delta` mutated to -= or *= in
-        // flush_pending. The cleanup loop in finalize_inner emits exactly
-        // `open_scopes` end_scope calls; if `open_scopes` is wrong, the wrong
-        // number of `</span>` tags are emitted at EOF.
-        //
-        // We use the bundled Rust syntax with a tiny input. The expected
-        // closing-tag count is pinned absolutely (not relative to a "matching"
-        // explicit-into_inner reference) so that any sign/factor mutation in
-        // the count surfaces in the assertion.
+        // End-of-input cleanup must emit exactly as many close-scope
+        // markers as there are scopes still open at EOF — no more, no
+        // fewer. The accumulator that tracks "scopes still open" runs
+        // through both the fast path and the speculative-flush path; a
+        // sign or factor mutation on the accumulator would either leak
+        // unclosed tags or emit phantom closes. The expected closing-tag
+        // count is pinned absolutely (against the markup tag balance
+        // invariant), not relative to another path that shares the same
+        // bug.
         let ss = SyntaxSet::load_defaults_newlines();
         let syntax = ss.find_syntax_by_extension("rs").unwrap();
 
@@ -1520,11 +1528,14 @@ contexts:
 
     #[test]
     fn write_returns_full_buffer_length_for_nonempty_input() {
-        // Pin the io::Write contract: write() must return the number of
-        // bytes consumed, which equals buf.len() for HighlightedWriter
-        // (it never partially-accepts a buffer). Catches:
-        //   - io.rs:504 write() returning Ok(0) or Ok(1)
-        //   - io.rs:512 == → != on the newline check (empty buf returns 0)
+        // Pin the `io::Write` contract: `write` must return the number
+        // of bytes consumed from the input buffer, which always equals
+        // the input length for the streaming highlighter (it never
+        // partially-accepts a write). An empty input must short-circuit
+        // and return 0 without engaging the line-buffer machinery — a
+        // bug there would either return a constant length, or
+        // accidentally re-process the empty buffer as if a complete
+        // line had arrived.
         use crate::parsing::{SyntaxDefinition, SyntaxSetBuilder};
 
         let syntax_str = r#"
