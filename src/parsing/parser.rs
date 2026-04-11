@@ -3542,10 +3542,16 @@ contexts:
 
     #[test]
     fn is_speculative_reflects_branch_state() {
-        // Kills: L306 replace is_speculative -> true / false / delete !
-        // is_speculative must be true while inside a branch_point and false otherwise.
-        // We use a syntax where both alternatives fail, so the branch point is
-        // fully exhausted and removed.
+        // The "is the parser currently speculating" predicate must be
+        // true exactly while a branch point is live (the parser is
+        // inside a branch alternative that could still fail and need to
+        // be retried) and false outside one. A constant-true or
+        // constant-false predicate would either deadlock-buffer the
+        // streaming layer forever or never buffer at all, and a
+        // negated predicate would invert both. We exercise both states
+        // here: before any branch is created, after both alternatives
+        // are exhausted (so the branch point is removed), and mid-way
+        // through a still-live branch.
         let syntax_str = r#"
 name: SpeculativeTest
 scope: source.spec-test
@@ -3633,10 +3639,13 @@ contexts:
 
     #[test]
     fn consuming_match_not_treated_as_loop() {
-        // Kills: L533 replace > with < in find_best_match (consuming check)
-        // A pop that consumes characters must NOT be treated as a loop.
-        // If consuming is negated (> → <), a consuming pop would be flagged
-        // as a loop and skipped, breaking the parse.
+        // The match-finding loop has a guard that skips a pop-without-
+        // consume to avoid spinning forever on a zero-width pop. The
+        // guard checks whether the candidate pop *consumed any input*;
+        // a pop that did consume input must not be skipped, otherwise a
+        // perfectly valid consuming pop would never fire and the parse
+        // would stall. We exercise that path here with a context whose
+        // only exit is a consuming pop.
         let syntax_str = r#"
 name: ConsumingTest
 scope: source.consuming
@@ -3677,10 +3686,13 @@ contexts:
 
     #[test]
     fn capture_sort_by_span_length() {
-        // Kills: L709 replace - with + in exec_pattern (capture sort key)
-        // Captures are sorted so that longer spans come first (pushed before
-        // shorter nested ones).  If the sort key sign is flipped, shorter
-        // spans push first, producing the wrong nesting order.
+        // When a pattern with several captures fires, the captures must
+        // be pushed in *outermost-first* order so that nested captures
+        // open inside their enclosing capture rather than overlapping
+        // it. The sort key on the capture list arranges for the longest
+        // span to come first; flipping its sign would sort the shortest
+        // span first and produce broken, incorrectly-nested scope
+        // emissions whenever captures share a starting position.
         let syntax_str = r#"
 name: CaptureSort
 scope: source.capsort
@@ -3728,9 +3740,14 @@ contexts:
 
     #[test]
     fn v2_set_pops_meta_content_scope_from_matched_text() {
-        // Kills: L1009 replace += with -= or *= in push_meta_ops
-        // When a v2 syntax uses `set`, num_to_pop must include
-        // cur_context.meta_scope.len() so that the old meta scope is removed.
+        // For a v2 syntax, executing `set: …` must pop the *outgoing*
+        // context's meta-scope along with the context itself, so the
+        // new context's meta-scope replaces it cleanly. The bookkeeping
+        // for "how many scopes to pop" must include the current
+        // context's meta-scope length; if that contribution is dropped
+        // or sign-flipped, the old meta-scope persists into the new
+        // context's matches and surfaces as a stale parent scope on
+        // every subsequent token.
         let syntax_str = r#"
 name: V2SetMeta
 scope: source.v2setmeta
@@ -3771,9 +3788,14 @@ contexts:
 
     #[test]
     fn v2_set_clear_scopes_only_from_last_context() {
-        // Kills: L1029 replace && with || / == with != in push_meta_ops
-        // In v2, clear_scopes during a set should only apply from the last
-        // context, and only when `is_set` is true AND `i == last_idx`.
+        // In v2, when `set` pushes a stack of contexts, a `clear_scopes:
+        // true` directive on any of those contexts must apply only if
+        // the directive lives on the *topmost* context of the new
+        // stack. The relevant guard is a logical AND of "this is a set
+        // operation" and "this is the last context in the set list";
+        // weakening it to OR (or flipping the equality check) would
+        // cause `clear_scopes` to fire from a lower context too,
+        // wiping out scopes that should remain in effect.
         let syntax_str = r#"
 name: V2ClearLast
 scope: source.v2clear
@@ -3821,9 +3843,10 @@ contexts:
             "meta.a should be present since ctx-a (last) has no clear_scopes: {:?}",
             hello_states
         );
-        // source.v2clear must also be present — if clear_scopes from ctx-b
-        // fires incorrectly (mutations on L1029: && → || or == → !=), the
-        // root scope would be cleared.
+        // source.v2clear must also be present — if the guard on the
+        // last-context-in-set check is weakened (OR instead of AND, or
+        // a flipped equality), `clear_scopes` from ctx-b would fire
+        // incorrectly and the root scope would be cleared.
         assert!(
             hello_states
                 .iter()
@@ -3835,20 +3858,28 @@ contexts:
 
     #[test]
     fn v2_embed_scope_replaces_skips_meta_content_pop_on_exit() {
-        // Kills: L912 replace >= with < (version >= 2)
-        //        L913 replace >= with < (stack.len() >= 2)
-        //        L915 replace - with / (stack.len() - 2)
-        // When a v2 syntax uses embed with embed_scope, the escape context
-        // has embed_scope_replaces=true.  On pop, the meta_content_scope of
-        // the escape context should NOT be popped because it was never pushed.
-        // If the version check is wrong, we'd get an extra Pop.
+        // In a v2 syntax, an `embed: …` with an `embed_scope` marks the
+        // escape context with `embed_scope_replaces = true`. The escape
+        // context never actually pushes its own meta_content_scope — the
+        // embed_scope took its place — so when the escape fires, the
+        // pop bookkeeping must skip the meta_content_scope of the
+        // escape context. The skip is gated on three independent
+        // conditions: that this is a v2 syntax, that there are enough
+        // contexts above the escape to identify the right one, and that
+        // we are looking at the correct relative offset into the
+        // context stack. If any of those checks misidentify the target,
+        // we either pop a scope that was never pushed (corrupting the
+        // stack) or fail to skip a real one (also corrupting the stack).
         use crate::parsing::ScopeStack;
 
-        // The host pushes two intermediate contexts before embedding so that
-        // the stack depth is 5 when the escape fires:
+        // The host pushes two intermediate contexts before embedding so
+        // the stack depth is exactly 5 when the escape fires:
         //   [main, wrapper-a, wrapper-b, escape, embedded]
-        // This distinguishes stack.len()-2 (=3, escape) from stack.len()/2
-        // (=2, wrapper-b), catching the L915 `-` → `/` mutation.
+        // This shape distinguishes "second context from the top of the
+        // stack" (the escape) from "the stack's middle, found by
+        // dividing the depth in half" (wrapper-b), so a sign- or
+        // factor-mutation on the offset arithmetic would target the
+        // wrong context and the resulting Pop would corrupt the stack.
         let host = SyntaxDefinition::load_from_str(
             r#"
 name: V2SkipHost
@@ -3903,10 +3934,11 @@ contexts:
         let mut state = ParseState::new(syntax);
         let raw_ops = state.parse_line("<<x>> hello\n", &ss).unwrap().ops;
 
-        // Build scope stack through all ops and verify it ends clean.
-        // If the skip logic is broken (mutations on L912-L915), an extra Pop
-        // for meta_content_scope is generated, which pops a scope that was
-        // never pushed, corrupting the stack.
+        // Build the scope stack through all ops and verify it ends
+        // clean. If the meta_content_scope skip logic is broken in any
+        // of the ways described above, an extra Pop is generated for a
+        // scope that was never pushed, and applying it corrupts the
+        // stack.
         let mut scope_stack = ScopeStack::new();
         for (_, op) in &raw_ops {
             scope_stack
