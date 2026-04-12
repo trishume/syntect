@@ -397,7 +397,7 @@ mod tests {
     fn can_parse() {
         let ps = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
-            let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+            let syntax = ps.find_syntax_by_name("Ruby (Rails)").unwrap();
             ParseState::new(syntax)
         };
         let ts = ThemeSet::load_defaults();
@@ -609,7 +609,7 @@ mod tests {
     fn test_ranges() {
         let ps = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
-            let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+            let syntax = ps.find_syntax_by_name("Ruby (Rails)").unwrap();
             ParseState::new(syntax)
         };
         let ts = ThemeSet::load_defaults();

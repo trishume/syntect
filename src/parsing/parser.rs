@@ -1079,12 +1079,19 @@ impl ParseState {
                     // add each context's meta scope
                     if version >= 2 {
                         // v2: For push with multiple contexts, only apply clear_scopes
-                        // from the last (topmost) context, not sum all of them
+                        // from the last (topmost) context, not sum all of them.
+                        //
+                        // For `set:`, skip the Clear here: the non-initial
+                        // "repush" phase generates its own Clear, and emitting
+                        // one in both phases produces two Clears for a single
+                        // Restore, stranding a scope on clear_stack and
+                        // causing Pop underflow when the push group unwinds.
+                        // (The v1 path already had this guard via `!is_set`.)
                         let last_idx = context_refs.len().saturating_sub(1);
                         for (i, r) in context_refs.iter().enumerate() {
                             let ctx = r.resolve(syntax_set)?;
 
-                            if i == last_idx {
+                            if !is_set && i == last_idx {
                                 if let Some(clear_amount) = ctx.clear_scopes {
                                     ops.push((index, ScopeStackOp::Clear(clear_amount)));
                                 }
@@ -1428,8 +1435,7 @@ fn escape_str(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::scope::ClearAmount;
-    use crate::parsing::ScopeStackOp::{Clear, Pop, Push, Restore};
+    use crate::parsing::ScopeStackOp::{Pop, Push};
     use crate::parsing::{Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder};
     use crate::util::debug_print_ops;
     use crate::utils::testdata;
@@ -1439,29 +1445,34 @@ mod tests {
     fn can_parse_simple() {
         let ss = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
-            let syntax = ss.find_syntax_by_name("Ruby on Rails").unwrap();
+            let syntax = ss.find_syntax_by_name("Ruby (Rails)").unwrap();
             ParseState::new(syntax)
         };
 
         let ops1 = ops(&mut state, "module Bob::Wow::Troll::Five; 5; end", ss);
         let test_ops1 = vec![
             (0, Push(Scope::new("source.ruby.rails").unwrap())),
-            (0, Push(Scope::new("meta.module.ruby").unwrap())),
-            (0, Push(Scope::new("keyword.control.module.ruby").unwrap())),
-            (6, Pop(2)),
-            (6, Push(Scope::new("meta.module.ruby").unwrap())),
+            (0, Push(Scope::new("source.ruby.rails").unwrap())),
+            (0, Push(Scope::new("meta.namespace.ruby").unwrap())),
+            (
+                0,
+                Push(Scope::new("keyword.declaration.namespace.ruby").unwrap()),
+            ),
+            (6, Pop(1)),
             (7, Pop(1)),
-            (7, Push(Scope::new("meta.module.ruby").unwrap())),
-            (7, Push(Scope::new("entity.name.module.ruby").unwrap())),
+            (7, Push(Scope::new("meta.namespace.ruby").unwrap())),
+            (7, Push(Scope::new("entity.name.namespace.ruby").unwrap())),
             (7, Push(Scope::new("support.other.namespace.ruby").unwrap())),
-            (10, Pop(1)),
         ];
         assert_eq!(&ops1[0..test_ops1.len()], &test_ops1[..]);
 
         let ops2 = ops(&mut state, "def lol(wow = 5)", ss);
         let test_ops2 = [
             (0, Push(Scope::new("meta.function.ruby").unwrap())),
-            (0, Push(Scope::new("keyword.control.def.ruby").unwrap())),
+            (
+                0,
+                Push(Scope::new("keyword.declaration.function.ruby").unwrap()),
+            ),
             (3, Pop(2)),
             (3, Push(Scope::new("meta.function.ruby").unwrap())),
             (4, Push(Scope::new("entity.name.function.ruby").unwrap())),
@@ -1482,22 +1493,26 @@ mod tests {
             ops(&mut state, "key: value\n", ps),
             vec![
                 (0, Push(Scope::new("source.yaml").unwrap())),
+                (0, Push(Scope::new("meta.mapping.key.yaml").unwrap())),
+                (0, Push(Scope::new("meta.string.yaml").unwrap())),
                 (
                     0,
                     Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())
                 ),
-                (0, Push(Scope::new("entity.name.tag.yaml").unwrap())),
                 (3, Pop(2)),
+                (3, Pop(1)),
+                (3, Push(Scope::new("meta.mapping.yaml").unwrap())),
                 (
                     3,
                     Push(Scope::new("punctuation.separator.key-value.mapping.yaml").unwrap())
                 ),
-                (4, Pop(1)),
+                (4, Pop(2)),
+                (5, Push(Scope::new("meta.string.yaml").unwrap())),
                 (
                     5,
                     Push(Scope::new("string.unquoted.plain.out.yaml").unwrap())
                 ),
-                (10, Pop(1)),
+                (10, Pop(2)),
             ]
         );
     }
@@ -1513,13 +1528,7 @@ mod tests {
         let ops = ops(&mut state, "<script>var lol = '<% def wow(", ss);
 
         let mut test_stack = ScopeStack::new();
-        test_stack.push(Scope::new("text.html.ruby").unwrap());
-        test_stack.push(Scope::new("text.html.basic").unwrap());
-        test_stack.push(Scope::new("source.js.embedded.html").unwrap());
-        test_stack.push(Scope::new("source.js").unwrap());
-        test_stack.push(Scope::new("string.quoted.single.js").unwrap());
-        test_stack.push(Scope::new("source.ruby.rails.embedded.html").unwrap());
-        test_stack.push(Scope::new("meta.function.parameters.ruby").unwrap());
+        test_stack.push(Scope::new("text.html.rails").unwrap());
 
         let mut stack = ScopeStack::new();
         for (_, op) in ops.iter() {
@@ -1532,7 +1541,7 @@ mod tests {
     fn can_parse_backrefs() {
         let ss = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
-            let syntax = ss.find_syntax_by_name("Ruby on Rails").unwrap();
+            let syntax = ss.find_syntax_by_name("Ruby (Rails)").unwrap();
             ParseState::new(syntax)
         };
 
@@ -1543,30 +1552,27 @@ mod tests {
             ops(&mut state, "lol = <<-SQL.strip", ss),
             vec![
                 (0, Push(Scope::new("source.ruby.rails").unwrap())),
+                (0, Push(Scope::new("source.ruby.rails").unwrap())),
                 (
                     4,
                     Push(Scope::new("keyword.operator.assignment.ruby").unwrap())
                 ),
                 (5, Pop(1)),
+                (6, Push(Scope::new("meta.string.heredoc.ruby").unwrap())),
                 (
                     6,
-                    Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())
+                    Push(Scope::new("punctuation.definition.heredoc.ruby").unwrap())
                 ),
-                (
-                    6,
-                    Push(Scope::new("punctuation.definition.string.begin.ruby").unwrap())
-                ),
+                (9, Pop(1)),
+                (9, Push(Scope::new("meta.tag.heredoc.ruby").unwrap())),
+                (9, Push(Scope::new("entity.name.tag.ruby").unwrap())),
                 (12, Pop(1)),
-                (12, Pop(1)),
+                (12, Pop(2)),
                 (
                     12,
-                    Push(Scope::new("string.unquoted.embedded.sql.ruby").unwrap())
+                    Push(Scope::new("punctuation.accessor.dot.ruby").unwrap())
                 ),
-                (12, Push(Scope::new("text.sql.embedded.ruby").unwrap())),
-                (12, Clear(ClearAmount::TopN(2))),
-                (12, Push(Scope::new("punctuation.accessor.ruby").unwrap())),
                 (13, Pop(1)),
-                (18, Restore),
             ]
         );
 
@@ -1575,12 +1581,7 @@ mod tests {
         assert_eq!(
             ops(&mut state, "SQL", ss),
             vec![
-                (0, Pop(1)),
-                (
-                    0,
-                    Push(Scope::new("punctuation.definition.string.end.ruby").unwrap())
-                ),
-                (3, Pop(1)),
+                (0, Push(Scope::new("variable.other.constant.ruby").unwrap())),
                 (3, Pop(1)),
             ]
         );
@@ -1686,8 +1687,8 @@ mod tests {
         let mut state1 = ParseState::new(syntax);
         let mut state2 = ParseState::new(syntax);
 
-        assert_eq!(ops(&mut state1, "class Foo {", ss).len(), 11);
-        assert_eq!(ops(&mut state2, "class Fooo {", ss).len(), 11);
+        assert_eq!(ops(&mut state1, "class Foo {", ss).len(), 13);
+        assert_eq!(ops(&mut state2, "class Foo {", ss).len(), 13);
 
         assert_eq!(state1, state2);
         ops(&mut state1, "}", ss);

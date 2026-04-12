@@ -62,6 +62,12 @@ pub(crate) struct ParserState<'a> {
     pub(crate) backref_regex: Regex,
     pub(crate) lines_include_newline: bool,
     pub(crate) version: u32,
+    /// When true, `parse_regex` skips the `try_compile_regex` validation
+    /// step. This is set for syntaxes that use `extends:`, because their
+    /// regexes may reference variables from the parent that aren't available
+    /// yet at load time. The regexes will be re-validated by
+    /// `re_resolve_all_regexes` after `resolve_extends` merges variables.
+    pub(crate) defer_regex_validation: bool,
 }
 
 // `__start` must not include prototypes from the actual syntax definition,
@@ -121,7 +127,15 @@ impl SyntaxDefinition {
                 }
             }
         }
-        let contexts_hash = get_key(h, "contexts", |x| x.as_hash())?;
+        let has_extends = get_key(h, "extends", Some).is_ok();
+        let empty_contexts = Hash::new();
+        let contexts_hash = match get_key(h, "contexts", |x| x.as_hash()) {
+            Ok(hash) => hash,
+            // extends-only syntaxes (e.g. "Batch File (Compound)") inherit
+            // all contexts from their parent and have no `contexts:` key.
+            Err(_) if has_extends => &empty_contexts,
+            Err(e) => return Err(e),
+        };
         let top_level_scope = scope_repo
             .build(get_key(h, "scope", |x| x.as_str())?)
             .map_err(ParseSyntaxError::InvalidScope)?;
@@ -134,10 +148,10 @@ impl SyntaxDefinition {
             backref_regex: Regex::new(r"\\\d".into()),
             lines_include_newline,
             version,
+            defer_regex_validation: has_extends,
         };
 
         let mut contexts = SyntaxDefinition::parse_contexts(contexts_hash, &mut state)?;
-        let has_extends = get_key(h, "extends", Some).is_ok();
         if !contexts.contains_key("main") && !has_extends {
             return Err(ParseSyntaxError::MainMissing);
         }
@@ -507,7 +521,9 @@ impl SyntaxDefinition {
             // allows matching against lines without newlines (essentially replacing `\n` with `$`).
             regex_for_no_newlines(regex)
         };
-        Self::try_compile_regex(&regex)?;
+        if !state.defer_regex_validation {
+            Self::try_compile_regex(&regex)?;
+        }
         Ok(regex)
     }
 

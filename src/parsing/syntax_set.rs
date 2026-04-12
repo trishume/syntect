@@ -96,6 +96,10 @@ pub struct SyntaxSetBuilder {
     syntaxes: Vec<SyntaxDefinition>,
     path_syntaxes: Vec<(String, usize)>,
     warnings: Vec<String>,
+    /// Tracks the `lines_include_newline` flag from the most recent
+    /// `add_from_folder` call. Used by `resolve_extends` to re-resolve
+    /// regexes with the correct newline mode after merging parent variables.
+    lines_include_newline: bool,
     #[cfg(feature = "metadata")]
     raw_metadata: LoadMetadata,
 
@@ -402,6 +406,7 @@ impl SyntaxSet {
             syntaxes: builder_syntaxes,
             path_syntaxes,
             warnings: Vec::new(),
+            lines_include_newline: false,
             #[cfg(feature = "metadata")]
             existing_metadata: Some(metadata),
             #[cfg(feature = "metadata")]
@@ -553,6 +558,7 @@ impl SyntaxSetBuilder {
         folder: P,
         lines_include_newline: bool,
     ) -> Result<(), LoadingError> {
+        self.lines_include_newline = lines_include_newline;
         for entry in crate::utils::walk_dir(folder).sort_by(|a, b| a.file_name().cmp(b.file_name()))
         {
             let entry = entry.map_err(|e| LoadingError::WalkDir(Box::new(e)))?;
@@ -622,19 +628,21 @@ impl SyntaxSetBuilder {
             syntaxes: syntax_definitions,
             path_syntaxes,
             mut warnings,
+            lines_include_newline,
         } = self;
         #[cfg(feature = "metadata")]
         let SyntaxSetBuilder {
             syntaxes: syntax_definitions,
             path_syntaxes,
             mut warnings,
+            lines_include_newline,
             raw_metadata,
             existing_metadata,
         } = self;
 
         // Extends resolution phase: merge parent contexts/variables into children
         let (syntax_definitions, extends_warnings) =
-            Self::resolve_extends(syntax_definitions, &path_syntaxes);
+            Self::resolve_extends(syntax_definitions, &path_syntaxes, lines_include_newline);
         warnings.extend(extends_warnings);
 
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
@@ -778,6 +786,7 @@ impl SyntaxSetBuilder {
     fn resolve_extends(
         syntax_definitions: Vec<SyntaxDefinition>,
         _path_syntaxes: &[(String, usize)],
+        _lines_include_newline: bool,
     ) -> (Vec<SyntaxDefinition>, Vec<String>) {
         (syntax_definitions, Vec::new())
     }
@@ -790,6 +799,7 @@ impl SyntaxSetBuilder {
     fn resolve_extends(
         mut syntax_definitions: Vec<SyntaxDefinition>,
         path_syntaxes: &[(String, usize)],
+        lines_include_newline: bool,
     ) -> (Vec<SyntaxDefinition>, Vec<String>) {
         let mut warnings = Vec::new();
 
@@ -963,8 +973,12 @@ impl SyntaxSetBuilder {
                     }
                 }
 
-                // If child now has a main context but didn't have __start/__main, add them
-                if child.contexts.contains_key("main") && !child.contexts.contains_key("__start") {
+                // Regenerate __start/__main for the child's own scope.
+                // The parent's __start carries the parent's meta_scope (e.g.
+                // text.html.plain), which is wrong for the child (e.g.
+                // text.html.rails). Always regenerate so the child's scope
+                // is used.
+                if child.contexts.contains_key("main") {
                     let mut scope_repo = crate::parsing::scope::lock_global_scope_repo();
                     let top_level_scope = child.scope;
                     SyntaxDefinition::add_initial_contexts(
@@ -974,14 +988,17 @@ impl SyntaxSetBuilder {
                             variables: child.variables.clone(),
                             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into()),
                             backref_regex: Regex::new(r"\\\d".into()),
-                            lines_include_newline: false,
+                            lines_include_newline,
                             version: child.version,
+                            defer_regex_validation: false,
                         },
                         top_level_scope,
                     );
                 }
 
-                if let Err(e) = crate::parsing::yaml_load::re_resolve_all_regexes(child, false) {
+                if let Err(e) =
+                    crate::parsing::yaml_load::re_resolve_all_regexes(child, lines_include_newline)
+                {
                     warnings.push(format!(
                         "failed to re-resolve regexes for '{}' after extends: {}",
                         child.name, e
@@ -1028,8 +1045,9 @@ impl SyntaxSetBuilder {
                             variables: syntax.variables.clone(),
                             variable_regex: Regex::new(r"\{\{([A-Za-z0-9_]+)\}\}".into()),
                             backref_regex: Regex::new(r"\\\d".into()),
-                            lines_include_newline: false,
+                            lines_include_newline,
                             version: syntax.version,
+                            defer_regex_validation: false,
                         },
                         top_level_scope,
                     );
@@ -1354,13 +1372,13 @@ mod tests {
             "JavaScript"
         );
         let rails_scope = Scope::new("source.ruby.rails").unwrap();
-        let syntax = ps.find_syntax_by_name("Ruby on Rails").unwrap();
+        let syntax = ps.find_syntax_by_name("Ruby (Rails)").unwrap();
         ps.find_syntax_plain_text();
         assert_eq!(&ps.find_syntax_by_extension("rake").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_extension("RAKE").unwrap().name, "Ruby");
         assert_eq!(&ps.find_syntax_by_token("ruby").unwrap().name, "Ruby");
         assert_eq!(
-            &ps.find_syntax_by_first_line("lol -*- Mode: C -*- such line")
+            &ps.find_syntax_by_first_line("// -*- Mode: C -*- such line")
                 .unwrap()
                 .name,
             "C"
@@ -1381,7 +1399,7 @@ mod tests {
         );
         assert_eq!(
             &ps.find_syntax_for_file(".bashrc").unwrap().unwrap().name,
-            "Bourne Again Shell (bash)"
+            "Bash"
         );
         assert_eq!(
             &ps.find_syntax_for_file("CMakeLists.txt")
@@ -1412,7 +1430,7 @@ mod tests {
             .get_context(&syntax.context_ids()["main"])
             .expect("#[cfg(test)]");
         let count = syntax_definition::context_iter(&ps, main_context).count();
-        assert_eq!(count, 109);
+        assert_eq!(count, 185);
     }
 
     #[test]
@@ -2086,6 +2104,110 @@ mod tests {
         let syntax = ss.find_syntax_by_name("Child").unwrap();
         let mut parse_state = ParseState::new(syntax);
         // Lowercase should NOT match (child overrides ident to uppercase only)
+        let ops = parse_state
+            .parse_line("ABC\n", &ss)
+            .expect("parse failed")
+            .ops;
+        let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn extends_variable_inherited_without_override() {
+        // A child that does NOT redeclare a parent variable must still
+        // be able to use it in its inherited regexes. Before the fix,
+        // the child's load-time regex validation would see unresolved
+        // {{ident}} → "" and produce a broken pattern, causing the
+        // syntax to be skipped entirely.
+        let base = SyntaxDefinition::load_from_str(
+            r#"
+            name: Base
+            scope: source.base
+            file_extensions: [base]
+            variables:
+              ident: '[a-z]+'
+            contexts:
+              main:
+                - match: '\${{ident}}'
+                  scope: variable.base
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+        // No `variables:` section — ident comes solely from Base.
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: Child
+            scope: source.child
+            file_extensions: [child]
+            extends: Base.sublime-syntax
+            contexts: {}
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(child);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Child").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state
+            .parse_line("$abc\n", &ss)
+            .expect("parse failed")
+            .ops;
+        let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn extends_only_syntax_with_no_contexts_key() {
+        // Syntaxes that consist solely of `extends:` and have no
+        // `contexts:` key at all (e.g. "Batch File (Compound)") must
+        // load successfully — all contexts come from the parent.
+        let base = SyntaxDefinition::load_from_str(
+            r#"
+            name: Base
+            scope: source.base
+            file_extensions: [base]
+            variables:
+              ident: '[a-z]+'
+            contexts:
+              main:
+                - match: '{{ident}}'
+                  scope: variable.base
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+        // No `contexts:` key at all — only extends + variables.
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: ChildNoCtx
+            scope: source.childnoctx
+            file_extensions: [childnoctx]
+            extends: Base.sublime-syntax
+            variables:
+              ident: '[A-Z]+'
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(child);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("ChildNoCtx").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        // Uppercase should match (child overrides ident to uppercase)
         let ops = parse_state
             .parse_line("ABC\n", &ss)
             .expect("parse failed")
