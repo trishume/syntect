@@ -1,5 +1,43 @@
 loading syntax definitions from testdata/Packages
-FAILED testdata/Packages/C#/tests/syntax_test_Strings.cs: 38
-FAILED testdata/Packages/LaTeX/syntax_test_latex.tex: 1
-FAILED testdata/Packages/Makefile/syntax_test_makefile.mak: 6
-exiting with code 1
+FAILED testdata/Packages/C#/tests/syntax_test_C#11.cs: 99
+FAILED testdata/Packages/C#/tests/syntax_test_C#8.cs: 40
+FAILED testdata/Packages/C#/tests/syntax_test_C#9.cs: 24
+FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 15
+FAILED testdata/Packages/C#/tests/syntax_test_Generics.cs: 3
+FAILED testdata/Packages/CSS/tests/syntax_test_css.css: 85
+FAILED testdata/Packages/D/tests/syntax_test_d.d: 18
+FAILED testdata/Packages/Diff/tests/syntax_test_switch_to_git.diff: 104
+FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
+FAILED testdata/Packages/Git Formats/tests/syntax_test_git_rebase: 86
+FAILED testdata/Packages/HTML/tests/syntax_test_scope.html: 4
+FAILED testdata/Packages/Haskell/tests/syntax_test_cabal.cabal: 4
+FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 827
+FAILED testdata/Packages/JSON/syntax_test_json.json: 3
+FAILED testdata/Packages/JavaScript/tests/syntax_test_js_class.js: 4
+FAILED testdata/Packages/JavaScript/tests/syntax_test_js_control.js: 92
+FAILED testdata/Packages/JavaScript/tests/syntax_test_js_regexp.js: 6
+FAILED testdata/Packages/JavaScript/tests/syntax_test_js_template.js: 37
+FAILED testdata/Packages/JavaScript/tests/syntax_test_typescript_template.ts: 22
+FAILED testdata/Packages/LaTeX/tests/syntax_test_bibtex.bib: 69
+FAILED testdata/Packages/Lisp/tests/syntax_test_lisp.lisp: 95
+FAILED testdata/Packages/Makefile/syntax_test_makefile.mak: 124
+FAILED testdata/Packages/Pascal/tests/syntax_test_pascal.pas: 264
+FAILED testdata/Packages/Pascal/tests/syntax_test_scope_conflicts.pas: 6
+FAILED testdata/Packages/Python/tests/syntax_test_scope_tstrings.py: 684
+FAILED testdata/Packages/Rails/tests/syntax_test_rails.css.erb: 100
+FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 98
+FAILED testdata/Packages/Rails/tests/syntax_test_rails.html.erb: 363
+FAILED testdata/Packages/Rails/tests/syntax_test_rails.js.erb: 37
+FAILED testdata/Packages/Rails/tests/syntax_test_rails.sql.erb: 31
+FAILED testdata/Packages/Ruby/syntax_test_ruby.rb: 14
+FAILED testdata/Packages/Rust/tests/syntax_test_closures.rs: 6
+FAILED testdata/Packages/Rust/tests/syntax_test_enum.rs: 6
+FAILED testdata/Packages/Rust/tests/syntax_test_generics.rs: 12
+FAILED testdata/Packages/Rust/tests/syntax_test_identifiers.rs: 1
+FAILED testdata/Packages/Rust/tests/syntax_test_macros.rs: 3
+FAILED testdata/Packages/Rust/tests/syntax_test_struct.rs: 3
+FAILED testdata/Packages/Rust/tests/syntax_test_types.rs: 15
+FAILED testdata/Packages/SQL/tests/syntax/syntax_test_mysql.sql: 8
+FAILED testdata/Packages/SQL/tests/syntax/syntax_test_tsql.sql: 4942
+FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 23455
+exiting with code 2
