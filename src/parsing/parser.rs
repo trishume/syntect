@@ -136,6 +136,8 @@ struct BranchPoint {
     /// `pending_lines.len()` at snapshot time, for cross-line replay truncation.
     pending_lines_snapshot_len: usize,
     escape_stack_snapshot: Vec<EscapeEntry>,
+    /// Number of contexts to pop before pushing the alternative (for pop + branch).
+    pop_count: usize,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -152,6 +154,8 @@ struct RegexMatch<'a> {
     pat_index: usize,
     from_with_prototype: bool,
     would_loop: bool,
+    /// For escape matches (pat_index == usize::MAX): index into escape_stack.
+    escape_index: usize,
 }
 
 /// Maps the pattern to the start index, which is -1 if not found.
@@ -425,7 +429,14 @@ impl ParseState {
             if reg_match.pat_index == usize::MAX {
                 let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
                 *start = match_end;
-                self.exec_escape(match_start, match_end, &reg_match.regions, syntax_set, ops)?;
+                self.exec_escape(
+                    reg_match.escape_index,
+                    match_start,
+                    match_end,
+                    &reg_match.regions,
+                    syntax_set,
+                    ops,
+                )?;
                 search_cache.clear();
                 return Ok(true);
             }
@@ -485,7 +496,7 @@ impl ParseState {
                 if matches!(
                     match_pattern.operation,
                     MatchOperation::Push(_)
-                        | MatchOperation::Branch(_, _)
+                        | MatchOperation::Branch { .. }
                         | MatchOperation::Embed { .. }
                 ) {
                     *non_consuming_push_at = (match_end, self.stack.len() + 1);
@@ -578,7 +589,7 @@ impl ParseState {
 
         // If escape matches right at `start`, it wins immediately — no need to
         // search normal patterns.
-        if let Some((_, ref esc_region)) = escape_match {
+        if let Some((ei, ref esc_region)) = escape_match {
             let esc_start = esc_region.pos(0).unwrap().0;
             if esc_start == start {
                 return Ok(Some(RegexMatch {
@@ -587,6 +598,7 @@ impl ParseState {
                     pat_index: usize::MAX, // sentinel for escape match
                     from_with_prototype: false,
                     would_loop: false,
+                    escape_index: ei,
                 }));
             }
         }
@@ -629,7 +641,7 @@ impl ParseState {
                         let push_too_deep = matches!(
                             match_pat.operation,
                             MatchOperation::Push(_)
-                                | MatchOperation::Branch(_, _)
+                                | MatchOperation::Branch { .. }
                                 | MatchOperation::Embed { .. }
                         ) && self.stack.len() >= 100;
 
@@ -643,6 +655,7 @@ impl ParseState {
                             pat_index,
                             from_with_prototype: from_with_proto,
                             would_loop: pop_would_loop,
+                            escape_index: 0, // not an escape match
                         });
 
                         if match_start == start && !pop_would_loop {
@@ -657,7 +670,7 @@ impl ParseState {
 
         // If no normal match was found before the escape position, or escape
         // position is earlier, use the escape match.
-        if let Some((_, esc_region)) = escape_match {
+        if let Some((ei, esc_region)) = escape_match {
             let esc_start = esc_region.pos(0).unwrap().0;
             if esc_start < min_start || (esc_start == min_start && pop_would_loop) {
                 return Ok(Some(RegexMatch {
@@ -666,6 +679,7 @@ impl ParseState {
                     pat_index: usize::MAX, // sentinel for escape match
                     from_with_prototype: false,
                     would_loop: false,
+                    escape_index: ei,
                 }));
             }
         }
@@ -722,7 +736,7 @@ impl ParseState {
             let does_something = match match_pat.operation {
                 MatchOperation::None => match_start != match_end,
                 MatchOperation::Push(_)
-                | MatchOperation::Branch(_, _)
+                | MatchOperation::Branch { .. }
                 | MatchOperation::Embed { .. } => self.stack.len() < 100,
                 _ => true,
             };
@@ -772,11 +786,16 @@ impl ParseState {
         }
 
         // For Branch, we need to snapshot state before executing, then synthesize a Push.
-        let is_branch = matches!(pat.operation, MatchOperation::Branch(_, _));
+        let is_branch = matches!(pat.operation, MatchOperation::Branch { .. });
         let synthetic_op;
 
         if is_branch {
-            if let MatchOperation::Branch(ref name, ref alternatives) = pat.operation {
+            if let MatchOperation::Branch {
+                ref name,
+                ref alternatives,
+                pop_count,
+            } = pat.operation
+            {
                 // Snapshot current state
                 let bp = BranchPoint {
                     name: name.clone(),
@@ -793,10 +812,16 @@ impl ParseState {
                     with_prototype: pat.with_prototype.clone(),
                     pending_lines_snapshot_len: self.pending_lines.len(),
                     escape_stack_snapshot: self.escape_stack.clone(),
+                    pop_count,
                 };
                 self.branch_points.push(bp);
-                // Synthesize a Push of the first alternative
-                synthetic_op = MatchOperation::Push(vec![alternatives[0].clone()]);
+                // When pop_count > 0 (pop + branch), use Set semantics to
+                // pop the current context before pushing the first alternative.
+                synthetic_op = if pop_count > 0 {
+                    MatchOperation::Set(vec![alternatives[0].clone()])
+                } else {
+                    MatchOperation::Push(vec![alternatives[0].clone()])
+                };
             } else {
                 unreachable!()
             }
@@ -920,6 +945,8 @@ impl ParseState {
         let escape_stack_snapshot = bp.escape_stack_snapshot.clone();
         // bp borrow ends here.
 
+        let pop_count = self.branch_points[bp_index].pop_count;
+
         // Restore parser state to the snapshot.
         self.stack = stack_snapshot;
         self.proto_starts = proto_starts_snapshot;
@@ -927,9 +954,16 @@ impl ParseState {
         self.first_line = first_line_snapshot;
         *non_consuming_push_at = non_consuming_push_at_snapshot;
 
-        // Update the branch point record before pushing the new alternative
-        // (so that the snapshot len is correct for any subsequent fail).
+        // Update the branch point record before popping/pushing
+        // (must happen before the pop which may invalidate indices).
         self.branch_points[bp_index].next_alternative = next_alt_index + 1;
+
+        // For pop + branch: re-pop the contexts (snapshot was taken pre-pop).
+        if pop_count > 0 {
+            for _ in 0..pop_count {
+                self.stack.pop();
+            }
+        }
 
         // Push the next alternative onto the stack.
         let with_prototype = self.branch_points[bp_index].with_prototype.clone();
@@ -1224,14 +1258,19 @@ impl ParseState {
                 );
             }
             MatchOperation::None | MatchOperation::Fail(_) => (),
-            MatchOperation::Branch(_, ref context_refs) => {
-                // Branch acts like Push for meta ops purposes.
-                // We only push the first (or current) alternative, but the meta ops
-                // are generated based on the context refs passed here. Since at exec time
-                // we transform Branch into a single-element Push before calling push_meta_ops,
-                // this arm handles the case where push_meta_ops is called with the original
-                // Branch operation (which shouldn't happen in practice, but for safety).
-                let synthetic = MatchOperation::Push(context_refs.clone());
+            MatchOperation::Branch {
+                ref alternatives,
+                pop_count,
+                ..
+            } => {
+                // Branch acts like Push for meta ops purposes (or Set when pop_count > 0).
+                // At exec time, Branch is transformed into a synthetic Push/Set before
+                // calling push_meta_ops, so this arm is a safety fallback.
+                let synthetic = if pop_count > 0 {
+                    MatchOperation::Set(alternatives.clone())
+                } else {
+                    MatchOperation::Push(alternatives.clone())
+                };
                 return self.push_meta_ops(
                     initial,
                     index,
@@ -1291,7 +1330,7 @@ impl ParseState {
                 return Ok(true);
             }
             MatchOperation::None => return Ok(false),
-            MatchOperation::Branch(_, _) | MatchOperation::Fail(_) => {
+            MatchOperation::Branch { .. } | MatchOperation::Fail(_) => {
                 // Branch and Fail are handled in exec_pattern, not here
                 return Ok(false);
             }
@@ -1369,17 +1408,13 @@ impl ParseState {
     /// the embed's stack_depth, and remove the escape entry.
     fn exec_escape(
         &mut self,
+        escape_idx: usize,
         match_start: usize,
         _match_end: usize,
         regions: &Region,
         syntax_set: &SyntaxSet,
         ops: &mut Vec<(usize, ScopeStackOp)>,
     ) -> Result<(), ParsingError> {
-        // In find_best_match, escape entries are iterated outermost first (index 0).
-        // The one that set `search_end` (earliest match) is always the outermost
-        // matching entry, which is at index 0 when an escape fires.
-        let escape_idx = 0;
-
         let entry = &self.escape_stack[escape_idx];
         let target_depth = entry.stack_depth;
         let escape_captures = entry.captures.clone();
@@ -4222,28 +4257,59 @@ contexts:
     }
 
     #[test]
-    fn embed_js_in_html() {
+    fn erb_escape_captures() {
         let ss = SyntaxSet::load_defaults_newlines();
-        let syntax = ss.find_syntax_by_extension("html").unwrap();
+        let syntax = ss.find_syntax_by_extension("erb").unwrap();
         let mut state = ParseState::new(syntax);
         let mut scope_stack = ScopeStack::new();
-        state
-            .parse_line("<script type=\"text/javascript\">\n", &ss)
-            .unwrap()
-            .ops
-            .iter()
-            .for_each(|(_, op)| {
-                scope_stack.apply(op).ok();
-            });
-        let ops = state.parse_line("var x = 5;\n", &ss).unwrap();
-        for (_, op) in &ops.ops {
+        let ops = state.parse_line("<%= puts \"hi\" %>\n", &ss).unwrap();
+        eprintln!("ERB line ops:");
+        for (pos, op) in &ops.ops {
             scope_stack.apply(op).ok();
+            eprintln!(
+                "  pos={} op={:?}  stack={:?}",
+                pos,
+                op,
+                scope_stack.as_slice()
+            );
         }
         let stack_str = format!("{:?}", scope_stack.as_slice());
+        // After the line, the %> should have fired the escape
+        // and we should be back in HTML context
         assert!(
-            stack_str.contains("source.js"),
-            "Expected source.js in scope stack, got: {}",
+            !stack_str.contains("source.ruby"),
+            "Expected Ruby embed to have ended, got: {}",
             stack_str
         );
+    }
+
+    #[test]
+    fn embed_js_in_html() {
+        let ss = SyntaxSet::load_defaults_newlines();
+
+        for ext in &["html", "erb"] {
+            let syntax = ss.find_syntax_by_extension(ext).unwrap();
+            let mut state = ParseState::new(syntax);
+            let mut scope_stack = ScopeStack::new();
+            state
+                .parse_line("<script type=\"text/javascript\">\n", &ss)
+                .unwrap()
+                .ops
+                .iter()
+                .for_each(|(_, op)| {
+                    scope_stack.apply(op).ok();
+                });
+            let ops = state.parse_line("var x = 5;\n", &ss).unwrap();
+            for (_, op) in &ops.ops {
+                scope_stack.apply(op).ok();
+            }
+            let stack_str = format!("{:?}", scope_stack.as_slice());
+            assert!(
+                stack_str.contains("source.js"),
+                "Extension {}: expected source.js in scope stack, got: {}",
+                ext,
+                stack_str
+            );
+        }
     }
 }

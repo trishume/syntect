@@ -375,6 +375,19 @@ impl SyntaxDefinition {
             // the embedded syntax with escape priority.
             if get_key(map, "embed", Some).is_ok() {
                 Self::parse_embed_op(map, state, contexts, namer, y as usize)?
+            } else if let Ok(b) = get_key(map, "branch", |x| x.as_vec()) {
+                let branch_point = get_key(map, "branch_point", |x| x.as_str())?;
+                let alternatives: Vec<ContextReference> = b
+                    .iter()
+                    .map(|item| {
+                        SyntaxDefinition::parse_reference(item, state, contexts, namer, false)
+                    })
+                    .collect::<Result<_, _>>()?;
+                MatchOperation::Branch {
+                    name: branch_point.to_owned(),
+                    alternatives,
+                    pop_count: y as usize,
+                }
             } else {
                 MatchOperation::Pop(y as usize)
             }
@@ -388,7 +401,11 @@ impl SyntaxDefinition {
                 .iter()
                 .map(|item| SyntaxDefinition::parse_reference(item, state, contexts, namer, false))
                 .collect::<Result<_, _>>()?;
-            MatchOperation::Branch(branch_point.to_owned(), alternatives)
+            MatchOperation::Branch {
+                name: branch_point.to_owned(),
+                alternatives,
+                pop_count: 0,
+            }
         } else if let Ok(y) = get_key(map, "fail", |x| x.as_str()) {
             MatchOperation::Fail(y.to_owned())
         } else if get_key(map, "embed", Some).is_ok() {
@@ -447,6 +464,7 @@ impl SyntaxDefinition {
             escape_regex: Regex::new(escape_regex_str),
             has_captures: escape_has_captures,
             escape_captures,
+            raw_escape_regex_str: Some(escape_raw.to_owned()),
         };
 
         // Build the wrapper context for embed_scope (meta_content_scope)
@@ -729,6 +747,14 @@ pub(crate) fn re_resolve_all_regexes(
                     let new_regex_str =
                         re_resolve_regex(raw, &syntax.variables, lines_include_newline)?;
                     match_pat.regex = Regex::new(new_regex_str);
+                }
+                // Also re-resolve the escape regex for embed operations
+                if let MatchOperation::Embed { ref mut escape, .. } = match_pat.operation {
+                    if let Some(ref raw) = escape.raw_escape_regex_str {
+                        let new_regex_str =
+                            re_resolve_regex(raw, &syntax.variables, lines_include_newline)?;
+                        escape.escape_regex = Regex::new(new_regex_str);
+                    }
                 }
             }
         }
