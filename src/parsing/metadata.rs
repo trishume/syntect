@@ -500,13 +500,13 @@ mod tests {
         let r = RawMetadataEntry::load(comments_file);
         assert!(r.is_ok());
 
-        let indent_file: &str = "testdata/Packages/Go/Indentation Rules.tmPreferences";
+        let indent_file: &str = "testdata/Packages/Go/Indention Rules.tmPreferences";
         assert!(Path::new(indent_file).exists());
 
         let r = RawMetadataEntry::load(indent_file).unwrap();
         assert_eq!(r.scope, "source.go");
 
-        let indent_file: &str = "testdata/Packages/Rust/RustIndent.tmPreferences";
+        let indent_file: &str = "testdata/Packages/Rust/Indentation Rules.tmPreferences";
         assert!(Path::new(indent_file).exists());
 
         let r = RawMetadataEntry::load(indent_file).unwrap();
@@ -516,10 +516,10 @@ mod tests {
     #[test]
     fn load_groups() {
         let mut loaded = LoadMetadata::default();
-        let indent_file: &str = "testdata/Packages/Rust/RustIndent.tmPreferences";
+        let indent_file: &str = "testdata/Packages/Rust/Indentation Rules.tmPreferences";
         let raw = RawMetadataEntry::load(indent_file).expect("failed to load indent metadata");
         loaded.add_raw(raw);
-        let comment_file: &str = "testdata/Packages/Rust/RustComment.tmPreferences";
+        let comment_file: &str = "testdata/Packages/Rust/Comments.tmPreferences";
         let raw = RawMetadataEntry::load(comment_file).expect("failed to load comment metadata");
         loaded.add_raw(raw);
 
