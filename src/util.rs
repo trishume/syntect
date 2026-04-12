@@ -10,7 +10,7 @@ use std::fmt::Write;
 use std::ops::Range;
 
 #[inline]
-fn blend_fg_color(fg: Color, bg: Color) -> Color {
+pub(crate) fn blend_fg_color(fg: Color, bg: Color) -> Color {
     if fg.a == 0xff {
         return fg;
     }
@@ -61,21 +61,23 @@ const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\
 /// Usage is similar to the `as_24_bit_terminal_escaped` function:
 ///
 /// ```
-/// use syntect::easy::HighlightLines;
-/// use syntect::parsing::SyntaxSet;
-/// use syntect::highlighting::{ThemeSet,Style};
-/// use syntect::util::{as_latex_escaped,LinesWithEndings};
+/// use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter, Style, ThemeSet};
+/// use syntect::parsing::{ParseState, ScopeStack, SyntaxSet};
+/// use syntect::util::{as_latex_escaped, LinesWithEndings};
 ///
-/// // Load these once at the start of your program
 /// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_extension("rs").unwrap();
 /// let s = "pub struct Wow { hi: u64 }\nfn blah() -> u64 {}\n";
 ///
-/// let mut h = HighlightLines::new(syntax, &ts.themes["InspiredGitHub"]);
-/// for line in LinesWithEndings::from(s) { // LinesWithEndings enables use of newlines mode
-///     let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
+/// let mut parse_state = ParseState::new(syntax);
+/// let highlighter = Highlighter::new(&ts.themes["InspiredGitHub"]);
+/// let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+/// for line in LinesWithEndings::from(s) {
+///     let ops = parse_state.parse_line(line, &ps).unwrap().ops;
+///     let iter = HighlightIterator::new(&mut highlight_state, &ops, line, &highlighter);
+///     let ranges: Vec<(Style, &str)> = iter.collect();
 ///     let escaped = as_latex_escaped(&ranges[..]);
 ///     println!("{}", escaped);
 /// }
@@ -108,8 +110,8 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
             "{}\\textcolor[RGB]{{{},{},{}}}{{",
             if first { "" } else { "}" },
             style.foreground.r,
-            style.foreground.b,
-            style.foreground.g
+            style.foreground.g,
+            style.foreground.b
         )
     }
     for &(style, text) in v.iter() {
@@ -412,5 +414,62 @@ mod tests {
         };
         let s = as_24_bit_terminal_escaped(&[(style, "hello")], true);
         assert_eq!(s, "\x1b[48;2;0;0;0m\x1b[38;2;128;128;128mhello");
+    }
+
+    #[test]
+    fn test_as_latex_escaped_channel_order() {
+        // Pin the exact RGB channel order in the emitted \textcolor[RGB]{r,g,b}
+        // wrapper. Use three distinct values so that any channel swap (e.g. the
+        // historical G/B bug) is observable in the output.
+        let style = Style {
+            foreground: Color {
+                r: 10,
+                g: 20,
+                b: 30,
+                a: 0xff,
+            },
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+        let s = as_latex_escaped(&[(style, "hi")]);
+        assert_eq!(s, "\\textcolor[RGB]{10,20,30}{hi}");
+    }
+
+    #[test]
+    fn test_as_latex_escaped_escapes_specials_and_runs() {
+        // Cover: specials escaping (\, {, }), the " " short-circuit, the "\n"
+        // skip, and adjacent same-style merging via the prev_style branch.
+        let style_a = Style {
+            foreground: Color {
+                r: 1,
+                g: 2,
+                b: 3,
+                a: 0xff,
+            },
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+        let style_b = Style {
+            foreground: Color {
+                r: 9,
+                g: 8,
+                b: 7,
+                a: 0xff,
+            },
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+        let s = as_latex_escaped(&[
+            (style_a, "a"),
+            (style_a, " "),
+            (style_a, "b"),
+            (style_b, "{c}"),
+            (style_b, "\n"),
+            (style_b, "d\\e"),
+        ]);
+        assert_eq!(
+            s,
+            "\\textcolor[RGB]{1,2,3}{a b}\\textcolor[RGB]{9,8,7}{\\{c\\}d\\\\e}"
+        );
     }
 }

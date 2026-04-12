@@ -1,12 +1,12 @@
 use getopts::Options;
 use std::borrow::Cow;
-use std::io::BufRead;
+use std::io::{self, Write};
 use std::path::Path;
 use syntect::dumps::{dump_to_file, from_dump_file};
-use syntect::easy::HighlightFile;
-use syntect::highlighting::{Style, Theme, ThemeSet};
+use syntect::highlighting::{Theme, ThemeSet};
+use syntect::io::HighlightedWriter;
 use syntect::parsing::SyntaxSet;
-use syntect::util::as_24_bit_terminal_escaped;
+use syntect::rendering::AnsiStyledOutput;
 
 fn load_theme(tm_file: &str, enable_caching: bool) -> Theme {
     let tm_path = Path::new(tm_file);
@@ -111,34 +111,25 @@ fn main() {
                 println!("==> {} <==", src);
             }
 
-            let mut highlighter = HighlightFile::new(src, &ss, &theme).unwrap();
+            let path = std::path::Path::new(src);
+            let mut f = std::fs::File::open(path).unwrap();
+            let syntax = ss
+                .find_syntax_for_file(path)
+                .unwrap()
+                .unwrap_or_else(|| ss.find_syntax_plain_text());
+            let mut highlighter =
+                HighlightedWriter::from_themed(syntax, &ss, &theme, AnsiStyledOutput::new(false))
+                    .with_output(io::stdout().lock())
+                    .build();
 
-            // We use read_line instead of `for line in highlighter.reader.lines()` because that
-            // doesn't return strings with a `\n`, and including the `\n` gets us more robust highlighting.
-            // See the documentation for `SyntaxSetBuilder::add_from_folder`.
-            // It also allows re-using the line buffer, which should be a tiny bit faster.
-            let mut line = String::new();
-            while highlighter.reader.read_line(&mut line).unwrap() > 0 {
-                if no_newlines && line.ends_with('\n') {
-                    let _ = line.pop();
-                }
+            // HighlightedWriter implements `io::Write`, so we can stream the
+            // file straight through it without managing line buffers.
+            io::copy(&mut f, &mut highlighter).unwrap();
 
-                {
-                    let regions: Vec<(Style, &str)> = highlighter
-                        .highlight_lines
-                        .highlight_line(&line, &ss)
-                        .unwrap();
-                    print!("{}", as_24_bit_terminal_escaped(&regions[..], true));
-                }
-                line.clear();
-
-                if no_newlines {
-                    println!();
-                }
-            }
+            let mut out = highlighter.into_inner().unwrap();
 
             // Clear the formatting
-            println!("\x1b[0m");
+            out.write_all(b"\x1b[0m\n").unwrap();
         }
     }
 }

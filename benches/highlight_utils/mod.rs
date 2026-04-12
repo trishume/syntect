@@ -1,6 +1,8 @@
-use syntect::easy::HighlightLines;
+use std::io::Write;
 use syntect::highlighting::Theme;
+use syntect::io::HighlightedWriter;
 use syntect::parsing::{SyntaxReference, SyntaxSet};
+use syntect::rendering::AnsiStyledOutput;
 
 /// Common helper for benchmarking highlighting.
 pub fn do_highlight(
@@ -9,11 +11,11 @@ pub fn do_highlight(
     syntax: &SyntaxReference,
     theme: &Theme,
 ) -> usize {
-    let mut h = HighlightLines::new(syntax, theme);
-    let mut count = 0;
+    let mut highlight =
+        HighlightedWriter::from_themed(syntax, syntax_set, theme, AnsiStyledOutput::new(false))
+            .build();
     for line in s.lines() {
-        let regions = h.highlight_line(line, syntax_set).unwrap();
-        count += regions.len();
+        writeln!(highlight, "{}", line).unwrap();
     }
-    count
+    highlight.into_inner().unwrap().len()
 }

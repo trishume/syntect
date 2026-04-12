@@ -2,12 +2,13 @@
 //! Prints the highlighted output to stdout.
 
 use rayon::prelude::*;
-use syntect::easy::HighlightFile;
-use syntect::highlighting::{Style, ThemeSet};
+use syntect::highlighting::ThemeSet;
+use syntect::io::HighlightedWriter;
 use syntect::parsing::SyntaxSet;
+use syntect::rendering::AnsiStyledOutput;
 
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{self, Write};
 
 fn main() {
     let files: Vec<String> = std::env::args().skip(1).collect();
@@ -20,51 +21,33 @@ fn main() {
     let syntax_set = SyntaxSet::load_defaults_newlines();
     let theme_set = ThemeSet::load_defaults();
 
-    // We first collect the contents of the files...
-    let contents: Vec<Vec<String>> = files
+    // Highlight each file in parallel, buffering each result into its own
+    // `Vec<u8>` so we can stream them out in order at the end.
+    let outputs: Vec<Vec<u8>> = files
         .par_iter()
         .map(|filename| {
-            let mut lines = Vec::new();
-            // We use `String::new()` and `read_line()` instead of `BufRead::lines()`
-            // in order to preserve the newlines and get better highlighting.
-            let mut line = String::new();
-            let mut reader = BufReader::new(File::open(filename).unwrap());
-            while reader.read_line(&mut line).unwrap() > 0 {
-                lines.push(line);
-                line = String::new();
-            }
-            lines
-        })
-        .collect();
-
-    // ...so that the highlighted regions have valid lifetimes...
-    let regions: Vec<Vec<(Style, &str)>> = files
-        .par_iter()
-        .zip(&contents)
-        .map(|(filename, contents)| {
-            let mut regions = Vec::new();
             let theme = &theme_set.themes["base16-ocean.dark"];
-            let mut highlighter = HighlightFile::new(filename, &syntax_set, theme).unwrap();
-
-            for line in contents {
-                for region in highlighter
-                    .highlight_lines
-                    .highlight_line(line, &syntax_set)
-                    .unwrap()
-                {
-                    regions.push(region);
-                }
-            }
-
-            regions
+            let syntax = syntax_set
+                .find_syntax_for_file(filename)
+                .unwrap()
+                .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+            let mut f = File::open(filename).unwrap();
+            let mut w = HighlightedWriter::from_themed(
+                syntax,
+                &syntax_set,
+                theme,
+                AnsiStyledOutput::new(false),
+            )
+            .build();
+            io::copy(&mut f, &mut w).unwrap();
+            w.into_inner().unwrap()
         })
         .collect();
 
     // ...and then print them all out.
-    for file_regions in regions {
-        print!(
-            "{}",
-            syntect::util::as_24_bit_terminal_escaped(&file_regions[..], true)
-        );
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    for output in outputs {
+        out.write_all(&output).unwrap();
     }
 }

@@ -34,7 +34,11 @@ mod escape;
 pub mod highlighting;
 #[cfg(feature = "html")]
 pub mod html;
+#[cfg(feature = "parsing")]
+pub mod io;
 pub mod parsing;
+#[cfg(feature = "parsing")]
+pub mod rendering;
 pub mod util;
 mod utils;
 

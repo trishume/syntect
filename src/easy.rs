@@ -40,12 +40,17 @@ use std::path::Path;
 ///     print!("{}", escaped);
 /// }
 /// ```
+#[deprecated(
+    since = "6.0.0",
+    note = "Use `syntect::io::HighlightedWriter` instead, which implements `std::io::Write`, supports pluggable renderers, and handles branch-point backtracking"
+)]
 pub struct HighlightLines<'a> {
     highlighter: Highlighter<'a>,
     parse_state: ParseState,
     highlight_state: HighlightState,
 }
 
+#[allow(deprecated)]
 impl<'a> HighlightLines<'a> {
     pub fn new(syntax: &SyntaxReference, theme: &'a Theme) -> HighlightLines<'a> {
         let highlighter = Highlighter::new(theme);
@@ -111,11 +116,17 @@ impl<'a> HighlightLines<'a> {
 /// the [`new`] method docs for more information.
 ///
 /// [`new`]: #method.new
+#[deprecated(
+    since = "6.0.0",
+    note = "Use `syntect::io::HighlightedWriter` instead, which implements `std::io::Write`, supports pluggable renderers, and handles branch-point backtracking"
+)]
 pub struct HighlightFile<'a> {
     pub reader: BufReader<File>,
+    #[allow(deprecated)]
     pub highlight_lines: HighlightLines<'a>,
 }
 
+#[allow(deprecated)]
 impl<'a> HighlightFile<'a> {
     /// Constructs a file reader and a line highlighter to get you reading files as fast as possible.
     ///
@@ -300,6 +311,7 @@ mod tests {
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
+    #[allow(deprecated)]
     fn can_highlight_lines() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
@@ -313,6 +325,7 @@ mod tests {
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
+    #[allow(deprecated)]
     fn can_highlight_file() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
@@ -379,6 +392,7 @@ mod tests {
 
     #[cfg(all(feature = "default-syntaxes", feature = "default-themes"))]
     #[test]
+    #[allow(deprecated)]
     fn can_start_again_from_previous_state() {
         let ss = SyntaxSet::load_defaults_nonewlines();
         let ts = ThemeSet::load_defaults();
