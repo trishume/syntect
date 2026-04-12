@@ -1201,9 +1201,19 @@ impl ParseState {
                     }
                 }
             }
-            MatchOperation::Embed { ref contexts, .. } => {
-                // Embed acts like Push for meta scope operations
-                let synthetic = MatchOperation::Push(contexts.clone());
+            MatchOperation::Embed {
+                ref contexts,
+                pop_count,
+                ..
+            } => {
+                // When pop_count > 0 (pop + embed), use Set semantics to handle
+                // popping the current context's meta scopes before pushing the
+                // embedded contexts' meta scopes.
+                let synthetic = if pop_count > 0 {
+                    MatchOperation::Set(contexts.clone())
+                } else {
+                    MatchOperation::Push(contexts.clone())
+                };
                 return self.push_meta_ops(
                     initial,
                     index,
@@ -1246,7 +1256,22 @@ impl ParseState {
     ) -> Result<bool, ParsingError> {
         let (ctx_refs, old_proto_ids, is_embed) = match pat.operation {
             MatchOperation::Push(ref ctx_refs) => (ctx_refs, None, false),
-            MatchOperation::Embed { ref contexts, .. } => (contexts, None, true),
+            MatchOperation::Embed {
+                ref contexts,
+                pop_count,
+                ..
+            } => {
+                if pop_count > 0 {
+                    for _ in 0..pop_count {
+                        self.stack.pop();
+                    }
+                    self.branch_points
+                        .retain(|bp| bp.stack_depth <= self.stack.len());
+                    self.escape_stack
+                        .retain(|e| e.stack_depth < self.stack.len());
+                }
+                (contexts, None, true)
+            }
             MatchOperation::Set(ref ctx_refs) => {
                 // a `with_prototype` stays active when the context is `set`
                 // until the context layer in the stack (where the `with_prototype`
@@ -1576,12 +1601,28 @@ mod tests {
             ]
         );
 
-        assert_eq!(ops(&mut state, "wow", ss), vec![]);
+        assert_eq!(
+            ops(&mut state, "wow", ss),
+            vec![
+                (0, Push(Scope::new("meta.string.heredoc.ruby").unwrap())),
+                (0, Push(Scope::new("source.sql.embedded.ruby").unwrap()),),
+                (0, Push(Scope::new("source.sql").unwrap())),
+                (0, Push(Scope::new("source.sql.mysql").unwrap())),
+                (0, Push(Scope::new("source.sql.basic").unwrap())),
+                (0, Push(Scope::new("meta.column-name.sql").unwrap())),
+                (3, Pop(1)),
+            ]
+        );
 
         assert_eq!(
             ops(&mut state, "SQL", ss),
             vec![
-                (0, Push(Scope::new("variable.other.constant.ruby").unwrap())),
+                (0, Pop(4)),
+                (0, Pop(1)),
+                (0, Push(Scope::new("meta.string.heredoc.ruby").unwrap())),
+                (0, Push(Scope::new("meta.tag.heredoc.ruby").unwrap())),
+                (0, Push(Scope::new("entity.name.tag.ruby").unwrap())),
+                (3, Pop(2)),
                 (3, Pop(1)),
             ]
         );
@@ -4177,6 +4218,32 @@ contexts:
             !states2.iter().any(|s| s.contains("keyword.escape")),
             "stale escape must not fire after branch revert, got: {:?}",
             states2
+        );
+    }
+
+    #[test]
+    fn embed_js_in_html() {
+        let ss = SyntaxSet::load_defaults_newlines();
+        let syntax = ss.find_syntax_by_extension("html").unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut scope_stack = ScopeStack::new();
+        state
+            .parse_line("<script type=\"text/javascript\">\n", &ss)
+            .unwrap()
+            .ops
+            .iter()
+            .for_each(|(_, op)| {
+                scope_stack.apply(op).ok();
+            });
+        let ops = state.parse_line("var x = 5;\n", &ss).unwrap();
+        for (_, op) in &ops.ops {
+            scope_stack.apply(op).ok();
+        }
+        let stack_str = format!("{:?}", scope_stack.as_slice());
+        assert!(
+            stack_str.contains("source.js"),
+            "Expected source.js in scope stack, got: {}",
+            stack_str
         );
     }
 }

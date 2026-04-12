@@ -201,6 +201,11 @@ pub enum MatchOperation {
     Embed {
         contexts: Vec<ContextReference>,
         escape: EscapeInfo,
+        /// Number of contexts to pop before pushing the embedded contexts.
+        /// In Sublime Text, `pop: N` combined with `embed:` pops N contexts
+        /// then pushes the embedded syntax with escape priority.
+        #[serde(default)]
+        pop_count: usize,
     },
 }
 
