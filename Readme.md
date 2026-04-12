@@ -250,7 +250,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [CodeSnap.nvim](https://github.com/mistricky/codesnap.nvim), snapshot plugin for Neovim, that uses `syntect` for code syntax highlighting.
 - [code-to-pdf](https://github.com/Tommypop2/code-to-pdf), a tool that generates a syntax-highlighted PDF of a directory
 - [Comrak](https://github.com/kivikakk/comrak), a CommonMark parser and formatter that uses `syntect` for highlighting code blocks.
-
+- [zsh-patina](https://github.com/michel-kraemer/zsh-patina), a blazingly fast Zsh syntax highlighter.
 
 ## License and Acknowledgements
 
