@@ -500,7 +500,7 @@ mod tests {
         let r = RawMetadataEntry::load(comments_file);
         assert!(r.is_ok());
 
-        let indent_file: &str = "testdata/Packages/Go/Indention Rules.tmPreferences";
+        let indent_file: &str = "testdata/Packages/Go/Indentation Rules.tmPreferences";
         assert!(Path::new(indent_file).exists());
 
         let r = RawMetadataEntry::load(indent_file).unwrap();
