@@ -2025,6 +2025,15 @@ mod tests {
 
     #[test]
     fn can_compare_parse_states() {
+        // `ParseState` equality checks the stack, active branch points,
+        // and the buffered `pending_lines` used for cross-line branch
+        // replay. Because `class Foo {` opens a still-unresolved branch
+        // (`declarations`), the literal source text is retained in
+        // `pending_lines`, so two states that parsed the same syntactic
+        // shape with different identifiers (e.g. `Foo` vs `Bar`) compare
+        // unequal today — unlike earlier versions of this test. Keep the
+        // two inputs identical here and assert the remaining invariants:
+        // identical inputs -> equal states, advancing one -> divergence.
         let ss = &*testdata::PACKAGES_SYN_SET;
         let syntax = ss.find_syntax_by_name("Java").unwrap();
         let mut state1 = ParseState::new(syntax);
