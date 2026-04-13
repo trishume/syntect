@@ -10,19 +10,17 @@ FAILED testdata/Packages/Diff/tests/syntax_test_switch_to_git.diff: 104
 FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
 FAILED testdata/Packages/Git Formats/tests/syntax_test_git_rebase: 86
 FAILED testdata/Packages/HTML/tests/syntax_test_scope.html: 4
-FAILED testdata/Packages/Haskell/tests/syntax_test_cabal.cabal: 4
-FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 827
+FAILED testdata/Packages/Haskell/tests/syntax_test_cabal.cabal: 1
+FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 826
 FAILED testdata/Packages/JSON/syntax_test_json.json: 3
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_class.js: 4
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_control.js: 92
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_regexp.js: 6
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_template.js: 37
 FAILED testdata/Packages/JavaScript/tests/syntax_test_typescript_template.ts: 22
-FAILED testdata/Packages/LaTeX/tests/syntax_test_bibtex.bib: 69
-FAILED testdata/Packages/Lisp/tests/syntax_test_lisp.lisp: 95
+FAILED testdata/Packages/LaTeX/tests/syntax_test_bibtex.bib: 2
+FAILED testdata/Packages/Lisp/tests/syntax_test_lisp.lisp: 2
 FAILED testdata/Packages/Makefile/syntax_test_makefile.mak: 124
-FAILED testdata/Packages/Pascal/tests/syntax_test_pascal.pas: 264
-FAILED testdata/Packages/Pascal/tests/syntax_test_scope_conflicts.pas: 6
 FAILED testdata/Packages/Python/tests/syntax_test_scope_tstrings.py: 684
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.css.erb: 100
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 98
@@ -39,5 +37,5 @@ FAILED testdata/Packages/Rust/tests/syntax_test_struct.rs: 3
 FAILED testdata/Packages/Rust/tests/syntax_test_types.rs: 15
 FAILED testdata/Packages/SQL/tests/syntax/syntax_test_mysql.sql: 8
 FAILED testdata/Packages/SQL/tests/syntax/syntax_test_tsql.sql: 4942
-FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 23455
+FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 23451
 exiting with code 2
