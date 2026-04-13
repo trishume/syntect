@@ -1663,8 +1663,14 @@ mod tests {
         };
 
         let ops1 = ops(&mut state, "module Bob::Wow::Troll::Five; 5; end", ss);
+        // `source.ruby.rails` is pushed once — the file's top-level
+        // scope. Earlier versions of `add_initial_contexts` inserted
+        // the scope into `main.meta_content_scope` twice (once on
+        // initial load, once again after `resolve_extends` re-ran),
+        // which showed up here as a duplicate Push. That duplication
+        // also broke assertions of the form `- source source` in the
+        // Diff test fixtures; the initial-contexts fix removes it.
         let test_ops1 = vec![
-            (0, Push(Scope::new("source.ruby.rails").unwrap())),
             (0, Push(Scope::new("source.ruby.rails").unwrap())),
             (0, Push(Scope::new("meta.namespace.ruby").unwrap())),
             (
@@ -1770,7 +1776,6 @@ mod tests {
         assert_eq!(
             ops(&mut state, "lol = <<-SQL.strip", ss),
             vec![
-                (0, Push(Scope::new("source.ruby.rails").unwrap())),
                 (0, Push(Scope::new("source.ruby.rails").unwrap())),
                 (
                     4,
@@ -2905,6 +2910,37 @@ contexts:
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
         expect_scope_stacks_for_ops(ops(&mut state, "a bc\n", &syntax_set), &["<a>"]);
         expect_scope_stacks_for_ops(ops(&mut state, "bc\n", &syntax_set), &["<b>"]);
+    }
+
+    /// Regression guard for the "extends double-inserts top_level_scope"
+    /// bug: `add_initial_contexts` runs once during initial YAML load and
+    /// again from `resolve_extends` after a child inherits its parent's
+    /// contexts. On the second run `main.meta_content_scope` already
+    /// begins with the child's top-level scope from the first run; if the
+    /// code naively re-inserts at position 0 and re-copies to `__main`,
+    /// the file scope ends up pushed twice at the start of every parse
+    /// (observed as `[source.diff.git, source.diff.git]` on Git Diff and
+    /// all the Rails (Rails) syntaxes, which broke assertions of the
+    /// form `- source source`). The copy to `__main` must strip an
+    /// already-present top_level_scope prefix, and the insert into
+    /// `main` must be idempotent.
+    #[test]
+    fn extending_syntax_does_not_double_push_top_level_scope() {
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        // Git Diff extends Diff (Basic) — a concrete case of the bug.
+        let syntax = ss.find_syntax_by_name("Git Diff").unwrap();
+        let mut state = ParseState::new(syntax);
+        let o = ops(&mut state, "From 1234567890 Mon Sep 17 00:00:00 2001\n", &ss);
+        let source_pushes = o
+            .iter()
+            .filter(|(_, op)| matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s) == "<source.diff.git>"))
+            .count();
+        assert_eq!(
+            source_pushes, 1,
+            "source.diff.git should be pushed exactly once for the file's top-level scope; ops were: {:?}",
+            o
+        );
     }
 
     /// Regression guard for the "branch_point match loses its own scope

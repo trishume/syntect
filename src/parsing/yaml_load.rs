@@ -660,7 +660,19 @@ impl SyntaxDefinition {
 
         let meta_include_prototype = contexts["main"].meta_include_prototype;
         let meta_scope = contexts["main"].meta_scope.clone();
-        let meta_content_scope = contexts["main"].meta_content_scope.clone();
+        // Copy `main`'s meta_content_scope to `__main`, but strip the
+        // auto-inserted `top_level_scope` at position 0 if present.
+        // On a fresh load `main.meta_content_scope` is still pre-insert
+        // here, so this is a no-op. On a re-run (from `resolve_extends`
+        // after a child inherits its parent's contexts), `main` already
+        // carries `top_level_scope` from the first call; copying it to
+        // `__main` would make both push the file scope at runtime,
+        // producing duplicates like `[source.diff.git, source.diff.git]`
+        // for Git Diff.
+        let mut meta_content_scope = contexts["main"].meta_content_scope.clone();
+        if meta_content_scope.first() == Some(&top_level_scope) {
+            meta_content_scope.remove(0);
+        }
 
         if let Some(outer_main) = contexts.get_mut("__main") {
             outer_main.meta_include_prototype = meta_include_prototype;
@@ -669,10 +681,14 @@ impl SyntaxDefinition {
         }
 
         // add the top_level_scope as a meta_content_scope to main so
-        // pushes from other syntaxes add the file scope
+        // pushes from other syntaxes add the file scope.
+        // Idempotent so a re-run (from `resolve_extends`) doesn't
+        // double-insert — see the comment on the copy above.
         // TODO: this order is not quite correct if main also has a meta_scope
         if let Some(main) = contexts.get_mut("main") {
-            main.meta_content_scope.insert(0, top_level_scope);
+            if main.meta_content_scope.first() != Some(&top_level_scope) {
+                main.meta_content_scope.insert(0, top_level_scope);
+            }
         }
     }
 }
