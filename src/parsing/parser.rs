@@ -765,28 +765,65 @@ impl ParseState {
         // print!("  executing regex: {:?} at pos {} on line {}", regex.regex_str(), start, line);
         let matched = regex.search(line, start, search_end, Some(regions));
 
-        if matched {
-            let (match_start, match_end) = regions.pos(0).unwrap();
-            // this is necessary to avoid infinite looping on dumb patterns
-            let does_something = match match_pat.operation {
-                MatchOperation::None => match_start != match_end,
-                MatchOperation::Push(_)
-                | MatchOperation::Branch { .. }
-                | MatchOperation::Embed { .. } => self.stack.len() < 100,
-                _ => true,
-            };
-            if can_cache && does_something && search_end == line.len() {
-                // Only cache when searching the full line — truncated searches
-                // could give different results for later positions.
+        if !matched {
+            if can_cache && search_end == line.len() {
+                search_cache.insert(match_pat, None);
+            }
+            return None;
+        }
+
+        let (match_start, match_end) = regions.pos(0).unwrap();
+        // this is necessary to avoid infinite looping on dumb patterns
+        let does_something = match match_pat.operation {
+            MatchOperation::None => match_start != match_end,
+            MatchOperation::Push(_)
+            | MatchOperation::Branch { .. }
+            | MatchOperation::Embed { .. } => self.stack.len() < 100,
+            _ => true,
+        };
+
+        if does_something {
+            if can_cache && search_end == line.len() {
                 search_cache.insert(match_pat, Some(regions.clone()));
             }
-            if does_something {
-                // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
-                return Some(regions.clone());
-            }
-        } else if can_cache && search_end == line.len() {
-            search_cache.insert(match_pat, None);
+            return Some(regions.clone());
         }
+
+        // A scope-only (`MatchOperation::None`) pattern that matched
+        // zero-width would loop forever if we applied it at the current
+        // position. Previously we returned `None` here and moved on, but that
+        // hides a later non-empty match of the *same* pattern — e.g. in Ruby
+        // `\h{0,6}` matches 0 chars at a space but 1 char on the next hex
+        // digit. Retry past the zero-width hit to find the first consuming
+        // match, if any. The retry advances by at least one char per
+        // iteration, so it's bounded by the line length. Do NOT cache the
+        // resulting `None` — it would be authoritative only for callers whose
+        // start is >= our original `start`, and the cache is pattern-keyed.
+        if matches!(match_pat.operation, MatchOperation::None) {
+            let mut search_start = match_end;
+            if let Some((i, _)) = line[search_start..].char_indices().nth(1) {
+                search_start += i;
+            } else {
+                return None;
+            }
+            while search_start < search_end {
+                if !regex.search(line, search_start, search_end, Some(regions)) {
+                    return None;
+                }
+                let (ms, me) = regions.pos(0).unwrap();
+                if ms != me {
+                    // Non-empty match at `ms`. Since this search used a
+                    // truncated `start`, don't touch the cache.
+                    return Some(regions.clone());
+                }
+                match line[me..].char_indices().nth(1) {
+                    Some((i, _)) => search_start = me + i,
+                    None => return None,
+                }
+            }
+            return None;
+        }
+
         None
     }
 
@@ -2464,6 +2501,32 @@ contexts:
 
         let line = "foo::bar::* xxx";
         let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_scope_only_pattern_that_matches_zero_width_then_non_empty() {
+        // Regression test for the Ruby `?\u{...}` case: a scope-only pattern
+        // that can match zero-width at one position must still contribute its
+        // later non-empty match when the next character actually matches it.
+        // Previously `\h{0,6}` would match 0 chars at the space and be
+        // discarded, letting the lower-priority `\S` scope the `0`.
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: \h{0,6}
+      scope: number.hex
+    - match: \S
+      scope: invalid.illegal
+"#;
+
+        let line = "012ACF 0gxs";
+        let expect = [
+            "<source.test>, <number.hex>",      // "012ACF" and "0"
+            "<source.test>, <invalid.illegal>", // "g", "x", "s"
+        ];
         expect_scope_stacks(line, &expect, syntax);
     }
 
