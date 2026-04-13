@@ -1,5 +1,5 @@
 loading syntax definitions from testdata/Packages
-FAILED testdata/Packages/C#/tests/syntax_test_C#11.cs: 171
+FAILED testdata/Packages/C#/tests/syntax_test_C#11.cs: 206
 FAILED testdata/Packages/C#/tests/syntax_test_C#9.cs: 10
 FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 3
 FAILED testdata/Packages/C#/tests/syntax_test_Generics.cs: 3
