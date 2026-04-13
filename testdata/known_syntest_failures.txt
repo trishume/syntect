@@ -6,20 +6,18 @@ FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 11
 FAILED testdata/Packages/C#/tests/syntax_test_Generics.cs: 3
 FAILED testdata/Packages/D/tests/syntax_test_d.d: 9
 FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
-FAILED testdata/Packages/HTML/tests/syntax_test_scope.html: 4
+FAILED testdata/Packages/HTML/tests/syntax_test_scope.html: 2
 FAILED testdata/Packages/Haskell/tests/syntax_test_cabal.cabal: 1
 FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 350
-FAILED testdata/Packages/JSON/syntax_test_json.json: 3
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_class.js: 4
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_control.js: 87
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_regexp.js: 6
-FAILED testdata/Packages/JavaScript/tests/syntax_test_js_template.js: 37
-FAILED testdata/Packages/JavaScript/tests/syntax_test_typescript_template.ts: 22
+FAILED testdata/Packages/JavaScript/tests/syntax_test_js_template.js: 15
 FAILED testdata/Packages/Lisp/tests/syntax_test_lisp.lisp: 2
 FAILED testdata/Packages/Python/tests/syntax_test_scope_tstrings.py: 228
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.css.erb: 83
-FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 98
-FAILED testdata/Packages/Rails/tests/syntax_test_rails.html.erb: 280
+FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 94
+FAILED testdata/Packages/Rails/tests/syntax_test_rails.html.erb: 273
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.js.erb: 37
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.sql.erb: 8
 FAILED testdata/Packages/Ruby/syntax_test_ruby.rb: 14

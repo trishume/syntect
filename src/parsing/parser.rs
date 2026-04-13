@@ -1259,10 +1259,14 @@ impl ParseState {
                             ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
                         ));
                     }
-                    if is_set && cur_context.clear_scopes.is_some() {
-                        // cleared scopes from the old context are restored immediately
-                        ops.push((index, ScopeStackOp::Restore));
-                    }
+                    // NOTE: cur_context.clear_scopes Restore is emitted in the
+                    // non-initial phase below, AFTER Pop(cur.meta_scope + target.meta_scope)
+                    // has run. Restoring here (pre-match) would place the cleared
+                    // scopes on top of the stack above the target.meta_scope push,
+                    // and the non-initial Pop would then remove the restored scopes
+                    // instead of the intended meta_scopes — dropping cur's cleared
+                    // state on the floor. Observed as duplicate
+                    // `meta.mapping.value.json` atoms in nested JSON objects.
                     // add each context's meta scope
                     if version >= 2 {
                         // v2: For push with multiple contexts, only apply clear_scopes
@@ -1306,7 +1310,12 @@ impl ParseState {
                 } else {
                     let repush = (is_set
                         && (!cur_context.meta_scope.is_empty()
-                            || !cur_context.meta_content_scope.is_empty()))
+                            || !cur_context.meta_content_scope.is_empty()
+                            // cur has clear_scopes but no meta_scope/mcs: we still
+                            // need to Pop the target.meta_scope pushed in initial,
+                            // Restore cur.clear_scopes, and re-push target.meta_scope
+                            // + target.meta_content_scope in the correct order.
+                            || cur_context.clear_scopes.is_some()))
                         || context_refs.iter().any(|r| {
                             let ctx = r.resolve(syntax_set).unwrap();
 
@@ -1337,6 +1346,14 @@ impl ParseState {
                         // do all the popping as one operation
                         if num_to_pop > 0 {
                             ops.push((index, ScopeStackOp::Pop(num_to_pop)));
+                        }
+
+                        // Restore scopes cleared by the leaving context, now that
+                        // cur.meta_scope and the initial phase's target.meta_scope
+                        // push have been popped off. The restored atoms land below
+                        // the target's upcoming meta_scope / meta_content_scope push.
+                        if is_set && cur_context.clear_scopes.is_some() {
+                            ops.push((index, ScopeStackOp::Restore));
                         }
 
                         // now we push meta scope and meta context scope for each context pushed
@@ -4370,6 +4387,83 @@ contexts:
             !last_state.contains("meta.a.v2setmeta"),
             "meta.a should have been popped after set, got: {:?}",
             last_state
+        );
+    }
+
+    #[test]
+    fn v2_set_from_context_with_clear_scopes_restores_cleared_atoms() {
+        // When a `set:` fires from a context that had `clear_scopes` of its
+        // own (e.g. JSON's `object-value-body`), the cleared scopes must be
+        // restored at the correct position on the scope stack: below the
+        // target's pushed meta_scope, not on top of it.
+        //
+        // Previously the Restore fired in the initial phase, before the
+        // non-initial Pop of (cur.meta_scope + target.meta_scope). The Pop
+        // then removed the restored atoms instead of the intended meta_scopes,
+        // dropping cur's cleared state on the floor. This surfaced in the
+        // JSON test as duplicate `meta.mapping.value.json` atoms in nested
+        // objects — e.g. `[source.json, meta.mapping.value.json,
+        // meta.mapping.value.json]` instead of `[source.json,
+        // meta.mapping.value.json, meta.mapping.json]`.
+        //
+        // Reduced JSON-like repro: outer mapping pushes an inner value-body
+        // that clears the outer mapping scope, then the inner value-body
+        // `set`s to a follow-up context. The follow-up context's matched
+        // text must see the outer mapping scope restored below it.
+        let syntax_str = r#"
+name: V2SetRestore
+scope: source.v2setrestore
+version: 2
+contexts:
+  main:
+    - meta_scope: meta.outer.v2setrestore
+    - match: '\{'
+      push: value-body
+
+  value-body:
+    - clear_scopes: 1
+    - meta_scope: meta.value.v2setrestore
+    - match: 'x'
+      scope: keyword.x.v2setrestore
+      set: follow-up
+
+  follow-up:
+    - match: '\w+'
+      scope: word.follow.v2setrestore
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "{xhello\n", &ss);
+
+        let states = stack_states(raw_ops);
+        // Find the state while parsing "hello" in follow-up.
+        let follow_states: Vec<_> = states
+            .iter()
+            .filter(|s| s.contains("word.follow.v2setrestore"))
+            .collect();
+        assert!(
+            !follow_states.is_empty(),
+            "expected to enter follow-up context, got states: {:?}",
+            states
+        );
+        // The outer meta.outer scope must be restored below follow-up's word
+        // scope. If the Restore landed above the target's meta_scope push (or
+        // was dropped by the non-initial Pop), meta.outer would be missing.
+        assert!(
+            follow_states
+                .iter()
+                .any(|s| s.contains("meta.outer.v2setrestore")),
+            "meta.outer must be restored after leaving value-body (which cleared it): {:?}",
+            follow_states
+        );
+        // meta.value (from the cleared context) must NOT persist.
+        assert!(
+            !follow_states
+                .iter()
+                .any(|s| s.contains("meta.value.v2setrestore")),
+            "meta.value (from the exited context) must not leak into follow-up: {:?}",
+            follow_states
         );
     }
 
