@@ -1328,20 +1328,39 @@ impl ParseState {
                     // `meta.mapping.value.json` atoms in nested JSON objects.
                     // add each context's meta scope
                     if version >= 2 {
-                        // v2: For push with multiple contexts, only apply clear_scopes
-                        // from the last (topmost) context, not sum all of them.
+                        // v2: For push with multiple contexts, only apply
+                        // clear_scopes from the last (topmost) context, not
+                        // sum all of them.
                         //
-                        // For `set:`, skip the Clear here: the non-initial
-                        // "repush" phase generates its own Clear, and emitting
-                        // one in both phases produces two Clears for a single
-                        // Restore, stranding a scope on clear_stack and
-                        // causing Pop underflow when the push group unwinds.
-                        // (The v1 path already had this guard via `!is_set`.)
+                        // Single-context `set:` with clear_scopes on the
+                        // target: emit Clear here — before target.meta_scope
+                        // is pushed and before the trigger match scope — so
+                        // the matched text sees the cleared stack.
+                        // Observed on Lisp's `(defun fn (...)`: the
+                        // parameter-list `(` otherwise kept the enclosing
+                        // `meta.function.lisp` alongside
+                        // `meta.function.parameters.lisp` because Clear
+                        // fired only after the match in the non-initial
+                        // phase. See
+                        // `v2_set_to_target_with_clear_scopes_clears_parent_meta_content_scope`.
+                        //
+                        // Multi-context `set:` keeps Clear in the non-initial
+                        // phase (emitted inline after preceding contexts'
+                        // mcs pushes). Moving it to the initial phase here
+                        // would strip atoms from below the outer mcs rather
+                        // than from the top of the just-pushed inner mcs
+                        // stack — Makefile's `set: [value-to-be-defined,
+                        // eat-whitespace-then-pop]` relies on Clear eating
+                        // the last-pushed mcs atom, which Restore then
+                        // replaces when eat-whitespace-then-pop pops.
                         let last_idx = context_refs.len().saturating_sub(1);
+                        let single_context_set_clear = is_set && context_refs.len() == 1;
                         for (i, r) in context_refs.iter().enumerate() {
                             let ctx = r.resolve(syntax_set)?;
 
-                            if !is_set && i == last_idx {
+                            let emit_clear_here =
+                                (!is_set && i == last_idx) || single_context_set_clear;
+                            if emit_clear_here {
                                 if let Some(clear_amount) = ctx.clear_scopes {
                                     ops.push((index, ScopeStackOp::Clear(clear_amount)));
                                 }
@@ -1417,13 +1436,21 @@ impl ParseState {
 
                         // now we push meta scope and meta context scope for each context pushed
                         if version >= 2 {
-                            // v2: For multiple push, only apply clear_scopes from last context
+                            // v2: For multi-context `set:`, Clear is emitted
+                            // here so it strips the topmost just-pushed mcs
+                            // atom (as Sublime does for multi-context set).
+                            // Single-context `set:` emitted its Clear earlier
+                            // in the initial phase (so the trigger token sees
+                            // the cleared stack); re-emitting here would
+                            // double-push onto clear_stack and cause Pop
+                            // underflow when the context unwinds.
                             let last_idx = context_refs.len().saturating_sub(1);
+                            let single_context_set_clear = is_set && context_refs.len() == 1;
                             let mut prev_embed_scope_replaces = false;
                             for (i, r) in context_refs.iter().enumerate() {
                                 let ctx = r.resolve(syntax_set)?;
 
-                                if is_set && i == last_idx {
+                                if is_set && i == last_idx && !single_context_set_clear {
                                     if let Some(clear_amount) = ctx.clear_scopes {
                                         ops.push((index, ScopeStackOp::Clear(clear_amount)));
                                     }
@@ -4621,6 +4648,103 @@ contexts:
                 .any(|s| s.contains("meta.value.v2setrestore")),
             "meta.value (from the exited context) must not leak into follow-up: {:?}",
             follow_states
+        );
+    }
+
+    #[test]
+    fn v2_set_to_target_with_clear_scopes_clears_parent_meta_content_scope() {
+        // Reduced from Lisp `function-parameter-list` → `function-parameter-list-body`:
+        // the enclosing `function-body` supplies `meta_content_scope:
+        // meta.function.lisp`; the inner parameter-list-body declares
+        // `clear_scopes: 1` so the `(` and the parameter identifiers inside
+        // are not double-scoped with the outer `meta.function`.
+        //
+        // The `(` token itself (the `set:` trigger) should see the cleared
+        // stack — i.e. `meta.function.lisp` is already gone at that column.
+        // Previously the v2 initial phase for Set pushed target.meta_scope
+        // above the outer mcs without clearing first, so the trigger token
+        // reported `[..., meta.function.lisp, meta.function.parameters.lisp,
+        // punctuation...]` instead of `[..., meta.function.parameters.lisp,
+        // punctuation...]`.
+        let syntax_str = r#"
+name: V2SetTargetClear
+scope: source.v2settargetclear
+version: 2
+contexts:
+  main:
+    - match: '\('
+      scope: punctuation.section.parens.begin.v2settargetclear
+      push: [body, params-open]
+
+  body:
+    - meta_content_scope: meta.function.v2settargetclear
+    - match: '\)'
+      scope: punctuation.section.parens.end.v2settargetclear
+      pop: 1
+
+  params-open:
+    - match: '\('
+      scope: punctuation.section.parameters.begin.v2settargetclear
+      set: params-body
+    - include: else-pop
+
+  params-body:
+    - clear_scopes: 1
+    - meta_scope: meta.function.parameters.v2settargetclear
+    - match: '\)'
+      scope: punctuation.section.parameters.end.v2settargetclear
+      pop: 1
+    - match: '\w+'
+      scope: variable.parameter.v2settargetclear
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        // Mirrors `(defun averagenum (n1 n2))`: outer `(...)` carries
+        // meta.function; inner `(...)` is parameter list.
+        let raw_ops = ops(&mut state, "( (n1 n2))\n", &ss);
+
+        let states = stack_states(raw_ops);
+
+        // Find the state covering the inner `(` at column 2 (the set trigger).
+        // Every state recorded once the parameters context has been entered
+        // must NOT still carry the outer meta.function atom.
+        let param_states: Vec<_> = states
+            .iter()
+            .filter(|s| s.contains("meta.function.parameters.v2settargetclear"))
+            .collect();
+        assert!(
+            !param_states.is_empty(),
+            "expected to enter params-body context, got states: {:?}",
+            states
+        );
+        // The outer `meta.function` atom (from `body`'s meta_content_scope)
+        // must be absent on every state where params-body is active. Match
+        // the exact atom name — not a prefix — so that
+        // `meta.function.parameters.v2settargetclear` doesn't trigger.
+        let outer = "<meta.function.v2settargetclear>";
+        for s in &param_states {
+            assert!(
+                !s.contains(outer),
+                "outer meta.function must be cleared under params-body, \
+                 but found it alongside meta.function.parameters: {:?}",
+                s
+            );
+        }
+
+        // After the inner `)` pops params-body the clear must Restore, so
+        // the outer `meta.function` atom reappears before the outer `)`.
+        let after_inner_close: Vec<_> = states
+            .iter()
+            .rev()
+            .take_while(|s| !s.contains("meta.function.parameters.v2settargetclear"))
+            .collect();
+        assert!(
+            after_inner_close
+                .iter()
+                .any(|s| s.contains("meta.function.v2settargetclear")),
+            "meta.function must be restored after params-body pops, got trailing states: {:?}",
+            after_inner_close
         );
     }
 

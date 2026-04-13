@@ -7,11 +7,10 @@ FAILED testdata/Packages/D/tests/syntax_test_d.d: 9
 FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
 FAILED testdata/Packages/Haskell/tests/syntax_test_cabal.cabal: 1
 FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 313
-FAILED testdata/Packages/JavaScript/tests/syntax_test_js.js: 11
+FAILED testdata/Packages/JavaScript/tests/syntax_test_js.js: 7
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_class.js: 4
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_control.js: 8
-FAILED testdata/Packages/JavaScript/tests/syntax_test_typescript.ts: 277
-FAILED testdata/Packages/Lisp/tests/syntax_test_lisp.lisp: 2
+FAILED testdata/Packages/JavaScript/tests/syntax_test_typescript.ts: 274
 FAILED testdata/Packages/Python/tests/syntax_test_scope_tstrings.py: 228
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.css.erb: 83
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 94
