@@ -122,8 +122,19 @@ struct BranchPoint {
     alternatives: Vec<ContextReference>,
     stack_snapshot: Vec<StateLevel>,
     proto_starts_snapshot: Vec<usize>,
-    /// Character position to rewind to.
+    /// Character position to rewind to. Despite the name, this is the
+    /// branch match's *end* position — where the parser resumes from.
     match_start: usize,
+    /// Real start of the branch_point match text. Together with
+    /// `match_start` (above, which is the match end) this bounds the
+    /// span on which `pat_scope` applies. Used to re-emit the keyword
+    /// scope — e.g. `keyword.operator.comparison.sql` on `LIKE` —
+    /// after a `fail` rewind, since the original Push/Pop pair was
+    /// truncated off `ops` along with alt[0]'s subsequent work.
+    trigger_match_start: usize,
+    /// Scopes declared on the branch_point match itself (re-emitted on
+    /// fail-retry over the [`trigger_match_start`, `match_start`) span).
+    pat_scope: Vec<Scope>,
     /// Line number when the branch was created (for 128-line limit).
     line_number: usize,
     /// Length of ops vec at snapshot time — truncation point on fail.
@@ -797,7 +808,16 @@ impl ParseState {
                 pop_count,
             } = pat.operation
             {
-                // Snapshot current state
+                // Snapshot current state.
+                //
+                // NOTE on field naming: `match_start` here stores the
+                // position the parser should *resume* from on fail —
+                // which is the branch match's end position (since the
+                // parser has already consumed the match). `match_end`
+                // and `pat_scope` carry the *real* match span plus the
+                // keyword's own scopes so a same-line fail rewind can
+                // re-emit them (they were truncated off `ops` along
+                // with the alt[0]'s subsequent work).
                 let bp = BranchPoint {
                     name: name.clone(),
                     next_alternative: 1, // 0 is about to be pushed
@@ -805,6 +825,8 @@ impl ParseState {
                     stack_snapshot: self.stack.clone(),
                     proto_starts_snapshot: self.proto_starts.clone(),
                     match_start: *start, // position before this match's advance
+                    trigger_match_start: match_start,
+                    pat_scope: pat.scope.clone(),
                     line_number: self.line_number.saturating_sub(1), // current line (already incremented)
                     ops_snapshot_len: ops.len(),
                     stack_depth: self.stack.len(),
@@ -983,6 +1005,8 @@ impl ParseState {
         let next_alt_index = bp.next_alternative;
         let next_alt = bp.alternatives[next_alt_index].clone();
         let match_start_pos = bp.match_start;
+        let trigger_match_start = bp.trigger_match_start;
+        let trigger_pat_scope = bp.pat_scope.clone();
         let stack_snapshot = bp.stack_snapshot.clone();
         let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
         let first_line_snapshot = bp.first_line_snapshot;
@@ -1076,7 +1100,30 @@ impl ParseState {
             ops.truncate(ops_snapshot_len.min(ops.len()));
             *start = match_start_pos;
 
+            // Keep `ops_snapshot_len` pointing at the pre-branch state.
+            // Subsequent fails on the same branch_point must truncate
+            // back to *here* — not to the position after the pat.scope
+            // re-emit below — otherwise a second fail would preserve
+            // the first re-emit's (Push at trigger_match_start) while
+            // appending another re-emit, producing the disordered
+            // sequence (trigger, Push), (match_end, Pop), (trigger,
+            // Push), (match_end, Pop). `ScopeRegionIterator` then
+            // panics in `easy.rs` because position goes backwards.
             self.branch_points[bp_index].ops_snapshot_len = ops.len();
+
+            // Re-emit the branch_point match's own scopes over their
+            // original span. Without this, keywords that trigger a
+            // branch (e.g. `LIKE` with
+            // `scope: keyword.operator.comparison.sql`) lose their
+            // scope whenever alt[0] fails and alt[1..] succeeds,
+            // because the original Push/Pop pair was truncated off
+            // `ops` together with alt[0]'s subsequent work.
+            for scope in &trigger_pat_scope {
+                ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+            }
+            if !trigger_pat_scope.is_empty() {
+                ops.push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
+            }
 
             // Emit meta scope ops for the new context at the rewind position.
             if let Some(clear_amount) = context.clear_scopes {
@@ -2858,6 +2905,51 @@ contexts:
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
         expect_scope_stacks_for_ops(ops(&mut state, "a bc\n", &syntax_set), &["<a>"]);
         expect_scope_stacks_for_ops(ops(&mut state, "bc\n", &syntax_set), &["<b>"]);
+    }
+
+    /// Regression guard for the "branch_point match loses its own scope
+    /// on fail-retry" bug: when the keyword that triggers a
+    /// branch_point (e.g. `LIKE` in SQL with
+    /// `scope: keyword.operator.comparison.sql`) has its first
+    /// alternative fail, the Push/Pop for that scope was truncated off
+    /// `ops` along with alt[0]'s subsequent work and never re-emitted.
+    /// The eventual successful alternative then produced a parse where
+    /// the keyword carried no scope — 4,942 cascading assertion
+    /// failures in TSQL.
+    ///
+    /// The test triggers the same shape synthetically: a `trigger` match
+    /// with its own scope branches into two alternatives; the first
+    /// fails, the second succeeds; the `trigger` token must still carry
+    /// the declared scope after the retry.
+    #[test]
+    fn branch_point_match_scope_survives_fail_retry() {
+        // Expected: `trigger` gets `keyword.operator.test`; the
+        // following word gets `ok.test` (via alt-succeeds).
+        expect_scope_stacks(
+            "trigger yes",
+            &["<keyword.operator.test>", "<ok.test>"],
+            r#"
+                name: Branch Pat Scope Test
+                scope: source.test
+                contexts:
+                  main:
+                    - match: \btrigger\b
+                      scope: keyword.operator.test
+                      branch_point: t
+                      branch:
+                        - alt-fails
+                        - alt-succeeds
+                    - match: \S+
+                      scope: text.test
+                  alt-fails:
+                    - match: (?=\S)
+                      fail: t
+                  alt-succeeds:
+                    - match: \S+
+                      scope: ok.test
+                      pop: 1
+                "#,
+        );
     }
 
     /// Category A proper regression guard: a same-line `branch_point`

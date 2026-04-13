@@ -4,7 +4,7 @@ FAILED testdata/Packages/C#/tests/syntax_test_C#8.cs: 40
 FAILED testdata/Packages/C#/tests/syntax_test_C#9.cs: 10
 FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 11
 FAILED testdata/Packages/C#/tests/syntax_test_Generics.cs: 3
-FAILED testdata/Packages/D/tests/syntax_test_d.d: 18
+FAILED testdata/Packages/D/tests/syntax_test_d.d: 9
 FAILED testdata/Packages/Diff/tests/syntax_test_switch_to_git.diff: 104
 FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
 FAILED testdata/Packages/Haskell/tests/syntax_test_cabal.cabal: 1
@@ -25,6 +25,5 @@ FAILED testdata/Packages/Rust/tests/syntax_test_identifiers.rs: 1
 FAILED testdata/Packages/Rust/tests/syntax_test_macros.rs: 3
 FAILED testdata/Packages/Rust/tests/syntax_test_struct.rs: 3
 FAILED testdata/Packages/Rust/tests/syntax_test_types.rs: 15
-FAILED testdata/Packages/SQL/tests/syntax/syntax_test_mysql.sql: 8
-FAILED testdata/Packages/SQL/tests/syntax/syntax_test_tsql.sql: 4942
+FAILED testdata/Packages/SQL/tests/syntax/syntax_test_tsql.sql: 4934
 exiting with code 2
