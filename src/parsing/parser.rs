@@ -149,6 +149,14 @@ struct BranchPoint {
     escape_stack_snapshot: Vec<EscapeEntry>,
     /// Number of contexts to pop before pushing the alternative (for pop + branch).
     pop_count: usize,
+    /// Ops emitted on the branch-creation line before the branch match.
+    /// Used by cross-line fail replay to reconstruct the first buffered
+    /// line without re-parsing its pre-branch prefix under the new
+    /// alternative (which would misattribute pre-branch content to
+    /// rules of the new alternative — e.g. in multi-line SQL `LIKE …
+    /// ESCAPE …`, every non-whitespace before the `LIKE` fires
+    /// `else-pop` in the escape-alternative, derailing the stack).
+    prefix_ops: Vec<(usize, ScopeStackOp)>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -369,10 +377,26 @@ impl ParseState {
         line: &str,
         syntax_set: &SyntaxSet,
     ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
-        let mut match_start = 0;
+        self.parse_line_inner_from(line, syntax_set, 0)
+    }
+
+    /// Parse `line` starting at `start_at` rather than column 0. Used by
+    /// cross-line `fail` replay: the first buffered line's pre-branch
+    /// prefix was correctly parsed under the pre-branch state, so the
+    /// replay resumes *after* the branch match under the new alternative.
+    /// When `start_at > 0` the `first_line` bookkeeping is skipped — the
+    /// caller has already emitted (or preserved) the initial
+    /// meta_content_scope push.
+    fn parse_line_inner_from(
+        &mut self,
+        line: &str,
+        syntax_set: &SyntaxSet,
+        start_at: usize,
+    ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
+        let mut match_start = start_at;
         let mut res = Vec::new();
 
-        if self.first_line {
+        if start_at == 0 && self.first_line {
             let cur_level = &self.stack[self.stack.len() - 1];
             let context = syntax_set.get_context(&cur_level.context)?;
             if !context.meta_content_scope.is_empty() {
@@ -836,6 +860,7 @@ impl ParseState {
                     pending_lines_snapshot_len: self.pending_lines.len(),
                     escape_stack_snapshot: self.escape_stack.clone(),
                     pop_count,
+                    prefix_ops: ops.clone(),
                 };
                 self.branch_points.push(bp);
                 // When pop_count > 0 (pop + branch), use Set semantics to
@@ -1014,6 +1039,7 @@ impl ParseState {
         let ops_snapshot_len = bp.ops_snapshot_len;
         let pending_lines_snapshot_len = bp.pending_lines_snapshot_len;
         let escape_stack_snapshot = bp.escape_stack_snapshot.clone();
+        let prefix_ops = bp.prefix_ops.clone();
         // bp borrow ends here.
 
         let pop_count = self.branch_points[bp_index].pop_count;
@@ -1059,9 +1085,18 @@ impl ParseState {
             // the new alternative and store the corrected ops in `flushed_ops`
             // so that `parse_line` can surface them via `ParseLineOutput::replayed`.
             //
-            // The new alternative (context) is already on the stack, so
-            // parse_line_inner will process each buffered line starting in that
-            // context, producing correct ops.
+            // The first buffered line is the branch-creation line. Its
+            // pre-branch prefix (cols 0..trigger_match_start) was correctly
+            // parsed under the *pre-branch* state — not the new alternative.
+            // Re-parsing it from column 0 with the new alternative on the
+            // stack would misattribute that prefix to the new alternative's
+            // rules (observed on multi-line SQL `LIKE … ESCAPE …`: every
+            // non-whitespace before `LIKE` fires `else-pop` in the
+            // escape-alternative, derailing the stack). Instead, reuse the
+            // prefix_ops saved at branch-creation time, manually emit the
+            // branch trigger's pat.scope and the new alternative's meta
+            // scope ops, then resume parsing from match_end with the new
+            // alternative on the stack via `parse_line_inner_from`.
             let truncated_lines: Vec<String> = self
                 .pending_lines
                 .drain(pending_lines_snapshot_len..)
@@ -1069,8 +1104,43 @@ impl ParseState {
 
             let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                 Vec::with_capacity(truncated_lines.len());
-            for replay_line in &truncated_lines {
-                let line_ops = self.parse_line_inner(replay_line, syntax_set)?;
+            for (i, replay_line) in truncated_lines.iter().enumerate() {
+                let line_ops = if i == 0 {
+                    // First buffered line: compose prefix + branch ops + resume.
+                    let mut first_line_ops = prefix_ops.clone();
+                    // Re-emit the trigger's pat.scope over [trigger, match_end].
+                    for scope in &trigger_pat_scope {
+                        first_line_ops
+                            .push((trigger_match_start, ScopeStackOp::Push(*scope)));
+                    }
+                    if !trigger_pat_scope.is_empty() {
+                        first_line_ops.push((
+                            match_start_pos,
+                            ScopeStackOp::Pop(trigger_pat_scope.len()),
+                        ));
+                    }
+                    // Emit meta scope ops for the new alternative at match_end.
+                    if let Some(clear_amount) = context.clear_scopes {
+                        first_line_ops
+                            .push((match_start_pos, ScopeStackOp::Clear(clear_amount)));
+                    }
+                    for scope in context.meta_scope.iter() {
+                        first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
+                    }
+                    for scope in context.meta_content_scope.iter() {
+                        first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
+                    }
+                    // Resume parsing from the branch match's end position.
+                    let tail_ops = self.parse_line_inner_from(
+                        replay_line,
+                        syntax_set,
+                        match_start_pos,
+                    )?;
+                    first_line_ops.extend(tail_ops);
+                    first_line_ops
+                } else {
+                    self.parse_line_inner(replay_line, syntax_set)?
+                };
                 replayed_ops.push(line_ops);
             }
             // Append (rather than overwrite) in case multiple cross-line fails
@@ -3696,6 +3766,88 @@ contexts:
             !current_has_try,
             "current-line ops should not contain try.* scopes after cross-line fail, got: {:?}",
             out2.ops
+        );
+    }
+
+    #[test]
+    fn cross_line_fail_preserves_pre_branch_prefix_ops() {
+        // Replay of the first buffered line on a cross-line fail must
+        // preserve the pre-branch prefix ops (which were correctly emitted
+        // under the pre-branch state) rather than re-parsing the whole
+        // line under the new alternative.
+        //
+        // Reduced from multi-line SQL `LIKE '…' ESCAPE '…'`: the first
+        // buffered line contains a prefix (`prefix `) before the branch
+        // trigger (`TRY`). Under the fallback alternative's rules, `prefix`
+        // would be scoped as fallback.content from column 0 — but the
+        // test expects the original `prefix.word` scope to survive the
+        // replay because those characters were parsed under the pre-branch
+        // (main) context.
+        let syntax_str = r#"
+name: CrossLinePrefix
+scope: source.clp
+contexts:
+  main:
+    - match: 'prefix'
+      scope: prefix.word.clp
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+    - match: '\s+'
+  try-ctx:
+    - match: 'END'
+      pop: true
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: try.word.clp
+    - match: '\s+'
+  fallback-ctx:
+    - match: 'END'
+      pop: true
+    - match: '\w+'
+      scope: fallback.content.clp
+    - match: '\s+'
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: "prefix TRY post\n" — prefix scoped by main, TRY triggers
+        // branch, post is parsed under the chosen alternative.
+        let _out1 = state
+            .parse_line("prefix TRY post\n", &ss)
+            .expect("parse line 1 failed");
+
+        // Line 2: "FAIL\n" — cross-line fail triggers replay of line 1.
+        let out2 = state
+            .parse_line("FAIL\n", &ss)
+            .expect("parse line 2 failed");
+        assert_eq!(
+            out2.replayed.len(),
+            1,
+            "expected one replayed line, got {:?}",
+            out2.replayed
+        );
+        // The replayed ops for line 1 must still push prefix.word at col 0
+        // (from prefix_ops, emitted pre-branch), not overwrite with
+        // fallback.content.
+        let replayed_has_prefix = out2.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("prefix.word"))
+        });
+        assert!(
+            replayed_has_prefix,
+            "replayed line must preserve prefix.word from pre-branch parse, got: {:?}",
+            out2.replayed[0]
+        );
+        // fallback.content should appear for the post-TRY remainder.
+        let replayed_has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
+        });
+        assert!(
+            replayed_has_fallback,
+            "replayed line must apply fallback.content for post-branch remainder, got: {:?}",
+            out2.replayed[0]
         );
     }
 
