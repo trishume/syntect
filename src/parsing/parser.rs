@@ -1011,7 +1011,19 @@ impl ParseState {
             *start = 0;
             *non_consuming_push_at = (0, 0);
 
-            self.branch_points[bp_index].ops_snapshot_len = 0;
+            // Guard: the replayed `parse_line_inner` calls above can
+            // mutate `self.branch_points` (adding new branches,
+            // removing expired or exhausted ones), which can shift or
+            // invalidate `bp_index`. Indexing with the stale position
+            // previously panicked outright on files that exercise
+            // nested cross-line branching (observed on
+            // `JavaScript/syntax_test_js.js` and
+            // `syntax_test_typescript.ts`). Skip the bookkeeping if
+            // the branch point has been removed — the replay already
+            // completed, which is the essential work of the fail.
+            if bp_index < self.branch_points.len() {
+                self.branch_points[bp_index].ops_snapshot_len = 0;
+            }
         } else {
             // Same-line fail: truncate ops back to the snapshot point and rewind.
             ops.truncate(ops_snapshot_len.min(ops.len()));
@@ -2799,6 +2811,60 @@ contexts:
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
         expect_scope_stacks_for_ops(ops(&mut state, "a bc\n", &syntax_set), &["<a>"]);
         expect_scope_stacks_for_ops(ops(&mut state, "bc\n", &syntax_set), &["<b>"]);
+    }
+
+    /// Category E regression guard: a cross-line `fail` that triggers
+    /// a replay which itself adds and removes branch points must not
+    /// out-of-bounds-index the original `bp_index` afterwards. This
+    /// test is a targeted end-to-end probe; the real reproduction lives
+    /// in `testdata/Packages/JavaScript/tests/syntax_test_js.js` and
+    /// `syntax_test_typescript.ts`, where nested cross-line branching
+    /// previously panicked at `parser.rs:1014`. The guard leaves the
+    /// scope-op stream consistent enough for the syntest harness's
+    /// `catch_unwind` to report a file-level `PANIC` rather than
+    /// crashing the whole run — it does not attempt to produce
+    /// correct ops for the failing file (the replay-consistency issue
+    /// is tracked as a follow-up).
+    #[test]
+    #[ignore = "requires testdata/Packages submodule"]
+    fn cross_line_fail_with_nested_branch_does_not_panic() {
+        use crate::parsing::SyntaxSet;
+        use std::panic::AssertUnwindSafe;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/JavaScript/JavaScript.sublime-syntax")
+            .unwrap();
+        let path = "testdata/Packages/JavaScript/tests/syntax_test_js.js";
+        let content = std::fs::read_to_string(path).unwrap();
+        let mut state = ParseState::new(syntax);
+        // Wrap in catch_unwind so a later unrelated panic from the
+        // replay-consistency issue doesn't mask the parser.rs:1014
+        // regression we care about.
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            for line in content.lines() {
+                let mut s = line.to_string();
+                s.push('\n');
+                let _ = state.parse_line(&s, &ss);
+            }
+        }));
+        if let Err(payload) = result {
+            // Extract the panic message and assert it is NOT the
+            // bp_index out-of-bounds at parser.rs:1014.
+            let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
+                (*s).to_string()
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                String::from("<non-string panic payload>")
+            };
+            assert!(
+                !msg.contains("index out of bounds"),
+                "parser panicked with bounds violation (Category E \
+                 regression): {msg}"
+            );
+            // A different panic (e.g. from the replay-consistency
+            // issue) is acceptable here — that's tracked separately.
+        }
     }
 
     /// Minimal repro of the Category A "pop: N loses deeper contexts'
