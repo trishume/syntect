@@ -1110,19 +1110,15 @@ impl ParseState {
                     let mut first_line_ops = prefix_ops.clone();
                     // Re-emit the trigger's pat.scope over [trigger, match_end].
                     for scope in &trigger_pat_scope {
-                        first_line_ops
-                            .push((trigger_match_start, ScopeStackOp::Push(*scope)));
+                        first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
                     }
                     if !trigger_pat_scope.is_empty() {
-                        first_line_ops.push((
-                            match_start_pos,
-                            ScopeStackOp::Pop(trigger_pat_scope.len()),
-                        ));
+                        first_line_ops
+                            .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
                     }
                     // Emit meta scope ops for the new alternative at match_end.
                     if let Some(clear_amount) = context.clear_scopes {
-                        first_line_ops
-                            .push((match_start_pos, ScopeStackOp::Clear(clear_amount)));
+                        first_line_ops.push((match_start_pos, ScopeStackOp::Clear(clear_amount)));
                     }
                     for scope in context.meta_scope.iter() {
                         first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
@@ -1131,11 +1127,8 @@ impl ParseState {
                         first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
                     }
                     // Resume parsing from the branch match's end position.
-                    let tail_ops = self.parse_line_inner_from(
-                        replay_line,
-                        syntax_set,
-                        match_start_pos,
-                    )?;
+                    let tail_ops =
+                        self.parse_line_inner_from(replay_line, syntax_set, match_start_pos)?;
                     first_line_ops.extend(tail_ops);
                     first_line_ops
                 } else {
@@ -1289,8 +1282,7 @@ impl ParseState {
                     // the stack), then meta_scope.
                     for depth in 1..pop_count {
                         let level_idx = stack_len - 1 - depth;
-                        let ctx =
-                            syntax_set.get_context(&self.stack[level_idx].context)?;
+                        let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
                         let skip_content = version >= 2
                             && level_idx >= 1
                             && syntax_set
@@ -1298,10 +1290,7 @@ impl ParseState {
                                 .map(|c| c.embed_scope_replaces)
                                 .unwrap_or(false);
                         if !skip_content && !ctx.meta_content_scope.is_empty() {
-                            ops.push((
-                                index,
-                                ScopeStackOp::Pop(ctx.meta_content_scope.len()),
-                            ));
+                            ops.push((index, ScopeStackOp::Pop(ctx.meta_content_scope.len())));
                         }
                         if !ctx.meta_scope.is_empty() {
                             ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
@@ -3018,7 +3007,11 @@ contexts:
         // Git Diff extends Diff (Basic) — a concrete case of the bug.
         let syntax = ss.find_syntax_by_name("Git Diff").unwrap();
         let mut state = ParseState::new(syntax);
-        let o = ops(&mut state, "From 1234567890 Mon Sep 17 00:00:00 2001\n", &ss);
+        let o = ops(
+            &mut state,
+            "From 1234567890 Mon Sep 17 00:00:00 2001\n",
+            &ss,
+        );
         let source_pushes = o
             .iter()
             .filter(|(_, op)| matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s) == "<source.diff.git>"))
@@ -3143,8 +3136,11 @@ contexts:
         for (_, op) in &o {
             stack.apply(op).unwrap();
         }
-        let final_scopes: Vec<String> =
-            stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+        let final_scopes: Vec<String> = stack
+            .as_slice()
+            .iter()
+            .map(|s| format!("{:?}", s))
+            .collect();
         assert!(
             !final_scopes
                 .iter()
@@ -3254,8 +3250,11 @@ contexts:
         for (_, op) in &o {
             stack.apply(op).unwrap();
         }
-        let final_scopes: Vec<String> =
-            stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+        let final_scopes: Vec<String> = stack
+            .as_slice()
+            .iter()
+            .map(|s| format!("{:?}", s))
+            .collect();
         assert!(
             !final_scopes.iter().any(|s| s.contains("outer.test")),
             "outer.test meta_scope leaked past pop: 2; final stack: {:?}",
@@ -3289,8 +3288,11 @@ contexts:
         for (_, op) in ops(&mut state, "bar := $(foo)\n", &ss) {
             stack.apply(&op).unwrap();
         }
-        let after_assignment: Vec<String> =
-            stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+        let after_assignment: Vec<String> = stack
+            .as_slice()
+            .iter()
+            .map(|s| format!("{:?}", s))
+            .collect();
         assert!(
             !after_assignment
                 .iter()
@@ -3353,8 +3355,11 @@ contexts:
         for (_, op) in &o {
             stack.apply(op).unwrap();
         }
-        let final_scopes: Vec<String> =
-            stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+        let final_scopes: Vec<String> = stack
+            .as_slice()
+            .iter()
+            .map(|s| format!("{:?}", s))
+            .collect();
         assert!(
             !final_scopes.iter().any(|s| s.contains("meta.string.test")),
             "meta.string.test leaked past EOL; final scope stack: {:?}",

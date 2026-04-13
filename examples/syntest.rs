@@ -198,20 +198,14 @@ fn get_line_assertion_details<'a>(
                 .name("reference_label")
                 .or_else(|| captures.name("reference_assertion"));
             if let Some(m) = marker_match {
-                let after =
-                    &token_and_rest_of_line[testtoken_start.len() + m.end()..];
-                if !after.is_empty()
-                    && !after.chars().next().unwrap().is_whitespace()
-                {
+                let after = &token_and_rest_of_line[testtoken_start.len() + m.end()..];
+                if !after.is_empty() && !after.chars().next().unwrap().is_whitespace() {
                     return None;
                 }
             }
             // The trailing `(.*)$` group comes after the four named alternatives,
             // so use the last group to stay robust against future marker additions.
-            let mut sst = captures
-                .get(captures.len() - 1)
-                .unwrap()
-                .as_str();
+            let mut sst = captures.get(captures.len() - 1).unwrap().as_str();
             let mut only_whitespace_after_token_end = true;
 
             if let Some(token) = testtoken_end {
@@ -236,8 +230,8 @@ fn get_line_assertion_details<'a>(
             } else {
                 (index, index + 1)
             };
-            let is_reference =
-                captures.name("reference_label").is_some() || captures.name("reference_assertion").is_some();
+            let is_reference = captures.name("reference_label").is_some()
+                || captures.name("reference_assertion").is_some();
             return Some(AssertionRange {
                 begin_char,
                 end_char,
@@ -360,44 +354,44 @@ fn test_file(
             // cross-line label lookups, so no scope checks run here.
             let mut current_assertion_failures: usize = 0;
             if !assertion.is_reference {
-            let result = process_assertions(&assertion, &scopes_on_line_being_tested);
-            total_assertions += assertion.end_char - assertion.begin_char;
-            for failure in result.iter().filter(|r| !r.success) {
-                let length = failure.column_end - failure.column_begin;
-                let text: String = previous_non_assertion_line
-                    .chars()
-                    .skip(failure.column_begin)
-                    .take(length)
-                    .collect();
-                pending_messages.push(BufferedFailureMessage {
-                    selector_text: assertion.scope_selector_text.trim().to_string(),
-                    assertion_line_number: current_line_number,
-                    test_against_line_number,
-                    column_begin: failure.column_begin,
-                    column_end: failure.column_end,
-                    text,
-                    scope: scopes_on_line_being_tested
-                        .iter()
-                        .find(|s| s.char_start + s.text_len > failure.column_begin)
-                        .unwrap_or_else(|| scopes_on_line_being_tested.last().unwrap())
-                        .scope
-                        .clone(),
-                });
-                assertion_failures += failure.column_end - failure.column_begin;
-                current_assertion_failures += failure.column_end - failure.column_begin;
-            }
-            // Buffer this assertion for re-evaluation if backtracking replays the target line
-            if let Some(idx) = current_test_line_buffer_idx {
-                if let Some(ref mut data) = parsed_line_buffer[idx].non_assertion_data {
-                    data.assertions.push(BufferedAssertion {
-                        begin_char: assertion.begin_char,
-                        end_char: assertion.end_char,
-                        scope_selector_text: assertion.scope_selector_text.to_string(),
+                let result = process_assertions(&assertion, &scopes_on_line_being_tested);
+                total_assertions += assertion.end_char - assertion.begin_char;
+                for failure in result.iter().filter(|r| !r.success) {
+                    let length = failure.column_end - failure.column_begin;
+                    let text: String = previous_non_assertion_line
+                        .chars()
+                        .skip(failure.column_begin)
+                        .take(length)
+                        .collect();
+                    pending_messages.push(BufferedFailureMessage {
+                        selector_text: assertion.scope_selector_text.trim().to_string(),
                         assertion_line_number: current_line_number,
+                        test_against_line_number,
+                        column_begin: failure.column_begin,
+                        column_end: failure.column_end,
+                        text,
+                        scope: scopes_on_line_being_tested
+                            .iter()
+                            .find(|s| s.char_start + s.text_len > failure.column_begin)
+                            .unwrap_or_else(|| scopes_on_line_being_tested.last().unwrap())
+                            .scope
+                            .clone(),
                     });
-                    data.assertion_failures += current_assertion_failures;
+                    assertion_failures += failure.column_end - failure.column_begin;
+                    current_assertion_failures += failure.column_end - failure.column_begin;
                 }
-            }
+                // Buffer this assertion for re-evaluation if backtracking replays the target line
+                if let Some(idx) = current_test_line_buffer_idx {
+                    if let Some(ref mut data) = parsed_line_buffer[idx].non_assertion_data {
+                        data.assertions.push(BufferedAssertion {
+                            begin_char: assertion.begin_char,
+                            end_char: assertion.end_char,
+                            scope_selector_text: assertion.scope_selector_text.to_string(),
+                            assertion_line_number: current_line_number,
+                        });
+                        data.assertion_failures += current_assertion_failures;
+                    }
+                }
             } // end `if !assertion.is_reference`
             line_only_has_assertion = assertion.is_pure_assertion_line;
             line_has_assertion = true;
@@ -844,14 +838,12 @@ mod tests {
         // The XML-comment end token `-->` contains a `>`; the anchored
         // start of the regex prevents that `>` from matching as a
         // reference assertion on the header line.
-        assert!(
-            details(
-                XML_START,
-                XML_END,
-                "<!-- SYNTAX TEST \"Packages/Textile/Textile.sublime-syntax\" -->"
-            )
-            .is_none()
-        );
+        assert!(details(
+            XML_START,
+            XML_END,
+            "<!-- SYNTAX TEST \"Packages/Textile/Textile.sublime-syntax\" -->"
+        )
+        .is_none());
     }
     #[test]
     fn generic_closing_angle_is_not_mistaken_for_reference_assertion() {
