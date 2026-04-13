@@ -2137,7 +2137,7 @@ mod tests {
               ident: '[a-z]+'
             contexts:
               main:
-                - match: '\${{ident}}'
+                - match: '{{ident}}'
                   scope: variable.base
             "#,
             true,
@@ -2151,7 +2151,10 @@ mod tests {
             scope: source.child
             file_extensions: [child]
             extends: Base.sublime-syntax
-            contexts: {}
+            contexts:
+              main:
+                - match: '\${{ident}}'
+                  scope: variable.child
             "#,
             true,
             None,
