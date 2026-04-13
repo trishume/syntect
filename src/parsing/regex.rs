@@ -34,7 +34,7 @@ impl Regex {
 
     /// Check whether the pattern compiles as a valid regex or not.
     pub fn try_compile(regex_str: &str) -> Option<Box<dyn Error + Send + Sync + 'static>> {
-        regex_impl::Regex::new(regex_str).err()
+        regex_impl::Regex::new(&strip_redundant_empty_alternatives(regex_str)).err()
     }
 
     /// Return the regex pattern.
@@ -67,8 +67,109 @@ impl Regex {
 
     fn regex(&self) -> &regex_impl::Regex {
         self.regex.get_or_init(|| {
-            regex_impl::Regex::new(&self.regex_str).expect("regex string should be pre-tested")
+            regex_impl::Regex::new(&strip_redundant_empty_alternatives(&self.regex_str))
+                .expect("regex string should be pre-tested")
         })
+    }
+}
+
+/// Collapse runs of two or more consecutive unescaped `|` into a single `|`,
+/// but only at the top level of the pattern (outside any `(...)` group and
+/// outside any `[...]` character class).
+///
+/// A top-level empty alternative (e.g. `x||y`) matches the empty string at
+/// any position. Under leftmost-first semantics, an empty alternative in the
+/// middle of a top-level alternation always matches before later alternatives
+/// get a chance, making them dead code — and in a search context it makes
+/// the whole regex "match" anywhere with zero width, which masks real matches.
+/// This pattern is almost always a typo — e.g. Cabal's `\|\||&&||!`,
+/// where the author meant `\|\||&&|!`.
+///
+/// Inside a group, empty alternatives are a legitimate idiom for an optional
+/// alternation (e.g. `(a|b|)c` matches `c` as well as `ac`/`bc`), so we leave
+/// those untouched — matching Sublime's behavior.
+///
+/// UTF-8 is safe to scan by bytes because `|`, `\\`, `[`, `]`, `(`, and `)`
+/// are single-byte ASCII and never appear in multi-byte sequences.
+fn strip_redundant_empty_alternatives(pattern: &str) -> String {
+    let bytes = pattern.as_bytes();
+    let mut out = String::with_capacity(bytes.len());
+    let mut i = 0;
+    let mut in_class = false;
+    let mut group_depth: usize = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match b {
+            b'\\' => {
+                out.push(b as char);
+                if i + 1 < bytes.len() {
+                    let next = bytes[i + 1];
+                    if next < 0x80 {
+                        out.push(next as char);
+                        i += 2;
+                    } else {
+                        // Multi-byte codepoint after the backslash: copy the
+                        // whole UTF-8 sequence so we don't split it.
+                        let ch_end = i + 1 + utf8_char_len(next);
+                        out.push_str(&pattern[i + 1..ch_end]);
+                        i = ch_end;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            b'[' if !in_class => {
+                out.push(b as char);
+                in_class = true;
+                i += 1;
+            }
+            b']' if in_class => {
+                out.push(b as char);
+                in_class = false;
+                i += 1;
+            }
+            b'(' if !in_class => {
+                out.push(b as char);
+                group_depth += 1;
+                i += 1;
+            }
+            b')' if !in_class => {
+                out.push(b as char);
+                group_depth = group_depth.saturating_sub(1);
+                i += 1;
+            }
+            b'|' if !in_class && group_depth == 0 => {
+                out.push(b as char);
+                i += 1;
+                while i < bytes.len() && bytes[i] == b'|' {
+                    i += 1;
+                }
+            }
+            _ if b < 0x80 => {
+                out.push(b as char);
+                i += 1;
+            }
+            _ => {
+                let ch_end = i + utf8_char_len(b);
+                out.push_str(&pattern[i..ch_end]);
+                i = ch_end;
+            }
+        }
+    }
+    out
+}
+
+fn utf8_char_len(first_byte: u8) -> usize {
+    if first_byte < 0x80 {
+        1
+    } else if first_byte < 0xC0 {
+        1 // continuation byte — shouldn't be a leading byte; copy 1 to make progress
+    } else if first_byte < 0xE0 {
+        2
+    } else if first_byte < 0xF0 {
+        3
+    } else {
+        4
     }
 }
 
@@ -284,5 +385,44 @@ mod tests {
         assert_eq!(pattern.regex_str(), "just a string");
         let back_to_str = serde_json::to_string(&pattern).unwrap();
         assert_eq!(back_to_str, "\"just a string\"");
+    }
+
+    #[test]
+    fn strips_top_level_empty_alternatives() {
+        // Cabal's typo: `\|\||&&||!` — empty alt between `&&` and `!` makes
+        // the whole regex match zero-width. After stripping, `!` matches.
+        assert_eq!(
+            strip_redundant_empty_alternatives(r"\|\||&&||!"),
+            r"\|\||&&|!"
+        );
+        assert_eq!(strip_redundant_empty_alternatives("a|||b"), "a|b");
+        assert_eq!(strip_redundant_empty_alternatives("a||"), "a|");
+        assert_eq!(strip_redundant_empty_alternatives("||b"), "|b");
+    }
+
+    #[test]
+    fn preserves_empty_alternatives_inside_groups() {
+        // D's assignment operators: `(...|>>>||\*|...)=` — empty alt inside
+        // the group makes the group optional, which is intentional.
+        assert_eq!(
+            strip_redundant_empty_alternatives(r"(a|b||c)="),
+            r"(a|b||c)="
+        );
+        assert_eq!(strip_redundant_empty_alternatives("(a||)"), "(a||)");
+    }
+
+    #[test]
+    fn preserves_pipes_in_character_classes_and_escapes() {
+        assert_eq!(strip_redundant_empty_alternatives(r"[a||b]"), r"[a||b]");
+        assert_eq!(strip_redundant_empty_alternatives(r"\|\|\|"), r"\|\|\|");
+    }
+
+    #[test]
+    fn empty_alt_regex_matches_bang() {
+        // End-to-end: the Cabal pattern should now successfully match `!`.
+        let regex = Regex::new(String::from(r"\|\||&&||!"));
+        let mut region = Region::new();
+        assert!(regex.search("!impl", 0, 5, Some(&mut region)));
+        assert_eq!(region.pos(0), Some((0, 1)));
     }
 }
