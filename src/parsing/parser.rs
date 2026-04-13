@@ -130,7 +130,7 @@ struct BranchPoint {
     /// span on which `pat_scope` applies. Used to re-emit the keyword
     /// scope — e.g. `keyword.operator.comparison.sql` on `LIKE` —
     /// after a `fail` rewind, since the original Push/Pop pair was
-    /// truncated off `ops` along with alt[0]'s subsequent work.
+    /// truncated off `ops` along with `alt[0]`'s subsequent work.
     trigger_match_start: usize,
     /// Scopes declared on the branch_point match itself (re-emitted on
     /// fail-retry over the [`trigger_match_start`, `match_start`) span).
