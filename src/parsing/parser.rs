@@ -777,6 +777,7 @@ impl ParseState {
         if let MatchOperation::Fail(ref name) = pat.operation {
             return self.handle_fail(
                 name,
+                line,
                 start,
                 non_consuming_push_at,
                 ops,
@@ -891,6 +892,7 @@ impl ParseState {
     fn handle_fail(
         &mut self,
         name: &str,
+        line: &str,
         start: &mut usize,
         non_consuming_push_at: &mut (usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
@@ -925,8 +927,53 @@ impl ParseState {
 
         // Check if there are more alternatives
         if bp.next_alternative >= bp.alternatives.len() {
+            // All alternatives exhausted: restore parser state to the
+            // pre-branch snapshot so the stuck alternative's pushed
+            // contexts and emitted ops are discarded, then advance
+            // past the branch_point match position by one character so
+            // we don't immediately re-enter the same branch_point and
+            // loop. Before this, the branch_point was silently removed
+            // while its last alternative's contexts remained on the
+            // stack — the cause of the "scope stack stays in
+            // `meta.interpolation.brace.shell`" cascade in Zsh when
+            // both `brace-interpolation-sequence` and
+            // `brace-interpolation-series` failed and there was no
+            // fallback alternative (Zsh explicitly excludes
+            // `brace-interpolation-fallback`). Same-line only — a
+            // cross-line branch_point that never succeeded is left
+            // alone here because replaying through it is handled
+            // via the cross-line path in the successful case.
+            let is_cross_line = bp.line_number < cur_line;
+            if !is_cross_line {
+                let stack_snapshot = bp.stack_snapshot.clone();
+                let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
+                let escape_stack_snapshot = bp.escape_stack_snapshot.clone();
+                let first_line_snapshot = bp.first_line_snapshot;
+                let non_consuming_push_at_snapshot = bp.non_consuming_push_at_snapshot;
+                let ops_snapshot_len = bp.ops_snapshot_len;
+                let match_start_pos = bp.match_start;
+                self.branch_points.remove(bp_index);
+
+                self.stack = stack_snapshot;
+                self.proto_starts = proto_starts_snapshot;
+                self.escape_stack = escape_stack_snapshot;
+                self.first_line = first_line_snapshot;
+                *non_consuming_push_at = non_consuming_push_at_snapshot;
+                ops.truncate(ops_snapshot_len.min(ops.len()));
+
+                // Advance one char past the branch_point match to avoid
+                // immediately re-matching the same `(?=...)` lookahead.
+                if let Some((i, _)) = line[match_start_pos..].char_indices().nth(1) {
+                    *start = match_start_pos + i;
+                } else {
+                    // End of line — no character to advance past.
+                    *start = line.len();
+                }
+                search_cache.clear();
+                return Ok(true);
+            }
             self.branch_points.remove(bp_index);
-            return Ok(false); // All alternatives exhausted
+            return Ok(false); // All alternatives exhausted (cross-line)
         }
 
         // Determine if this is a cross-line fail (branch was created on a previous line).
@@ -2811,6 +2858,92 @@ contexts:
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
         expect_scope_stacks_for_ops(ops(&mut state, "a bc\n", &syntax_set), &["<a>"]);
         expect_scope_stacks_for_ops(ops(&mut state, "bc\n", &syntax_set), &["<b>"]);
+    }
+
+    /// Category A proper regression guard: a same-line `branch_point`
+    /// whose alternatives all `fail` must unwind to the pre-branch
+    /// snapshot and advance the cursor, rather than leaving the stack
+    /// stuck in the last attempted alternative. This was the cause of
+    /// the Zsh `meta.interpolation.brace.shell never pops` cascade
+    /// (Zsh excludes the usual `brace-interpolation-fallback` branch,
+    /// so `{no}` exhausted both `sequence` and `series` alternatives
+    /// and the parser silently left the scope stack inside
+    /// `brace-interpolation-series-begin`).
+    #[test]
+    fn branch_point_with_all_alternatives_failing_unwinds_state() {
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+                name: All Alternatives Fail Test
+                scope: source.test
+                contexts:
+                  main:
+                    - match: (?=\{)
+                      branch_point: brace
+                      branch:
+                        - brace-strict
+                        - brace-numeric
+                    - match: \w+
+                      scope: plain.test
+                  brace-strict:
+                    - meta_scope: meta.interpolation.brace.test
+                    - match: \{
+                      scope: punctuation.begin.test
+                      push: brace-strict-body
+                  brace-strict-body:
+                    - meta_content_scope: inside-strict.test
+                    - match: foo
+                      scope: keyword.test
+                    - match: \}
+                      scope: punctuation.end.test
+                      pop: 2
+                    - match: (?=\S)
+                      fail: brace
+                  brace-numeric:
+                    - meta_scope: meta.interpolation.brace.test
+                    - match: \{
+                      scope: punctuation.begin.test
+                      push: brace-numeric-body
+                  brace-numeric-body:
+                    - meta_content_scope: inside-numeric.test
+                    - match: \d+
+                      scope: constant.numeric.test
+                    - match: \}
+                      scope: punctuation.end.test
+                      pop: 2
+                    - match: (?=\S)
+                      fail: brace
+                "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let syntax_set = link(syntax);
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        // `{no}` — neither strict (expects `foo`) nor numeric (expects
+        // digits) matches, so both branches fail. Before the fix, the
+        // stack stayed in `brace-numeric-body` across the `\n`.
+        let o = ops(&mut state, "{no}\n", &syntax_set);
+        let mut stack = ScopeStack::new();
+        for (_, op) in &o {
+            stack.apply(op).unwrap();
+        }
+        let final_scopes: Vec<String> =
+            stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+        assert!(
+            !final_scopes
+                .iter()
+                .any(|s| s.contains("meta.interpolation.brace")),
+            "meta.interpolation.brace leaked past end of line; stack: {:?}",
+            final_scopes
+        );
+        assert!(
+            !final_scopes
+                .iter()
+                .any(|s| s.contains("inside-strict") || s.contains("inside-numeric")),
+            "inside-* meta_content_scope leaked past end of line; stack: {:?}",
+            final_scopes
+        );
     }
 
     /// Category E regression guard: a cross-line `fail` that triggers

@@ -9,7 +9,7 @@ FAILED testdata/Packages/Diff/tests/syntax_test_switch_to_git.diff: 104
 FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
 FAILED testdata/Packages/HTML/tests/syntax_test_scope.html: 4
 FAILED testdata/Packages/Haskell/tests/syntax_test_cabal.cabal: 1
-FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 664
+FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 579
 FAILED testdata/Packages/JSON/syntax_test_json.json: 3
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_class.js: 4
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_control.js: 92
@@ -33,5 +33,4 @@ FAILED testdata/Packages/Rust/tests/syntax_test_struct.rs: 3
 FAILED testdata/Packages/Rust/tests/syntax_test_types.rs: 15
 FAILED testdata/Packages/SQL/tests/syntax/syntax_test_mysql.sql: 8
 FAILED testdata/Packages/SQL/tests/syntax/syntax_test_tsql.sql: 4942
-FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 23771
 exiting with code 2

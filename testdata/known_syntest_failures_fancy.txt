@@ -27,5 +27,4 @@ FAILED testdata/Packages/Rust/tests/syntax_test_struct.rs: 3
 FAILED testdata/Packages/Rust/tests/syntax_test_types.rs: 15
 FAILED testdata/Packages/SQL/tests/syntax/syntax_test_mysql.sql: 8
 FAILED testdata/Packages/SQL/tests/syntax/syntax_test_tsql.sql: 4942
-FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 23771
 exiting with code 2
