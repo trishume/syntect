@@ -2123,11 +2123,13 @@ mod tests {
 
     #[test]
     fn extends_variable_inherited_without_override() {
-        // A child that does NOT redeclare a parent variable must still
-        // be able to use it in its inherited regexes. Before the fix,
-        // the child's load-time regex validation would see unresolved
-        // {{ident}} → "" and produce a broken pattern, causing the
-        // syntax to be skipped entirely.
+        // A child whose own regex references a variable defined only in
+        // the parent must still compile that regex correctly. Without
+        // deferred regex validation, the child's load-time pass would
+        // resolve {{ident}} to "" (Base hasn't been merged yet) and
+        // compile a broken pattern, causing the syntax to be skipped
+        // entirely. `re_resolve_all_regexes` reruns compilation after
+        // `resolve_extends` merges Base's variables into Child.
         let base = SyntaxDefinition::load_from_str(
             r#"
             name: Base
