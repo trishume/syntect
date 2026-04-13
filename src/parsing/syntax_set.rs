@@ -2172,7 +2172,7 @@ mod tests {
             .parse_line("$abc\n", &ss)
             .expect("parse failed")
             .ops;
-        let expected = (0, ScopeStackOp::Push(Scope::new("variable.base").unwrap()));
+        let expected = (0, ScopeStackOp::Push(Scope::new("variable.child").unwrap()));
         assert_ops_contain(&ops, &expected);
     }
 
