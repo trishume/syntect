@@ -10,21 +10,16 @@ license = "MIT"
 version = "5.3.0" # remember to update html_root_url
 authors = ["Tristan Hume <tristan@thume.ca>"]
 edition = "2021"
-exclude = [
-    "testdata/*",
-    "/scripts/*",
-    "/Makefile",
-    "/codecov.yml"
-]
+exclude = ["testdata/*", "/scripts/*", "/Makefile", "/codecov.yml"]
 
 [package.metadata.docs.rs]
 # Toggle on extra features that aren't on by default
 features = ["metadata"]
 
 [dependencies]
-yaml-rust2 = { version = "0.10.4", optional = true, default-features = false }
+yaml-rust2 = { version = "0.11.0", optional = true, default-features = false }
 onig = { version = "6.5.1", optional = true, default-features = false }
-fancy-regex = { version = "0.16.2", optional = true }
+fancy-regex = { version = "0.17.0", optional = true }
 walkdir = "2.5"
 regex-syntax = { version = "0.8", optional = true }
 plist = { version = "1.8", optional = true }
@@ -37,11 +32,11 @@ serde_json = { version = "1.0", optional = true }
 thiserror = "2.0.18"
 
 [dev-dependencies]
-criterion = { version = "0.3", features = [ "html_reports" ] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 rayon = "1.11.0"
 regex = "1.12"
 getopts = "0.2"
-pretty_assertions = "0.6"
+pretty_assertions = "1.4.1"
 rustup-toolchain = "0.1.10"
 rustdoc-json = "0.9.8"
 public-api = "0.50.3"
@@ -73,9 +68,29 @@ plist-load = ["dep:plist", "dep:serde_json"]
 # Support for parsing .sublime-syntax files
 yaml-load = ["dep:yaml-rust2", "parsing"]
 
-default-onig = ["parsing", "default-syntaxes", "default-themes", "html", "plist-load", "yaml-load", "dump-load", "dump-create", "regex-onig"]
+default-onig = [
+    "parsing",
+    "default-syntaxes",
+    "default-themes",
+    "html",
+    "plist-load",
+    "yaml-load",
+    "dump-load",
+    "dump-create",
+    "regex-onig",
+]
 # In order to switch to the fancy-regex engine, disable default features then add the default-fancy feature
-default-fancy = ["parsing", "default-syntaxes", "default-themes", "html", "plist-load", "yaml-load", "dump-load", "dump-create", "regex-fancy"]
+default-fancy = [
+    "parsing",
+    "default-syntaxes",
+    "default-themes",
+    "html",
+    "plist-load",
+    "yaml-load",
+    "dump-load",
+    "dump-create",
+    "regex-fancy",
+]
 default = ["default-onig"]
 
 # [profile.release]
