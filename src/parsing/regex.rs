@@ -73,32 +73,73 @@ impl Regex {
     }
 }
 
-/// Collapse runs of two or more consecutive unescaped `|` into a single `|`,
-/// but only at the top level of the pattern (outside any `(...)` group and
-/// outside any `[...]` character class).
+/// Collapse empty alternatives that are almost always typos:
 ///
-/// A top-level empty alternative (e.g. `x||y`) matches the empty string at
-/// any position. Under leftmost-first semantics, an empty alternative in the
-/// middle of a top-level alternation always matches before later alternatives
-/// get a chance, making them dead code — and in a search context it makes
-/// the whole regex "match" anywhere with zero width, which masks real matches.
-/// This pattern is almost always a typo — e.g. Cabal's `\|\||&&||!`,
-/// where the author meant `\|\||&&|!`.
+/// - Runs of consecutive unescaped `|` at the top level of the pattern
+///   (outside any group and any `[...]` class). A top-level empty alternative
+///   (e.g. `x||y`) matches the empty string at any position; under
+///   leftmost-first semantics it always wins zero-width before later
+///   alternatives get a chance, making them dead code — e.g. Cabal's typo
+///   `\|\||&&||!` where the author meant `\|\||&&|!`.
 ///
-/// Inside a group, empty alternatives are a legitimate idiom for an optional
-/// alternation (e.g. `(a|b|)c` matches `c` as well as `ac`/`bc`), so we leave
-/// those untouched — matching Sublime's behavior.
+/// - A **leading** empty alternative inside a group — `(|x|y)`, `(?:|x|y)`,
+///   `(?x:|x|y)`, `(?P<n>|x|y)`, `(?=|x|y)`, etc. The leading empty alt
+///   makes the group match zero-width at any position, masking the real
+///   alternatives. Rust's `prelude_types` variable has this shape
+///   (`(?x:|Box|Option|...)`) because the author put `|` before each
+///   alternative, including the first.
 ///
-/// UTF-8 is safe to scan by bytes because `|`, `\\`, `[`, `]`, `(`, and `)`
-/// are single-byte ASCII and never appear in multi-byte sequences.
+/// Middle and trailing empty alternatives **inside a group** are preserved —
+/// they are a legitimate optional-alternation idiom (e.g. D's
+/// `(...|>>>||\*|...)=` relies on the middle empty alt to match bare `=`).
+///
+/// UTF-8 is safe to scan by bytes because `|`, `\\`, `[`, `]`, `(`, `)`,
+/// `?`, `:`, `=`, `!`, `<`, `>`, and `#` are single-byte ASCII and never
+/// appear in multi-byte sequences.
 fn strip_redundant_empty_alternatives(pattern: &str) -> String {
     let bytes = pattern.as_bytes();
     let mut out = String::with_capacity(bytes.len());
     let mut i = 0;
     let mut in_class = false;
-    let mut group_depth: usize = 0;
+    // Stack of open-group state. For each currently-open group we track the
+    // parse phase, its effective extended-mode flag (inherited from parent +
+    // modified by the group's own `?x` / `?-x` prefix), a `prefix_negating`
+    // flag to handle `(?ix-m:...)`, and `body_started` — set once we've seen
+    // a content character in the body, so we can drop *leading* empty alts
+    // while preserving middle/trailing ones.
+    let mut groups: Vec<Group> = Vec::new();
     while i < bytes.len() {
         let b = bytes[i];
+
+        // `(?#...)` comment groups: pass everything through verbatim until `)`.
+        if matches!(groups.last().map(|g| g.phase), Some(GroupPhase::Comment)) {
+            if b == b'\\' && i + 1 < bytes.len() {
+                out.push(b as char);
+                let next = bytes[i + 1];
+                if next < 0x80 {
+                    out.push(next as char);
+                    i += 2;
+                } else {
+                    let ch_end = i + 1 + utf8_char_len(next);
+                    out.push_str(&pattern[i + 1..ch_end]);
+                    i = ch_end;
+                }
+                continue;
+            }
+            if b == b')' {
+                groups.pop();
+            }
+            if b < 0x80 {
+                out.push(b as char);
+                i += 1;
+            } else {
+                let ch_end = i + utf8_char_len(b);
+                out.push_str(&pattern[i..ch_end]);
+                i = ch_end;
+            }
+            continue;
+        }
+
         match b {
             b'\\' => {
                 out.push(b as char);
@@ -117,11 +158,13 @@ fn strip_redundant_empty_alternatives(pattern: &str) -> String {
                 } else {
                     i += 1;
                 }
+                mark_body_started(&mut groups);
             }
             b'[' if !in_class => {
                 out.push(b as char);
                 in_class = true;
                 i += 1;
+                mark_body_started(&mut groups);
             }
             b']' if in_class => {
                 out.push(b as char);
@@ -130,33 +173,156 @@ fn strip_redundant_empty_alternatives(pattern: &str) -> String {
             }
             b'(' if !in_class => {
                 out.push(b as char);
-                group_depth += 1;
                 i += 1;
+                let parent_extended = groups.last().map(|g| g.extended).unwrap_or(false);
+                // Decide this group's initial phase based on what follows `(`.
+                if i + 1 < bytes.len() && bytes[i] == b'?' && bytes[i + 1] == b'#' {
+                    out.push('?');
+                    out.push('#');
+                    i += 2;
+                    groups.push(Group {
+                        phase: GroupPhase::Comment,
+                        extended: parent_extended,
+                        prefix_negating: false,
+                        body_started: false,
+                    });
+                } else if i < bytes.len() && bytes[i] == b'?' {
+                    groups.push(Group {
+                        phase: GroupPhase::Prefix,
+                        extended: parent_extended,
+                        prefix_negating: false,
+                        body_started: false,
+                    });
+                } else {
+                    groups.push(Group {
+                        phase: GroupPhase::Body,
+                        extended: parent_extended,
+                        prefix_negating: false,
+                        body_started: false,
+                    });
+                }
             }
             b')' if !in_class => {
                 out.push(b as char);
-                group_depth = group_depth.saturating_sub(1);
+                groups.pop();
                 i += 1;
+                mark_body_started(&mut groups);
             }
-            b'|' if !in_class && group_depth == 0 => {
+            b'|' if !in_class => match groups.last_mut() {
+                None => {
+                    out.push(b as char);
+                    i += 1;
+                    while i < bytes.len() && bytes[i] == b'|' {
+                        i += 1;
+                    }
+                }
+                Some(group) => {
+                    if group.body_started {
+                        // Middle or trailing empty alt — preserve.
+                        out.push(b as char);
+                        i += 1;
+                    } else {
+                        // Leading empty alt — skip this and any consecutive
+                        // `|`s. `body_started` stays false so further leading
+                        // alts keep getting stripped.
+                        i += 1;
+                    }
+                }
+            },
+            _ if matches!(groups.last().map(|g| g.phase), Some(GroupPhase::Prefix)) => {
                 out.push(b as char);
                 i += 1;
-                while i < bytes.len() && bytes[i] == b'|' {
-                    i += 1;
+                let group = groups.last_mut().unwrap();
+                match b {
+                    b'x' => {
+                        group.extended = !group.prefix_negating;
+                    }
+                    b'-' => {
+                        group.prefix_negating = true;
+                    }
+                    b':' | b'=' | b'!' | b'>' => {
+                        group.phase = GroupPhase::Body;
+                    }
+                    b'<' => {
+                        if i < bytes.len() && (bytes[i] == b'=' || bytes[i] == b'!') {
+                            // Lookbehind `(?<=` / `(?<!`.
+                            out.push(bytes[i] as char);
+                            i += 1;
+                            group.phase = GroupPhase::Body;
+                        } else {
+                            group.phase = GroupPhase::PrefixName;
+                        }
+                    }
+                    _ => {
+                        // Continue reading modifier / flag characters.
+                    }
+                }
+            }
+            _ if matches!(groups.last().map(|g| g.phase), Some(GroupPhase::PrefixName)) => {
+                out.push(b as char);
+                i += 1;
+                if b == b'>' {
+                    groups.last_mut().unwrap().phase = GroupPhase::Body;
                 }
             }
             _ if b < 0x80 => {
+                let is_ws = matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0c);
+                let extended = groups.last().map(|g| g.extended).unwrap_or(false);
+                // In extended mode, `#` starts a line comment running to the
+                // next `\n`; whitespace is ignored. Neither counts as the
+                // first body character.
+                if extended && b == b'#' {
+                    while i < bytes.len() && bytes[i] != b'\n' {
+                        if bytes[i] < 0x80 {
+                            out.push(bytes[i] as char);
+                            i += 1;
+                        } else {
+                            let ch_end = i + utf8_char_len(bytes[i]);
+                            out.push_str(&pattern[i..ch_end]);
+                            i = ch_end;
+                        }
+                    }
+                    continue;
+                }
                 out.push(b as char);
                 i += 1;
+                if !(extended && is_ws) {
+                    mark_body_started(&mut groups);
+                }
             }
             _ => {
                 let ch_end = i + utf8_char_len(b);
                 out.push_str(&pattern[i..ch_end]);
                 i = ch_end;
+                mark_body_started(&mut groups);
             }
         }
     }
     out
+}
+
+#[derive(Copy, Clone, Debug)]
+struct Group {
+    phase: GroupPhase,
+    extended: bool,
+    prefix_negating: bool,
+    body_started: bool,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum GroupPhase {
+    Prefix,
+    PrefixName,
+    Comment,
+    Body,
+}
+
+fn mark_body_started(groups: &mut [Group]) {
+    if let Some(group) = groups.last_mut() {
+        if group.phase == GroupPhase::Body {
+            group.body_started = true;
+        }
+    }
 }
 
 fn utf8_char_len(first_byte: u8) -> usize {
@@ -401,9 +567,9 @@ mod tests {
     }
 
     #[test]
-    fn preserves_empty_alternatives_inside_groups() {
-        // D's assignment operators: `(...|>>>||\*|...)=` — empty alt inside
-        // the group makes the group optional, which is intentional.
+    fn preserves_middle_and_trailing_empty_alternatives_inside_groups() {
+        // D's assignment operators: `(...|>>>||\*|...)=` — a middle empty alt
+        // inside the group makes the group optional, which is intentional.
         assert_eq!(
             strip_redundant_empty_alternatives(r"(a|b||c)="),
             r"(a|b||c)="
@@ -412,9 +578,75 @@ mod tests {
     }
 
     #[test]
+    fn strips_leading_empty_alternatives_inside_groups() {
+        // Rust's prelude_types: `(?x:|Box|Option|...)` — leading empty alt
+        // wins zero-width under leftmost-first, masking the real names.
+        assert_eq!(
+            strip_redundant_empty_alternatives("(?x:|Box|Vec)"),
+            "(?x:Box|Vec)"
+        );
+        assert_eq!(strip_redundant_empty_alternatives("(|a|b)"), "(a|b)");
+        assert_eq!(strip_redundant_empty_alternatives("(?:|a|b)"), "(?:a|b)");
+        assert_eq!(
+            strip_redundant_empty_alternatives("(?P<n>|a|b)"),
+            "(?P<n>a|b)"
+        );
+        assert_eq!(
+            strip_redundant_empty_alternatives("(?<n>|a|b)"),
+            "(?<n>a|b)"
+        );
+        assert_eq!(strip_redundant_empty_alternatives("(?=|a|b)"), "(?=a|b)");
+        assert_eq!(strip_redundant_empty_alternatives("(?!|a|b)"), "(?!a|b)");
+        assert_eq!(strip_redundant_empty_alternatives("(?<=|a|b)"), "(?<=a|b)");
+        assert_eq!(strip_redundant_empty_alternatives("(?<!|a|b)"), "(?<!a|b)");
+        // Leading stripped, middle empty preserved.
+        assert_eq!(
+            strip_redundant_empty_alternatives("(?x:|a|b||c)"),
+            "(?x:a|b||c)"
+        );
+        // Consecutive leading `|`s are all skipped (same as the top-level
+        // `||`-collapsing path).
+        assert_eq!(strip_redundant_empty_alternatives("(|||a)"), "(a)");
+        // Nested groups: both leading empties get stripped independently.
+        assert_eq!(
+            strip_redundant_empty_alternatives("((?x:|a)|b)"),
+            "((?x:a)|b)"
+        );
+        // Extended mode: whitespace and `#` comments between the prefix and
+        // the leading `|` are ignored by the regex engine, so they should not
+        // prevent the leading `|` from being recognized as empty alt.
+        // This is the shape of Rust's `prelude_types` variable.
+        assert_eq!(
+            strip_redundant_empty_alternatives("(?x:\n  |Box\n  |Vec\n)"),
+            "(?x:\n  Box\n  |Vec\n)"
+        );
+        assert_eq!(
+            strip_redundant_empty_alternatives("(?x:\n  # std::boxed\n  |Box\n)"),
+            "(?x:\n  # std::boxed\n  Box\n)"
+        );
+        // Extended flag among others: `(?ix:` and `(?xi:` both enable x.
+        assert_eq!(strip_redundant_empty_alternatives("(?ix: |a)"), "(?ix: a)");
+        // `-x` disables extended mode — whitespace in the group body is
+        // significant and must not trigger the skip-whitespace-then-alt path.
+        assert_eq!(strip_redundant_empty_alternatives("(?-x: |a)"), "(?-x: |a)");
+    }
+
+    #[test]
+    fn preserves_regex_comment_groups_verbatim() {
+        // `(?#...)` is a comment group — whatever is inside (including `|`)
+        // is ignored by the regex engine and must be passed through unchanged.
+        assert_eq!(
+            strip_redundant_empty_alternatives("(?#|abc)foo"),
+            "(?#|abc)foo"
+        );
+    }
+
+    #[test]
     fn preserves_pipes_in_character_classes_and_escapes() {
         assert_eq!(strip_redundant_empty_alternatives(r"[a||b]"), r"[a||b]");
         assert_eq!(strip_redundant_empty_alternatives(r"\|\|\|"), r"\|\|\|");
+        // Escaped `(` and `|` must not trigger group/alt handling.
+        assert_eq!(strip_redundant_empty_alternatives(r"\(|x"), r"\(|x");
     }
 
     #[test]
@@ -424,5 +656,15 @@ mod tests {
         let mut region = Region::new();
         assert!(regex.search("!impl", 0, 5, Some(&mut region)));
         assert_eq!(region.pos(0), Some((0, 1)));
+    }
+
+    #[test]
+    fn leading_empty_alt_in_group_matches_name() {
+        // End-to-end: the Rust prelude_types shape should match `Vec` as a
+        // real alternative rather than winning empty at position 0.
+        let regex = Regex::new(String::from(r"\b(?x:|Box|Vec)\b"));
+        let mut region = Region::new();
+        assert!(regex.search("Vec", 0, 3, Some(&mut region)));
+        assert_eq!(region.pos(0), Some((0, 3)));
     }
 }

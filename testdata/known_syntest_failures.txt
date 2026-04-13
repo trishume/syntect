@@ -17,12 +17,5 @@ FAILED testdata/Packages/Rails/tests/syntax_test_rails.html.erb: 273
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.js.erb: 37
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.sql.erb: 8
 FAILED testdata/Packages/Ruby/syntax_test_ruby.rb: 1
-FAILED testdata/Packages/Rust/tests/syntax_test_closures.rs: 6
-FAILED testdata/Packages/Rust/tests/syntax_test_enum.rs: 6
-FAILED testdata/Packages/Rust/tests/syntax_test_generics.rs: 12
-FAILED testdata/Packages/Rust/tests/syntax_test_identifiers.rs: 1
-FAILED testdata/Packages/Rust/tests/syntax_test_macros.rs: 3
-FAILED testdata/Packages/Rust/tests/syntax_test_struct.rs: 3
-FAILED testdata/Packages/Rust/tests/syntax_test_types.rs: 15
 FAILED testdata/Packages/SQL/tests/syntax/syntax_test_tsql.sql: 4918
 exiting with code 2
