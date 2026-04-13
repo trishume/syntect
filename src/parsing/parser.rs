@@ -1065,15 +1065,33 @@ impl ParseState {
         //          initial);
         // println!("{:?}", cur_context.meta_scope);
         match *match_op {
-            MatchOperation::Pop(_) => {
+            MatchOperation::Pop(n) => {
+                // For `pop: N` with N > 1, every context being popped
+                // contributes scope atoms on the scope stack that must
+                // be unwound in LIFO order. The TOP context's trigger
+                // text must not see its own `meta_content_scope`, so
+                // that one is popped in the initial phase; all other
+                // scope unwinding (top context's `meta_scope`, then
+                // each deeper context's `meta_content_scope` followed
+                // by its `meta_scope`) happens in the non-initial
+                // phase, immediately after the match text's own
+                // scope has been popped.
+                //
+                // Before this fix only the top context's scopes were
+                // ever popped, leaving the N-1 deeper contexts'
+                // `meta_scope` / `meta_content_scope` atoms orphaned —
+                // the cause of the "scope stack grows unboundedly"
+                // cascade in Makefile and Zsh (Category A).
+                let stack_len = self.stack.len();
+                let pop_count = n.min(stack_len);
                 if initial {
-                    // v2: if the context below has embed_scope_replaces, then
-                    // cur_context's meta_content_scope was never pushed (it was skipped
-                    // during the Push phase), so don't generate a Pop for it.
+                    // v2: if the context immediately below the top has
+                    // embed_scope_replaces, cur_context's meta_content_scope
+                    // was never pushed, so don't generate a Pop for it.
                     let skip = version >= 2
-                        && self.stack.len() >= 2
+                        && stack_len >= 2
                         && syntax_set
-                            .get_context(&self.stack[self.stack.len() - 2].context)
+                            .get_context(&self.stack[stack_len - 2].context)
                             .map(|c| c.embed_scope_replaces)
                             .unwrap_or(false);
                     if !skip && !cur_context.meta_content_scope.is_empty() {
@@ -1082,8 +1100,37 @@ impl ParseState {
                             ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
                         ));
                     }
-                } else if !cur_context.meta_scope.is_empty() {
-                    ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
+                } else {
+                    // Top context's meta_scope comes off first (it sat
+                    // immediately below the trigger text's scope on the
+                    // stack).
+                    if !cur_context.meta_scope.is_empty() {
+                        ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
+                    }
+                    // Each deeper context's scopes are popped in
+                    // top-to-bottom order: meta_content_scope first
+                    // (pushed after its own meta_scope, hence above on
+                    // the stack), then meta_scope.
+                    for depth in 1..pop_count {
+                        let level_idx = stack_len - 1 - depth;
+                        let ctx =
+                            syntax_set.get_context(&self.stack[level_idx].context)?;
+                        let skip_content = version >= 2
+                            && level_idx >= 1
+                            && syntax_set
+                                .get_context(&self.stack[level_idx - 1].context)
+                                .map(|c| c.embed_scope_replaces)
+                                .unwrap_or(false);
+                        if !skip_content && !ctx.meta_content_scope.is_empty() {
+                            ops.push((
+                                index,
+                                ScopeStackOp::Pop(ctx.meta_content_scope.len()),
+                            ));
+                        }
+                        if !ctx.meta_scope.is_empty() {
+                            ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
+                        }
+                    }
                 }
 
                 // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
@@ -2752,6 +2799,153 @@ contexts:
         let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
         expect_scope_stacks_for_ops(ops(&mut state, "a bc\n", &syntax_set), &["<a>"]);
         expect_scope_stacks_for_ops(ops(&mut state, "bc\n", &syntax_set), &["<b>"]);
+    }
+
+    /// Minimal repro of the Category A "pop: N loses deeper contexts'
+    /// scopes" bug. Two pushed contexts A and B (with B on top): A has
+    /// `meta_scope: outer`, B has `meta_content_scope: inner`. When B
+    /// fires `pop: 2`, the scope stack must come fully back to the base
+    /// — before the fix, A's `outer` was orphaned on the scope stack
+    /// because `push_meta_ops` only emitted pops for the top context.
+    /// Checked against the scope stack produced by the ops (the
+    /// context-stack pop already worked; the scope-stack pop did not).
+    #[test]
+    fn pop_n_unwinds_all_n_contexts_meta_scopes() {
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+                name: Pop N Test
+                scope: source.test
+                contexts:
+                  main:
+                    - match: \(
+                      scope: open
+                      push: [outer, inner]
+                  outer:
+                    - meta_scope: outer.test
+                  inner:
+                    - meta_content_scope: inner.test
+                    - match: \)
+                      scope: close
+                      pop: 2
+                "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let syntax_set = link(syntax);
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        let o = ops(&mut state, "(x)\n", &syntax_set);
+        let mut stack = ScopeStack::new();
+        for (_, op) in &o {
+            stack.apply(op).unwrap();
+        }
+        let final_scopes: Vec<String> =
+            stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+        assert!(
+            !final_scopes.iter().any(|s| s.contains("outer.test")),
+            "outer.test meta_scope leaked past pop: 2; final stack: {:?}",
+            final_scopes
+        );
+        assert!(
+            !final_scopes.iter().any(|s| s.contains("inner.test")),
+            "inner.test meta_content_scope leaked past pop: 2; final stack: {:?}",
+            final_scopes
+        );
+    }
+
+    /// End-to-end check that `make syntest`'s Makefile failure has no
+    /// harness-level cause: loads the real Packages Makefile syntax
+    /// and parses two lines, asserting that after `bar := $(foo)\n`
+    /// the scope stack no longer carries `meta.string.makefile` when
+    /// the next source line is parsed. Gated on the test-assets
+    /// being available; marked `#[ignore]` so it runs with
+    /// `cargo test -- --ignored` in the repo root (the Packages
+    /// submodule is required).
+    #[test]
+    #[ignore = "requires testdata/Packages submodule"]
+    fn makefile_meta_string_does_not_leak_past_eol() {
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Makefile/Makefile.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        for (_, op) in ops(&mut state, "bar := $(foo)\n", &ss) {
+            stack.apply(&op).unwrap();
+        }
+        let after_assignment: Vec<String> =
+            stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+        assert!(
+            !after_assignment
+                .iter()
+                .any(|s| s.contains("meta.string.makefile")),
+            "meta.string.makefile leaks past EOL of `bar := $(foo)\\n`; stack: {:?}",
+            after_assignment
+        );
+    }
+
+    /// Triage repro for Category A (Zsh/TSQL/Makefile "context never
+    /// pops" cascade) — models the shape used by Makefile's variable
+    /// definitions: a lookahead push, then `set: [value, eat]` with a
+    /// zero-width match inside `value` that `set`s to a third context
+    /// carrying `meta_content_scope` and `include`ing an EOL popper.
+    ///
+    /// On `bar\n`, after the line terminates the stack should hold no
+    /// atoms of `meta.string.test`; without the fix the scope leaks to
+    /// the next line because the chained `set`s leave the popper
+    /// without a valid non-consuming push recorded for loop protection,
+    /// so the zero-width `$` match ends up guarded as a potential loop.
+    #[test]
+    fn chained_set_with_included_eol_popper_pops_at_line_boundary() {
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+                name: EOL Pop Chained Test
+                scope: source.test
+                contexts:
+                  main:
+                    - match: (?=\S)
+                      push: outer
+                  outer:
+                    - match: ''
+                      set: [value-body, eat-whitespace-then-pop]
+                  eat-whitespace-then-pop:
+                    - match: \s*
+                      pop: 1
+                  value-body:
+                    - match: ''
+                      set: value-content
+                  value-content:
+                    - meta_content_scope: meta.string.test
+                    - include: pop-on-eol
+                  pop-on-eol:
+                    - match: $
+                      pop: 1
+                "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let syntax_set = link(syntax);
+        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
+        let o = ops(&mut state, "bar\n", &syntax_set);
+
+        // Apply ops against a fresh ScopeStack and check the final set
+        // of live scope atoms — the meta_content_scope must not survive
+        // across the `\n` boundary.
+        let mut stack = ScopeStack::new();
+        for (_, op) in &o {
+            stack.apply(op).unwrap();
+        }
+        let final_scopes: Vec<String> =
+            stack.as_slice().iter().map(|s| format!("{:?}", s)).collect();
+        assert!(
+            !final_scopes.iter().any(|s| s.contains("meta.string.test")),
+            "meta.string.test leaked past EOL; final scope stack: {:?}",
+            final_scopes
+        );
     }
 
     fn expect_scope_stacks(line_without_newline: &str, expect: &[&str], syntax: &str) {
