@@ -612,7 +612,7 @@ impl ParseState {
             let mut esc_regions = Region::new();
             if entry
                 .regex
-                .search(line, start, line.len(), Some(&mut esc_regions))
+                .search(line, start, line.len(), Some(&mut esc_regions), true)
             {
                 let (esc_start, _esc_end) = esc_regions.pos(0).unwrap();
                 if esc_start < search_end {
@@ -762,8 +762,12 @@ impl ParseState {
             }
             _ => (match_pat.regex(), true),
         };
+        // Only `MatchOperation::None` patterns must avoid zero-length matches; every other
+        // operation legitimately needs them (lookaheads with branch/fail, empty patterns with
+        // pop/set, etc.). The regex engine handles this via its `FIND_NOT_EMPTY` option.
+        let allow_empty = !matches!(match_pat.operation, MatchOperation::None);
         // print!("  executing regex: {:?} at pos {} on line {}", regex.regex_str(), start, line);
-        let matched = regex.search(line, start, search_end, Some(regions));
+        let matched = regex.search(line, start, search_end, Some(regions), allow_empty);
 
         if matched {
             let (match_start, match_end) = regions.pos(0).unwrap();
@@ -2464,6 +2468,74 @@ contexts:
 
         let line = "foo::bar::* xxx";
         let expect = ["<source.test>, <test.good>"];
+        expect_scope_stacks(line, &expect, syntax);
+    }
+
+    /// Ruby's `?\u{012ACF 0gxs}`: `\h{0,6}` can match zero-width at the
+    /// space. Without the `FIND_NOT_EMPTY` engine option, the zero-width
+    /// match wins and hides the later non-empty match of `0`, which then
+    /// falls through to the `\S` fallback. With the option on
+    /// `MatchOperation::None` patterns, the engine retries past the
+    /// zero-width position and matches `0` as `number.hex`.
+    #[test]
+    fn scope_only_pattern_that_matches_zero_width_finds_later_non_empty() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: \h{0,6}
+      scope: number.hex
+    - match: \S
+      scope: invalid.illegal
+"#;
+
+        let line = "012ACF 0gxs";
+        let expect = [
+            "<source.test>, <number.hex>",      // "012ACF" and "0"
+            "<source.test>, <invalid.illegal>", // "g", "x", "s"
+        ];
+        expect_scope_stacks(line, &expect, syntax);
+    }
+
+    /// Cabal's `\|\||&&||!` operator regex has a stray empty alternative
+    /// between `&&` and `!`. Under leftmost-first matching the empty alt
+    /// wins zero-width at the `!` position. With `FIND_NOT_EMPTY`, the
+    /// engine rejects the empty alt and matches `!` via the real
+    /// alternative.
+    #[test]
+    fn scope_only_pattern_with_middle_empty_alt_matches_bang() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: \|\||&&||!
+      scope: keyword.operator
+"#;
+        let line = "!";
+        let expect = ["<source.test>, <keyword.operator>"];
+        expect_scope_stacks(line, &expect, syntax);
+    }
+
+    /// Rust's `prelude_types: (?x:|Box|Option|…)` puts a `|` before every
+    /// alternative, including the first. Under leftmost-first the leading
+    /// empty alt wins zero-width at every position, so `\b(?x:|Box|Vec)\b`
+    /// never matches `Box` or `Vec`. With `FIND_NOT_EMPTY`, the engine
+    /// rejects the zero-width alt and matches `Vec` via the real
+    /// alternative.
+    #[test]
+    fn scope_only_pattern_with_leading_empty_alt_in_group_matches_name() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: \b(?x:|Box|Vec)\b
+      scope: support.type
+"#;
+        let line = "Vec";
+        let expect = ["<source.test>, <support.type>"];
         expect_scope_stacks(line, &expect, syntax);
     }
 

@@ -370,7 +370,7 @@ impl SyntaxDefinition {
             // Thanks @wbond for letting me know this is the correct way to check for captures
             has_captures = state
                 .backref_regex
-                .search(&regex_str, 0, regex_str.len(), None);
+                .search(&regex_str, 0, regex_str.len(), None, true);
             // In Sublime Text, `pop: N` + `embed:` pops N contexts then pushes
             // the embedded syntax with escape priority.
             if get_key(map, "embed", Some).is_ok() {
@@ -451,7 +451,7 @@ impl SyntaxDefinition {
         let escape_has_captures =
             state
                 .backref_regex
-                .search(&escape_regex_str, 0, escape_regex_str.len(), None);
+                .search(&escape_regex_str, 0, escape_regex_str.len(), None, true);
 
         let escape_captures = if let Ok(cap_map) = get_key(map, "escape_captures", |x| x.as_hash())
         {
@@ -566,10 +566,13 @@ impl SyntaxDefinition {
         let mut result = String::new();
         let mut index = 0;
         let mut region = Region::new();
-        while state
-            .variable_regex
-            .search(raw_regex, index, raw_regex.len(), Some(&mut region))
-        {
+        while state.variable_regex.search(
+            raw_regex,
+            index,
+            raw_regex.len(),
+            Some(&mut region),
+            true,
+        ) {
             let (begin, end) = region.pos(0).unwrap();
 
             result.push_str(&raw_regex[index..begin]);
@@ -727,7 +730,7 @@ fn re_resolve_variables(raw_regex: &str, state: &ReResolveState<'_>) -> String {
     let mut region = Region::new();
     while state
         .variable_regex
-        .search(raw_regex, index, raw_regex.len(), Some(&mut region))
+        .search(raw_regex, index, raw_regex.len(), Some(&mut region), true)
     {
         let (begin, end) = region.pos(0).unwrap();
         result.push_str(&raw_regex[index..begin]);

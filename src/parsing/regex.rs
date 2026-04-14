@@ -12,6 +12,16 @@ use std::sync::OnceLock;
 pub struct Regex {
     regex_str: String,
     regex: OnceLock<regex_impl::Regex>,
+    /// Lazily-compiled variant that won't match zero-length strings.
+    /// Used for `MatchOperation::None` patterns, where a zero-width match
+    /// would stall the parser at the same position.
+    ///
+    /// `None` means the pattern can only ever match zero-width, so compiling with
+    /// the engine's `FIND_NOT_EMPTY` option fails (fancy-regex reports
+    /// `PatternCanNeverMatch`). In that case searches return no match, which is
+    /// what the parser wants — a scope-only pattern that can only match
+    /// zero-width would stall.
+    regex_not_empty: OnceLock<Option<regex_impl::Regex>>,
 }
 
 /// A region contains text positions for capture groups in a match result.
@@ -29,6 +39,7 @@ impl Regex {
         Self {
             regex_str,
             regex: OnceLock::new(),
+            regex_not_empty: OnceLock::new(),
         }
     }
 
@@ -53,6 +64,12 @@ impl Regex {
     /// the [`Region`] to be reused between searches, which makes a significant performance
     /// difference.
     ///
+    /// When `allow_empty` is `false`, zero-length matches are rejected by the engine itself.
+    /// Pass `false` for match patterns whose operation does not push, set, pop, or embed a
+    /// context, to prevent the parser from stalling at the same position. Pass `true` in every
+    /// other situation (lookaheads used with branch/fail, empty patterns used with pop/set,
+    /// escape patterns, variable-substitution helpers, etc.).
+    ///
     /// [`Region`]: struct.Region.html
     pub fn search(
         &self,
@@ -60,15 +77,29 @@ impl Regex {
         begin: usize,
         end: usize,
         region: Option<&mut Region>,
+        allow_empty: bool,
     ) -> bool {
-        self.regex()
-            .search(text, begin, end, region.map(|r| &mut r.region))
+        if allow_empty {
+            return self
+                .regex()
+                .search(text, begin, end, region.map(|r| &mut r.region));
+        }
+        match self.regex_not_empty() {
+            Some(regex) => regex.search(text, begin, end, region.map(|r| &mut r.region)),
+            None => false,
+        }
     }
 
     fn regex(&self) -> &regex_impl::Regex {
         self.regex.get_or_init(|| {
             regex_impl::Regex::new(&self.regex_str).expect("regex string should be pre-tested")
         })
+    }
+
+    fn regex_not_empty(&self) -> Option<&regex_impl::Regex> {
+        self.regex_not_empty
+            .get_or_init(|| regex_impl::Regex::new_find_not_empty(&self.regex_str).ok())
+            .as_ref()
     }
 }
 
@@ -77,6 +108,7 @@ impl Clone for Regex {
         Regex {
             regex_str: self.regex_str.clone(),
             regex: OnceLock::new(),
+            regex_not_empty: OnceLock::new(),
         }
     }
 }
@@ -158,6 +190,21 @@ mod regex_impl {
             }
         }
 
+        pub fn new_find_not_empty(
+            regex_str: &str,
+        ) -> Result<Regex, Box<dyn Error + Send + Sync + 'static>> {
+            let result = onig::Regex::with_options(
+                regex_str,
+                RegexOptions::REGEX_OPTION_CAPTURE_GROUP
+                    | RegexOptions::REGEX_OPTION_FIND_NOT_EMPTY,
+                Syntax::default(),
+            );
+            match result {
+                Ok(regex) => Ok(Regex { regex }),
+                Err(error) => Err(Box::new(error)),
+            }
+        }
+
         pub fn is_match(&self, text: &str) -> bool {
             self.regex
                 .match_with_options(text, 0, SearchOptions::SEARCH_OPTION_NONE, None)
@@ -213,6 +260,19 @@ mod regex_impl {
         pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error + Send + Sync + 'static>> {
             let result = fancy_regex::RegexBuilder::new(regex_str)
                 .oniguruma_mode(true)
+                .build();
+            match result {
+                Ok(regex) => Ok(Regex { regex }),
+                Err(error) => Err(Box::new(error)),
+            }
+        }
+
+        pub fn new_find_not_empty(
+            regex_str: &str,
+        ) -> Result<Regex, Box<dyn Error + Send + Sync + 'static>> {
+            let result = fancy_regex::RegexBuilder::new(regex_str)
+                .oniguruma_mode(true)
+                .find_not_empty(true)
                 .build();
             match result {
                 Ok(regex) => Ok(Regex { regex }),

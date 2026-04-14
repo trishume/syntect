@@ -5,7 +5,6 @@ FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 3
 FAILED testdata/Packages/C#/tests/syntax_test_Generics.cs: 3
 FAILED testdata/Packages/D/tests/syntax_test_d.d: 9
 FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
-FAILED testdata/Packages/Haskell/tests/syntax_test_cabal.cabal: 1
 FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 313
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js.js: 7
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_class.js: 4
@@ -17,13 +16,5 @@ FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 94
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.html.erb: 273
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.js.erb: 37
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.sql.erb: 8
-FAILED testdata/Packages/Ruby/syntax_test_ruby.rb: 1
-FAILED testdata/Packages/Rust/tests/syntax_test_closures.rs: 6
-FAILED testdata/Packages/Rust/tests/syntax_test_enum.rs: 6
-FAILED testdata/Packages/Rust/tests/syntax_test_generics.rs: 12
-FAILED testdata/Packages/Rust/tests/syntax_test_identifiers.rs: 1
-FAILED testdata/Packages/Rust/tests/syntax_test_macros.rs: 3
-FAILED testdata/Packages/Rust/tests/syntax_test_struct.rs: 3
-FAILED testdata/Packages/Rust/tests/syntax_test_types.rs: 15
 FAILED testdata/Packages/SQL/tests/syntax/syntax_test_tsql.sql: 4918
 exiting with code 2
