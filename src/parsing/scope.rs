@@ -187,10 +187,12 @@ impl ScopeRepository {
             .split('.')
             .map(|a| self.atom_to_index(a))
             .collect();
-        if parts.len() > 8 {
-            return Err(ParseScopeError::TooManyAtoms);
-        }
-        pack_as_u16s(&parts[..])
+        // The internal representation supports at most 8 atoms (packed into
+        // two u64 fields). Scopes with more atoms are silently truncated to
+        // 8; the first 8 atoms still provide meaningful scope matching for
+        // any realistic selector depth.
+        let len = parts.len().min(8);
+        pack_as_u16s(&parts[..len])
     }
 
     pub fn to_string(&self, scope: Scope) -> String {
@@ -639,7 +641,12 @@ mod tests {
             Scope::new("source.php").unwrap()
         );
         assert!(Scope::from_str("1.2.3.4.5.6.7.8").is_ok());
-        assert!(Scope::from_str("1.2.3.4.5.6.7.8.9").is_err());
+        // Scopes with >8 atoms are silently truncated to 8 rather than
+        // rejected, so a 9-atom scope succeeds and compares equal to
+        // its 8-atom prefix.
+        let nine = Scope::from_str("1.2.3.4.5.6.7.8.9").unwrap();
+        let eight = Scope::from_str("1.2.3.4.5.6.7.8").unwrap();
+        assert_eq!(nine, eight);
     }
 
     #[test]

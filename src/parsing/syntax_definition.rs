@@ -23,6 +23,10 @@ pub struct EscapeInfo {
     pub escape_regex: Regex,
     pub has_captures: bool,
     pub escape_captures: Option<CaptureMapping>,
+    /// Raw escape regex string as written in YAML, before variable resolution.
+    /// Stored to enable re-resolution when variables are merged via extends.
+    #[serde(skip)]
+    pub(crate) raw_escape_regex_str: Option<String>,
 }
 
 /// An opaque ID for a [`Context`].
@@ -188,10 +192,18 @@ pub enum MatchOperation {
     Set(Vec<ContextReference>),
     Pop(usize),
     None,
-    /// Branch with backtracking: (branch_point_name, alternative_contexts).
+    /// Branch with backtracking.
     /// Acts like Push for the first alternative, saving a checkpoint.
     /// If a `Fail` with the same name fires later, the next alternative is tried.
-    Branch(String, Vec<ContextReference>),
+    Branch {
+        name: String,
+        alternatives: Vec<ContextReference>,
+        /// Number of contexts to pop before pushing the branch alternative.
+        /// In Sublime Text, `pop: N` combined with `branch:` pops N contexts
+        /// then sets up the branch point.
+        #[serde(default)]
+        pop_count: usize,
+    },
     /// Trigger backtracking to the named branch point.
     Fail(String),
     /// Embed contexts with a prioritized escape pattern.
@@ -201,6 +213,11 @@ pub enum MatchOperation {
     Embed {
         contexts: Vec<ContextReference>,
         escape: EscapeInfo,
+        /// Number of contexts to pop before pushing the embedded contexts.
+        /// In Sublime Text, `pop: N` combined with `embed:` pops N contexts
+        /// then pushes the embedded syntax with escape priority.
+        #[serde(default)]
+        pop_count: usize,
     },
 }
 

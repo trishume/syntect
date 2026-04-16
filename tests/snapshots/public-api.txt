@@ -683,10 +683,14 @@ impl core::marker::Unpin for syntect::parsing::syntax_definition::ContextReferen
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::syntax_definition::ContextReference
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definition::ContextReference
 pub enum syntect::parsing::syntax_definition::MatchOperation
-pub syntect::parsing::syntax_definition::MatchOperation::Branch(alloc::string::String, alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
+pub syntect::parsing::syntax_definition::MatchOperation::Branch
+pub syntect::parsing::syntax_definition::MatchOperation::Branch::alternatives: alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>
+pub syntect::parsing::syntax_definition::MatchOperation::Branch::name: alloc::string::String
+pub syntect::parsing::syntax_definition::MatchOperation::Branch::pop_count: usize
 pub syntect::parsing::syntax_definition::MatchOperation::Embed
 pub syntect::parsing::syntax_definition::MatchOperation::Embed::contexts: alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>
 pub syntect::parsing::syntax_definition::MatchOperation::Embed::escape: syntect::parsing::syntax_definition::EscapeInfo
+pub syntect::parsing::syntax_definition::MatchOperation::Embed::pop_count: usize
 pub syntect::parsing::syntax_definition::MatchOperation::Fail(alloc::string::String)
 pub syntect::parsing::syntax_definition::MatchOperation::None
 pub syntect::parsing::syntax_definition::MatchOperation::Pop(usize)
