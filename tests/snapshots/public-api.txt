@@ -1072,7 +1072,7 @@ impl syntect::parsing::Regex
 pub fn syntect::parsing::Regex::is_match(&self, text: &str) -> bool
 pub fn syntect::parsing::Regex::new(regex_str: alloc::string::String) -> Self
 pub fn syntect::parsing::Regex::regex_str(&self) -> &str
-pub fn syntect::parsing::Regex::search(&self, text: &str, begin: usize, end: usize, region: core::option::Option<&mut syntect::parsing::Region>) -> bool
+pub fn syntect::parsing::Regex::search(&self, text: &str, begin: usize, end: usize, region: core::option::Option<&mut syntect::parsing::Region>, allow_empty: bool) -> bool
 pub fn syntect::parsing::Regex::try_compile(regex_str: &str) -> core::option::Option<alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync + 'static)>>
 impl core::clone::Clone for syntect::parsing::Regex
 pub fn syntect::parsing::Regex::clone(&self) -> Self
