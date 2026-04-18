@@ -1112,20 +1112,27 @@ impl ParseState {
                 let line_ops = if i == 0 {
                     // First buffered line: compose prefix + branch ops + resume.
                     let mut first_line_ops = prefix_ops.clone();
-                    // Re-emit the trigger's pat.scope over [trigger, match_end].
+                    // Re-emit the trigger's pat.scope and the new
+                    // alternative's meta scope ops in the same order
+                    // the non-fail push path uses: clear_scopes and
+                    // meta_scope at `trigger_match_start` (so the
+                    // matched text sees them), then pat.scope at the
+                    // same position, popped at `match_start_pos`.
+                    // meta_content_scope only applies after the
+                    // matched text, so it lands at `match_start_pos`.
+                    if let Some(clear_amount) = context.clear_scopes {
+                        first_line_ops
+                            .push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
+                    }
+                    for scope in context.meta_scope.iter() {
+                        first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+                    }
                     for scope in &trigger_pat_scope {
                         first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
                     }
                     if !trigger_pat_scope.is_empty() {
                         first_line_ops
                             .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
-                    }
-                    // Emit meta scope ops for the new alternative at match_end.
-                    if let Some(clear_amount) = context.clear_scopes {
-                        first_line_ops.push((match_start_pos, ScopeStackOp::Clear(clear_amount)));
-                    }
-                    for scope in context.meta_scope.iter() {
-                        first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
                     }
                     for scope in context.meta_content_scope.iter() {
                         first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
@@ -1185,19 +1192,29 @@ impl ParseState {
             // scope whenever alt[0] fails and alt[1..] succeeds,
             // because the original Push/Pop pair was truncated off
             // `ops` together with alt[0]'s subsequent work.
+            //
+            // The new alternative's `clear_scopes` and `meta_scope`
+            // are emitted at `trigger_match_start` *before* the
+            // trigger's `pat.scope`, mirroring the non-fail push path
+            // in `push_meta_ops` (initial phase): meta_scope sits
+            // below the match scope on the stack so the matched text
+            // sees both. Placing them at `match_start_pos` would mean
+            // the trigger character (e.g. `(` of `for (var i = 0; …)`)
+            // never sees the alternative's `meta_scope`. The
+            // `meta_content_scope` legitimately stays at
+            // `match_start_pos` — mcs only applies after the matched
+            // text.
+            if let Some(clear_amount) = context.clear_scopes {
+                ops.push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
+            }
+            for scope in context.meta_scope.iter() {
+                ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+            }
             for scope in &trigger_pat_scope {
                 ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
             }
             if !trigger_pat_scope.is_empty() {
                 ops.push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
-            }
-
-            // Emit meta scope ops for the new context at the rewind position.
-            if let Some(clear_amount) = context.clear_scopes {
-                ops.push((match_start_pos, ScopeStackOp::Clear(clear_amount)));
-            }
-            for scope in context.meta_scope.iter() {
-                ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
             }
             for scope in context.meta_content_scope.iter() {
                 ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
@@ -3169,6 +3186,53 @@ contexts:
                     - match: (?=\S)
                       fail: t
                   alt-succeeds:
+                    - match: \S+
+                      scope: ok.test
+                      pop: 1
+                "#,
+        );
+    }
+
+    /// Regression guard for "branch_point fail-retry drops the new
+    /// alternative's `meta_scope` from the trigger character". The
+    /// non-fail push path emits the new context's `meta_scope` at
+    /// `match_start` so the matched text sees it. The same-line
+    /// fail re-emit must do the same — emit `meta_scope` (and any
+    /// `clear_scopes`) at `trigger_match_start`, before the
+    /// trigger's `pat.scope`. Placing them after the match meant
+    /// `for (var i = 0; …)` parsed the `(` with
+    /// `[meta.for.js, punctuation.section.group.begin.js]` instead
+    /// of `[meta.for.js, meta.group.js, punctuation.section.group.begin.js]`,
+    /// failing eight assertions in `syntax_test_js_control.js`.
+    #[test]
+    fn branch_point_fail_retry_applies_meta_scope_to_trigger() {
+        // Mirrors the JS for-loop shape: `\(` triggers a branch with
+        // `pop: 1`; alt 0 fails, alt 1 succeeds; alt 1 has a
+        // `meta_scope` that must wrap the `(` itself.
+        expect_scope_stacks(
+            "(x",
+            &["<meta.group.test>, <punctuation.test>"],
+            r#"
+                name: Branch Meta Scope Test
+                scope: source.test
+                contexts:
+                  main:
+                    - match: ''
+                      push: trigger
+                  trigger:
+                    - match: \(
+                      scope: punctuation.test
+                      branch_point: g
+                      branch:
+                        - alt-fails
+                        - alt-succeeds
+                      pop: 1
+                  alt-fails:
+                    - meta_scope: meta.group.test
+                    - match: (?=\S)
+                      fail: g
+                  alt-succeeds:
+                    - meta_scope: meta.group.test
                     - match: \S+
                       scope: ok.test
                       pop: 1

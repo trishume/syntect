@@ -3,12 +3,10 @@ FAILED testdata/Packages/C#/tests/syntax_test_C#11.cs: 206
 FAILED testdata/Packages/C#/tests/syntax_test_C#9.cs: 10
 FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 3
 FAILED testdata/Packages/C#/tests/syntax_test_Generics.cs: 3
-FAILED testdata/Packages/D/tests/syntax_test_d.d: 9
 FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
-FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 313
+FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 271
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js.js: 7
 FAILED testdata/Packages/JavaScript/tests/syntax_test_js_class.js: 4
-FAILED testdata/Packages/JavaScript/tests/syntax_test_js_control.js: 8
 FAILED testdata/Packages/JavaScript/tests/syntax_test_typescript.ts: 274
 FAILED testdata/Packages/Python/tests/syntax_test_scope_tstrings.py: 228
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.css.erb: 83
