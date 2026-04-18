@@ -10,9 +10,8 @@ FAILED testdata/Packages/JavaScript/tests/syntax_test_js_class.js: 4
 FAILED testdata/Packages/JavaScript/tests/syntax_test_typescript.ts: 274
 FAILED testdata/Packages/Python/tests/syntax_test_scope_tstrings.py: 228
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.css.erb: 83
-FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 94
-FAILED testdata/Packages/Rails/tests/syntax_test_rails.html.erb: 273
+FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 86
+FAILED testdata/Packages/Rails/tests/syntax_test_rails.html.erb: 264
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.js.erb: 37
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.sql.erb: 8
-FAILED testdata/Packages/SQL/tests/syntax/syntax_test_tsql.sql: 4918
 exiting with code 2

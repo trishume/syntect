@@ -3124,6 +3124,98 @@ contexts:
     /// all the Rails (Rails) syntaxes, which broke assertions of the
     /// form `- source source`). The copy to `__main` must strip an
     /// already-present top_level_scope prefix, and the insert into
+    /// Regression guard for the "`meta_append` / `meta_prepend` resets
+    /// `meta_include_prototype` to its default" bug: the SQL base
+    /// declares `inside-like-single-quoted-string` with
+    /// `meta_include_prototype: false` so its `--` comment rule (from
+    /// the SQL prototype) does NOT fire inside LIKE strings. TSQL extends
+    /// that context with `meta_append: true` to add a `[…]` character-set
+    /// rule, but doesn't restate `meta_include_prototype: false`. Before
+    /// the fix, the merge in `syntax_set.rs` left the child's default
+    /// `meta_include_prototype: true`, so the SQL prototype attached to
+    /// the merged context, and `--` inside LIKE strings was scoped as
+    /// a comment — 4,918 cascading assertion failures in
+    /// `syntax_test_tsql.sql`.
+    ///
+    /// Synthetic shape: a parent with a `prototype` matching `--` as a
+    /// comment, a base context with `meta_include_prototype: false`,
+    /// and a child that extends the parent and `meta_append`s a single
+    /// rule to that base context without restating
+    /// `meta_include_prototype`. After merge, `--` inside the base
+    /// context's matched span must NOT take a `comment.*` scope.
+    #[test]
+    fn meta_append_inherits_meta_include_prototype_from_parent() {
+        use crate::parsing::syntax_set::SyntaxSetBuilder;
+
+        let dir =
+            std::env::temp_dir().join(format!("syntect-meta-append-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("parent.sublime-syntax"),
+            r#"
+name: Parent
+scope: source.parent
+file_extensions: [parent]
+contexts:
+  prototype:
+    - match: '--'
+      scope: punctuation.definition.comment
+      push: comment-body
+  comment-body:
+    - meta_scope: comment.line
+    - match: $
+      pop: 1
+  main:
+    - match: \bopen\b
+      push: inside
+  inside:
+    - meta_include_prototype: false
+    - meta_scope: meta.inside
+    - match: \bclose\b
+      pop: 1
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("child.sublime-syntax"),
+            r#"
+name: Child
+scope: source.child
+file_extensions: [child]
+extends: parent.sublime-syntax
+contexts:
+  inside:
+    - meta_append: true
+    - match: '!'
+      scope: punctuation.bang.child
+"#,
+        )
+        .unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add_from_folder(&dir, true).unwrap();
+        let ss = builder.build();
+        let syntax = ss
+            .find_syntax_by_scope(Scope::new("source.child").unwrap())
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let o = ops(&mut state, "open -- close\n", &ss);
+        let _ = std::fs::remove_dir_all(&dir);
+        let comment_pushes = o
+            .iter()
+            .filter(|(_, op)| {
+                matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("comment"))
+            })
+            .count();
+        assert_eq!(
+            comment_pushes, 0,
+            "`--` inside the inside context (meta_include_prototype: false in parent) \
+             must not match the parent's prototype comment rule after meta_append merge; \
+             ops were: {:?}",
+            o
+        );
+    }
+
     /// `main` must be idempotent.
     #[test]
     fn extending_syntax_does_not_double_push_top_level_scope() {

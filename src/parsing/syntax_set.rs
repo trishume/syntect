@@ -717,7 +717,9 @@ impl SyntaxSetBuilder {
             for context_id in all_context_ids[syntax_index].values() {
                 let context = &mut all_contexts[context_id.syntax_index][context_id.context_index];
                 if let Some(prototype_id) = prototype {
-                    if context.meta_include_prototype && !no_prototype.contains(context_id) {
+                    if context.meta_include_prototype.unwrap_or(true)
+                        && !no_prototype.contains(context_id)
+                    {
                         context.prototype = Some(*prototype_id);
                     }
                 }
@@ -953,6 +955,10 @@ impl SyntaxSetBuilder {
                                 if child_ctx.clear_scopes.is_none() {
                                     child_ctx.clear_scopes = parent_ctx.clear_scopes;
                                 }
+                                if child_ctx.meta_include_prototype.is_none() {
+                                    child_ctx.meta_include_prototype =
+                                        parent_ctx.meta_include_prototype;
+                                }
                             }
                             ContextMergeMode::Append => {
                                 // parent patterns + child patterns
@@ -967,6 +973,10 @@ impl SyntaxSetBuilder {
                                 }
                                 if child_ctx.clear_scopes.is_none() {
                                     child_ctx.clear_scopes = parent_ctx.clear_scopes;
+                                }
+                                if child_ctx.meta_include_prototype.is_none() {
+                                    child_ctx.meta_include_prototype =
+                                        parent_ctx.meta_include_prototype;
                                 }
                             }
                         }
@@ -1036,7 +1046,7 @@ impl SyntaxSetBuilder {
                 if !syntax.contexts.contains_key("main") {
                     syntax
                         .contexts
-                        .insert("main".to_string(), Context::new(false));
+                        .insert("main".to_string(), Context::new(None));
                 }
                 if !syntax.contexts.contains_key("__start") {
                     let mut scope_repo = crate::parsing::scope::lock_global_scope_repo();
