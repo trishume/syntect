@@ -1356,7 +1356,16 @@ impl ParseState {
                     // Each deeper context's scopes are popped in
                     // top-to-bottom order: meta_content_scope first
                     // (pushed after its own meta_scope, hence above on
-                    // the stack), then meta_scope.
+                    // the stack), then meta_scope, then any Restore
+                    // paired with that context's own `clear_scopes`
+                    // (mirrors the push order Clear → meta_scope → mcs
+                    // in reverse). Without the Restore, a `pop: N`
+                    // from the top that also unwinds a deeper context
+                    // with `clear_scopes` leaves the originally cleared
+                    // atoms orphaned — observed on Python f/t-string
+                    // interpolation close, where `f-string-replacement-end`
+                    // fires `pop: 2` that also pops
+                    // `f-string-replacement-meta`.
                     for depth in 1..pop_count {
                         let level_idx = stack_len - 1 - depth;
                         let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
@@ -1371,6 +1380,9 @@ impl ParseState {
                         }
                         if !ctx.meta_scope.is_empty() {
                             ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
+                        }
+                        if ctx.clear_scopes.is_some() {
+                            ops.push((index, ScopeStackOp::Restore));
                         }
                     }
                 }
@@ -1405,9 +1417,16 @@ impl ParseState {
                     // `meta.mapping.value.json` atoms in nested JSON objects.
                     // add each context's meta scope
                     if version >= 2 {
-                        // v2: For push with multiple contexts, only apply
-                        // clear_scopes from the last (topmost) context, not
-                        // sum all of them.
+                        // Push: emit Clear for every pushed context that has
+                        // `clear_scopes`, at its own index position in the
+                        // push order — same as v1. Sublime permits at most
+                        // one `clear_scopes` per push list, but when it sits
+                        // on a non-topmost entry (e.g. Python's
+                        // `f-string-replacement-meta` at index 0 of a
+                        // 3-context push) restricting to `i == last_idx`
+                        // silently drops it, leaking the parent's
+                        // `meta_content_scope` atoms into interpolation
+                        // content.
                         //
                         // Single-context `set:` with clear_scopes on the
                         // target: emit Clear here — before target.meta_scope
@@ -1430,13 +1449,11 @@ impl ParseState {
                         // eat-whitespace-then-pop]` relies on Clear eating
                         // the last-pushed mcs atom, which Restore then
                         // replaces when eat-whitespace-then-pop pops.
-                        let last_idx = context_refs.len().saturating_sub(1);
                         let single_context_set_clear = is_set && context_refs.len() == 1;
-                        for (i, r) in context_refs.iter().enumerate() {
+                        for r in context_refs.iter() {
                             let ctx = r.resolve(syntax_set)?;
 
-                            let emit_clear_here =
-                                (!is_set && i == last_idx) || single_context_set_clear;
+                            let emit_clear_here = !is_set || single_context_set_clear;
                             if emit_clear_here {
                                 if let Some(clear_amount) = ctx.clear_scopes {
                                     ops.push((index, ScopeStackOp::Clear(clear_amount)));
