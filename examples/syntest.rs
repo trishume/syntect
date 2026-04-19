@@ -36,15 +36,45 @@ pub enum SyntaxTestHeaderError {
 pub enum SyntaxTestFileResult {
     FailedAssertions(usize, usize),
     Success(usize),
+    /// File declares a non-scope Sublime test variant (reindent,
+    /// reindent-unchanged, partial-symbols, …) — captured as the
+    /// modifier between `SYNTAX TEST` and the quoted syntax file.
+    /// syntect doesn't implement those test kinds, so the file is
+    /// skipped without contributing to failures or exit status.
+    Skipped(String),
 }
 
+// The header-line shape Sublime Text accepts is:
+//   <testtoken_start> SYNTAX TEST [<modifier>] "<syntax_file>" [<testtoken_end> [<free-form tail>]]
+//
+// * `testtoken_start` is the line's comment marker (e.g. `//`, `#`,
+//   `/*`, `<!--`, `T:` for MultiMarkdown). Matched lazily so
+//   zero-whitespace separators like `T:SYNTAX TEST …` work; without
+//   laziness a greedy `\S+` would swallow `T:SYNTAX` and never find
+//   the literal `SYNTAX`.
+// * Optional `modifier` (`reindent`, `reindent-unchanged`,
+//   `partial-symbols`, future variants) sits between `SYNTAX TEST`
+//   and the quoted path. Capturing is unrestricted — any non-quote
+//   non-whitespace token counts — so we don't need to track
+//   Sublime's evolving modifier list here. A present modifier is
+//   the signal that the file is not a scope test (see
+//   `SyntaxTestFileResult::Skipped`).
+// * `testtoken_end` is the matching closing comment marker for
+//   block-comment syntaxes (`*/`, `-->`, `%>`, `}}`, …). Restricted
+//   to punctuation-only so alphabetic tails like `dotnet` in
+//   `#! SYNTAX TEST "…" dotnet run` don't get mis-captured.
+// * The trailing `(?:\s.*)?$` absorbs whatever follows the (optional)
+//   testtoken_end — shebang-style instructions like `dotnet run`
+//   go here and are ignored.
 pub static SYNTAX_TEST_HEADER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?xm)
-        ^(?P<testtoken_start>\s*\S+)
-        \s+SYNTAX\sTEST\s+
+        ^(?P<testtoken_start>\s*\S+?)
+        \s*SYNTAX\sTEST\s+
+        (?:(?P<modifier>[^\s"]+)\s+)?
         "(?P<syntax_file>[^"]+)"
-        \s*(?P<testtoken_end>\S+)?$
+        (?:\s+(?P<testtoken_end>[^\s\w]+))?
+        (?:\s.*)?$
     "#,
     )
     .unwrap()
@@ -312,6 +342,14 @@ fn test_file(
     let testtoken_start = captures.name("testtoken_start").unwrap().as_str();
     let testtoken_end = captures.name("testtoken_end").map(|c| c.as_str());
     let syntax_file = captures.name("syntax_file").unwrap().as_str();
+
+    // Non-scope Sublime test variants (reindent, reindent-unchanged,
+    // partial-symbols, …) carry a modifier between `SYNTAX TEST` and
+    // the quoted syntax file. syntect doesn't implement those kinds
+    // of tests, so bow out before touching the parser.
+    if let Some(modifier) = captures.name("modifier").map(|c| c.as_str()) {
+        return Ok(SyntaxTestFileResult::Skipped(modifier.to_owned()));
+    }
 
     // find the relevant syntax definition to parse the file with - case is important!
     if !out_opts.summary {
@@ -609,25 +647,43 @@ fn test_file(
     // Flush any remaining buffered messages at EOF — parsing is done
     flush_pending_messages(&mut pending_messages, out_opts.summary);
 
-    let res = if assertion_failures > 0 {
+    if assertion_failures > 0 {
         Ok(SyntaxTestFileResult::FailedAssertions(
             assertion_failures,
             total_assertions,
         ))
     } else {
         Ok(SyntaxTestFileResult::Success(total_assertions))
-    };
+    }
+}
 
+fn report_file_result(
+    path: &Path,
+    result: &Result<SyntaxTestFileResult, SyntaxTestHeaderError>,
+    out_opts: OutputOptions,
+) {
     if out_opts.summary {
-        if let Ok(SyntaxTestFileResult::FailedAssertions(failures, _)) = res {
-            // Don't print total assertion count so that diffs don't pick up new succeeding tests
-            println!("FAILED {}: {}", path.display(), failures);
+        // Don't print total assertion count so that diffs don't pick up new succeeding tests
+        match result {
+            Ok(SyntaxTestFileResult::FailedAssertions(failures, _)) => {
+                println!("FAILED {}: {}", path.display(), failures);
+            }
+            Err(SyntaxTestHeaderError::MalformedHeader) => {
+                println!("FAILED {}: malformed header", path.display());
+            }
+            Err(SyntaxTestHeaderError::SyntaxDefinitionNotFound) => {
+                println!("FAILED {}: syntax definition not found", path.display());
+            }
+            // Skipped files (non-scope variants like reindent /
+            // partial-symbols) don't contribute to the baseline:
+            // silent in summary mode so `known_syntest_failures.txt`
+            // stays focused on actual scope-test failures.
+            Ok(SyntaxTestFileResult::Skipped(_)) => {}
+            Ok(SyntaxTestFileResult::Success(_)) => {}
         }
     } else {
-        println!("{:?}", res);
+        println!("{:?}", result);
     }
-
-    res
 }
 
 fn main() {
@@ -721,6 +777,7 @@ fn recursive_walk(ss: &SyntaxSet, path: &str, out_opts: OutputOptions) -> i32 {
             eprintln!("PANIC while testing {}", path.display());
             Ok(SyntaxTestFileResult::FailedAssertions(1, 1))
         });
+        report_file_result(path, &result, out_opts);
         let elapsed = start.elapsed();
         if out_opts.time {
             let ms = (elapsed.as_secs() * 1_000) + elapsed.subsec_millis() as u64;
