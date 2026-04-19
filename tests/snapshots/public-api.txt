@@ -739,7 +739,7 @@ impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::syntax_definitio
 pub struct syntect::parsing::syntax_definition::Context
 pub syntect::parsing::syntax_definition::Context::clear_scopes: core::option::Option<syntect::parsing::ClearAmount>
 pub syntect::parsing::syntax_definition::Context::meta_content_scope: alloc::vec::Vec<syntect::parsing::Scope>
-pub syntect::parsing::syntax_definition::Context::meta_include_prototype: bool
+pub syntect::parsing::syntax_definition::Context::meta_include_prototype: core::option::Option<bool>
 pub syntect::parsing::syntax_definition::Context::meta_scope: alloc::vec::Vec<syntect::parsing::Scope>
 pub syntect::parsing::syntax_definition::Context::patterns: alloc::vec::Vec<syntect::parsing::syntax_definition::Pattern>
 pub syntect::parsing::syntax_definition::Context::prototype: core::option::Option<syntect::parsing::syntax_definition::ContextId>
@@ -747,7 +747,7 @@ pub syntect::parsing::syntax_definition::Context::uses_backrefs: bool
 impl syntect::parsing::syntax_definition::Context
 pub fn syntect::parsing::syntax_definition::Context::match_at(&self, index: usize) -> core::result::Result<&syntect::parsing::syntax_definition::MatchPattern, syntect::parsing::ParsingError>
 impl syntect::parsing::syntax_definition::Context
-pub fn syntect::parsing::syntax_definition::Context::new(meta_include_prototype: bool) -> syntect::parsing::syntax_definition::Context
+pub fn syntect::parsing::syntax_definition::Context::new(meta_include_prototype: core::option::Option<bool>) -> syntect::parsing::syntax_definition::Context
 impl core::clone::Clone for syntect::parsing::syntax_definition::Context
 pub fn syntect::parsing::syntax_definition::Context::clone(&self) -> syntect::parsing::syntax_definition::Context
 impl core::cmp::Eq for syntect::parsing::syntax_definition::Context

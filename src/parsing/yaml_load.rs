@@ -209,15 +209,8 @@ impl SyntaxDefinition {
         let mut contexts = HashMap::new();
         for (key, value) in map.iter() {
             if let (Some(name), Some(val_vec)) = (key.as_str(), value.as_vec()) {
-                let is_prototype = name == "prototype";
                 let mut namer = ContextNamer::new(name);
-                SyntaxDefinition::parse_context(
-                    val_vec,
-                    state,
-                    &mut contexts,
-                    is_prototype,
-                    &mut namer,
-                )?;
+                SyntaxDefinition::parse_context(val_vec, state, &mut contexts, &mut namer)?;
             }
         }
 
@@ -229,10 +222,15 @@ impl SyntaxDefinition {
         // TODO: Maybe just pass the scope repo if that's all that's needed?
         state: &mut ParserState<'_>,
         contexts: &mut HashMap<String, Context>,
-        is_prototype: bool,
         namer: &mut ContextNamer,
     ) -> Result<String, ParseSyntaxError> {
-        let mut context = Context::new(!is_prototype);
+        // Every parsed context starts with `meta_include_prototype = None`
+        // (unset). YAML-explicit `meta_include_prototype: <bool>` later
+        // upgrades it to `Some(<bool>)`. The prototype context's own
+        // self-attachment is suppressed by the `no_prototype` set in
+        // `SyntaxSetBuilder::link_syntaxes`, so we don't need a distinct
+        // initial value for prototype vs. non-prototype contexts.
+        let mut context = Context::new(None);
         let name = namer.next();
 
         for y in vec.iter() {
@@ -248,7 +246,7 @@ impl SyntaxDefinition {
                 is_special = true;
             }
             if let Ok(x) = get_key(map, "meta_include_prototype", |x| x.as_bool()) {
-                context.meta_include_prototype = x;
+                context.meta_include_prototype = Some(x);
                 is_special = true;
             }
             if let Ok(true) = get_key(map, "meta_prepend", |x| x.as_bool()) {
@@ -332,7 +330,7 @@ impl SyntaxDefinition {
                 Ok(ContextReference::Named(parts[0].to_owned()))
             }
         } else if let Some(v) = y.as_vec() {
-            let subname = SyntaxDefinition::parse_context(v, state, contexts, false, namer)?;
+            let subname = SyntaxDefinition::parse_context(v, state, contexts, namer)?;
             Ok(ContextReference::Inline(subname))
         } else {
             Err(ParseSyntaxError::TypeMismatch)
@@ -416,7 +414,7 @@ impl SyntaxDefinition {
 
         let with_prototype = if let Ok(v) = get_key(map, "with_prototype", |x| x.as_vec()) {
             // should a with_prototype include the prototype? I don't think so.
-            let subname = Self::parse_context(v, state, contexts, true, namer)?;
+            let subname = Self::parse_context(v, state, contexts, namer)?;
             Some(ContextReference::Inline(subname))
         } else {
             None
@@ -494,13 +492,8 @@ impl SyntaxDefinition {
             );
             match_map.insert(Yaml::String("pop".to_string()), Yaml::Boolean(true));
             embed_scope_context_yaml.push(Yaml::Hash(match_map));
-            let scope_ctx_name = SyntaxDefinition::parse_context(
-                &embed_scope_context_yaml,
-                state,
-                contexts,
-                false,
-                namer,
-            )?;
+            let scope_ctx_name =
+                SyntaxDefinition::parse_context(&embed_scope_context_yaml, state, contexts, namer)?;
             // In v2, embed_scope replaces the embedded syntax's scope
             if state.version >= 2 {
                 if let Some(ctx) = contexts.get_mut(&scope_ctx_name) {
@@ -643,7 +636,6 @@ impl SyntaxDefinition {
             start_yaml,
             state,
             contexts,
-            false,
             &mut ContextNamer::new("__start"),
         )
         .unwrap();
@@ -656,7 +648,6 @@ impl SyntaxDefinition {
             main_yaml,
             state,
             contexts,
-            false,
             &mut ContextNamer::new("__main"),
         )
         .unwrap();
@@ -1188,7 +1179,7 @@ mod tests {
         let main = &defn2.contexts["main"];
         assert_eq!(main.meta_content_scope, vec![top_level_scope]);
         assert_eq!(main.meta_scope, n);
-        assert!(main.meta_include_prototype);
+        assert!(main.meta_include_prototype.unwrap_or(true));
 
         assert_eq!(defn2.contexts["__main"].meta_content_scope, n);
         assert_eq!(

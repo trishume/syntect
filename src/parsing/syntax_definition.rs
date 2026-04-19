@@ -87,9 +87,15 @@ pub(crate) enum ContextMergeMode {
 pub struct Context {
     pub meta_scope: Vec<Scope>,
     pub meta_content_scope: Vec<Scope>,
-    /// This being set false in the syntax file implies this field being set false,
-    /// but it can also be set falso for contexts that don't include the prototype for other reasons
-    pub meta_include_prototype: bool,
+    /// Whether this context includes its syntax's prototype. `Some(bool)` carries the value
+    /// set by the YAML (or inherited from a parent on an `extends:` / `meta_append` /
+    /// `meta_prepend` merge). `None` means the field was never set explicitly and callers
+    /// should treat it as `true` (Sublime's default — use `.unwrap_or(true)` at consumption
+    /// points). Tracking unset separately lets an `extends` merge inherit the parent's
+    /// value when the child doesn't restate it — the case that was miscompiling TSQL's
+    /// `inside-like-single-quoted-string` `meta_append` against the SQL base that sets
+    /// `meta_include_prototype: false`.
+    pub meta_include_prototype: Option<bool>,
     pub clear_scopes: Option<ClearAmount>,
     /// This is filled in by the linker at link time
     /// for contexts that have `meta_include_prototype==true`
@@ -110,7 +116,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(meta_include_prototype: bool) -> Context {
+    pub fn new(meta_include_prototype: Option<bool>) -> Context {
         Context {
             meta_scope: Vec::new(),
             meta_content_scope: Vec::new(),
@@ -259,7 +265,7 @@ impl<'a> Iterator for MatchIter<'a> {
                         };
                         let ctx_ptr = self.syntax_set.get_context(context_id).unwrap();
                         // Also include the external syntax's prototype if the context allows it
-                        if ctx_ptr.meta_include_prototype {
+                        if ctx_ptr.meta_include_prototype.unwrap_or(true) {
                             if let Some(ref proto_id) = ctx_ptr.prototype {
                                 let proto_ctx = self.syntax_set.get_context(proto_id).unwrap();
                                 // Push prototype first (it will be iterated first)
