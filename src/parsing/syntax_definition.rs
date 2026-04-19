@@ -71,6 +71,10 @@ fn default_version() -> u32 {
     1
 }
 
+fn one() -> usize {
+    1
+}
+
 /// How a child context should merge with its parent during extends resolution.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum ContextMergeMode {
@@ -195,7 +199,13 @@ pub enum ContextReference {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MatchOperation {
     Push(Vec<ContextReference>),
-    Set(Vec<ContextReference>),
+    /// Pops `pop_count` contexts off the stack, then pushes `ctx_refs`.
+    /// A plain `set:` is `pop_count == 1`; `pop: N + set:` is `pop_count == N`.
+    Set {
+        ctx_refs: Vec<ContextReference>,
+        #[serde(default = "one")]
+        pop_count: usize,
+    },
     Pop(usize),
     None,
     /// Branch with backtracking.

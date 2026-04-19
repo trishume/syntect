@@ -461,7 +461,10 @@ impl SyntaxSet {
             let maybe_refs_to_check = match pattern {
                 Pattern::Match(match_pat) => match &match_pat.operation {
                     MatchOperation::Push(context_refs)
-                    | MatchOperation::Set(context_refs)
+                    | MatchOperation::Set {
+                        ctx_refs: context_refs,
+                        ..
+                    }
                     | MatchOperation::Branch {
                         alternatives: context_refs,
                         ..
@@ -1129,7 +1132,10 @@ impl SyntaxSetBuilder {
                 Pattern::Match(ref match_pat) => {
                     let maybe_context_refs = match match_pat.operation {
                         MatchOperation::Push(ref context_refs)
-                        | MatchOperation::Set(ref context_refs)
+                        | MatchOperation::Set {
+                            ctx_refs: ref context_refs,
+                            ..
+                        }
                         | MatchOperation::Branch {
                             alternatives: ref context_refs,
                             ..
@@ -1312,7 +1318,10 @@ impl SyntaxSetBuilder {
     ) {
         let maybe_context_refs = match match_pat.operation {
             MatchOperation::Push(ref mut context_refs)
-            | MatchOperation::Set(ref mut context_refs)
+            | MatchOperation::Set {
+                ctx_refs: ref mut context_refs,
+                ..
+            }
             | MatchOperation::Branch {
                 alternatives: ref mut context_refs,
                 ..
@@ -2673,6 +2682,83 @@ mod tests {
             has_clear,
             "v2 set should apply clear_scopes; ops: {:?}",
             ops
+        );
+    }
+
+    #[test]
+    fn pop_n_set_pops_n_then_pushes_target() {
+        use crate::parsing::{ParseState, ScopeStack};
+
+        // `pop: 2 + set: target` on a 3-deep stack should leave a 2-deep stack
+        // where the top frame is `target`, not silently discard the set.
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: PopSet
+            scope: source.popset
+            file_extensions: [pset]
+            version: 2
+            contexts:
+              main:
+                - match: 'a'
+                  scope: a
+                  push: level1
+              level1:
+                - meta_scope: meta.level1
+                - match: 'b'
+                  scope: b
+                  push: level2
+              level2:
+                - meta_scope: meta.level2
+                - match: 'c'
+                  scope: c
+                  pop: 2
+                  set: target
+              target:
+                - meta_scope: meta.target
+                - match: 'd'
+                  scope: d
+                  pop: true
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("PopSet").unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        for (_, op) in state.parse_line("abc", &ss).unwrap().ops {
+            stack.apply(&op).unwrap();
+        }
+
+        // After 'a' (push level1), 'b' (push level2), 'c' (pop 2 + set target):
+        // the stack should hold [source.popset, meta.target]. If pop: 2 + set:
+        // were silently dropped (old behavior), it'd be [source.popset] with no
+        // meta.target.
+        let scopes: Vec<String> = stack.as_slice().iter().map(|s| format!("{}", s)).collect();
+        let has_target = scopes.iter().any(|s| s == "meta.target");
+        let no_level1 = !scopes.iter().any(|s| s == "meta.level1");
+        let no_level2 = !scopes.iter().any(|s| s == "meta.level2");
+        assert!(
+            has_target && no_level1 && no_level2,
+            "expected meta.target on stack with no intermediate meta scopes, got: {:?}",
+            scopes
+        );
+
+        // `d` should pop 'target' and emit its scope.
+        let ops2 = state.parse_line("d", &ss).unwrap().ops;
+        let d_pushed = ops2.iter().any(|(_, op)| match op {
+            ScopeStackOp::Push(s) => format!("{}", s) == "d",
+            _ => false,
+        });
+        assert!(
+            d_pushed,
+            "'d' should fire 'target's d rule, ops: {:?}",
+            ops2
         );
     }
 
