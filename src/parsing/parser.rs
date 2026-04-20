@@ -3478,110 +3478,118 @@ contexts:
     }
 
     /// Regression guard for the "cross-line branch_point exhaustion
-    /// leaves contexts on the stack forever" bug: before the fix, when
-    /// ALL alternatives of a `branch_point` failed on a line *after*
-    /// the branch was created, the parser silently removed the branch
-    /// record while the last alternative's pushed contexts remained on
-    /// the state stack. Downstream lines then inherited those ghost
-    /// contexts — observed on `sublimehq/Packages#3598`'s
-    /// intentionally-incomplete `type x = { bar: (cb: ( };`, where
-    /// two nested `ts-function-type` branches both exhausted across
-    /// lines and left `meta.type.js` / `meta.group.js` anchored on
-    /// the scope stack. Cascade: 274 assertion failures in
-    /// `syntax_test_typescript.ts` and another 10 in `C#9.cs`.
+    /// leaves contexts on the stack forever" bug: when ALL
+    /// alternatives of a `branch_point` fail on a line *after* the
+    /// branch was created, the parser must restore the pre-branch
+    /// snapshot, truncate ops, and replay the buffered lines under
+    /// the restored state. Pre-fix, the cross-line exhaustion path
+    /// silently removed the branch record while leaving the last
+    /// alternative's pushed contexts on the state stack — 274
+    /// assertion failures in `syntax_test_typescript.ts` and
+    /// another 10 in `syntax_test_C#9.cs` cascaded from that ghost
+    /// state (`sublimehq/Packages#3598`'s incomplete
+    /// `type x = { bar: (cb: ( };` was the minimal reproducer).
     ///
-    /// The fix unifies the same-line and cross-line exhaustion paths:
-    /// restore the pre-branch snapshot, truncate ops, and (for the
-    /// cross-line case) re-parse the buffered lines under the
-    /// pre-branch state so the caller sees corrected ops via
-    /// `ParseLineOutput::replayed`.
-    ///
-    /// Related fix: the cross-line retry and exhaustion paths no
-    /// longer drain `pending_lines` — an outer branch_point on the
-    /// same line whose own alternative also fails needs to access the
-    /// same buffered lines.
-    ///
-    /// Synthetic shape: a branch with two alternatives that both push
-    /// contexts on line 1 and both fail on line 2. After line 2, the
-    /// scope stack must NOT carry either alternative's meta scope.
+    /// Shape: a `branch_point` with two alternatives, each with a
+    /// distinctive `meta_scope` and a `\w+` rule scoped by the
+    /// alternative. Line 1 fires the branch; alt[0] consumes the
+    /// newline and stays active. Line 2 fires `fail: bp` from
+    /// alt[0] (cross-line retry into alt[1]), then the replay puts
+    /// alt[1] on the stack, re-parses line 2, and alt[1] also fires
+    /// `fail: bp` — cross-line exhaustion. After line 2:
+    ///   - `is_speculative` must be false (branch record gone);
+    ///   - a subsequent benign line must parse under the pre-branch
+    ///     context (`main`), not under a leaked alternative. Pre-fix,
+    ///     `beta` remained on the stack and the next line's `\w+`
+    ///     scoped as `beta.word.cle` instead of `main.word.cle`.
     #[test]
     fn cross_line_branch_exhaustion_unwinds_state() {
-        let syntax = SyntaxDefinition::load_from_str(
-            r#"
-                name: Cross-Line Branch Exhaustion Test
-                scope: source.test
-                contexts:
-                  main:
-                    - match: \{
-                      scope: punctuation.begin.test
-                      push: inside-braces
-                  inside-braces:
-                    - meta_scope: meta.braces.test
-                    - match: \}
-                      scope: punctuation.end.test
-                      pop: 1
-                    - match: \w+
-                      push:
-                        - branch-holder
-                  branch-holder:
-                    - match: (?=:)
-                      branch_point: choice
-                      branch:
-                        - choice-alpha
-                        - choice-beta
-                  choice-alpha:
-                    - meta_scope: meta.alpha.test
-                    - match: ':'
-                      push: alpha-body
-                  alpha-body:
-                    - meta_scope: meta.alpha.body.test
-                    - match: \bend\b
-                      pop: 3
-                    - match: (?=\})
-                      fail: choice
-                    - include: else-pop
-                  choice-beta:
-                    - meta_scope: meta.beta.test
-                    - match: ':'
-                      push: beta-body
-                  beta-body:
-                    - meta_scope: meta.beta.body.test
-                    - match: \bend\b
-                      pop: 3
-                    - match: (?=\})
-                      fail: choice
-                    - include: else-pop
-                "#,
-            true,
-            None,
-        )
-        .unwrap();
-        let syntax_set = link(syntax);
-        let mut state = ParseState::new(&syntax_set.syntaxes()[0]);
-        // Line 1 opens braces, then `foo:` creates branch `choice`;
-        // alt[0] `choice-alpha` pushes `alpha-body` and the line ends.
-        // Line 2 hits `}`: alpha-body's `fail: choice` fires, retry
-        // `choice-beta`. beta-body also fails on `}`. Branch exhausts
-        // cross-line. Pre-fix: `meta.alpha.*` / `meta.beta.*` stayed
-        // on the stack past the `}`. Post-fix: the mapping `}` closes
-        // cleanly.
-        let _ = ops(&mut state, "{foo\n", &syntax_set);
-        let o = ops(&mut state, "}\n", &syntax_set);
-        let mut stack = ScopeStack::new();
-        // Re-apply line 1 ops to get the correct pre-line-2 state.
-        // In a real parser harness, `replayed` ops would be used
-        // to correct this — here we just build the stack from the
-        // final line 2 ops-stream for the assertion.
-        for (_, op) in &o {
-            stack.apply(op).unwrap_or(());
+        let syntax_str = r#"
+name: CrossLineExhaustion
+scope: source.cle
+contexts:
+  main:
+    - match: 'TRY'
+      scope: trigger.cle
+      branch_point: bp
+      branch: [alpha, beta]
+    - match: '\w+'
+      scope: main.word.cle
+  alpha:
+    - meta_scope: meta.alpha.cle
+    - match: '\n'
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: alpha.word.cle
+  beta:
+    - meta_scope: meta.beta.cle
+    - match: '\n'
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: beta.word.cle
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: `TRY` fires branch `bp`; alt[0] `alpha` is pushed
+        // and consumes the trailing newline, staying on the stack.
+        let _out1 = state.parse_line("TRY\n", &ss).expect("parse line 1");
+
+        // Line 2: alpha's `FAIL` rule fires `fail: bp` — cross-line
+        // retry into `beta`. The beta replay leaves beta on the
+        // stack; the re-parse of line 2 under beta hits beta's
+        // `FAIL` rule, firing `fail: bp` again with no alternatives
+        // left — cross-line exhaustion.
+        let out2 = state.parse_line("FAIL\n", &ss).expect("parse line 2");
+
+        // Exhaustion must clear every branch_point record.
+        assert!(
+            !state.is_speculative(),
+            "cross-line exhaustion must drop all branch_point records"
+        );
+
+        // The exhaustion path replays buffered lines under the
+        // restored pre-branch state, so `replayed` is non-empty.
+        assert!(
+            !out2.replayed.is_empty(),
+            "cross-line exhaustion must emit replayed ops for the pre-branch state"
+        );
+
+        // Strong invariant: the subsequent line must be parsed under
+        // `main` (the pre-branch context) — not under whichever
+        // alternative was last active. Pre-fix, `beta` stayed on the
+        // stack and `benign` would have scoped as `beta.word.cle`.
+        let out3 = state.parse_line("benign\n", &ss).expect("parse line 3");
+        let pushed: Vec<String> = out3
+            .ops
+            .iter()
+            .filter_map(|(_, op)| match op {
+                ScopeStackOp::Push(s) => Some(format!("{:?}", s)),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            pushed.iter().any(|s| s.contains("main.word.cle")),
+            "post-exhaustion line must be scoped under main; got pushes: {:?}",
+            pushed
+        );
+        for leaked in [
+            "meta.alpha.cle",
+            "meta.beta.cle",
+            "alpha.word.cle",
+            "beta.word.cle",
+        ] {
+            assert!(
+                !pushed.iter().any(|s| s.contains(leaked)),
+                "{} leaked into post-exhaustion line; got pushes: {:?}",
+                leaked,
+                pushed
+            );
         }
-        // This assertion is weak because we don't run the full
-        // replay/stack-reset that the syntest harness does. The
-        // concrete regression is guarded end-to-end by
-        // `syntax_test_typescript.ts` staying absent from
-        // `known_syntest_failures.txt`. Keep this as a fast unit
-        // probe that at least exercises the code path.
-        let _ = stack;
     }
 
     /// Category E regression guard: a cross-line `fail` that triggers
