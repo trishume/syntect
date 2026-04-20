@@ -162,7 +162,7 @@ struct BranchPoint {
     /// Push and Pop so captures like `keyword.declaration.data.haskell`
     /// on the first capture group of `(data)(?:\s+(family|instance))?`
     /// survive a branch swap — without this, a `data CtxCls ctx => …`
-    /// (where alt[0] `data-signature` fails into alt[1] `data-context`)
+    /// (where `alt[0]` `data-signature` fails into `alt[1]` `data-context`)
     /// drops the keyword scope from the `data` token.
     capture_ops: Vec<(usize, ScopeStackOp)>,
 }
@@ -194,10 +194,7 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 /// before any inner group). Empty captures are skipped because they'd
 /// otherwise sort a Pop before its Push. The returned ops are already
 /// position-ordered and safe to append to a parser ops vec.
-fn build_capture_ops(
-    capture_map: &CaptureMapping,
-    regions: &Region,
-) -> Vec<(usize, ScopeStackOp)> {
+fn build_capture_ops(capture_map: &CaptureMapping, regions: &Region) -> Vec<(usize, ScopeStackOp)> {
     let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
     for &(cap_index, ref scopes) in capture_map.iter() {
         if let Some((cap_start, cap_end)) = regions.pos(cap_index) {
