@@ -990,41 +990,95 @@ impl ParseState {
             // both `brace-interpolation-sequence` and
             // `brace-interpolation-series` failed and there was no
             // fallback alternative (Zsh explicitly excludes
-            // `brace-interpolation-fallback`). Same-line only — a
-            // cross-line branch_point that never succeeded is left
-            // alone here because replaying through it is handled
-            // via the cross-line path in the successful case.
+            // `brace-interpolation-fallback`).
+            //
+            // Cross-line exhaustion takes the same shape, plus a replay
+            // of the buffered lines under the pre-branch state so
+            // callers see corrected ops for lines they've already been
+            // handed. Without this, the unterminated TypeScript type
+            // expression at `sublimehq/Packages#3598`
+            // (`type x = { bar: (cb: (\n};`) left the inner
+            // `ts-type-function-parameter-list-body` on the stack
+            // forever, contaminating every subsequent line's scope
+            // stack with `meta.type.js, meta.group.js` — 274 cascading
+            // assertion failures in `syntax_test_typescript.ts`.
             let is_cross_line = bp.line_number < cur_line;
-            if !is_cross_line {
-                let stack_snapshot = bp.stack_snapshot.clone();
-                let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
-                let escape_stack_snapshot = bp.escape_stack_snapshot.clone();
-                let first_line_snapshot = bp.first_line_snapshot;
-                let non_consuming_push_at_snapshot = bp.non_consuming_push_at_snapshot;
-                let ops_snapshot_len = bp.ops_snapshot_len;
-                let match_start_pos = bp.match_start;
-                self.branch_points.remove(bp_index);
+            let stack_snapshot = bp.stack_snapshot.clone();
+            let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
+            let escape_stack_snapshot = bp.escape_stack_snapshot.clone();
+            let first_line_snapshot = bp.first_line_snapshot;
+            let non_consuming_push_at_snapshot = bp.non_consuming_push_at_snapshot;
+            let ops_snapshot_len = bp.ops_snapshot_len;
+            let match_start_pos = bp.match_start;
+            let pending_lines_snapshot_len = bp.pending_lines_snapshot_len;
+            let prefix_ops = bp.prefix_ops.clone();
+            self.branch_points.remove(bp_index);
 
-                self.stack = stack_snapshot;
-                self.proto_starts = proto_starts_snapshot;
-                self.escape_stack = escape_stack_snapshot;
-                self.first_line = first_line_snapshot;
-                *non_consuming_push_at = non_consuming_push_at_snapshot;
-                ops.truncate(ops_snapshot_len.min(ops.len()));
+            self.stack = stack_snapshot;
+            self.proto_starts = proto_starts_snapshot;
+            self.escape_stack = escape_stack_snapshot;
+            self.first_line = first_line_snapshot;
+            *non_consuming_push_at = non_consuming_push_at_snapshot;
+            ops.truncate(ops_snapshot_len.min(ops.len()));
 
-                // Advance one char past the branch_point match to avoid
-                // immediately re-matching the same `(?=...)` lookahead.
-                if let Some((i, _)) = line[match_start_pos..].char_indices().nth(1) {
-                    *start = match_start_pos + i;
-                } else {
-                    // End of line — no character to advance past.
-                    *start = line.len();
+            if is_cross_line {
+                // Re-parse each buffered line under the restored (pre-branch)
+                // state so `parse_line` can surface the corrected ops via
+                // `ParseLineOutput::replayed`. The first buffered line is the
+                // branch-creation line: emit its saved `prefix_ops` (the ops
+                // emitted before the branch match) verbatim, then advance past
+                // the branch match by one character before resuming — otherwise
+                // the same branch_point would fire again at the original match
+                // position and we'd loop.
+                //
+                // Keep `pending_lines` intact (don't drain): if an outer
+                // branch_point on this same line also fails after this
+                // exhaustion replay, its own replay needs access to the same
+                // buffered lines.
+                let truncated_lines: Vec<String> =
+                    self.pending_lines[pending_lines_snapshot_len..].to_vec();
+                let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
+                    Vec::with_capacity(truncated_lines.len());
+                for (i, replay_line) in truncated_lines.iter().enumerate() {
+                    let line_ops = if i == 0 {
+                        let mut first_line_ops = prefix_ops.clone();
+                        let resume_at = if let Some((j, _)) =
+                            replay_line[match_start_pos..].char_indices().nth(1)
+                        {
+                            match_start_pos + j
+                        } else {
+                            replay_line.len()
+                        };
+                        let tail_ops =
+                            self.parse_line_inner_from(replay_line, syntax_set, resume_at)?;
+                        first_line_ops.extend(tail_ops);
+                        first_line_ops
+                    } else {
+                        self.parse_line_inner(replay_line, syntax_set)?
+                    };
+                    replayed_ops.push(line_ops);
                 }
+                self.flushed_ops.extend(replayed_ops);
+
+                // Restart the current line from the beginning under the
+                // restored state.
+                ops.clear();
+                *start = 0;
+                *non_consuming_push_at = (0, 0);
                 search_cache.clear();
                 return Ok(true);
             }
-            self.branch_points.remove(bp_index);
-            return Ok(false); // All alternatives exhausted (cross-line)
+
+            // Same-line exhaustion: advance one char past the branch_point match
+            // to avoid immediately re-matching the same `(?=...)` lookahead.
+            if let Some((i, _)) = line[match_start_pos..].char_indices().nth(1) {
+                *start = match_start_pos + i;
+            } else {
+                // End of line — no character to advance past.
+                *start = line.len();
+            }
+            search_cache.clear();
+            return Ok(true);
         }
 
         // Determine if this is a cross-line fail (branch was created on a previous line).
@@ -1101,10 +1155,12 @@ impl ParseState {
             // branch trigger's pat.scope and the new alternative's meta
             // scope ops, then resume parsing from match_end with the new
             // alternative on the stack via `parse_line_inner_from`.
-            let truncated_lines: Vec<String> = self
-                .pending_lines
-                .drain(pending_lines_snapshot_len..)
-                .collect();
+            // Keep `pending_lines` intact (don't drain): if a second branch_point
+            // on the current line also fails after this retry, its own replay
+            // needs access to the same buffered lines. Nested branches from the
+            // same earlier line share the buffer.
+            let truncated_lines: Vec<String> =
+                self.pending_lines[pending_lines_snapshot_len..].to_vec();
 
             let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                 Vec::with_capacity(truncated_lines.len());
@@ -3419,6 +3475,121 @@ contexts:
             "inside-* meta_content_scope leaked past end of line; stack: {:?}",
             final_scopes
         );
+    }
+
+    /// Regression guard for the "cross-line branch_point exhaustion
+    /// leaves contexts on the stack forever" bug: when ALL
+    /// alternatives of a `branch_point` fail on a line *after* the
+    /// branch was created, the parser must restore the pre-branch
+    /// snapshot, truncate ops, and replay the buffered lines under
+    /// the restored state. Pre-fix, the cross-line exhaustion path
+    /// silently removed the branch record while leaving the last
+    /// alternative's pushed contexts on the state stack — 274
+    /// assertion failures in `syntax_test_typescript.ts` and
+    /// another 10 in `syntax_test_C#9.cs` cascaded from that ghost
+    /// state (`sublimehq/Packages#3598`'s incomplete
+    /// `type x = { bar: (cb: ( };` was the minimal reproducer).
+    ///
+    /// Shape: a `branch_point` with two alternatives, each with a
+    /// distinctive `meta_scope` and a `\w+` rule scoped by the
+    /// alternative. Line 1 fires the branch; alt[0] consumes the
+    /// newline and stays active. Line 2 fires `fail: bp` from
+    /// alt[0] (cross-line retry into alt[1]), then the replay puts
+    /// alt[1] on the stack, re-parses line 2, and alt[1] also fires
+    /// `fail: bp` — cross-line exhaustion. After line 2:
+    ///   - `is_speculative` must be false (branch record gone);
+    ///   - a subsequent benign line must parse under the pre-branch
+    ///     context (`main`), not under a leaked alternative. Pre-fix,
+    ///     `beta` remained on the stack and the next line's `\w+`
+    ///     scoped as `beta.word.cle` instead of `main.word.cle`.
+    #[test]
+    fn cross_line_branch_exhaustion_unwinds_state() {
+        let syntax_str = r#"
+name: CrossLineExhaustion
+scope: source.cle
+contexts:
+  main:
+    - match: 'TRY'
+      scope: trigger.cle
+      branch_point: bp
+      branch: [alpha, beta]
+    - match: '\w+'
+      scope: main.word.cle
+  alpha:
+    - meta_scope: meta.alpha.cle
+    - match: '\n'
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: alpha.word.cle
+  beta:
+    - meta_scope: meta.beta.cle
+    - match: '\n'
+    - match: 'FAIL'
+      fail: bp
+    - match: '\w+'
+      scope: beta.word.cle
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Line 1: `TRY` fires branch `bp`; alt[0] `alpha` is pushed
+        // and consumes the trailing newline, staying on the stack.
+        let _out1 = state.parse_line("TRY\n", &ss).expect("parse line 1");
+
+        // Line 2: alpha's `FAIL` rule fires `fail: bp` — cross-line
+        // retry into `beta`. The beta replay leaves beta on the
+        // stack; the re-parse of line 2 under beta hits beta's
+        // `FAIL` rule, firing `fail: bp` again with no alternatives
+        // left — cross-line exhaustion.
+        let out2 = state.parse_line("FAIL\n", &ss).expect("parse line 2");
+
+        // Exhaustion must clear every branch_point record.
+        assert!(
+            !state.is_speculative(),
+            "cross-line exhaustion must drop all branch_point records"
+        );
+
+        // The exhaustion path replays buffered lines under the
+        // restored pre-branch state, so `replayed` is non-empty.
+        assert!(
+            !out2.replayed.is_empty(),
+            "cross-line exhaustion must emit replayed ops for the pre-branch state"
+        );
+
+        // Strong invariant: the subsequent line must be parsed under
+        // `main` (the pre-branch context) — not under whichever
+        // alternative was last active. Pre-fix, `beta` stayed on the
+        // stack and `benign` would have scoped as `beta.word.cle`.
+        let out3 = state.parse_line("benign\n", &ss).expect("parse line 3");
+        let pushed: Vec<String> = out3
+            .ops
+            .iter()
+            .filter_map(|(_, op)| match op {
+                ScopeStackOp::Push(s) => Some(format!("{:?}", s)),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            pushed.iter().any(|s| s.contains("main.word.cle")),
+            "post-exhaustion line must be scoped under main; got pushes: {:?}",
+            pushed
+        );
+        for leaked in [
+            "meta.alpha.cle",
+            "meta.beta.cle",
+            "alpha.word.cle",
+            "beta.word.cle",
+        ] {
+            assert!(
+                !pushed.iter().any(|s| s.contains(leaked)),
+                "{} leaked into post-exhaustion line; got pushes: {:?}",
+                leaked,
+                pushed
+            );
+        }
     }
 
     /// Category E regression guard: a cross-line `fail` that triggers
