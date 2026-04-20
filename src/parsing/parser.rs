@@ -669,9 +669,17 @@ impl ParseState {
                         min_start = match_start;
 
                         let consuming = match_end > start;
+                        // A non-consuming `pop: N` after a non-consuming push
+                        // only loops when N == 1 — that restores the exact
+                        // pre-push stack, so the push rule fires again. With
+                        // N >= 2 the stack drops strictly below the pre-push
+                        // depth, so the outer context no longer has the same
+                        // trigger in scope (e.g. Haskell's `immediately-pop2`
+                        // as the fallback branch alternative for
+                        // `declaration-type-end`).
                         pop_would_loop = check_pop_loop
                             && !consuming
-                            && matches!(match_pat.operation, MatchOperation::Pop(_));
+                            && matches!(match_pat.operation, MatchOperation::Pop(1));
 
                         let push_too_deep = matches!(
                             match_pat.operation,
@@ -2518,6 +2526,53 @@ contexts:
         let line = "hello";
         let expect = ["<source.test>, <test.matched>"];
         expect_scope_stacks(line, &expect, syntax);
+    }
+
+    #[test]
+    fn non_consuming_pop_n_below_pre_push_depth_is_not_a_loop() {
+        // Mirror of the Haskell `declaration-type-end` branch where the
+        // fallback alternative is `immediately-pop2` (empty match with
+        // `pop: 2`). The outer wrapper's meta_scope must come off when
+        // the pop-2 fallback fires — pre-fix, the loop guard flagged
+        // any non-consuming `pop` after a non-consuming push as
+        // looping, so the parser advanced one char past the branch and
+        // the pop-2 fired at the wrong column, leaving the wrapper's
+        // scope covering the trailing `y` token.
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: open
+      scope: test.open
+      push: wrapper
+    - match: y
+      scope: test.main.y
+    - match: z
+      scope: test.main.z
+  wrapper:
+    - meta_scope: test.wrapper
+    - match: ""
+      branch_point: fallback
+      branch:
+        - try
+        - give-up
+  try:
+    - match: x
+      scope: test.try.match
+    - match: (?=y)
+      fail: fallback
+  give-up:
+    - match: ""
+      pop: 2
+"#;
+        // With the fix, `give-up` fires pop-2 at column 4 (the fail
+        // position), unwinding both `give-up` and `wrapper`; `y` is
+        // then scoped by `main`'s rule. Without the fix, would_loop
+        // advanced start past column 4, the pop-2 fired at column 5,
+        // and `y` stayed inside the wrapper and never matched
+        // `test.main.y`.
+        expect_scope_stacks("openyz", &["<source.test>, <test.main.y>"], syntax);
     }
 
     #[test]
