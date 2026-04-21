@@ -1356,7 +1356,16 @@ impl ParseState {
                     // Each deeper context's scopes are popped in
                     // top-to-bottom order: meta_content_scope first
                     // (pushed after its own meta_scope, hence above on
-                    // the stack), then meta_scope.
+                    // the stack), then meta_scope, then any Restore
+                    // paired with that context's own `clear_scopes`
+                    // (mirrors the push order Clear → meta_scope → mcs
+                    // in reverse). Without the Restore, a `pop: N`
+                    // from the top that also unwinds a deeper context
+                    // with `clear_scopes` leaves the originally cleared
+                    // atoms orphaned — observed on Python f/t-string
+                    // interpolation close, where `f-string-replacement-end`
+                    // fires `pop: 2` that also pops
+                    // `f-string-replacement-meta`.
                     for depth in 1..pop_count {
                         let level_idx = stack_len - 1 - depth;
                         let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
@@ -1371,6 +1380,9 @@ impl ParseState {
                         }
                         if !ctx.meta_scope.is_empty() {
                             ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
+                        }
+                        if ctx.clear_scopes.is_some() {
+                            ops.push((index, ScopeStackOp::Restore));
                         }
                     }
                 }
@@ -1405,9 +1417,16 @@ impl ParseState {
                     // `meta.mapping.value.json` atoms in nested JSON objects.
                     // add each context's meta scope
                     if version >= 2 {
-                        // v2: For push with multiple contexts, only apply
-                        // clear_scopes from the last (topmost) context, not
-                        // sum all of them.
+                        // Push: emit Clear for every pushed context that has
+                        // `clear_scopes`, at its own index position in the
+                        // push order — same as v1. Sublime permits at most
+                        // one `clear_scopes` per push list, but when it sits
+                        // on a non-topmost entry (e.g. Python's
+                        // `f-string-replacement-meta` at index 0 of a
+                        // 3-context push) restricting to `i == last_idx`
+                        // silently drops it, leaking the parent's
+                        // `meta_content_scope` atoms into interpolation
+                        // content.
                         //
                         // Single-context `set:` with clear_scopes on the
                         // target: emit Clear here — before target.meta_scope
@@ -1430,13 +1449,11 @@ impl ParseState {
                         // eat-whitespace-then-pop]` relies on Clear eating
                         // the last-pushed mcs atom, which Restore then
                         // replaces when eat-whitespace-then-pop pops.
-                        let last_idx = context_refs.len().saturating_sub(1);
                         let single_context_set_clear = is_set && context_refs.len() == 1;
-                        for (i, r) in context_refs.iter().enumerate() {
+                        for r in context_refs.iter() {
                             let ctx = r.resolve(syntax_set)?;
 
-                            let emit_clear_here =
-                                (!is_set && i == last_idx) || single_context_set_clear;
+                            let emit_clear_here = !is_set || single_context_set_clear;
                             if emit_clear_here {
                                 if let Some(clear_amount) = ctx.clear_scopes {
                                     ops.push((index, ScopeStackOp::Clear(clear_amount)));
@@ -1521,13 +1538,22 @@ impl ParseState {
                             // the cleared stack); re-emitting here would
                             // double-push onto clear_stack and cause Pop
                             // underflow when the context unwinds.
-                            let last_idx = context_refs.len().saturating_sub(1);
+                            //
+                            // Clear is emitted per-context (not only for the
+                            // topmost) because `clear_scopes` on a non-topmost
+                            // context is a real pattern: Bash's
+                            // `set: [def-function-body, def-function-params,
+                            // def-function-name]` has `clear_scopes: 1` on
+                            // def-function-params (middle). Each Clear is
+                            // placed just before that context's own mcs/ms
+                            // pushes so it strips the previous iteration's
+                            // last-pushed atom, matching Sublime's semantics.
                             let single_context_set_clear = is_set && context_refs.len() == 1;
                             let mut prev_embed_scope_replaces = false;
-                            for (i, r) in context_refs.iter().enumerate() {
+                            for r in context_refs.iter() {
                                 let ctx = r.resolve(syntax_set)?;
 
-                                if is_set && i == last_idx && !single_context_set_clear {
+                                if is_set && !single_context_set_clear {
                                     if let Some(clear_amount) = ctx.clear_scopes {
                                         ops.push((index, ScopeStackOp::Clear(clear_amount)));
                                     }
@@ -5163,67 +5189,74 @@ contexts:
     }
 
     #[test]
-    fn v2_set_clear_scopes_only_from_last_context() {
-        // Kills: L1029 replace && with || / == with != in push_meta_ops
-        // In v2, clear_scopes during a set should only apply from the last
-        // context, and only when `is_set` is true AND `i == last_idx`.
+    fn v2_set_clear_scopes_applies_from_every_context() {
+        // v2: when `set:` lists multiple contexts, `clear_scopes` on any of
+        // them — not just the topmost — applies at that context's own
+        // position in the stack. The canonical real-world case is Bash's
+        //   set: [def-function-body, def-function-params, def-function-name]
+        // where `def-function-params` (the middle context) carries
+        // `clear_scopes: 1`. The Clear strips the atom that the preceding
+        // context's meta_content_scope just pushed, matching Sublime
+        // Text's observed behaviour. Previously this test guessed
+        // Sublime pinned Clear to the topmost context only; running real
+        // v2 syntaxes (Bash function definitions, among others) refuted
+        // that guess.
         let syntax_str = r#"
-name: V2ClearLast
+name: V2ClearMid
 scope: source.v2clear
 version: 2
 contexts:
   main:
     - meta_scope: meta.main.v2clear
     - match: 'GO'
-      set: [ctx-b, ctx-a]
-  ctx-a:
-    - meta_scope: meta.a.v2clear
+      set: [ctx-bottom, ctx-middle, ctx-top]
+  ctx-bottom:
+    - meta_content_scope: mcs.bottom.v2clear
+  ctx-middle:
+    - clear_scopes: 1
+    - meta_content_scope: mcs.middle.v2clear
+  ctx-top:
+    - meta_content_scope: mcs.top.v2clear
     - match: '\w+'
-      scope: word.a.v2clear
-  ctx-b:
-    - clear_scopes: true
-    - meta_scope: meta.b.v2clear
-    - match: '\w+'
-      scope: word.b.v2clear
+      scope: word.top.v2clear
       pop: true
 "#;
         let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
         let ss = link(syntax);
         let mut state = ParseState::new(&ss.syntaxes()[0]);
         let raw_ops = ops(&mut state, "GO hello\n", &ss);
-
-        // ctx-a is last in the set stack (top of stack), and it has no
-        // clear_scopes.  ctx-b has clear_scopes but is NOT the last context
-        // in v2.  If the condition is inverted (|| instead of &&), clear_scopes
-        // would incorrectly apply from ctx-b.
         let states = stack_states(raw_ops);
-        // "hello" matches in ctx-a (top of stack), which should have meta.a
+
+        // "hello" matches in ctx-top. At that point ctx-middle's
+        // clear_scopes: 1 must have stripped ctx-bottom's
+        // meta_content_scope atom.
         let hello_states: Vec<_> = states
             .iter()
-            .filter(|s| s.contains("word.a.v2clear"))
+            .filter(|s| s.contains("word.top.v2clear"))
             .collect();
         assert!(
             !hello_states.is_empty(),
-            "expected word.a.v2clear, got states: {:?}",
+            "expected word.top.v2clear, got states: {:?}",
             states
         );
-        // meta.a should be present (not cleared), since ctx-a is top and has
-        // no clear_scopes of its own
-        assert!(
-            hello_states.iter().any(|s| s.contains("meta.a.v2clear")),
-            "meta.a should be present since ctx-a (last) has no clear_scopes: {:?}",
-            hello_states
-        );
-        // source.v2clear must also be present — if clear_scopes from ctx-b
-        // fires incorrectly (mutations on L1029: && → || or == → !=), the
-        // root scope would be cleared.
-        assert!(
-            hello_states
-                .iter()
-                .any(|s| s.contains("source.v2clear")),
-            "source.v2clear should not be cleared (clear_scopes should only apply from last context): {:?}",
-            hello_states
-        );
+        for s in &hello_states {
+            assert!(
+                !s.contains("mcs.bottom.v2clear"),
+                "ctx-bottom's mcs should have been cleared by ctx-middle's \
+                 clear_scopes: 1 before ctx-top's match, got: {:?}",
+                s
+            );
+            assert!(
+                s.contains("mcs.middle.v2clear"),
+                "ctx-middle's mcs should be on the stack during ctx-top's match, \
+                 got: {:?}",
+                s
+            );
+        }
+
+        // Reaching this point without a panic proves the Restore emitted on
+        // ctx-middle's pop didn't underflow the clear_stack — the
+        // regression the Bash `func () {}` minimal reproducer uncovered.
     }
 
     #[test]

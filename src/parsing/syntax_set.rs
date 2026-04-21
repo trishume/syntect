@@ -2921,9 +2921,12 @@ mod tests {
     }
 
     #[test]
-    fn v2_push_multiple_clear_scopes_only_last_applies() {
-        // Per Sublime docs (v2): when pushing multiple contexts, only the last (topmost) context's
-        // clear_scopes is applied. In v1, each context's clear_scopes is applied individually.
+    fn v2_push_multiple_clear_scopes_each_applies() {
+        // v2 push emits `Clear` for every pushed context that has
+        // `clear_scopes`, at that context's index position in the push
+        // order — same as v1. Python's f/t-string interpolation relies on
+        // this: `clear_scopes: 1` sits on `f-string-replacement-meta` at
+        // index 0 of a 3-context push, not on the topmost entry.
         use crate::parsing::ParseState;
 
         let v2_syntax = SyntaxDefinition::load_from_str(
@@ -2963,26 +2966,20 @@ mod tests {
         let mut state = ParseState::new(syntax);
         let ops = state.parse_line("go\n", &ss).unwrap().ops;
 
-        // Count Clear ops in the result
         let clear_ops: Vec<_> = ops
             .iter()
-            .filter(|(_, op)| matches!(op, ScopeStackOp::Clear(_)))
+            .filter_map(|(_, op)| match op {
+                ScopeStackOp::Clear(a) => Some(*a),
+                _ => None,
+            })
             .collect();
 
-        // v2: only ctx_b's clear_scopes (TopN(2)) should apply — exactly ONE Clear op
+        // Both ctx_a (TopN(1)) and ctx_b (TopN(2)) apply, in push order.
         assert_eq!(
-            clear_ops.len(),
-            1,
-            "v2: push [ctx_a, ctx_b] should produce exactly ONE Clear op (from ctx_b only); \
-             got: {:?}",
+            clear_ops,
+            vec![ClearAmount::TopN(1), ClearAmount::TopN(2)],
+            "v2: push [ctx_a(1), ctx_b(2)] should emit Clear(1) then Clear(2); got: {:?}",
             clear_ops
-        );
-
-        // That one Clear should be from ctx_b (TopN(2)), not ctx_a (TopN(1))
-        assert!(
-            matches!(clear_ops[0].1, ScopeStackOp::Clear(ClearAmount::TopN(2))),
-            "v2: the single Clear should be TopN(2) from ctx_b; got: {:?}",
-            clear_ops[0].1
         );
 
         // v1: both ctx_a and ctx_b apply their clear_scopes — two Clear ops
@@ -3034,6 +3031,121 @@ mod tests {
             "v1: push [ctx_a, ctx_b] should produce TWO Clear ops (one per context); \
              got: {:?}",
             v1_clear_ops
+        );
+    }
+
+    #[test]
+    fn v2_push_deeper_clear_scopes_applies_and_restores() {
+        // Pins the invariant Python f/t-string interpolation relies on:
+        // a multi-context push where a non-topmost entry carries
+        // `clear_scopes`. The Clear must fire when that entry is pushed,
+        // and a paired Restore must fire when it is popped — even when the
+        // pop reaches it via `pop: N` from a shallower context.
+        //
+        // Shape:
+        //   main mcs = "m.outer string.outer"
+        //   push  = [wrap(clear_scopes: 1, meta_scope: m.wrap), body]
+        //   body  = matches 'x' with `pop: 2` (unwinds body + wrap together,
+        //           exercising the deeper-context Restore path).
+        use crate::parsing::{ParseState, ScopeStack};
+
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+            name: V2DeeperClear
+            scope: source.deeperclear
+            file_extensions: [v2dc]
+            version: 2
+            contexts:
+              main:
+                - meta_content_scope: m.outer string.outer
+                - match: 'go'
+                  push:
+                    - wrap
+                    - body
+              wrap:
+                - clear_scopes: 1
+                - meta_scope: m.wrap
+                - include: immediately-pop
+              immediately-pop:
+                - match: ''
+                  pop: 1
+              body:
+                - match: 'x'
+                  scope: word.x
+                  pop: 2
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+        let sref = ss.find_syntax_by_name("V2DeeperClear").unwrap();
+
+        // Scope stack at each position through "go x y\n".
+        let mut state = ParseState::new(sref);
+        let mut stack = ScopeStack::new();
+        let mut scopes_at = |line: &str, cols: &[usize]| -> Vec<Vec<String>> {
+            let ops = state.parse_line(line, &ss).unwrap().ops;
+            let mut out = vec![Vec::new(); cols.len()];
+            let mut next_op = 0;
+            for (i, _) in line.char_indices() {
+                while next_op < ops.len() && ops[next_op].0 <= i {
+                    stack.apply(&ops[next_op].1).unwrap();
+                    next_op += 1;
+                }
+                if let Some(pos) = cols.iter().position(|c| *c == i) {
+                    out[pos] = stack.as_slice().iter().map(|s| s.build_string()).collect();
+                }
+            }
+            while next_op < ops.len() {
+                stack.apply(&ops[next_op].1).unwrap();
+                next_op += 1;
+            }
+            out
+        };
+
+        // col 3 = 'x' inside the push — must see m.outer, m.wrap, word.x,
+        // but NOT string.outer (cleared by wrap's clear_scopes: 1).
+        // col 5 = 'y' (any trailing byte) after the pop — string.outer
+        // must be back (Restore restored the cleared atom).
+        let line = "go x y\n";
+        let scopes = scopes_at(line, &[3, 5]);
+
+        let at_x = &scopes[0];
+        assert!(
+            at_x.iter().any(|s| s == "m.outer"),
+            "'x' should carry m.outer; got {:?}",
+            at_x
+        );
+        assert!(
+            at_x.iter().any(|s| s == "m.wrap"),
+            "'x' should carry m.wrap from the pushed wrap meta_scope; got {:?}",
+            at_x
+        );
+        assert!(
+            !at_x.iter().any(|s| s == "string.outer"),
+            "'x' should NOT carry string.outer (cleared by wrap.clear_scopes: 1); got {:?}",
+            at_x
+        );
+
+        let at_y = &scopes[1];
+        assert!(
+            at_y.iter().any(|s| s == "m.outer"),
+            "'y' should carry m.outer after pop; got {:?}",
+            at_y
+        );
+        assert!(
+            at_y.iter().any(|s| s == "string.outer"),
+            "'y' should carry string.outer after pop (Restore must fire); got {:?}",
+            at_y
+        );
+        assert!(
+            !at_y.iter().any(|s| s == "m.wrap"),
+            "'y' should NOT carry m.wrap after pop; got {:?}",
+            at_y
         );
     }
 
