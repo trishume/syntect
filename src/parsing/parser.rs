@@ -194,20 +194,34 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 /// before any inner group). Empty captures are skipped because they'd
 /// otherwise sort a Pop before its Push. The returned ops are already
 /// position-ordered and safe to append to a parser ops vec.
+///
+/// Each capture's `(cap_start, cap_end)` is clipped to the outer match
+/// range `regions.pos(0)` so a group matching inside a `(?=...)` /
+/// `(?<=...)` whose own span extends past the consumed range still
+/// colours the overlap (the boundary char) and nothing beyond it. This
+/// mirrors Sublime Text; without the clip, a lookahead-internal
+/// `captures:` entry leaked scope over unmatched trailing chars or was
+/// silently dropped upstream in `parse_captures`.
 fn build_capture_ops(capture_map: &CaptureMapping, regions: &Region) -> Vec<(usize, ScopeStackOp)> {
     let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
+    let (match_start, match_end) = match regions.pos(0) {
+        Some(bounds) => bounds,
+        None => return Vec::new(),
+    };
     for &(cap_index, ref scopes) in capture_map.iter() {
         if let Some((cap_start, cap_end)) = regions.pos(cap_index) {
-            if cap_start == cap_end {
+            let clipped_start = cap_start.max(match_start);
+            let clipped_end = cap_end.min(match_end);
+            if clipped_start >= clipped_end {
                 continue;
             }
             for scope in scopes.iter() {
                 map.push((
-                    (cap_start, -((cap_end - cap_start) as i32)),
+                    (clipped_start, -((clipped_end - clipped_start) as i32)),
                     ScopeStackOp::Push(*scope),
                 ));
             }
-            map.push(((cap_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
+            map.push(((clipped_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
         }
     }
     map.sort_by(|a, b| a.0.cmp(&b.0));
@@ -5224,6 +5238,75 @@ contexts:
         assert_eq!(
             first_word_pos, 0,
             "word.consuming must start at position 0 (consuming pop should not be treated as loop)"
+        );
+    }
+
+    #[test]
+    fn captures_clipped_to_match_bounds_when_group_extends_past_match_end() {
+        // Repro of a C# generic-function-call divergence against ST.
+        // Rule shape: a consumed identifier, then a lookahead containing
+        // a capturing group whose match extends *past* the outer rule's
+        // consumed end, then a second consumed group starting at the
+        // same column where the lookahead began. `captures: 2:` targets
+        // the lookahead-internal group. ST clips each captures:N span
+        // to the rule's match bounds and only colours the overlap —
+        // which here is the single consumed char at the match-end
+        // boundary. Syntect used to colour the full group-2 range,
+        // emitting a Pop past match_end and leaving the scope active
+        // over chars the match never consumed.
+        let syntax_str = r#"
+name: CapturesClip
+scope: source.capclip
+contexts:
+  main:
+    - match: '(foo)(?=(barrr)baz)(bar)'
+      captures:
+        1: captured-foo.capclip
+        2: lookahead-group.capclip
+        3: consumed-bar.capclip
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "foobarrrbaz\n", &ss);
+
+        // The rule consumes "foobar" — match_start=0, match_end=6.
+        // Group 2's own range (the lookahead match "barrr") extends to
+        // column 8. Every op emitted by the captures application must
+        // sit within [match_start, match_end]; anything at col 7+ means
+        // the lookahead-internal group's span leaked past the match.
+        // match_start=0, match_end=6 (rule consumes "foobar"). Group 2's
+        // own range (the lookahead match "barrr") extends to col 8.
+        //
+        // After the fix we expect:
+        //   * `lookahead-group.capclip` Pushed at col 3 (cap_start of
+        //     group 2, which overlaps the consumed region).
+        //   * The matching Pop no later than col 6 (clipped to match_end).
+        //   * No op at col 7 or 8 — anything there means the lookahead
+        //     range leaked past the match.
+        let lookahead_pushes: Vec<usize> = raw_ops
+            .iter()
+            .filter_map(|(pos, op)| match op {
+                ScopeStackOp::Push(s) if format!("{:?}", s).contains("lookahead-group") => {
+                    Some(*pos)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            lookahead_pushes,
+            vec![3],
+            "`captures: 2:` (lookahead-internal group) must Push the \
+             clipped scope at match_start=3; raw_ops={:?}",
+            raw_ops
+        );
+        let match_end = 6;
+        let past_match: Vec<_> = raw_ops.iter().filter(|(pos, _)| *pos > match_end).collect();
+        assert!(
+            past_match.is_empty(),
+            "No capture op should sit past match_end={}; found {:?}",
+            match_end,
+            past_match
         );
     }
 

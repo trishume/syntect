@@ -1,8 +1,6 @@
 loading syntax definitions from testdata/Packages
-FAILED testdata/Packages/ASP/syntax_test_asp.asp: 53
 FAILED testdata/Packages/C#/tests/syntax_test_C#11.cs: 35
 FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 3
-FAILED testdata/Packages/C#/tests/syntax_test_Generics.cs: 3
 FAILED testdata/Packages/Clojure/tests/syntax_test_clojure.clj: 1
 FAILED testdata/Packages/Clojure/tests/syntax_test_shebang.clj: 1
 FAILED testdata/Packages/D/tests/syntax_test_shebang.d: 1
@@ -17,7 +15,6 @@ FAILED testdata/Packages/PHP/tests/syntax_test_php.php: 1
 FAILED testdata/Packages/Python/tests/syntax_test_python.py: 1
 FAILED testdata/Packages/Python/tests/syntax_test_python_strings.py: 1
 FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 65
-FAILED testdata/Packages/Rails/tests/syntax_test_rails.html.erb: 23
 FAILED testdata/Packages/ShellScript/Bash/tests/syntax_test_scope.bash: 1
 FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 1
 exiting with code 1
