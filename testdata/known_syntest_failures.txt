@@ -7,7 +7,7 @@ FAILED testdata/Packages/D/tests/syntax_test_shebang.d: 1
 FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
 FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 50
 FAILED testdata/Packages/Java/tests/syntax_test_java.java: 1
-FAILED testdata/Packages/Java/tests/syntax_test_jsp.jsp: 44
+FAILED testdata/Packages/Java/tests/syntax_test_jsp.jsp: 39
 FAILED testdata/Packages/JavaScript/tests/syntax_test_typescript.ts: 1
 FAILED testdata/Packages/LaTeX/tests/syntax_test_latex.tex: 76
 FAILED testdata/Packages/Markdown/tests/syntax_test_markdown.md: 1

@@ -1722,6 +1722,50 @@ impl ParseState {
                 } else {
                     MatchOperation::Push(contexts.clone())
                 };
+                if pop_count > 0 {
+                    // ST-observed divergence from plain `pop + set:`: on
+                    // `pop + embed:` the trigger match's text sees **neither**
+                    // `cur_context.meta_scope` nor `cur_context.meta_content_scope`.
+                    // Both are suppressed on match text, then never restored
+                    // — the embed replaces cur entirely. The probe lives at
+                    // the top of `v2_pop_embed_suppresses_cur_meta_scope_on_match`.
+                    //
+                    // Emit those Pops ourselves in the initial phase, then pass
+                    // a scope-stripped cur_context through to the recursive
+                    // Set-semantic logic so its `num_to_pop` in the non-initial
+                    // phase does not double-count these atoms (they are already
+                    // off the stack). clear_scopes, with_prototype, and other
+                    // fields are preserved on the stripped context — only the
+                    // meta-scope vectors differ.
+                    //
+                    // Observed divergence on `<jsp:declaration>`'s `>`:
+                    // syntect was producing
+                    //   [..., meta.tag.jsp.declaration.begin.html,
+                    //        meta.tag.jsp.declaration.begin.html,
+                    //        punctuation.definition.tag.end.html]
+                    // because the rule's explicit
+                    //   scope: meta.tag.jsp.declaration.begin.html
+                    //          punctuation.definition.tag.end.html
+                    // was re-adding the atom that ST drops through the embed.
+                    if initial {
+                        if !cur_context.meta_content_scope.is_empty() {
+                            ops.push((
+                                index,
+                                ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                            ));
+                        }
+                        if !cur_context.meta_scope.is_empty() {
+                            ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
+                        }
+                    }
+                    let stripped = Context {
+                        meta_scope: Vec::new(),
+                        meta_content_scope: Vec::new(),
+                        ..cur_context.clone()
+                    };
+                    return self
+                        .push_meta_ops(initial, index, &stripped, &synthetic, syntax_set, ops);
+                }
                 return self.push_meta_ops(
                     initial,
                     index,
@@ -6218,5 +6262,117 @@ contexts:
                 stack_str
             );
         }
+    }
+
+    #[test]
+    fn v2_pop_embed_suppresses_cur_meta_scope_on_match() {
+        // `pop: N + embed:` trigger text must NOT carry the popped context's
+        // `meta_scope` through, unlike `pop: N + set:` which preserves both
+        // cur's and target's meta_scope on the match. Probe against ST confirms:
+        //
+        //   <tag>hi</tag>            (pop+embed)
+        //   col 4 '>'                -> ['source.host', 'end.scope']            (cur ms gone)
+        //   col 5 'h' (body)         -> ['source.host', 'embed.scope', 'guest.meta']
+        //
+        //   <tag>after               (pop+set — contrast)
+        //   col 4 '>'                -> ['source.host', 'meta.a', 'after.meta', 'end.scope']
+        //
+        // Without this guard, syntect emitted
+        //   [source.host, meta.a, meta.a, end.scope]
+        // because the rule's explicit scope atom shadowed cur.meta_scope onto
+        // itself on the trigger text — observed as 5 duplicated
+        // `meta.tag.jsp.*.begin.html` atoms on `<jsp:declaration>`/ expression/
+        // scriptlet's `>` in `syntax_test_jsp.jsp`.
+        let host = SyntaxDefinition::load_from_str(
+            r#"
+name: PopEmbedHost
+scope: source.popembed
+file_extensions: [popembed]
+version: 2
+contexts:
+  main:
+    - match: '<tag'
+      scope: begin.scope
+      push: tag-attrs
+  tag-attrs:
+    - meta_include_prototype: false
+    - meta_scope: meta.a
+    - match: '>'
+      scope: meta.a end.scope
+      pop: 1
+      embed: scope:source.popembedguest
+      embed_scope: embed.scope
+      escape: '(?=</tag)'
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+        let guest = SyntaxDefinition::load_from_str(
+            r#"
+name: PopEmbedGuest
+scope: source.popembedguest
+version: 2
+hidden: true
+contexts:
+  main:
+    - meta_scope: guest.meta
+    - match: '\w+'
+      scope: word.guest
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(host);
+        builder.add(guest);
+        let ss = builder.build();
+        let syntax = ss.find_syntax_by_name("PopEmbedHost").unwrap();
+        let mut state = ParseState::new(syntax);
+        let ops = state.parse_line("<tag>hi</tag>\n", &ss).unwrap().ops;
+
+        // Walk (range, op) pairs; after applying each op, snapshot the stack
+        // keyed by the character position we're at. The `>` match occupies
+        // col 4, so we expect the post-op snapshot at that position to have
+        // exactly ONE `meta.a` atom, not two.
+        use crate::easy::ScopeRangeIterator;
+        let line = "<tag>hi</tag>\n";
+        let mut stack = ScopeStack::new();
+        let mut at_gt: Option<Vec<String>> = None;
+        for (range, op) in ScopeRangeIterator::new(&ops, line) {
+            stack.apply(op).expect("op stream must apply cleanly");
+            // Capture the stack state for the character range covering the `>`
+            // trigger (col 4..5, the match text of the pop+embed rule).
+            if range.start <= 4 && 4 < range.end {
+                at_gt = Some(
+                    stack
+                        .as_slice()
+                        .iter()
+                        .map(|s| format!("{:?}", s))
+                        .collect(),
+                );
+            }
+        }
+        let at_gt = at_gt.expect("range covering `>` must exist in op stream");
+        let meta_a_count = at_gt.iter().filter(|s| s.contains("meta.a")).count();
+        assert_eq!(
+            meta_a_count, 1,
+            "match text of pop+embed must carry exactly one `meta.a` atom \
+             (from the rule's explicit scope); cur_context.meta_scope must \
+             not stack a second copy on top. Got stack: {:?}",
+            at_gt
+        );
+        // And `end.scope` must be the top of the stack (the match's second
+        // explicit atom) — if the ordering shifted we'd see a different trailer.
+        assert!(
+            at_gt
+                .last()
+                .map(|s| s.contains("end.scope"))
+                .unwrap_or(false),
+            "stack top on `>` must be `end.scope`, got: {:?}",
+            at_gt
+        );
     }
 }
