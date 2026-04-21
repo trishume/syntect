@@ -870,7 +870,10 @@ impl ParseState {
                 // When pop_count > 0 (pop + branch), use Set semantics to
                 // pop the current context before pushing the first alternative.
                 synthetic_op = if pop_count > 0 {
-                    MatchOperation::Set(vec![alternatives[0].clone()])
+                    MatchOperation::Set {
+                        ctx_refs: vec![alternatives[0].clone()],
+                        pop_count,
+                    }
                 } else {
                     MatchOperation::Push(vec![alternatives[0].clone()])
                 };
@@ -1396,8 +1399,16 @@ impl ParseState {
             // - the meta_content_scope of the current context is applied to the matched thing, unlike pop
             // - the clear_scopes are applied after the matched token, unlike push
             // - the interaction with meta scopes means that the token has the meta scopes of both the current scope and the new scope.
-            MatchOperation::Push(ref context_refs) | MatchOperation::Set(ref context_refs) => {
-                let is_set = matches!(*match_op, MatchOperation::Set(_));
+            MatchOperation::Push(ref context_refs)
+            | MatchOperation::Set {
+                ctx_refs: ref context_refs,
+                ..
+            } => {
+                let is_set = matches!(*match_op, MatchOperation::Set { .. });
+                let set_pop_count = match *match_op {
+                    MatchOperation::Set { pop_count, .. } => pop_count.max(1),
+                    _ => 1,
+                };
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
                     // v2: pop parent's meta_content_scope so matched text does not see it
@@ -1480,8 +1491,14 @@ impl ParseState {
                         }
                     }
                 } else {
+                    // `pop: N + set:` (set_pop_count > 1) unwinds N-1 deeper
+                    // contexts in addition to the usual set-replace semantics;
+                    // their meta_scope / meta_content_scope atoms sitting on
+                    // the scope stack must be popped off, so force repush to
+                    // fire even if the immediate contexts had no mcs/ms.
                     let repush = (is_set
-                        && (!cur_context.meta_scope.is_empty()
+                        && (set_pop_count > 1
+                            || !cur_context.meta_scope.is_empty()
                             || !cur_context.meta_content_scope.is_empty()
                             // cur has clear_scopes but no meta_scope/mcs: we still
                             // need to Pop the target.meta_scope pushed in initial,
@@ -1512,6 +1529,21 @@ impl ParseState {
                             } else {
                                 num_to_pop += cur_context.meta_content_scope.len()
                                     + cur_context.meta_scope.len();
+                            }
+                            // For `pop: N + set:` (set_pop_count > 1), also
+                            // unwind the N-1 deeper contexts' scope atoms. They
+                            // were pushed when those contexts entered; without
+                            // this they'd linger on the stack under the new
+                            // target's meta_scope.
+                            if set_pop_count > 1 {
+                                let stack_len = self.stack.len();
+                                for depth in 1..set_pop_count.min(stack_len) {
+                                    let level_idx = stack_len - 1 - depth;
+                                    let ctx =
+                                        syntax_set.get_context(&self.stack[level_idx].context)?;
+                                    num_to_pop +=
+                                        ctx.meta_content_scope.len() + ctx.meta_scope.len();
+                                }
                             }
                         }
 
@@ -1603,7 +1635,10 @@ impl ParseState {
                 // popping the current context's meta scopes before pushing the
                 // embedded contexts' meta scopes.
                 let synthetic = if pop_count > 0 {
-                    MatchOperation::Set(contexts.clone())
+                    MatchOperation::Set {
+                        ctx_refs: contexts.clone(),
+                        pop_count,
+                    }
                 } else {
                     MatchOperation::Push(contexts.clone())
                 };
@@ -1626,7 +1661,10 @@ impl ParseState {
                 // At exec time, Branch is transformed into a synthetic Push/Set before
                 // calling push_meta_ops, so this arm is a safety fallback.
                 let synthetic = if pop_count > 0 {
-                    MatchOperation::Set(alternatives.clone())
+                    MatchOperation::Set {
+                        ctx_refs: alternatives.clone(),
+                        pop_count,
+                    }
                 } else {
                     MatchOperation::Push(alternatives.clone())
                 };
@@ -1670,11 +1708,28 @@ impl ParseState {
                 }
                 (contexts, None, true)
             }
-            MatchOperation::Set(ref ctx_refs) => {
+            MatchOperation::Set {
+                ref ctx_refs,
+                pop_count,
+            } => {
                 // a `with_prototype` stays active when the context is `set`
                 // until the context layer in the stack (where the `with_prototype`
-                // was initially applied) is popped off.
-                (ctx_refs, self.stack.pop().map(|s| s.prototypes), false)
+                // was initially applied) is popped off. With `pop: N + set:`
+                // (pop_count > 1), the topmost popped frame's prototypes are
+                // what carry forward onto the new push.
+                let pops = pop_count.max(1);
+                let old_proto_ids = self.stack.pop().map(|s| s.prototypes);
+                for _ in 1..pops {
+                    self.stack.pop();
+                }
+                // Prune branch_points / escape_stack against the *final* stack
+                // length (after the common push loop below), so a branch_point
+                // captured at the pre-set depth survives a pop-1 + push-1 set
+                // — the depth the bp references is still valid after the push.
+                let final_len = self.stack.len() + ctx_refs.len();
+                self.branch_points.retain(|bp| bp.stack_depth <= final_len);
+                self.escape_stack.retain(|e| e.stack_depth < final_len);
+                (ctx_refs, old_proto_ids, false)
             }
             MatchOperation::Pop(n) => {
                 for _ in 0..n {

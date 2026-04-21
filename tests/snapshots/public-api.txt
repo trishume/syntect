@@ -695,7 +695,9 @@ pub syntect::parsing::syntax_definition::MatchOperation::Fail(alloc::string::Str
 pub syntect::parsing::syntax_definition::MatchOperation::None
 pub syntect::parsing::syntax_definition::MatchOperation::Pop(usize)
 pub syntect::parsing::syntax_definition::MatchOperation::Push(alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
-pub syntect::parsing::syntax_definition::MatchOperation::Set(alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
+pub syntect::parsing::syntax_definition::MatchOperation::Set
+pub syntect::parsing::syntax_definition::MatchOperation::Set::ctx_refs: alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>
+pub syntect::parsing::syntax_definition::MatchOperation::Set::pop_count: usize
 impl core::clone::Clone for syntect::parsing::syntax_definition::MatchOperation
 pub fn syntect::parsing::syntax_definition::MatchOperation::clone(&self) -> syntect::parsing::syntax_definition::MatchOperation
 impl core::cmp::Eq for syntect::parsing::syntax_definition::MatchOperation

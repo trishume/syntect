@@ -386,13 +386,22 @@ impl SyntaxDefinition {
                     alternatives,
                     pop_count: y as usize,
                 }
+            } else if let Ok(s) = get_key(map, "set", Some) {
+                // `pop: N + set: X` pops N contexts then pushes X.
+                MatchOperation::Set {
+                    ctx_refs: SyntaxDefinition::parse_pushargs(s, state, contexts, namer)?,
+                    pop_count: y as usize,
+                }
             } else {
                 MatchOperation::Pop(y as usize)
             }
         } else if let Ok(y) = get_key(map, "push", Some) {
             MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
         } else if let Ok(y) = get_key(map, "set", Some) {
-            MatchOperation::Set(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
+            MatchOperation::Set {
+                ctx_refs: SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?,
+                pop_count: 1,
+            }
         } else if let Ok(y) = get_key(map, "branch", |x| x.as_vec()) {
             let branch_point = get_key(map, "branch_point", |x| x.as_str())?;
             let alternatives: Vec<ContextReference> = y
