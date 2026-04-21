@@ -1757,12 +1757,18 @@ impl ParseState {
             let level = &self.stack[self.stack.len() - 1];
             let ctx = syntax_set.get_context(&level.context)?;
 
-            // Pop meta_content_scope
+            // Pop meta_content_scope.  If the context below has
+            // embed_scope_replaces (it's a v2 embed_scope wrapper), the top
+            // context is the embedded syntax's main — whose mcs was never
+            // pushed on the way in — so skip the pop here too.  Gating this
+            // on `current_syntax_version >= 2` would be wrong: the version
+            // is read from the top context (the embedded syntax), but
+            // embed_scope_replaces is set only by the v2 host syntax.  A v2
+            // host embedding a v1 grammar (e.g. Rails HTML embedding Ruby)
+            // would otherwise Pop a scope that was never pushed, misaligning
+            // every scope below until the escape closes.
             if !ctx.meta_content_scope.is_empty() {
-                // v2: check if context below has embed_scope_replaces
-                let version = self.current_syntax_version(syntax_set);
-                let skip = version >= 2
-                    && self.stack.len() >= 2
+                let skip = self.stack.len() >= 2
                     && syntax_set
                         .get_context(&self.stack[self.stack.len() - 2].context)
                         .map(|c| c.embed_scope_replaces)
@@ -5311,6 +5317,95 @@ contexts:
         assert!(
             final_scopes.iter().any(|s| s.contains("source.v2skip")),
             "source.v2skip should remain on stack after all ops, got: {:?}",
+            final_scopes
+        );
+    }
+
+    #[test]
+    fn v2_host_embedding_v1_guest_skips_meta_content_pop_on_escape() {
+        // Regression for the Rails html.erb syntest cluster: when a v2 host
+        // uses `embed:` + `embed_scope:` to pull in a v1 guest grammar (e.g.
+        // Rails/HTML embedding Ruby), `embed_scope_replaces` is set on the
+        // wrapper context. On escape, the embedded guest's meta_content_scope
+        // must be skipped — it was never pushed on the way in.
+        //
+        // The exec_escape skip logic was gated on
+        // `current_syntax_version() >= 2`, which reads the version from the
+        // top-of-stack context. That is the *guest* (Ruby, v1), not the host,
+        // so the gate evaluated false and a spurious Pop fired for a scope
+        // that was never pushed, misaligning every scope on the stack for
+        // the remainder of the host context.
+        use crate::parsing::ScopeStack;
+
+        let host = SyntaxDefinition::load_from_str(
+            r#"
+name: V2HostV1Guest
+scope: source.v2host
+file_extensions: [v2host]
+version: 2
+contexts:
+  main:
+    - match: '<<'
+      embed: scope:source.v1guest
+      embed_scope: meta.embedded.v2host
+      escape: '>>'
+      escape_captures:
+        0: punctuation.end.v2host
+    - match: '\w+'
+      scope: word.v2host
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        // Guest omits `version:` — defaults to 1. Its `scope:` lands in the
+        // main context's meta_content_scope (source.v1guest), which the
+        // v2 embed_scope_replaces suppresses on push. The escape must
+        // symmetrically suppress it on pop.
+        let guest = SyntaxDefinition::load_from_str(
+            r#"
+name: V1Guest
+scope: source.v1guest
+file_extensions: [v1guest]
+contexts:
+  main:
+    - match: '\w+'
+      scope: keyword.v1guest
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(host);
+        builder.add(guest);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("V2HostV1Guest").unwrap();
+        let mut state = ParseState::new(syntax);
+        let raw_ops = state.parse_line("<<x>> hello\n", &ss).unwrap().ops;
+
+        // Before the fix, the escape emits a Pop for guest main's mcs even
+        // though it was never pushed. Subsequent Pops then strip scopes
+        // that should have survived. Applying the op stream must not fail,
+        // and source.v2host must remain on the stack at the end.
+        let mut scope_stack = ScopeStack::new();
+        for (_, op) in &raw_ops {
+            scope_stack.apply(op).expect(
+                "applying op stream must succeed — a spurious Pop indicates the skip was gated \
+                 on the guest's syntax version instead of the embed_scope_replaces flag",
+            );
+        }
+        let final_scopes: Vec<String> = scope_stack
+            .as_slice()
+            .iter()
+            .map(|s| format!("{:?}", s))
+            .collect();
+        assert!(
+            final_scopes.iter().any(|s| s.contains("source.v2host")),
+            "source.v2host should remain after escape; got: {:?}",
             final_scopes
         );
     }
