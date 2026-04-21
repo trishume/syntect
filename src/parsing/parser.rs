@@ -953,8 +953,20 @@ impl ParseState {
         search_cache: &mut SearchCache,
         syntax_set: &SyntaxSet,
     ) -> Result<bool, ParsingError> {
-        // Find the branch point by name (most recent first)
-        let bp_index = self.branch_points.iter().rposition(|bp| bp.name == name);
+        // Find the branch point by name (most recent first), skipping
+        // records whose alternative's pushed frame is no longer on
+        // the stack. The alternative lives at
+        // `bp.stack_depth - bp.pop_count + 1`, so `stack.len() >
+        // bp.stack_depth - bp.pop_count` means the frame is still
+        // present. Without this skip, a nested `branch_point` with
+        // the same name whose inner alternative popped cleanly would
+        // shadow an enclosing record via `rposition`, rewinding to
+        // the inner branch position instead of the outer one
+        // (Haskell's raw-string QQ `[r|[a-zA-Z]|]`).
+        let stack_len = self.stack.len();
+        let bp_index = self.branch_points.iter().rposition(|bp| {
+            bp.name == name && stack_len > bp.stack_depth.saturating_sub(bp.pop_count)
+        });
         let bp_index = match bp_index {
             Some(i) => i,
             None => return Ok(false), // No such branch point, fail is no-op
@@ -4647,6 +4659,100 @@ contexts:
         assert!(
             !states.iter().any(|s| s.contains("outer.fallback")),
             "outer branch should not have failed, got: {:?}",
+            states
+        );
+    }
+
+    /// Regression guard for the Haskell raw-string quasi-quote bug.
+    ///
+    /// Haskell's `brackets` context routes `[` through
+    /// `branch_point: list-or-quasiquote` with alternatives
+    /// `[list, quasi-quote]`. The `list` alternative matches `[` and
+    /// `set: list-body`; `list-body` includes `list-fail` whose
+    /// `\|\]` rule fires `fail: list-or-quasiquote` to fall back to
+    /// the quasi-quote alternative. When a quasi-quote body contains
+    /// a bracket expression (e.g. the regex raw string
+    /// `[r|[a-zA-Z]+|]`), the nested `[` reopens `brackets`, creating
+    /// a second `branch_point` with the same name. Its `list`
+    /// alternative resolves cleanly when the nested `]` fires. Before
+    /// the fix, the inner branch_point record stayed in the vec
+    /// (the Pop retain predicate was `bp.stack_depth <= stack.len()`,
+    /// non-strict), and a later `fail: list-or-quasiquote` from the
+    /// outer list-body `rposition`'d onto the stale inner record,
+    /// rewinding to the inner `[` instead of the outer one. The outer
+    /// list's meta_scope stayed on the stack and the quasi-quote
+    /// alternative never fired — cascading into ~90 col-weighted
+    /// syntest failures across the raw-string QQ examples in
+    /// `syntax_test_haskell.hs`.
+    ///
+    /// Shape mirrors Haskell: `brackets` is the branch point,
+    /// alternatives are thin wrappers that `set:` onto their real
+    /// bodies, so the bp's `stack_depth` lines up with the eventual
+    /// content-body depth.
+    #[test]
+    fn nested_same_name_branch_point_outer_fail_replays_outer() {
+        let syntax_str = r#"
+name: NestedSameNameBranch
+scope: source.nested-same-name-branch
+contexts:
+  main:
+    - include: brackets
+
+  brackets:
+    - match: '(?=\[)'
+      branch_point: bp
+      branch: [list, quasi]
+
+  list:
+    - match: '\['
+      scope: list.open
+      set: list-body
+
+  list-body:
+    - meta_scope: list.body
+    - match: '\|\]'
+      fail: bp
+    - match: '\]'
+      scope: list.close
+      pop: true
+    - include: brackets
+    - match: '\w+'
+      scope: list.word
+
+  quasi:
+    - match: '\['
+      scope: quasi.open
+      set: quasi-body
+
+  quasi-body:
+    - meta_scope: quasi.body
+    - match: '\|\]'
+      scope: quasi.close
+      pop: true
+    - match: '.'
+      scope: quasi.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // `[x[y]|]` — outer `[` opens bp (list first). list sets
+        // list-body. Inside, `x` is a word, then nested `[y]` opens a
+        // second bp whose list alternative resolves via `]`. Outer
+        // list-body then hits `|]` and fires `fail: bp`. Expected:
+        // outer's quasi alternative takes over — everything inside
+        // `[...|]` ends up as `quasi.body` / `quasi.char`, with no
+        // `list.body` meta_scope leaking past the replay.
+        let line_ops = ops(&mut state, "[x[y]|]\n", &ss);
+        let states = stack_states(line_ops);
+        assert!(
+            states.iter().any(|s| s.contains("quasi.body")),
+            "expected quasi.body after outer fail replay, got: {:?}",
+            states
+        );
+        assert!(
+            !states.iter().any(|s| s.contains("list.body")),
+            "list.body meta_scope leaked past outer fail replay, got: {:?}",
             states
         );
     }
