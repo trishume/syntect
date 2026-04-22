@@ -24,7 +24,7 @@ features = ["metadata"]
 [dependencies]
 yaml-rust2 = { version = "0.10.4", optional = true, default-features = false }
 onig = { version = "6.5.1", optional = true, default-features = false }
-fancy-regex = { git = "https://github.com/fancy-regex/fancy-regex", branch = "find_not_empty", optional = true }
+fancy-regex = { version = "0.18.0", optional = true }
 walkdir = "2.5"
 regex-syntax = { version = "0.8", optional = true }
 plist = { version = "1.8", optional = true }
