@@ -90,6 +90,12 @@ pub struct ParseState {
     /// cross-line `fail` replay. Only the strings are stored; the ops are
     /// returned to callers immediately (same as before).
     pending_lines: Vec<String>,
+    /// Snapshot of `shadow` at the start of each buffered line in
+    /// `pending_lines`. Used by the cross-line-fail replay to restore
+    /// `shadow` to its state at the first replayed line's beginning, so
+    /// the shadow mirrors what the consumer does (reset + apply
+    /// replayed).
+    pending_line_start_shadows: Vec<ScopeStack>,
     /// Corrected ops produced by a cross-line `fail` replay, to be returned
     /// as `ParseLineOutput::replayed` at the end of `parse_line`.
     flushed_ops: Vec<Vec<(usize, ScopeStackOp)>>,
@@ -99,6 +105,17 @@ pub struct ParseState {
     /// strict precedence over normal patterns — it is checked first and can
     /// truncate the search region.
     escape_stack: Vec<EscapeEntry>,
+    /// Mirror of the consumer's scope stack. Updated at `parse_line`
+    /// boundaries (not mid-line) from the returned `ops` and
+    /// `replayed`, mirroring the consumer's behaviour (reset to the
+    /// first-replayed line's start, then apply replayed, then apply
+    /// current ops). `exec_escape` uses it to detect orphan atoms left
+    /// on the consumer's stack by a prior cross-line replay whose
+    /// later same-line fails truncated the owning context out of
+    /// `self.stack` (the Push for the atom is committed in
+    /// `flushed_ops`, so it can't be taken back by `ops.truncate`) —
+    /// and emits a balancing Pop before the normal escape pops.
+    shadow: ScopeStack,
 }
 
 /// A resolved escape pattern from an `embed` operation, stored on the escape stack.
@@ -336,9 +353,11 @@ impl ParseState {
             branch_points: Vec::new(),
             line_number: 0,
             pending_lines: Vec::new(),
+            pending_line_start_shadows: Vec::new(),
             flushed_ops: Vec::new(),
             warnings: Vec::new(),
             escape_stack: Vec::new(),
+            shadow: ScopeStack::new(),
         }
     }
 
@@ -385,18 +404,50 @@ impl ParseState {
         });
         self.line_number += 1;
 
+        // Snapshot the shadow before parsing this line — if the parse ends
+        // with live branch_points we'll buffer this value alongside the
+        // line string so a future cross-line fail can restore the shadow
+        // to "state at start of first replayed line" (mirroring the
+        // consumer's reset behaviour in `syntest`).
+        let shadow_at_start = self.shadow.clone();
+        let pending_lines_before = self.pending_lines.len();
+
         let ops = self.parse_line_inner(line, syntax_set)?;
 
         // Collect any corrected ops produced by a cross-line `fail` during the
         // parse above.  These are stored by `handle_fail` in `self.flushed_ops`.
         let replayed = std::mem::take(&mut self.flushed_ops);
 
+        // Update shadow to reflect consumer's view at end of this line.
+        // The consumer (see `syntest`) resets its scope stack to
+        // `parsed_line_buffer[start_idx].stack_before` when `replayed` is
+        // non-empty, then applies replayed then applies current-line ops.
+        // Mirror that here so `shadow` matches the consumer downstream.
+        if !replayed.is_empty() {
+            let start_idx = pending_lines_before
+                .checked_sub(replayed.len())
+                .unwrap_or(0);
+            if let Some(snap) = self.pending_line_start_shadows.get(start_idx) {
+                self.shadow = snap.clone();
+            }
+            for line_ops in &replayed {
+                for (_, op) in line_ops {
+                    let _ = self.shadow.apply(op);
+                }
+            }
+        }
+        for (_, op) in &ops {
+            let _ = self.shadow.apply(op);
+        }
+
         // Keep the line string for potential future cross-line replay.
         if !self.branch_points.is_empty() {
             self.pending_lines.push(line.to_string());
+            self.pending_line_start_shadows.push(shadow_at_start);
         } else {
             // No active branch points: any buffered strings are stale.
             self.pending_lines.clear();
+            self.pending_line_start_shadows.clear();
         }
 
         let warnings = std::mem::take(&mut self.warnings);
@@ -1956,6 +2007,47 @@ impl ParseState {
         let entry = &self.escape_stack[escape_idx];
         let target_depth = entry.stack_depth;
         let escape_captures = entry.captures.clone();
+
+        // Drain orphan scope atoms left on the consumer's scope stack by
+        // a prior cross-line replay whose later same-line fails
+        // truncated the owning context out of `self.stack` — the Push
+        // was committed to `flushed_ops` and can't be unwound by
+        // `ops.truncate`, so we emit a balancing Pop here. Without this,
+        // e.g. LaTeX `\end{lstlisting}` leaves
+        // `meta.environment.verbatim.lstlisting.latex` on the stack
+        // because a speculative `meta.path.java` atom pushed inside the
+        // embedded Java shifts every subsequent Pop by one.
+        //
+        // `shadow` mirrors what the consumer will actually hold at this
+        // point: end-of-prior-line shadow + ops-so-far on the current
+        // line. `expected_depth` is what the consumer *should* have
+        // based on `self.stack`'s meta_scope / meta_content_scope
+        // contributions (with the v2 `embed_scope_replaces` mcs gating
+        // applied below, matching the pop loop).
+        let mut current_shadow = self.shadow.clone();
+        for (_, op) in ops.iter() {
+            let _ = current_shadow.apply(op);
+        }
+        let consumer_depth = current_shadow.as_slice().len();
+        let expected_depth: usize = {
+            let mut total = 0usize;
+            let mut prev_embed_scope_replaces = false;
+            for lvl in &self.stack {
+                let ctx = syntax_set.get_context(&lvl.context)?;
+                total += ctx.meta_scope.len();
+                if !prev_embed_scope_replaces {
+                    total += ctx.meta_content_scope.len();
+                }
+                prev_embed_scope_replaces = ctx.embed_scope_replaces;
+            }
+            total
+        };
+        if consumer_depth > expected_depth {
+            ops.push((
+                match_start,
+                ScopeStackOp::Pop(consumer_depth - expected_depth),
+            ));
+        }
 
         // Pop all stack levels down to target_depth, emitting proper meta scope pops
         while self.stack.len() > target_depth {
