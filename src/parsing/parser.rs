@@ -120,6 +120,29 @@ pub struct ParseState {
     /// `flushed_ops`, so it can't be taken back by `ops.truncate`) —
     /// and emits a balancing Pop before the normal escape pops.
     shadow: ScopeStack,
+    /// Active while `handle_fail` recurses into `parse_line_inner*` to
+    /// replay a buffered past line under a new alternative. Overrides
+    /// the "current line" / "pending_lines slot" bookkeeping that
+    /// branches created during the re-parse record, so they anchor to
+    /// the replay line `L+i` rather than the outer `parse_line`'s
+    /// current line. Without it, a later fail on the outer line
+    /// misclassifies the replay-born branch as same-line and applies
+    /// its replay-line-relative `match_start` to a shorter outer line
+    /// (the byte-20-out-of-13 panic on `syntax_test_java.java:10263`
+    /// inside `@MultiLineAnnotation(...)`).
+    replay_ctx: Option<ReplayCtx>,
+}
+
+/// Bookkeeping override used while `handle_fail` is re-parsing a
+/// buffered past line. See the `replay_ctx` field on `ParseState`.
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ReplayCtx {
+    /// Virtual "current line" of the inner re-parse (`bp.line_number + i`).
+    line_number: usize,
+    /// Slot in `self.pending_lines` that a branch created during this
+    /// replay iteration should record as its snapshot length, so a
+    /// future cross-line fail replays from `L+i` onward.
+    pending_lines_snapshot_offset: usize,
 }
 
 /// A resolved escape pattern from an `embed` operation, stored on the escape stack.
@@ -363,6 +386,7 @@ impl ParseState {
             warnings: Vec::new(),
             escape_stack: Vec::new(),
             shadow: ScopeStack::new(),
+            replay_ctx: None,
         }
     }
 
@@ -959,6 +983,14 @@ impl ParseState {
                 // keyword's own scopes so a same-line fail rewind can
                 // re-emit them (they were truncated off `ops` along
                 // with the alt[0]'s subsequent work).
+                // When `handle_fail` is mid-replay, `self.line_number` /
+                // `self.pending_lines` still reflect the *outer* current
+                // line — read through `replay_ctx` so a branch born
+                // during replay anchors to the virtual replay line `L+i`.
+                let (bp_line_number, bp_pending_lines_snapshot_len) = match &self.replay_ctx {
+                    Some(ctx) => (ctx.line_number, ctx.pending_lines_snapshot_offset),
+                    None => (self.line_number.saturating_sub(1), self.pending_lines.len()),
+                };
                 let bp = BranchPoint {
                     name: name.clone(),
                     next_alternative: 1, // 0 is about to be pushed
@@ -968,13 +1000,13 @@ impl ParseState {
                     match_start: *start, // position before this match's advance
                     trigger_match_start: match_start,
                     pat_scope: pat.scope.clone(),
-                    line_number: self.line_number.saturating_sub(1), // current line (already incremented)
+                    line_number: bp_line_number,
                     ops_snapshot_len: ops.len(),
                     stack_depth: self.stack.len(),
                     non_consuming_push_at_snapshot: *non_consuming_push_at,
                     first_line_snapshot: self.first_line,
                     with_prototype: pat.with_prototype.clone(),
-                    pending_lines_snapshot_len: self.pending_lines.len(),
+                    pending_lines_snapshot_len: bp_pending_lines_snapshot_len,
                     escape_stack_snapshot: self.escape_stack.clone(),
                     pop_count,
                     prefix_ops: ops.clone(),
@@ -1102,7 +1134,15 @@ impl ParseState {
             None => return Ok(false), // No such branch point, fail is no-op
         };
 
-        let cur_line = self.line_number.saturating_sub(1);
+        // During a replay recursion, `cur_line` is the virtual replay
+        // line — without this override a same-line fail fired inside
+        // the re-parse would be misclassified as cross-line, and a
+        // fail on the outer line for a branch created during replay
+        // would be misclassified as same-line.
+        let cur_line = match &self.replay_ctx {
+            Some(ctx) => ctx.line_number,
+            None => self.line_number.saturating_sub(1),
+        };
         let bp = &self.branch_points[bp_index];
 
         // Check validity: not >128 lines old
@@ -1148,6 +1188,7 @@ impl ParseState {
             // stack with `meta.type.js, meta.group.js` — 274 cascading
             // assertion failures in `syntax_test_typescript.ts`.
             let is_cross_line = bp.line_number < cur_line;
+            let bp_line_number = bp.line_number;
             let stack_snapshot = bp.stack_snapshot.clone();
             let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
             let escape_stack_snapshot = bp.escape_stack_snapshot.clone();
@@ -1185,8 +1226,13 @@ impl ParseState {
                 let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                     Vec::with_capacity(truncated_lines.len());
                 for (i, replay_line) in truncated_lines.iter().enumerate() {
-                    let line_ops = if i == 0 {
-                        let mut first_line_ops = prefix_ops.clone();
+                    // Tag branches created during this iteration with
+                    // the replay line's identity, not the outer line's.
+                    let prev_replay_ctx = self.replay_ctx.replace(ReplayCtx {
+                        line_number: bp_line_number + i,
+                        pending_lines_snapshot_offset: pending_lines_snapshot_len + i,
+                    });
+                    let inner_result = if i == 0 {
                         let resume_at = if let Some((j, _)) =
                             replay_line[match_start_pos..].char_indices().nth(1)
                         {
@@ -1194,12 +1240,18 @@ impl ParseState {
                         } else {
                             replay_line.len()
                         };
-                        let tail_ops =
-                            self.parse_line_inner_from(replay_line, syntax_set, resume_at)?;
+                        self.parse_line_inner_from(replay_line, syntax_set, resume_at)
+                    } else {
+                        self.parse_line_inner(replay_line, syntax_set)
+                    };
+                    self.replay_ctx = prev_replay_ctx;
+                    let tail_ops = inner_result?;
+                    let line_ops = if i == 0 {
+                        let mut first_line_ops = prefix_ops.clone();
                         first_line_ops.extend(tail_ops);
                         first_line_ops
                     } else {
-                        self.parse_line_inner(replay_line, syntax_set)?
+                        tail_ops
                     };
                     replayed_ops.push(line_ops);
                 }
@@ -1230,6 +1282,7 @@ impl ParseState {
         let is_cross_line = bp.line_number < cur_line;
 
         // Extract everything we need from bp before mutating self.
+        let bp_line_number = bp.line_number;
         let next_alt_index = bp.next_alternative;
         let next_alt = bp.alternatives[next_alt_index].clone();
         let match_start_pos = bp.match_start;
@@ -1311,6 +1364,19 @@ impl ParseState {
             let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                 Vec::with_capacity(truncated_lines.len());
             for (i, replay_line) in truncated_lines.iter().enumerate() {
+                // Tag branches created during this iteration with the
+                // replay line's identity, not the outer line's.
+                let prev_replay_ctx = self.replay_ctx.replace(ReplayCtx {
+                    line_number: bp_line_number + i,
+                    pending_lines_snapshot_offset: pending_lines_snapshot_len + i,
+                });
+                let inner_result = if i == 0 {
+                    self.parse_line_inner_from(replay_line, syntax_set, match_start_pos)
+                } else {
+                    self.parse_line_inner(replay_line, syntax_set)
+                };
+                self.replay_ctx = prev_replay_ctx;
+                let tail_ops = inner_result?;
                 let line_ops = if i == 0 {
                     // First buffered line: compose prefix + branch ops + resume.
                     let mut first_line_ops = prefix_ops.clone();
@@ -1343,13 +1409,10 @@ impl ParseState {
                     for scope in context.meta_content_scope.iter() {
                         first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
                     }
-                    // Resume parsing from the branch match's end position.
-                    let tail_ops =
-                        self.parse_line_inner_from(replay_line, syntax_set, match_start_pos)?;
                     first_line_ops.extend(tail_ops);
                     first_line_ops
                 } else {
-                    self.parse_line_inner(replay_line, syntax_set)?
+                    tail_ops
                 };
                 replayed_ops.push(line_ops);
             }
@@ -6582,6 +6645,106 @@ contexts:
                     i,
                     pos,
                     line_lens[i],
+                    op,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn replay_born_branch_routes_as_cross_line_on_later_fail() {
+        // A branch created while `handle_fail` is re-parsing a past buffered
+        // line must record the *replay line's* number, not the outer
+        // `parse_line`'s current line. Otherwise `handle_fail`'s later
+        // `is_cross_line = bp.line_number < cur_line` sees equal values on
+        // the second fail, routes into the same-line path, and applies
+        // `bp.match_start` (a byte offset into the long replay line) to a
+        // shorter outer line. That shipped as the `byte index N out of
+        // bounds` panic on `syntax_test_java.java:10263` (`  foo = BAR,\n`)
+        // and on `syntax_test_markdown.md` under multi-line math blocks.
+        let syntax_str = r#"
+name: ReplayBornBranch
+scope: source.rbb
+contexts:
+  main:
+    - match: 'A'
+      branch_point: bp1
+      branch: [a1, a2]
+  a1:
+    - match: '(?=FAIL1)'
+      fail: bp1
+    - match: '.'
+  a2:
+    - match: 'B'
+      branch_point: bp2
+      branch: [b1, b2]
+    - match: '.'
+  b1:
+    - match: '(?=FAIL2)'
+      fail: bp2
+    - match: '.'
+  b2:
+    - match: '.*'
+      scope: b2.fallback
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Long line 1 so `B` sits past the short outer line's length; bp2's
+        // replay-relative `match_start` would OOB a same-line rewind there.
+        let line1 = "A pad pad pad pad pad pad pad pad pad pad B tail\n";
+        assert!(line1.find('B').unwrap() > "FAIL2\n".len());
+
+        let out1 = state.parse_line(line1, &ss).expect("line 1 parses");
+        assert!(out1.replayed.is_empty());
+
+        // First cross-line fail: swap bp1 → a2. During a2's replay of line 1,
+        // `B` fires bp2 and records (with the fix) `line_number = 0` and
+        // `pending_lines_snapshot_len = 0` — anchored to line 1, not line 2.
+        let out2 = state.parse_line("FAIL1\n", &ss).expect("line 2 parses");
+        assert_eq!(out2.replayed.len(), 1, "bp1 replay covers line 1");
+
+        // Second cross-line fail: bp2 must be classified cross-line on this
+        // outer line. With the fix it is (line 0 < line 2), so the handler
+        // takes the replay path and re-parses past buffered lines under b2.
+        // Without the fix bp2 appears same-line (line 2 == line 2) and the
+        // handler applies `match_start` = offset-of-B-in-line1 to the
+        // 6-byte outer line, corrupting ops / panicking downstream.
+        let outer = "FAIL2\n";
+        let out3 = state.parse_line(outer, &ss).expect("line 3 parses");
+
+        // Cross-line classification fired a second replay covering the
+        // two buffered lines (line 1 + line 2).
+        assert_eq!(
+            out3.replayed.len(),
+            2,
+            "expected replay from bp2's cross-line fail to cover both buffered lines, got {}: {:?}",
+            out3.replayed.len(),
+            out3.replayed,
+        );
+
+        // Panic guard: every op offset in both `ops` and `replayed` must
+        // fit within its paired line's byte length.
+        for (pos, op) in &out3.ops {
+            assert!(
+                *pos <= outer.len(),
+                "outer op past EOL: pos={} len={} op={:?}",
+                pos,
+                outer.len(),
+                op,
+            );
+        }
+        let replay_lines = [line1, "FAIL1\n"];
+        for (i, line_ops) in out3.replayed.iter().enumerate() {
+            for (pos, op) in line_ops {
+                assert!(
+                    *pos <= replay_lines[i].len(),
+                    "replayed[{}] op past EOL: pos={} len={} op={:?}",
+                    i,
+                    pos,
+                    replay_lines[i].len(),
                     op,
                 );
             }
