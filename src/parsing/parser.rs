@@ -97,8 +97,12 @@ pub struct ParseState {
     /// replayed).
     pending_line_start_shadows: Vec<ScopeStack>,
     /// Corrected ops produced by a cross-line `fail` replay, to be returned
-    /// as `ParseLineOutput::replayed` at the end of `parse_line`.
+    /// as `ParseLineOutput::replayed` at the end of `parse_line`. When
+    /// populated, entry `i` corresponds to `pending_lines[flushed_ops_start + i]`.
     flushed_ops: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// Pending-lines index that `flushed_ops[0]` maps to when `flushed_ops`
+    /// is non-empty. Reset to `None` between `parse_line` calls.
+    flushed_ops_start: Option<usize>,
     /// Warnings accumulated during parsing, drained into `ParseLineOutput`.
     warnings: Vec<String>,
     /// Active escape patterns from embed operations. The escape regex takes
@@ -355,6 +359,7 @@ impl ParseState {
             pending_lines: Vec::new(),
             pending_line_start_shadows: Vec::new(),
             flushed_ops: Vec::new(),
+            flushed_ops_start: None,
             warnings: Vec::new(),
             escape_stack: Vec::new(),
             shadow: ScopeStack::new(),
@@ -417,6 +422,7 @@ impl ParseState {
         // Collect any corrected ops produced by a cross-line `fail` during the
         // parse above.  These are stored by `handle_fail` in `self.flushed_ops`.
         let replayed = std::mem::take(&mut self.flushed_ops);
+        self.flushed_ops_start = None;
 
         // Update shadow to reflect consumer's view at end of this line.
         // The consumer (see `syntest`) resets its scope stack to
@@ -1033,6 +1039,37 @@ impl ParseState {
         }
     }
 
+    /// Merge a cross-line replay's per-line corrected ops into `flushed_ops`.
+    ///
+    /// Multiple cross-line fails can fire on a single `parse_line` call (e.g.
+    /// Java line 624 with two live branches from line 615, both snapshotted at
+    /// `pending_lines_snapshot_len = 0`). Each fail's replay covers
+    /// `pending_lines[snap..pending_lines.len())`. A naive `extend` leaves
+    /// `flushed_ops` with duplicates — consumers of `ParseLineOutput::replayed`
+    /// index `replayed[i] ↔ pending_lines[i]` by `buf_len - replayed.len()`,
+    /// so duplicates misalign every byte offset.
+    ///
+    /// Composition rule, given current start `a` and new fail's `snap`:
+    /// - `snap <= a`: new fail supersedes everything; replace.
+    /// - `snap > a`: keep `[a..snap)` from prior fails, replace `[snap..N)`.
+    fn merge_flushed(&mut self, snap: usize, new_ops: Vec<Vec<(usize, ScopeStackOp)>>) {
+        match self.flushed_ops_start {
+            None => {
+                self.flushed_ops = new_ops;
+                self.flushed_ops_start = Some(snap);
+            }
+            Some(start) if snap <= start => {
+                self.flushed_ops = new_ops;
+                self.flushed_ops_start = Some(snap);
+            }
+            Some(start) => {
+                let keep = snap - start;
+                self.flushed_ops.truncate(keep);
+                self.flushed_ops.extend(new_ops);
+            }
+        }
+    }
+
     /// Handle a `fail` operation by rewinding to the named branch point.
     /// Returns Ok(true) if backtracking happened (caller should continue from rewound position).
     /// Returns Ok(false) if the fail had no effect.
@@ -1166,7 +1203,7 @@ impl ParseState {
                     };
                     replayed_ops.push(line_ops);
                 }
-                self.flushed_ops.extend(replayed_ops);
+                self.merge_flushed(pending_lines_snapshot_len, replayed_ops);
 
                 // Restart the current line from the beginning under the
                 // restored state.
@@ -1316,9 +1353,7 @@ impl ParseState {
                 };
                 replayed_ops.push(line_ops);
             }
-            // Append (rather than overwrite) in case multiple cross-line fails
-            // fire on the same parse_line call.
-            self.flushed_ops.extend(replayed_ops);
+            self.merge_flushed(pending_lines_snapshot_len, replayed_ops);
 
             // Restart the current line from the beginning.
             ops.clear();
@@ -6466,5 +6501,90 @@ contexts:
             "stack top on `>` must be `end.scope`, got: {:?}",
             at_gt
         );
+    }
+
+    #[test]
+    fn cross_line_multi_fail_deduplicates_flushed_ops() {
+        // Two nested branch_points created on line 1 that both fail on a
+        // later line exercise `handle_fail`'s cross-line path twice on a
+        // single `parse_line` call. Before dedup, each fail `extend`ed
+        // `flushed_ops` with its own replay, so `ParseLineOutput::replayed`
+        // ended up ~2× the pending-lines count — and the consumer (see
+        // `examples/syntest.rs`) paired `replayed[i]` with
+        // `parsed_line_buffer[buf_len - replayed.len() + i]`, sliding ops
+        // from one buffered line onto another's text. That panicked in
+        // `ScopeRegionIterator::next` as "byte index N out of bounds" —
+        // observed originally at `syntax_test_java.java` line 624.
+        let syntax_str = r#"
+name: DedupCrossLine
+scope: source.dup
+contexts:
+  main:
+    - match: 'A'
+      branch_point: bp1
+      branch: [a1, a2]
+  a1:
+    - match: 'B'
+      branch_point: bp2
+      branch: [b1, b2]
+    - match: '(?=FAIL)'
+      fail: bp1
+  a2:
+    - match: '.*'
+      scope: a2.fallback
+      pop: true
+  b1:
+    - match: '\n'
+    - match: '(?=FAIL)'
+      fail: bp2
+    - match: 'XYZ'
+      pop: true
+  b2:
+    - match: '\n'
+    - match: '(?=FAIL)'
+      fail: bp2
+    - match: 'XYZ'
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        let out1 = state.parse_line("AB\n", &ss).expect("line 1");
+        assert!(out1.replayed.is_empty());
+
+        let out2 = state.parse_line("FOO\n", &ss).expect("line 2");
+        assert!(out2.replayed.is_empty());
+
+        // Line 3 fires `fail: bp2` twice (once for alt[1], once to exhaust)
+        // and then `fail: bp1` — three cross-line fails back-to-back.
+        let out3 = state.parse_line("FAIL\n", &ss).expect("line 3");
+
+        // Invariant: one replayed entry per buffered pending line (2), not
+        // `number_of_fails × pending_lines`.
+        assert_eq!(
+            out3.replayed.len(),
+            2,
+            "expected exactly 2 replayed lines (one per buffered pending line), got {}: {:?}",
+            out3.replayed.len(),
+            out3.replayed,
+        );
+
+        // Panic guard: each `replayed[i]`'s byte offsets must fit within the
+        // corresponding buffered line's length. The original misalignment
+        // paired line 617's ops (77 bytes) with line 609's text (59 bytes).
+        let line_lens = ["AB\n".len(), "FOO\n".len()];
+        for (i, line_ops) in out3.replayed.iter().enumerate() {
+            for (pos, op) in line_ops {
+                assert!(
+                    *pos <= line_lens[i],
+                    "replayed[{}] op past EOL: pos={} line_len={} op={:?}",
+                    i,
+                    pos,
+                    line_lens[i],
+                    op,
+                );
+            }
+        }
     }
 }
