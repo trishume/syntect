@@ -1,10 +1,8 @@
 loading syntax definitions from testdata/Packages
 FAILED testdata/Packages/C#/tests/syntax_test_C#11.cs: 35
 FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 3
-FAILED testdata/Packages/Clojure/tests/syntax_test_clojure.clj: 1
 FAILED testdata/Packages/Clojure/tests/syntax_test_shebang.clj: 1
 FAILED testdata/Packages/D/tests/syntax_test_shebang.d: 1
-FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
 FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 50
 FAILED testdata/Packages/Java/tests/syntax_test_java.java: 1
 FAILED testdata/Packages/Java/tests/syntax_test_jsp.jsp: 39
