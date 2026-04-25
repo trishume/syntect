@@ -131,6 +131,18 @@ pub struct ParseState {
     /// (the byte-20-out-of-13 panic on `syntax_test_java.java:10263`
     /// inside `@MultiLineAnnotation(...)`).
     replay_ctx: Option<ReplayCtx>,
+    /// Ops the outer cross-line replay has already composed for the
+    /// first replayed line — outer prefix_ops + new-alt meta/pat/capture
+    /// emission. A branch_point created during the inner re-parse
+    /// records `replay_prefix_ops + ops` as its own `prefix_ops`, so
+    /// when it later fails and reconstructs its line, the outer
+    /// captures (e.g. `[foo]:` LRD opener) survive instead of being
+    /// rebuilt from an empty Vec — the cause of `meta.link.reference`
+    /// scope loss in `syntax_test_markdown.md`'s `[foo]: /url` cases
+    /// where `link-def-title-continuation`'s fail spawns a nested
+    /// `link-def-attr-continuation` whose own fail then replayed line 3
+    /// without the original captures.
+    replay_prefix_ops: Option<Vec<(usize, ScopeStackOp)>>,
 }
 
 /// Bookkeeping override used while `handle_fail` is re-parsing a
@@ -387,6 +399,7 @@ impl ParseState {
             escape_stack: Vec::new(),
             shadow: ScopeStack::new(),
             replay_ctx: None,
+            replay_prefix_ops: None,
         }
     }
 
@@ -991,6 +1004,25 @@ impl ParseState {
                     Some(ctx) => (ctx.line_number, ctx.pending_lines_snapshot_offset),
                     None => (self.line_number.saturating_sub(1), self.pending_lines.len()),
                 };
+                // When this branch is born inside an outer cross-line
+                // replay's `parse_line_inner_from`, the local `ops` Vec
+                // is the inner re-parse's `res` — it does *not* include
+                // the outer prefix the outer replay is about to splice
+                // in front. Without prepending that outer prefix, a
+                // later fail of *this* branch reconstructs its line
+                // from an empty prefix, dropping the outer captures
+                // entirely (the `[foo]:` LRD opener vanished from
+                // `syntax_test_markdown.md`'s `[foo]: /url` cases when
+                // a `link-def-attr-continuation` born inside the
+                // `link-def-title-continuation` replay later failed).
+                let prefix_ops = match &self.replay_prefix_ops {
+                    Some(outer) => {
+                        let mut combined = outer.clone();
+                        combined.extend(ops.iter().cloned());
+                        combined
+                    }
+                    None => ops.clone(),
+                };
                 let bp = BranchPoint {
                     name: name.clone(),
                     next_alternative: 1, // 0 is about to be pushed
@@ -1009,7 +1041,7 @@ impl ParseState {
                     pending_lines_snapshot_len: bp_pending_lines_snapshot_len,
                     escape_stack_snapshot: self.escape_stack.clone(),
                     pop_count,
-                    prefix_ops: ops.clone(),
+                    prefix_ops,
                     capture_ops: pat
                         .captures
                         .as_ref()
@@ -1232,6 +1264,15 @@ impl ParseState {
                         line_number: bp_line_number + i,
                         pending_lines_snapshot_offset: pending_lines_snapshot_len + i,
                     });
+                    // No new-alt construction here (all alternatives
+                    // exhausted), so the first-line prefix is just
+                    // `prefix_ops`. Surface it to inner branch creations
+                    // so their `prefix_ops` keeps the outer captures.
+                    let prev_replay_prefix = if i == 0 {
+                        self.replay_prefix_ops.replace(prefix_ops.clone())
+                    } else {
+                        self.replay_prefix_ops.take()
+                    };
                     let inner_result = if i == 0 {
                         let resume_at = if let Some((j, _)) =
                             replay_line[match_start_pos..].char_indices().nth(1)
@@ -1245,6 +1286,7 @@ impl ParseState {
                         self.parse_line_inner(replay_line, syntax_set)
                     };
                     self.replay_ctx = prev_replay_ctx;
+                    self.replay_prefix_ops = prev_replay_prefix;
                     let tail_ops = inner_result?;
                     let line_ops = if i == 0 {
                         let mut first_line_ops = prefix_ops.clone();
@@ -1361,6 +1403,40 @@ impl ParseState {
             let truncated_lines: Vec<String> =
                 self.pending_lines[pending_lines_snapshot_len..].to_vec();
 
+            // Compose the first replayed line's prefix (outer prefix_ops +
+            // new-alt meta/pat/capture/meta_content emission) up front so a
+            // branch_point born inside the inner re-parse can inherit it
+            // via `self.replay_prefix_ops`. Built once per fail; cloned
+            // and extended with `tail_ops` to form the final line_ops.
+            let mut first_line_prefix = prefix_ops.clone();
+            // Re-emit the trigger's pat.scope and the new alternative's
+            // meta scope ops in the same order the non-fail push path
+            // uses: clear_scopes and meta_scope at `trigger_match_start`
+            // (so the matched text sees them), then pat.scope at the
+            // same position, popped at `match_start_pos`.
+            // meta_content_scope only applies after the matched text, so
+            // it lands at `match_start_pos`.
+            if let Some(clear_amount) = context.clear_scopes {
+                first_line_prefix.push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
+            }
+            for scope in context.meta_scope.iter() {
+                first_line_prefix.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+            }
+            for scope in &trigger_pat_scope {
+                first_line_prefix.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+            }
+            // See matching comment in the same-line branch below — re-emit
+            // the trigger match's captures inside the pat_scope brackets
+            // so they survive the branch swap.
+            first_line_prefix.extend(trigger_capture_ops.iter().cloned());
+            if !trigger_pat_scope.is_empty() {
+                first_line_prefix
+                    .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
+            }
+            for scope in context.meta_content_scope.iter() {
+                first_line_prefix.push((match_start_pos, ScopeStackOp::Push(*scope)));
+            }
+
             let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                 Vec::with_capacity(truncated_lines.len());
             for (i, replay_line) in truncated_lines.iter().enumerate() {
@@ -1370,45 +1446,25 @@ impl ParseState {
                     line_number: bp_line_number + i,
                     pending_lines_snapshot_offset: pending_lines_snapshot_len + i,
                 });
+                // Expose the first-line prefix so a branch_point born
+                // during this line's re-parse anchors its `prefix_ops`
+                // to the full line state — outer captures included.
+                // Subsequent replayed lines start fresh.
+                let prev_replay_prefix = if i == 0 {
+                    self.replay_prefix_ops.replace(first_line_prefix.clone())
+                } else {
+                    self.replay_prefix_ops.take()
+                };
                 let inner_result = if i == 0 {
                     self.parse_line_inner_from(replay_line, syntax_set, match_start_pos)
                 } else {
                     self.parse_line_inner(replay_line, syntax_set)
                 };
                 self.replay_ctx = prev_replay_ctx;
+                self.replay_prefix_ops = prev_replay_prefix;
                 let tail_ops = inner_result?;
                 let line_ops = if i == 0 {
-                    // First buffered line: compose prefix + branch ops + resume.
-                    let mut first_line_ops = prefix_ops.clone();
-                    // Re-emit the trigger's pat.scope and the new
-                    // alternative's meta scope ops in the same order
-                    // the non-fail push path uses: clear_scopes and
-                    // meta_scope at `trigger_match_start` (so the
-                    // matched text sees them), then pat.scope at the
-                    // same position, popped at `match_start_pos`.
-                    // meta_content_scope only applies after the
-                    // matched text, so it lands at `match_start_pos`.
-                    if let Some(clear_amount) = context.clear_scopes {
-                        first_line_ops
-                            .push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
-                    }
-                    for scope in context.meta_scope.iter() {
-                        first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-                    }
-                    for scope in &trigger_pat_scope {
-                        first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-                    }
-                    // See matching comment in the same-line branch below —
-                    // re-emit the trigger match's captures inside the
-                    // pat_scope brackets so they survive the branch swap.
-                    first_line_ops.extend(trigger_capture_ops.iter().cloned());
-                    if !trigger_pat_scope.is_empty() {
-                        first_line_ops
-                            .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
-                    }
-                    for scope in context.meta_content_scope.iter() {
-                        first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
-                    }
+                    let mut first_line_ops = first_line_prefix.clone();
                     first_line_ops.extend(tail_ops);
                     first_line_ops
                 } else {
@@ -6749,5 +6805,105 @@ contexts:
                 );
             }
         }
+    }
+
+    #[test]
+    fn replay_born_branch_inherits_outer_prefix_ops() {
+        // Branch born inside another branch's cross-line replay must
+        // record the outer replay's first-line prefix as part of its
+        // own `prefix_ops`. Otherwise its later cross-line fail
+        // reconstructs the replayed line from an empty prefix and the
+        // captures emitted before the *outer* branch trigger vanish.
+        // Shipped as `[foo]: /url` losing its
+        // `meta.link.reference.def.markdown` / `entity.name.reference`
+        // scopes in `syntax_test_markdown.md`: the line creates an
+        // outer `link-def-title-continuation` branch whose alt-1
+        // (`immediately-pop2`) replay spawns a nested
+        // `link-def-attr-continuation` branch — when *that* branch
+        // fails on the next line its replay drops the original LRD
+        // opener captures.
+        let syntax_str = r#"
+name: ReplayPrefix
+scope: source.rp
+contexts:
+  main:
+    - match: '(K)(EY)'
+      captures:
+        1: keyword.k.rp
+        2: variable.k.rp
+      push: outer
+  outer:
+    - match: '$'
+      branch_point: bp1
+      branch: [a1, a2]
+  a1:
+    - meta_include_prototype: false
+    - match: '(?=FAIL1)'
+      fail: bp1
+    - match: '.'
+  a2:
+    - meta_include_prototype: false
+    - match: '$'
+      branch_point: bp2
+      branch: [b1, b2]
+    - match: '.'
+  b1:
+    - meta_include_prototype: false
+    - match: '(?=FAIL2)'
+      fail: bp2
+    - match: '.'
+  b2:
+    - meta_include_prototype: false
+    - match: '\n'
+      scope: support.fallback.rp
+      pop: 2
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // line 1 — captures `K` and `EY`, pushes `outer`, then `$` fires bp1.
+        let line1 = "KEY\n";
+        let _ = state.parse_line(line1, &ss).expect("line 1 parses");
+
+        // line 2 — `(?=FAIL1)` in a1 trips bp1's cross-line fail. The
+        // alt-1 replay of line 1 spawns bp2 in a2 at end-of-line.
+        let line2 = "FAIL1\n";
+        let _ = state.parse_line(line2, &ss).expect("line 2 parses");
+
+        // line 3 — `(?=FAIL2)` in b1 trips bp2's cross-line fail. With
+        // the fix bp2's `prefix_ops` carries the K / EY captures from
+        // bp1's replay, so the second cross-line replay re-emits them.
+        // Without the fix bp2's `prefix_ops` is empty and the replayed
+        // line 1 ops collapse to just `support.fallback.rp` push/pop.
+        let line3 = "FAIL2\n";
+        let out3 = state.parse_line(line3, &ss).expect("line 3 parses");
+
+        // bp2's cross-line replay covered both buffered lines (line 1
+        // + line 2). Line 1 is the one that must keep its captures.
+        assert_eq!(
+            out3.replayed.len(),
+            2,
+            "bp2 cross-line replay should cover line1 + line2, got {:?}",
+            out3.replayed,
+        );
+        let line1_ops = &out3.replayed[0];
+
+        let pushes_keyword = line1_ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if *s == Scope::new("keyword.k.rp").unwrap())
+        });
+        let pushes_variable = line1_ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if *s == Scope::new("variable.k.rp").unwrap())
+        });
+        assert!(
+            pushes_keyword,
+            "line 1 replayed ops should still push keyword.k.rp; got {:?}",
+            line1_ops,
+        );
+        assert!(
+            pushes_variable,
+            "line 1 replayed ops should still push variable.k.rp; got {:?}",
+            line1_ops,
+        );
     }
 }
