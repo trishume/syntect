@@ -446,12 +446,6 @@ impl ParseState {
         });
         self.line_number += 1;
 
-        // Snapshot the shadow before parsing this line — if the parse ends
-        // with live branch_points we'll buffer this value alongside the
-        // line string so a future cross-line fail can restore the shadow
-        // to "state at start of first replayed line" (mirroring the
-        // consumer's reset behaviour in `syntest`).
-        let shadow_at_start = self.shadow.clone();
         let pending_lines_before = self.pending_lines.len();
 
         let ops = self.parse_line_inner(line, syntax_set)?;
@@ -466,6 +460,16 @@ impl ParseState {
         // `parsed_line_buffer[start_idx].stack_before` when `replayed` is
         // non-empty, then applies replayed then applies current-line ops.
         // Mirror that here so `shadow` matches the consumer downstream.
+        //
+        // While re-applying replays, also overwrite each buffered line's
+        // pending_line_start_shadows entry with the corrected baseline.
+        // Without this, a later replay covering this same line would reset
+        // shadow to a stale snapshot captured before the prior replay's
+        // correction landed, causing scope leaks (e.g.
+        // meta.link.reference.def.markdown persisting past back-to-back
+        // Markdown link reference definitions, since each LRD's correction
+        // arrives in the *next* line's parse_line and the snapshot for
+        // that next line was captured from the buggy uncorrected stack).
         if !replayed.is_empty() {
             let start_idx = pending_lines_before
                 .checked_sub(replayed.len())
@@ -473,12 +477,26 @@ impl ParseState {
             if let Some(snap) = self.pending_line_start_shadows.get(start_idx) {
                 self.shadow = snap.clone();
             }
-            for line_ops in &replayed {
+            for (i, line_ops) in replayed.iter().enumerate() {
                 for (_, op) in line_ops {
                     let _ = self.shadow.apply(op);
                 }
+                // After applying replayed[i], shadow == start of buffered
+                // line (start_idx + i + 1). Overwrite that snapshot so the
+                // next replay covering it starts from the corrected
+                // baseline rather than the stale one captured pre-replay.
+                let next_idx = start_idx + i + 1;
+                if next_idx < self.pending_line_start_shadows.len() {
+                    self.pending_line_start_shadows[next_idx] = self.shadow.clone();
+                }
             }
         }
+
+        // Snapshot the shadow now (post-replays, pre-current-ops) — this
+        // becomes the baseline for the next line if the current line ends
+        // with live branch_points and gets buffered for future replay.
+        let shadow_at_start_corrected = self.shadow.clone();
+
         for (_, op) in &ops {
             let _ = self.shadow.apply(op);
         }
@@ -486,7 +504,8 @@ impl ParseState {
         // Keep the line string for potential future cross-line replay.
         if !self.branch_points.is_empty() {
             self.pending_lines.push(line.to_string());
-            self.pending_line_start_shadows.push(shadow_at_start);
+            self.pending_line_start_shadows
+                .push(shadow_at_start_corrected);
         } else {
             // No active branch points: any buffered strings are stale.
             self.pending_lines.clear();
@@ -6904,6 +6923,79 @@ contexts:
             pushes_variable,
             "line 1 replayed ops should still push variable.k.rp; got {:?}",
             line1_ops,
+        );
+    }
+
+    /// Two back-to-back link reference definitions followed by a
+    /// paragraph: each LRD's chain is closed by the *next* line's parse
+    /// emitting a `Pop` against the LRD's `meta_scope` via
+    /// `flushed_ops`. Without snapshot-drift correction, the
+    /// pre-correction `pending_line_start_shadows` (and the consumer's
+    /// `parsed_line_buffer[i].stack_before`) used by the second
+    /// replay's stack-reset still reflected the first LRD's leftover
+    /// `meta.link.reference.def.markdown` push, so the corrected line
+    /// 4 ops re-applied that scope onto a stale baseline — leaking it
+    /// into the paragraph and on through the rest of the file.
+    /// Sized 408 chars / 88 assertions in
+    /// `syntax_test_markdown.md`.
+    #[test]
+    fn back_to_back_lrds_clear_meta_scope_via_corrected_baseline() {
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Markdown/Markdown.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+
+        // Mirror the syntest consumer's stack-tracking with the
+        // snapshot-drift correction the bug requires.
+        struct Record {
+            stack_before: ScopeStack,
+        }
+        let mut buffer: Vec<Record> = Vec::new();
+        let mut stack = ScopeStack::new();
+
+        for line in ["[foo]: first\n", "[foo]: second\n", "bar\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            if !out.replayed.is_empty() {
+                let buf_len = buffer.len();
+                let start_idx = buf_len - out.replayed.len();
+                stack = buffer[start_idx].stack_before.clone();
+                let mut corrected: Vec<(usize, ScopeStack)> = Vec::new();
+                for (i, replayed_ops) in out.replayed.iter().enumerate() {
+                    for (_, op) in replayed_ops {
+                        let _ = stack.apply(op);
+                    }
+                    let next_idx = start_idx + i + 1;
+                    if next_idx < buf_len {
+                        corrected.push((next_idx, stack.clone()));
+                    }
+                }
+                for (idx, c) in corrected {
+                    buffer[idx].stack_before = c;
+                }
+            }
+            let stack_before = stack.clone();
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+            buffer.push(Record { stack_before });
+        }
+
+        let lrd = Scope::new("meta.link.reference.def.markdown").unwrap();
+        let leaked = stack.as_slice().contains(&lrd);
+        assert!(
+            !leaked,
+            "meta.link.reference.def.markdown leaked past back-to-back \
+             LRDs into 'bar' paragraph; consumer stack at end: {:?}",
+            stack,
+        );
+        let shadow_leaked = state.shadow.as_slice().contains(&lrd);
+        assert!(
+            !shadow_leaked,
+            "syntect shadow disagrees with corrected consumer stack; \
+             shadow at end: {:?}",
+            state.shadow,
         );
     }
 }

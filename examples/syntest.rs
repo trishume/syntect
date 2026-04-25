@@ -458,7 +458,6 @@ fn test_file(
                     current_line_number, stack, state
                 );
             }
-            let stack_before = stack.clone();
             let output = match state.parse_line(&line, ss) {
                 Ok(output) => output,
                 Err(e) => {
@@ -507,6 +506,19 @@ fn test_file(
                 // Reset stack to the state before the first replayed line
                 stack = parsed_line_buffer[start_idx].stack_before.clone();
 
+                // Collect corrected baselines to apply post-loop, since the
+                // mutable record borrow inside the loop forbids touching
+                // sibling buffer entries. After applying replayed[i],
+                // `stack` is the corrected end-of-line for the buffered
+                // record at start_idx + i, i.e. the corrected
+                // start-of-line baseline for record at start_idx + i + 1.
+                // Overwriting that baseline prevents a future replay from
+                // resurrecting any meta_scope the prior replay had unwound
+                // (observed as meta.link.reference.def.markdown leak past
+                // back-to-back Markdown link reference definitions).
+                let buf_len = parsed_line_buffer.len();
+                let mut corrected_baselines: Vec<(usize, ScopeStack)> = Vec::new();
+
                 for (i, replayed_ops) in replayed.iter().enumerate() {
                     let record = &mut parsed_line_buffer[start_idx + i];
                     let has_non_assertion = record.non_assertion_data.is_some();
@@ -526,6 +538,10 @@ fn test_file(
                             });
                             col += len;
                         }
+                    }
+                    let next_idx = start_idx + i + 1;
+                    if next_idx < buf_len {
+                        corrected_baselines.push((next_idx, stack.clone()));
                     }
 
                     if let Some(ref mut data) = record.non_assertion_data {
@@ -590,6 +606,9 @@ fn test_file(
                         }
                     }
                 }
+                for (idx, corrected) in corrected_baselines {
+                    parsed_line_buffer[idx].stack_before = corrected;
+                }
             }
 
             if out_opts.debug && !line_only_has_assertion {
@@ -599,6 +618,11 @@ fn test_file(
                     debug_print_ops(&line, &ops);
                 }
             }
+            // Snapshot the stack now (post-replays, pre-current-ops) — this
+            // becomes the buffered `stack_before` for the current line, so a
+            // future replay covering it resets to the corrected baseline
+            // rather than the stale pre-parse value.
+            let stack_before = stack.clone();
             // Build the just-parsed line's scopes. For non-assertion (target)
             // lines they go into `scopes_on_line_being_tested`; for the FIRST
             // assertion line that follows a target they go into a fresh vec
