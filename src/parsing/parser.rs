@@ -1206,8 +1206,15 @@ impl ParseState {
             return Ok(false);
         }
 
-        // Check validity: stack depth still >= branch's stack_depth
-        if self.stack.len() < bp.stack_depth {
+        // Check validity: the alt frame is still on the stack. Mirrors the
+        // bp lookup predicate above (`stack_len > bp.stack_depth.saturating_sub(bp.pop_count)`)
+        // so a `pop: N + branch_point` whose snapshot captures the
+        // pre-pop depth doesn't false-positive here. Without subtracting
+        // `pop_count`, Java's `pop: 2 + branch_point: annotation-qualified-parameters`
+        // failed lookup with `self.stack.len() < bp.stack_depth` and the
+        // fail became a no-op, leaking `meta.annotation.identifier.java`
+        // into every nested-annotation extends path.
+        if self.stack.len() <= bp.stack_depth.saturating_sub(bp.pop_count) {
             self.branch_points.remove(bp_index);
             return Ok(false);
         }
@@ -1363,7 +1370,10 @@ impl ParseState {
         let pop_count = self.branch_points[bp_index].pop_count;
 
         // Restore parser state to the snapshot.
-        self.stack = stack_snapshot;
+        // Keep `stack_snapshot` available — the same-line fix below needs
+        // it to compute popped-context meta_scope clearance via
+        // `push_meta_ops`.
+        self.stack = stack_snapshot.clone();
         self.proto_starts = proto_starts_snapshot;
         self.escape_stack = escape_stack_snapshot;
         self.first_line = first_line_snapshot;
@@ -1535,38 +1545,67 @@ impl ParseState {
             // because the original Push/Pop pair was truncated off
             // `ops` together with alt[0]'s subsequent work.
             //
-            // The new alternative's `clear_scopes` and `meta_scope`
-            // are emitted at `trigger_match_start` *before* the
-            // trigger's `pat.scope`, mirroring the non-fail push path
-            // in `push_meta_ops` (initial phase): meta_scope sits
-            // below the match scope on the stack so the matched text
-            // sees both. Placing them at `match_start_pos` would mean
-            // the trigger character (e.g. `(` of `for (var i = 0; …)`)
-            // never sees the alternative's `meta_scope`. The
-            // `meta_content_scope` legitimately stays at
-            // `match_start_pos` — mcs only applies after the matched
-            // text.
-            if let Some(clear_amount) = context.clear_scopes {
-                ops.push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
+            // Use `push_meta_ops` with a synthetic Set/Push for the
+            // new alternative — same path the original branch creation
+            // takes — so both the new alternative's own meta scopes
+            // AND the popped contexts' meta_scope/mcs clearance Pop
+            // (for `pop: N + branch_point`, N > 0) get re-emitted.
+            // A bespoke re-emit of just `context.meta_scope` /
+            // `context.meta_content_scope` was missing the
+            // popped-contexts Pop, leaving Java's
+            // `pop: 2 + branch_point: annotation-qualified-parameters`
+            // with `meta.annotation.identifier.java meta.path.java`
+            // (annotation-qualified-identifier's `meta_scope`) leaked
+            // on the stack after the branch_point's first alt failed
+            // and the second alt (`immediately-pop`) ran.
+            //
+            // `push_meta_ops` reads `self.stack` to compute the
+            // popped contexts' scope atoms, so swap in `stack_snapshot`
+            // (pre-pop state captured at branch creation) for the
+            // duration of the calls — `self.stack` currently holds the
+            // post-set state (alt N already pushed).
+            let synthetic_op_alt_n = if pop_count > 0 {
+                MatchOperation::Set {
+                    ctx_refs: vec![next_alt.clone()],
+                    pop_count,
+                }
+            } else {
+                MatchOperation::Push(vec![next_alt.clone()])
+            };
+            let level_ctx_id = stack_snapshot.last().map(|l| l.context);
+            let post_set_stack = std::mem::replace(&mut self.stack, stack_snapshot.clone());
+            if let Some(level_ctx_id) = level_ctx_id {
+                let level_context = syntax_set.get_context(&level_ctx_id)?;
+                self.push_meta_ops(
+                    true,
+                    trigger_match_start,
+                    level_context,
+                    &synthetic_op_alt_n,
+                    syntax_set,
+                    ops,
+                )?;
+                for scope in &trigger_pat_scope {
+                    ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+                }
+                // Captures emitted alongside the original pat.scope (e.g.
+                // `keyword.declaration.data.haskell` on the first capture of
+                // `(data)(?:\s+(family|instance))?`) were truncated off with
+                // alt[0]'s ops. Re-emit them inside the pat_scope brackets so
+                // the keyword scope survives the branch swap.
+                ops.extend(trigger_capture_ops.iter().cloned());
+                if !trigger_pat_scope.is_empty() {
+                    ops.push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
+                }
+                self.push_meta_ops(
+                    false,
+                    match_start_pos,
+                    level_context,
+                    &synthetic_op_alt_n,
+                    syntax_set,
+                    ops,
+                )?;
             }
-            for scope in context.meta_scope.iter() {
-                ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-            }
-            for scope in &trigger_pat_scope {
-                ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-            }
-            // Captures emitted alongside the original pat.scope (e.g.
-            // `keyword.declaration.data.haskell` on the first capture of
-            // `(data)(?:\s+(family|instance))?`) were truncated off with
-            // alt[0]'s ops. Re-emit them inside the pat_scope brackets so
-            // the keyword scope survives the branch swap.
-            ops.extend(trigger_capture_ops.iter().cloned());
-            if !trigger_pat_scope.is_empty() {
-                ops.push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
-            }
-            for scope in context.meta_content_scope.iter() {
-                ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
-            }
+            self.stack = post_set_stack;
         }
 
         // Clear search cache since we're rewinding.
@@ -2049,10 +2088,10 @@ impl ParseState {
                     for _ in 0..pop_count {
                         self.stack.pop();
                     }
+                    let stack_len = self.stack.len();
                     self.branch_points
-                        .retain(|bp| bp.stack_depth <= self.stack.len());
-                    self.escape_stack
-                        .retain(|e| e.stack_depth < self.stack.len());
+                        .retain(|bp| stack_len > bp.stack_depth.saturating_sub(bp.pop_count));
+                    self.escape_stack.retain(|e| e.stack_depth < stack_len);
                 }
                 (contexts, None, true)
             }
@@ -2071,11 +2110,25 @@ impl ParseState {
                     self.stack.pop();
                 }
                 // Prune branch_points / escape_stack against the *final* stack
-                // length (after the common push loop below), so a branch_point
-                // captured at the pre-set depth survives a pop-1 + push-1 set
-                // — the depth the bp references is still valid after the push.
+                // length (after the common push loop below).
+                //
+                // The retain predicate must mirror `handle_fail`'s validity
+                // check (`stack.len() > bp.stack_depth - bp.pop_count`),
+                // which subtracts the bp's own `pop_count`. Without that
+                // subtraction, a `pop: N + branch_point` whose synthetic
+                // Set has `pop_count: N` removes its own freshly-created
+                // bp here — `bp.stack_depth` snapshots the *pre-pop*
+                // depth, so `bp.stack_depth > final_len` even though the
+                // alt-0 frame lives on at `final_len`. Symptom in Java:
+                // the `branch_point: annotation-qualified-parameters`
+                // declared on `annotation-qualified-identifier-name`'s
+                // `pop: 2 + branch_point` was dropped at creation,
+                // making its later `(?=\S)` `fail` a no-op and leaking
+                // `meta.annotation.identifier.java meta.path.java` past
+                // every nested-annotation extends path.
                 let final_len = self.stack.len() + ctx_refs.len();
-                self.branch_points.retain(|bp| bp.stack_depth <= final_len);
+                self.branch_points
+                    .retain(|bp| final_len > bp.stack_depth.saturating_sub(bp.pop_count));
                 self.escape_stack.retain(|e| e.stack_depth < final_len);
                 (ctx_refs, old_proto_ids, false)
             }
@@ -2083,12 +2136,14 @@ impl ParseState {
                 for _ in 0..n {
                     self.stack.pop();
                 }
-                // Invalidate branch points whose stack depth is now above current stack
+                // Invalidate branch points whose alt frame is no longer on
+                // the stack. Use the same threshold as `handle_fail`'s
+                // validity check — see the comment in the Set arm above.
+                let stack_len = self.stack.len();
                 self.branch_points
-                    .retain(|bp| bp.stack_depth <= self.stack.len());
+                    .retain(|bp| stack_len > bp.stack_depth.saturating_sub(bp.pop_count));
                 // Remove escape entries whose stack_depth >= current stack
-                self.escape_stack
-                    .retain(|e| e.stack_depth < self.stack.len());
+                self.escape_stack.retain(|e| e.stack_depth < stack_len);
                 return Ok(true);
             }
             MatchOperation::None => return Ok(false),
@@ -6995,6 +7050,46 @@ contexts:
             !shadow_leaked,
             "syntect shadow disagrees with corrected consumer stack; \
              shadow at end: {:?}",
+            state.shadow,
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn pop_n_branch_point_keeps_bp_so_alt_fail_unwinds_meta_scope() {
+        // Real-syntax repro for the Java class-extends annotation leak:
+        // `class T extends a.@b.c Foo {}`. The branch_point on
+        // `annotation-qualified-identifier-name`'s `pop: 2 + branch_point:
+        // annotation-qualified-parameters` was being pruned by perform_op's
+        // post-Set retain (`bp.stack_depth <= final_len` ignored
+        // `bp.pop_count`), so the branch's first alt — which has
+        // `meta_content_scope: meta.annotation.identifier.java` — was
+        // never failed-out, leaking `meta.annotation.identifier.java`
+        // past every nested-annotation extends path in the Java suite.
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        for line in ["class T extends a.@b.c Foo {}\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+        }
+        let ann = Scope::new("meta.annotation.identifier.java").unwrap();
+        assert!(
+            !stack.as_slice().contains(&ann),
+            "meta.annotation.identifier.java leaked past `@b.c` annotation \
+             into the outer extends path; final stack: {:?}",
+            stack,
+        );
+        assert!(
+            !state.shadow.as_slice().contains(&ann),
+            "syntect shadow still carries meta.annotation.identifier.java; \
+             shadow: {:?}",
             state.shadow,
         );
     }
