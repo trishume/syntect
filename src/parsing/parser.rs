@@ -1393,7 +1393,6 @@ impl ParseState {
         // Push the next alternative onto the stack.
         let with_prototype = self.branch_points[bp_index].with_prototype.clone();
         let context_id = next_alt.id()?;
-        let context = syntax_set.get_context(&context_id)?;
         let captures = None; // no captures available at rewind time
 
         let proto_ids = match with_prototype {
@@ -1437,34 +1436,68 @@ impl ParseState {
             // branch_point born inside the inner re-parse can inherit it
             // via `self.replay_prefix_ops`. Built once per fail; cloned
             // and extended with `tail_ops` to form the final line_ops.
+            //
+            // Use `push_meta_ops` with a synthetic Set/Push for the
+            // new alternative — same path the same-line fail above and
+            // the original branch creation take — so both the new
+            // alternative's own meta scopes AND the popped contexts'
+            // meta_scope/mcs clearance Pop (for `pop: N + branch_point`,
+            // N > 0) get re-emitted. A bespoke re-emit of just
+            // `context.meta_scope` / `context.meta_content_scope` is
+            // missing the popped-contexts Pop, leaving Java's
+            // `pop: 2 + branch_point: annotation-qualified-parameters`
+            // crossing a line boundary with both the popped context's
+            // meta_scope (`meta.annotation.identifier.java`) AND the
+            // outer declaration's meta_scope (`meta.enum.java` /
+            // `meta.class.java` / `meta.interface.java`) leaked on the
+            // stack — cascading across 8000+ lines past the multi-line
+            // annotation-modified declaration at lines 2260-2297 of
+            // `syntax_test_java.java`.
+            //
+            // `push_meta_ops` reads `self.stack` to compute the popped
+            // contexts' scope atoms, so swap in `stack_snapshot` (pre-pop
+            // state captured at branch creation) for the duration of the
+            // calls — `self.stack` currently holds the post-set state
+            // (alt N already pushed).
             let mut first_line_prefix = prefix_ops.clone();
-            // Re-emit the trigger's pat.scope and the new alternative's
-            // meta scope ops in the same order the non-fail push path
-            // uses: clear_scopes and meta_scope at `trigger_match_start`
-            // (so the matched text sees them), then pat.scope at the
-            // same position, popped at `match_start_pos`.
-            // meta_content_scope only applies after the matched text, so
-            // it lands at `match_start_pos`.
-            if let Some(clear_amount) = context.clear_scopes {
-                first_line_prefix.push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
+            let synthetic_op_alt_n = if pop_count > 0 {
+                MatchOperation::Set {
+                    ctx_refs: vec![next_alt.clone()],
+                    pop_count,
+                }
+            } else {
+                MatchOperation::Push(vec![next_alt.clone()])
+            };
+            let level_ctx_id = stack_snapshot.last().map(|l| l.context);
+            let post_set_stack = std::mem::replace(&mut self.stack, stack_snapshot.clone());
+            if let Some(level_ctx_id) = level_ctx_id {
+                let level_context = syntax_set.get_context(&level_ctx_id)?;
+                self.push_meta_ops(
+                    true,
+                    trigger_match_start,
+                    level_context,
+                    &synthetic_op_alt_n,
+                    syntax_set,
+                    &mut first_line_prefix,
+                )?;
+                for scope in &trigger_pat_scope {
+                    first_line_prefix.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+                }
+                first_line_prefix.extend(trigger_capture_ops.iter().cloned());
+                if !trigger_pat_scope.is_empty() {
+                    first_line_prefix
+                        .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
+                }
+                self.push_meta_ops(
+                    false,
+                    match_start_pos,
+                    level_context,
+                    &synthetic_op_alt_n,
+                    syntax_set,
+                    &mut first_line_prefix,
+                )?;
             }
-            for scope in context.meta_scope.iter() {
-                first_line_prefix.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-            }
-            for scope in &trigger_pat_scope {
-                first_line_prefix.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-            }
-            // See matching comment in the same-line branch below — re-emit
-            // the trigger match's captures inside the pat_scope brackets
-            // so they survive the branch swap.
-            first_line_prefix.extend(trigger_capture_ops.iter().cloned());
-            if !trigger_pat_scope.is_empty() {
-                first_line_prefix
-                    .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
-            }
-            for scope in context.meta_content_scope.iter() {
-                first_line_prefix.push((match_start_pos, ScopeStackOp::Push(*scope)));
-            }
+            self.stack = post_set_stack;
 
             let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                 Vec::with_capacity(truncated_lines.len());
@@ -7084,6 +7117,87 @@ contexts:
             !stack.as_slice().contains(&ann),
             "meta.annotation.identifier.java leaked past `@b.c` annotation \
              into the outer extends path; final stack: {:?}",
+            stack,
+        );
+        assert!(
+            !state.shadow.as_slice().contains(&ann),
+            "syntect shadow still carries meta.annotation.identifier.java; \
+             shadow: {:?}",
+            state.shadow,
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn cross_line_pop_n_branch_point_alt_fail_unwinds_meta_scope() {
+        // Cross-line variant of the Java annotation leak:
+        // `@A.B\nclass E {}\n`. At end of line 1, the
+        // `annotation-qualified-parameters` branch_point is live waiting
+        // for `(`. Line 2 starts with `class`, so alt 1 fails and alt 2
+        // (`immediately-pop`) runs via handle_fail's cross-line path. That
+        // path used a bespoke re-emit of just `context.meta_scope` /
+        // `meta_content_scope`, missing the popped contexts' Pop — leaving
+        // `meta.annotation.identifier.java` and the surrounding
+        // declaration's meta_scope (`meta.class.java` /
+        // `meta.enum.java` / `meta.interface.java`) on the stack. Routing
+        // through `push_meta_ops` with a synthetic Set/Push (mirroring the
+        // same-line fix) emits the popped contexts' Pop alongside the new
+        // alternative's meta_scope push.
+        //
+        // The consumer must apply `out.replayed` corrected ops the same
+        // way `examples/syntest.rs` does: rewind to the buffered line's
+        // pre-parse stack, replay the corrected ops in order, then apply
+        // the current line's ops. This mirrors the LRD test above.
+        use crate::parsing::SyntaxSet;
+        struct Record {
+            stack_before: ScopeStack,
+        }
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        let mut buffer: Vec<Record> = Vec::new();
+        for line in ["@A.B\n", "class E {}\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            if !out.replayed.is_empty() {
+                let buf_len = buffer.len();
+                let start_idx = buf_len - out.replayed.len();
+                stack = buffer[start_idx].stack_before.clone();
+                let mut corrected: Vec<(usize, ScopeStack)> = Vec::new();
+                for (i, replayed_ops) in out.replayed.iter().enumerate() {
+                    for (_, op) in replayed_ops {
+                        let _ = stack.apply(op);
+                    }
+                    let next_idx = start_idx + i + 1;
+                    if next_idx < buf_len {
+                        corrected.push((next_idx, stack.clone()));
+                    }
+                }
+                for (idx, c) in corrected {
+                    buffer[idx].stack_before = c;
+                }
+            }
+            let stack_before = stack.clone();
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+            buffer.push(Record { stack_before });
+        }
+        let ann = Scope::new("meta.annotation.identifier.java").unwrap();
+        let cls = Scope::new("meta.class.java").unwrap();
+        assert!(
+            !stack.as_slice().contains(&ann),
+            "meta.annotation.identifier.java leaked past `@A.B` annotation \
+             into top-level scope after cross-line `class E {{}}`; final \
+             stack: {:?}",
+            stack,
+        );
+        assert!(
+            !stack.as_slice().contains(&cls),
+            "meta.class.java leaked past `class E {{}}` body close into \
+             top-level scope; final stack: {:?}",
             stack,
         );
         assert!(
