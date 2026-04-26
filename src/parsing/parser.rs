@@ -1153,6 +1153,24 @@ impl ParseState {
         }
     }
 
+    fn prefer_inner_replay_corrections(
+        outer_snap: usize,
+        replayed_ops: &mut [Vec<(usize, ScopeStackOp)>],
+        inner_ops: &[Vec<(usize, ScopeStackOp)>],
+        inner_start: usize,
+    ) {
+        for (i, outer_local) in replayed_ops.iter_mut().enumerate() {
+            let global_i = outer_snap + i;
+            if global_i < inner_start {
+                continue;
+            }
+            let inner_idx = global_i - inner_start;
+            if let Some(corrected) = inner_ops.get(inner_idx) {
+                *outer_local = corrected.clone();
+            }
+        }
+    }
+
     /// Handle a `fail` operation by rewinding to the named branch point.
     /// Returns Ok(true) if backtracking happened (caller should continue from rewound position).
     /// Returns Ok(false) if the fail had no effect.
@@ -1281,6 +1299,11 @@ impl ParseState {
                 // buffered lines.
                 let truncated_lines: Vec<String> =
                     self.pending_lines[pending_lines_snapshot_len..].to_vec();
+                // Save prior flushed_ops state and clear it so any nested
+                // cross-line fails firing during the replay loop below
+                // write into a clean slot we can detect afterward.
+                let saved_flushed = std::mem::take(&mut self.flushed_ops);
+                let saved_flushed_start = self.flushed_ops_start.take();
                 let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                     Vec::with_capacity(truncated_lines.len());
                 for (i, replay_line) in truncated_lines.iter().enumerate() {
@@ -1322,6 +1345,22 @@ impl ParseState {
                         tail_ops
                     };
                     replayed_ops.push(line_ops);
+                }
+                // Capture inner corrections (if any), restore prior state,
+                // then prefer the inner corrections for overlapping indices.
+                let inner_corrections = std::mem::take(&mut self.flushed_ops);
+                let inner_corrections_start = self.flushed_ops_start.take();
+                self.flushed_ops = saved_flushed;
+                self.flushed_ops_start = saved_flushed_start;
+                if let Some(start) = inner_corrections_start {
+                    if !inner_corrections.is_empty() {
+                        Self::prefer_inner_replay_corrections(
+                            pending_lines_snapshot_len,
+                            &mut replayed_ops,
+                            &inner_corrections,
+                            start,
+                        );
+                    }
                 }
                 self.merge_flushed(pending_lines_snapshot_len, replayed_ops);
 
@@ -1499,6 +1538,12 @@ impl ParseState {
             }
             self.stack = post_set_stack;
 
+            // Save prior flushed_ops state and clear it so any nested
+            // cross-line fails firing during the replay loop below write
+            // into a clean slot we can detect afterward.
+            let saved_flushed = std::mem::take(&mut self.flushed_ops);
+            let saved_flushed_start = self.flushed_ops_start.take();
+
             let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                 Vec::with_capacity(truncated_lines.len());
             for (i, replay_line) in truncated_lines.iter().enumerate() {
@@ -1533,6 +1578,31 @@ impl ParseState {
                     tail_ops
                 };
                 replayed_ops.push(line_ops);
+            }
+            // Capture inner corrections (if any), restore prior state, then
+            // prefer the inner corrections for overlapping indices. Without
+            // this, the outer's locally-computed `replayed_ops[i]` for
+            // indices an inner cross-line fail later corrected (during a
+            // later iteration of this same loop) would silently overwrite
+            // the inner's more accurate correction in `flushed_ops` —
+            // observed on Java's `@A.B\n(par=1)\nenum E {}` where the
+            // outer `declarations` cross-line replay's line-1 ops froze the
+            // dotted annotation as `path` alt before the inner
+            // `annotation-qualified-identifier` cross-line fail's `name`-alt
+            // resolution arrived (during line-2 reparse).
+            let inner_corrections = std::mem::take(&mut self.flushed_ops);
+            let inner_corrections_start = self.flushed_ops_start.take();
+            self.flushed_ops = saved_flushed;
+            self.flushed_ops_start = saved_flushed_start;
+            if let Some(start) = inner_corrections_start {
+                if !inner_corrections.is_empty() {
+                    Self::prefer_inner_replay_corrections(
+                        pending_lines_snapshot_len,
+                        &mut replayed_ops,
+                        &inner_corrections,
+                        start,
+                    );
+                }
             }
             self.merge_flushed(pending_lines_snapshot_len, replayed_ops);
 
@@ -7206,5 +7276,76 @@ contexts:
              shadow: {:?}",
             state.shadow,
         );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn outer_cross_line_replay_prefers_inner_correction() {
+        // Java's `@A.B\n(par=1)\nenum E {}\n` triggers a NESTED cross-line
+        // fail: the outer `declarations` BP fails alt-0 (class) on line 3
+        // and replays lines 1-2 under alt-1 (enum); during line-2 reparse
+        // the inner `annotation-qualified-identifier` BP fails alt-0 (path)
+        // and replays both lines under alt-1 (name). The outer's locally-
+        // computed `replayed_ops[0]` was the (now stale) path-alt parse;
+        // the inner's correction in `flushed_ops` was the name-alt parse,
+        // and the outer's `merge_flushed` previously overwrote it. Without
+        // preferring the inner correction, `meta.enum.java`,
+        // `meta.annotation.identifier.java`, and `meta.path.java` leaked
+        // past the closing `}`.
+        use crate::parsing::SyntaxSet;
+        struct Record {
+            stack_before: ScopeStack,
+        }
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        let mut buffer: Vec<Record> = Vec::new();
+        for line in ["@A.B\n", "(par=1)\n", "enum E {}\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            if !out.replayed.is_empty() {
+                let buf_len = buffer.len();
+                let start_idx = buf_len - out.replayed.len();
+                stack = buffer[start_idx].stack_before.clone();
+                let mut corrected: Vec<(usize, ScopeStack)> = Vec::new();
+                for (i, replayed_ops) in out.replayed.iter().enumerate() {
+                    for (_, op) in replayed_ops {
+                        let _ = stack.apply(op);
+                    }
+                    let next_idx = start_idx + i + 1;
+                    if next_idx < buf_len {
+                        corrected.push((next_idx, stack.clone()));
+                    }
+                }
+                for (idx, c) in corrected {
+                    buffer[idx].stack_before = c;
+                }
+            }
+            let stack_before = stack.clone();
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+            buffer.push(Record { stack_before });
+        }
+        let ann = Scope::new("meta.annotation.identifier.java").unwrap();
+        let path = Scope::new("meta.path.java").unwrap();
+        let enum_scope = Scope::new("meta.enum.java").unwrap();
+        for scope in [ann, path, enum_scope] {
+            assert!(
+                !stack.as_slice().contains(&scope),
+                "{:?} leaked past closing `}}` into top-level scope; \
+                 final stack: {:?}",
+                scope,
+                stack,
+            );
+            assert!(
+                !state.shadow.as_slice().contains(&scope),
+                "syntect shadow still carries {:?}; shadow: {:?}",
+                scope,
+                state.shadow,
+            );
+        }
     }
 }
