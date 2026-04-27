@@ -1988,8 +1988,27 @@ impl ParseState {
                 };
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
-                    // v2: pop parent's meta_content_scope so matched text does not see it
-                    if is_set && version >= 2 && !cur_context.meta_content_scope.is_empty() {
+                    // v2: pop parent's meta_content_scope so matched text does not see it.
+                    // Skip when cur_context's mcs was never pushed because the
+                    // context immediately below has embed_scope_replaces (the
+                    // embedded syntax's main mcs is suppressed in favor of
+                    // embed_scope on the wrapper). Without this, the Pop takes
+                    // off the topmost wrapper-pushed scope — observed on
+                    // Markdown bash fenced blocks where `source.shell.bash`
+                    // (the third embed_scope token) was disappearing on the
+                    // embedded main's first `set:` rule.
+                    let stack_len = self.stack.len();
+                    let skip_cur_mcs_pop = version >= 2
+                        && stack_len >= 2
+                        && syntax_set
+                            .get_context(&self.stack[stack_len - 2].context)
+                            .map(|c| c.embed_scope_replaces)
+                            .unwrap_or(false);
+                    if is_set
+                        && version >= 2
+                        && !cur_context.meta_content_scope.is_empty()
+                        && !skip_cur_mcs_pop
+                    {
                         ops.push((
                             index,
                             ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
@@ -7671,6 +7690,37 @@ contexts:
              line 5 (expected at most 1); stack: {:?}",
             doubled,
             at_object,
+        );
+    }
+
+    /// Regression guard for the `embed_scope`-replaces / inner Set
+    /// interaction. With a wrapper context that pushes 3 mcs scopes
+    /// and `embed_scope_replaces=true`, the embedded syntax's first
+    /// `set:` rule must not drop the topmost wrapper scope — its mcs
+    /// pop must be skipped because the embedded main's mcs was never
+    /// pushed.
+    #[test]
+    #[ignore = "requires testdata/Packages submodule"]
+    fn embed_scope_replaces_preserves_wrapper_mcs_across_inner_set() {
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let md = ss
+            .find_syntax_by_scope(Scope::new("text.html.markdown").unwrap())
+            .expect("Markdown loaded");
+        let mut state = ParseState::new(md);
+        let mut stack = ScopeStack::new();
+        for line in ["```bash\n", "#!/usr/bin/env bash\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+        }
+        let bash = Scope::new("source.shell.bash").unwrap();
+        assert!(
+            stack.as_slice().contains(&bash),
+            "source.shell.bash (wrapper's last embed_scope token) must be \
+             on the stack after the embedded syntax's first `set:` fires; \
+             stack: {:?}",
+            stack
         );
     }
 }
