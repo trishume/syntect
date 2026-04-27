@@ -103,6 +103,13 @@ pub struct ParseState {
     /// Pending-lines index that `flushed_ops[0]` maps to when `flushed_ops`
     /// is non-empty. Reset to `None` between `parse_line` calls.
     flushed_ops_start: Option<usize>,
+    /// Identity of the branch point whose cross-line replay produced
+    /// `flushed_ops`. `None` when `flushed_ops_start` is `None`.
+    /// Used by `prefer_inner_replay_corrections` to discriminate
+    /// between an inner BP whose correction is structurally a refinement
+    /// of the outer BP's resolved alternative (prefer) vs. one that
+    /// would over-apply (keep outer).
+    flushed_ops_bp: Option<BpInfo>,
     /// Warnings accumulated during parsing, drained into `ParseLineOutput`.
     warnings: Vec<String>,
     /// Active escape patterns from embed operations. The escape regex takes
@@ -153,6 +160,19 @@ pub struct ParseState {
     /// `declarations` exhausted on the leading `$`). Cleared whenever
     /// the cursor moves.
     skipped_branches: Vec<(usize, String)>,
+}
+
+/// Identity of a branch point whose cross-line replay wrote ops to
+/// `flushed_ops`. Captured so `prefer_inner_replay_corrections` can
+/// compare the inner BP (whose corrections are candidate replacements)
+/// against the outer BP (whose locally-computed replay is the default).
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct BpInfo {
+    name: String,
+    /// Stack depth at branch creation (mirrors `BranchPoint::stack_depth`).
+    stack_depth: usize,
+    /// Line number at branch creation (mirrors `BranchPoint::line_number`).
+    line_number: usize,
 }
 
 /// Bookkeeping override used while `handle_fail` is re-parsing a
@@ -405,6 +425,7 @@ impl ParseState {
             pending_line_start_shadows: Vec::new(),
             flushed_ops: Vec::new(),
             flushed_ops_start: None,
+            flushed_ops_bp: None,
             warnings: Vec::new(),
             escape_stack: Vec::new(),
             shadow: ScopeStack::new(),
@@ -469,6 +490,7 @@ impl ParseState {
         // parse above.  These are stored by `handle_fail` in `self.flushed_ops`.
         let replayed = std::mem::take(&mut self.flushed_ops);
         self.flushed_ops_start = None;
+        self.flushed_ops_bp = None;
 
         // Update shadow to reflect consumer's view at end of this line.
         // The consumer (see `syntest`) resets its scope stack to
@@ -1180,15 +1202,29 @@ impl ParseState {
     /// Composition rule, given current start `a` and new fail's `snap`:
     /// - `snap <= a`: new fail supersedes everything; replace.
     /// - `snap > a`: keep `[a..snap)` from prior fails, replace `[snap..N)`.
-    fn merge_flushed(&mut self, snap: usize, new_ops: Vec<Vec<(usize, ScopeStackOp)>>) {
+    ///
+    /// `bp_info` records the BP whose replay produced `new_ops`; stored
+    /// alongside `flushed_ops_start` for later use by
+    /// `prefer_inner_replay_corrections`. When two cross-line fails on
+    /// the same `parse_line` both contribute, we keep the BP info of the
+    /// one that ultimately owns the prefix (matches the start-replacement
+    /// rules above).
+    fn merge_flushed(
+        &mut self,
+        snap: usize,
+        new_ops: Vec<Vec<(usize, ScopeStackOp)>>,
+        bp_info: BpInfo,
+    ) {
         match self.flushed_ops_start {
             None => {
                 self.flushed_ops = new_ops;
                 self.flushed_ops_start = Some(snap);
+                self.flushed_ops_bp = Some(bp_info);
             }
             Some(start) if snap <= start => {
                 self.flushed_ops = new_ops;
                 self.flushed_ops_start = Some(snap);
+                self.flushed_ops_bp = Some(bp_info);
             }
             Some(start) => {
                 let keep = snap - start;
@@ -1198,12 +1234,37 @@ impl ParseState {
         }
     }
 
+    /// Replace `replayed_ops[i]` with `inner_ops` for overlapping
+    /// indices. Only fires when the inner BP was created at a stack
+    /// depth less-than-or-equal to the outer BP's depth — i.e. the
+    /// inner BP is a sibling-or-shallower correction at the same
+    /// structural level, not a nested BP firing inside outer's resolved
+    /// alternative. The "deeper inner" case is the multigen16
+    /// regression seat: outer = `class-members` at depth 4, inner =
+    /// `object-type` at depth 9 (nested inside outer's resolved field
+    /// alt). Preferring its corrections doubled `meta.field.type.java`
+    /// on `Java/syntax_test_java.java:3462+` because outer's full-line
+    /// ops correctly emit one `meta.field.type` and inner's reparse
+    /// adds another.
+    ///
+    /// The depth-equal case is the original `@A.B\n(par=1)\nenum E {}`
+    /// regression seat from PR #663: outer and inner are both
+    /// `declarations` at depth 3 — sibling resolutions of the same
+    /// branch family, and inner's `name`-alt CORRECTLY supersedes
+    /// outer's locally-computed `path`-alt freeze.
     fn prefer_inner_replay_corrections(
         outer_snap: usize,
         replayed_ops: &mut [Vec<(usize, ScopeStackOp)>],
         inner_ops: &[Vec<(usize, ScopeStackOp)>],
         inner_start: usize,
+        outer_bp: &BpInfo,
+        inner_bp: Option<&BpInfo>,
     ) {
+        if let Some(inner) = inner_bp {
+            if inner.stack_depth > outer_bp.stack_depth {
+                return;
+            }
+        }
         for (i, outer_local) in replayed_ops.iter_mut().enumerate() {
             let global_i = outer_snap + i;
             if global_i < inner_start {
@@ -1319,6 +1380,11 @@ impl ParseState {
             let match_start_pos = bp.match_start;
             let pending_lines_snapshot_len = bp.pending_lines_snapshot_len;
             let prefix_ops = bp.prefix_ops.clone();
+            let outer_bp_info = BpInfo {
+                name: bp.name.clone(),
+                stack_depth: bp.stack_depth,
+                line_number: bp.line_number,
+            };
             self.branch_points.remove(bp_index);
 
             self.stack = stack_snapshot;
@@ -1349,6 +1415,7 @@ impl ParseState {
                 // write into a clean slot we can detect afterward.
                 let saved_flushed = std::mem::take(&mut self.flushed_ops);
                 let saved_flushed_start = self.flushed_ops_start.take();
+                let saved_flushed_bp = self.flushed_ops_bp.take();
                 let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                     Vec::with_capacity(truncated_lines.len());
                 for (i, replay_line) in truncated_lines.iter().enumerate() {
@@ -1395,8 +1462,10 @@ impl ParseState {
                 // then prefer the inner corrections for overlapping indices.
                 let inner_corrections = std::mem::take(&mut self.flushed_ops);
                 let inner_corrections_start = self.flushed_ops_start.take();
+                let inner_corrections_bp = self.flushed_ops_bp.take();
                 self.flushed_ops = saved_flushed;
                 self.flushed_ops_start = saved_flushed_start;
+                self.flushed_ops_bp = saved_flushed_bp;
                 if let Some(start) = inner_corrections_start {
                     if !inner_corrections.is_empty() {
                         Self::prefer_inner_replay_corrections(
@@ -1404,10 +1473,16 @@ impl ParseState {
                             &mut replayed_ops,
                             &inner_corrections,
                             start,
+                            &outer_bp_info,
+                            inner_corrections_bp.as_ref(),
                         );
                     }
                 }
-                self.merge_flushed(pending_lines_snapshot_len, replayed_ops);
+                self.merge_flushed(
+                    pending_lines_snapshot_len,
+                    replayed_ops,
+                    outer_bp_info.clone(),
+                );
 
                 // Restart the current line from the beginning under the
                 // restored state.
@@ -1456,6 +1531,11 @@ impl ParseState {
         let pending_lines_snapshot_len = bp.pending_lines_snapshot_len;
         let escape_stack_snapshot = bp.escape_stack_snapshot.clone();
         let prefix_ops = bp.prefix_ops.clone();
+        let outer_bp_info = BpInfo {
+            name: bp.name.clone(),
+            stack_depth: bp.stack_depth,
+            line_number: bp.line_number,
+        };
         // bp borrow ends here.
 
         let pop_count = self.branch_points[bp_index].pop_count;
@@ -1595,6 +1675,7 @@ impl ParseState {
             // into a clean slot we can detect afterward.
             let saved_flushed = std::mem::take(&mut self.flushed_ops);
             let saved_flushed_start = self.flushed_ops_start.take();
+            let saved_flushed_bp = self.flushed_ops_bp.take();
 
             let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                 Vec::with_capacity(truncated_lines.len());
@@ -1644,8 +1725,10 @@ impl ParseState {
             // resolution arrived (during line-2 reparse).
             let inner_corrections = std::mem::take(&mut self.flushed_ops);
             let inner_corrections_start = self.flushed_ops_start.take();
+            let inner_corrections_bp = self.flushed_ops_bp.take();
             self.flushed_ops = saved_flushed;
             self.flushed_ops_start = saved_flushed_start;
+            self.flushed_ops_bp = saved_flushed_bp;
             if let Some(start) = inner_corrections_start {
                 if !inner_corrections.is_empty() {
                     Self::prefer_inner_replay_corrections(
@@ -1653,10 +1736,16 @@ impl ParseState {
                         &mut replayed_ops,
                         &inner_corrections,
                         start,
+                        &outer_bp_info,
+                        inner_corrections_bp.as_ref(),
                     );
                 }
             }
-            self.merge_flushed(pending_lines_snapshot_len, replayed_ops);
+            self.merge_flushed(
+                pending_lines_snapshot_len,
+                replayed_ops,
+                outer_bp_info.clone(),
+            );
 
             // Restart the current line from the beginning.
             ops.clear();
@@ -7506,6 +7595,82 @@ contexts:
             !stack.as_slice().contains(&label),
             "meta.statement.conditional.case.label.java leaked past `->`; stack: {:?}",
             stack,
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn deeper_inner_bp_correction_does_not_double_outer_meta_scope() {
+        // `class C { @anno /**/ fully\n. @anno qualified\n/**/ . /**/\n@anno /**/ object @anno()`
+        // triggers a NESTED cross-line replay where the inner BP is
+        // structurally a child of the outer BP's resolved alternative
+        // (outer `class-members` at depth 4, inner `object-type` at
+        // depth 9). PR #663's `prefer_inner_replay_corrections`
+        // unconditionally replaced outer's locally-computed ops with
+        // inner's corrections, doubling `meta.field.type.java` on the
+        // `object @anno()` line — outer's full-line ops correctly
+        // emit one `meta.field.type` and inner's reparse adds another
+        // because outer's chosen alt already provides that meta_scope.
+        //
+        // Discriminator: only prefer inner when its stack_depth is at
+        // most outer's. Equal-depth siblings (PR #663's original
+        // `@A.B\n(par=1)\nenum E {}` case) keep preferring inner;
+        // strictly-deeper nested BPs stay with outer's ops.
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        for line in [
+            "class C {\n",
+            "  @anno /**/ fully\n",
+            "  . @anno qualified\n",
+            "  /**/ . /**/\n",
+            "  @anno /**/ object @anno()\n",
+        ] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+        }
+        // Reconstruct the running stack at byte position 13 of line 5
+        // (`object`), where the regression's doubled push was visible.
+        let mut at_object = ScopeStack::new();
+        let last_line = "  @anno /**/ object @anno()\n";
+        let mut state2 = ParseState::new(syntax);
+        let prelude = [
+            "class C {\n",
+            "  @anno /**/ fully\n",
+            "  . @anno qualified\n",
+            "  /**/ . /**/\n",
+        ];
+        for line in prelude {
+            let out = state2.parse_line(line, &ss).expect("parse");
+            for (_, op) in &out.ops {
+                let _ = at_object.apply(op);
+            }
+        }
+        let out = state2.parse_line(last_line, &ss).expect("parse");
+        for (pos, op) in &out.ops {
+            if *pos > 13 {
+                break;
+            }
+            let _ = at_object.apply(op);
+        }
+        let field_type = Scope::new("meta.field.type.java").unwrap();
+        let doubled = at_object
+            .as_slice()
+            .iter()
+            .filter(|s| **s == field_type)
+            .count();
+        assert!(
+            doubled <= 1,
+            "meta.field.type.java pushed {} times entering `object` on \
+             line 5 (expected at most 1); stack: {:?}",
+            doubled,
+            at_object,
         );
     }
 }
