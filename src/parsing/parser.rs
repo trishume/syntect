@@ -2047,6 +2047,22 @@ impl ParseState {
                         // phase. See
                         // `v2_set_to_target_with_clear_scopes_clears_parent_meta_content_scope`.
                         //
+                        // Exception: when cur_context itself carries
+                        // `meta_scope` / `meta_content_scope`, those atoms sit
+                        // on top of the visible stack at this point and the
+                        // initial-phase Clear would hide them. The non-initial
+                        // Pop (sized by cur.ms.len() + target.ms.len()) would
+                        // then pop the wrong atoms (from below cur's ms),
+                        // and the Restore that follows would resurrect cur's
+                        // ms back onto the stack instead of the parent atoms
+                        // the Clear was meant to hide. Defer the Clear into
+                        // the non-initial phase (after Pop+Restore) so it
+                        // hides parent atoms, not cur's. Bash's
+                        // `tilde-modifier` (clear+ms) → set:
+                        // `tilde-modifier-username` (clear+mcs) is the
+                        // canonical instance. See
+                        // `cur_meta_scope_set_to_target_with_clear_scopes`.
+                        //
                         // Multi-context `set:` keeps Clear in the non-initial
                         // phase (emitted inline after preceding contexts'
                         // mcs pushes). Moving it to the initial phase here
@@ -2056,7 +2072,10 @@ impl ParseState {
                         // eat-whitespace-then-pop]` relies on Clear eating
                         // the last-pushed mcs atom, which Restore then
                         // replaces when eat-whitespace-then-pop pops.
-                        let single_context_set_clear = is_set && context_refs.len() == 1;
+                        let cur_has_meta = !cur_context.meta_scope.is_empty()
+                            || !cur_context.meta_content_scope.is_empty();
+                        let single_context_set_clear =
+                            is_set && context_refs.len() == 1 && !cur_has_meta;
                         for r in context_refs.iter() {
                             let ctx = r.resolve(syntax_set)?;
 
@@ -2176,11 +2195,19 @@ impl ParseState {
                             // v2: For multi-context `set:`, Clear is emitted
                             // here so it strips the topmost just-pushed mcs
                             // atom (as Sublime does for multi-context set).
-                            // Single-context `set:` emitted its Clear earlier
-                            // in the initial phase (so the trigger token sees
+                            // Single-context `set:` ordinarily emits Clear in
+                            // the initial phase (so the trigger token sees
                             // the cleared stack); re-emitting here would
                             // double-push onto clear_stack and cause Pop
                             // underflow when the context unwinds.
+                            //
+                            // Exception: when cur_context has its own
+                            // `meta_scope` / `meta_content_scope` the initial
+                            // phase deferred the Clear to here so the Pop
+                            // above could find cur's ms on the visible stack.
+                            // Re-introduce the Clear now, after Pop+Restore,
+                            // so it strips parent atoms (the intended
+                            // target) rather than cur's ms.
                             //
                             // Clear is emitted per-context (not only for the
                             // topmost) because `clear_scopes` on a non-topmost
@@ -2191,7 +2218,10 @@ impl ParseState {
                             // placed just before that context's own mcs/ms
                             // pushes so it strips the previous iteration's
                             // last-pushed atom, matching Sublime's semantics.
-                            let single_context_set_clear = is_set && context_refs.len() == 1;
+                            let cur_has_meta = !cur_context.meta_scope.is_empty()
+                                || !cur_context.meta_content_scope.is_empty();
+                            let single_context_set_clear =
+                                is_set && context_refs.len() == 1 && !cur_has_meta;
                             let mut prev_embed_scope_replaces = false;
                             for r in context_refs.iter() {
                                 let ctx = r.resolve(syntax_set)?;
@@ -6287,6 +6317,103 @@ contexts:
              including the atom that was in clear_stack: {}",
             d_state
         );
+    }
+
+    #[test]
+    fn cur_meta_scope_set_to_target_with_clear_scopes() {
+        // Plain `set:` (no pop_count) from a context that itself carries
+        // `clear_scopes` AND `meta_scope`, into a target that carries
+        // `clear_scopes` AND `meta_content_scope`: the initial-phase Clear
+        // for target ordinarily emitted by single-context-set previously
+        // hid cur's meta_scope (which sits on top of the visible stack at
+        // that point). The non-initial Pop then ate the wrong atom (parent's
+        // last meta atom) and the trailing Restore resurrected cur.ms back
+        // onto the stack instead of the parent atom the Clear was meant to
+        // hide. The shape mirrors Bash's tilde-interpolation:
+        //   maybe-tilde-interp  -> tilde-modifier (clear+ms)
+        //   tilde-modifier (''-empty) -> tilde-modifier-username (clear+mcs)
+        //   username pops on lookahead, leaving the parent intact.
+        // After this fix, single-context-set defers the target Clear to the
+        // non-initial phase whenever cur has ms/mcs, so Pop and Restore
+        // operate on the correct atoms.
+        //
+        // Counterpart to `v2_set_to_target_with_clear_scopes_clears_parent_meta_content_scope`,
+        // which exercises the cur-empty case (initial Clear stays as-is so
+        // the trigger token sees the cleared stack).
+        let syntax_str = r#"
+name: CurMsSetTargetClear
+scope: source.curmssettargetclear
+version: 2
+contexts:
+  main:
+    - match: 'p'
+      scope: p.p
+      push: parent
+
+  parent:
+    - meta_scope: parent1.test parent2.test
+    - match: '~'
+      scope: keyword.tilde
+      set: cur
+
+  cur:
+    - clear_scopes: 1
+    - meta_scope: cur.test
+    - match: ''
+      set: target
+
+  target:
+    - clear_scopes: 1
+    - meta_content_scope: target.mcs1.test target.mcs2.test
+    - match: '(?=/)'
+      pop: 1
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        // "p~/" — `p` enters parent, `~` sets cur, `''` (zero-width) sets
+        // target, `(?=/)` pops target leaving the parser back in `parent`.
+        // The trailing literal char is `x` so we get a recorded token after
+        // target has popped.
+        let raw_ops = ops(&mut state, "p~/x\n", &ss);
+        let states = stack_states(raw_ops);
+
+        // Find the state covering `x` after the username has popped: parent
+        // was never replaced (set was on parent's `~` rule, but that set: only
+        // replaces parent's wrapper... actually parent IS replaced. After
+        // pop from target and target's cur (set chain), nothing in `parent`
+        // is on the stack — only `main`. So `x` is matched at `main`.)
+        // What we really want to assert: between target's pop and any later
+        // content, the visible stack must NOT contain `cur.test` — that's
+        // the leak this fix targets.
+        let leaked: Vec<_> = states.iter().filter(|s| s.contains("cur.test")).collect();
+        // cur.test may legitimately appear during the `~` token (cur's
+        // meta_scope applies to the trigger of the set). It must NOT appear
+        // in any state recorded AFTER target was entered, because at that
+        // point cur is gone from the stack.
+        // Identify the cutoff: the first state that contains
+        // `target.mcs1.test` marks the target-active region; from there
+        // onward, `cur.test` must not appear.
+        let target_first = states.iter().position(|s| s.contains("target.mcs1.test"));
+        if let Some(idx) = target_first {
+            for (i, s) in states.iter().enumerate().skip(idx) {
+                assert!(
+                    !s.contains("cur.test"),
+                    "cur.test must not linger from index {} onward (target entered at {}): {}",
+                    i,
+                    idx,
+                    s
+                );
+            }
+        } else {
+            // If target's mcs never landed on any recorded state, the test
+            // can't pin the lifetime — fall back to the simpler invariant.
+            assert!(
+                leaked.is_empty(),
+                "cur.test leaked into recorded states after the SET chain: {:?}",
+                leaked
+            );
+        }
     }
 
     #[test]
