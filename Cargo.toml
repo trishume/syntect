@@ -23,7 +23,7 @@ features = ["metadata"]
 
 [dependencies]
 yaml-rust2 = { version = "0.10.4", optional = true, default-features = false }
-onig = { version = "6.5.1", optional = true, default-features = false }
+onig = { version = "6.5.2", optional = true, default-features = false }
 fancy-regex = { version = "0.18.0", optional = true }
 walkdir = "2.5"
 regex-syntax = { version = "0.8", optional = true }
