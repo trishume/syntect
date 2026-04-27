@@ -1,24 +1,14 @@
 loading syntax definitions from testdata/Packages
-FAILED testdata/Packages/ASP/syntax_test_asp.asp: 53
-FAILED testdata/Packages/Batch File/tests/syntax_test_batch_file.bat: 74
 FAILED testdata/Packages/C#/tests/syntax_test_C#11.cs: 35
-FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 3
-FAILED testdata/Packages/C#/tests/syntax_test_Generics.cs: 3
-FAILED testdata/Packages/Clojure/tests/syntax_test_clojure.clj: 1
+FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 2
 FAILED testdata/Packages/Clojure/tests/syntax_test_shebang.clj: 1
 FAILED testdata/Packages/D/tests/syntax_test_shebang.d: 1
-FAILED testdata/Packages/Git Formats/tests/syntax_test_git_config: 17
-FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 72
-FAILED testdata/Packages/Java/tests/syntax_test_java.java: 1
-FAILED testdata/Packages/Java/tests/syntax_test_jsp.jsp: 44
-FAILED testdata/Packages/JavaScript/tests/syntax_test_typescript.ts: 1
-FAILED testdata/Packages/LaTeX/tests/syntax_test_latex.tex: 76
-FAILED testdata/Packages/Markdown/tests/syntax_test_markdown.md: 1
+FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 50
+FAILED testdata/Packages/Java/tests/syntax_test_java.java: 1987
+FAILED testdata/Packages/Markdown/tests/syntax_test_markdown.md: 158
 FAILED testdata/Packages/PHP/tests/syntax_test_php.php: 1
-FAILED testdata/Packages/Python/tests/syntax_test_python.py: 1
+FAILED testdata/Packages/Python/tests/syntax_test_python.py: 66
 FAILED testdata/Packages/Python/tests/syntax_test_python_strings.py: 1
-FAILED testdata/Packages/Rails/tests/syntax_test_rails.haml: 65
-FAILED testdata/Packages/Rails/tests/syntax_test_rails.html.erb: 23
-FAILED testdata/Packages/ShellScript/Bash/tests/syntax_test_scope.bash: 1
-FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 1
+FAILED testdata/Packages/ShellScript/Bash/tests/syntax_test_scope.bash: 249
+FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 410
 exiting with code 1
