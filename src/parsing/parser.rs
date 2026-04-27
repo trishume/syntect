@@ -143,6 +143,16 @@ pub struct ParseState {
     /// `link-def-attr-continuation` whose own fail then replayed line 3
     /// without the original captures.
     replay_prefix_ops: Option<Vec<(usize, ScopeStackOp)>>,
+    /// Branch_points whose alternatives have all been exhausted at a
+    /// specific cursor position on the current line. Subsequent
+    /// `find_best_match` calls at that position skip the matching pattern
+    /// so the parent context's NEXT rule gets a chance — Sublime Text's
+    /// behaviour. Without this, syntect's prior approach (advance one
+    /// character past the lookahead) lets stale keyword rules match in
+    /// the middle of identifiers (e.g. `package` inside `$package` after
+    /// `declarations` exhausted on the leading `$`). Cleared whenever
+    /// the cursor moves.
+    skipped_branches: Vec<(usize, String)>,
 }
 
 /// Bookkeeping override used while `handle_fail` is re-parsing a
@@ -400,6 +410,7 @@ impl ParseState {
             shadow: ScopeStack::new(),
             replay_ctx: None,
             replay_prefix_ops: None,
+            skipped_branches: Vec::new(),
         }
     }
 
@@ -430,6 +441,10 @@ impl ParseState {
         if self.stack.is_empty() {
             return Err(ParsingError::MissingMainContext);
         }
+
+        // Skipped-branch entries are tied to byte offsets within a single
+        // line — they don't survive across line boundaries.
+        self.skipped_branches.clear();
 
         // Prune branch points older than 128 lines
         let cur_line = self.line_number;
@@ -701,6 +716,11 @@ impl ParseState {
 
             *start = match_end;
 
+            // Prune stale skipped_branches entries: a BP marked as skipped
+            // at an older cursor position no longer matters once the
+            // cursor has advanced past that position.
+            self.skipped_branches.retain(|(c, _)| *c >= *start);
+
             // ignore `with_prototype`s below this if a context is pushed
             if reg_match.from_with_prototype {
                 // use current height, since we're before the actual push
@@ -723,6 +743,18 @@ impl ParseState {
             )?;
 
             Ok(true)
+        } else if self.skipped_branches.iter().any(|(c, _)| *c == *start) {
+            // No pattern matched, but we suppressed at least one Branch
+            // at this cursor (its alts all exhausted). Advance one char as
+            // a last resort to break the loop.
+            self.skipped_branches.retain(|(c, _)| *c != *start);
+            if let Some((i, _)) = line[*start..].char_indices().nth(1) {
+                *start += i;
+                search_cache.clear();
+                Ok(true)
+            } else {
+                Ok(false)
+            }
         } else {
             Ok(false)
         }
@@ -806,6 +838,19 @@ impl ParseState {
         for (from_with_proto, ctx, captures) in context_chain {
             for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)?) {
                 let match_pat = pat_context.match_at(pat_index)?;
+
+                // Skip Branch patterns whose name was just exhausted at this
+                // cursor. See ParseState::skipped_branches and the same-line
+                // exhaustion handler in handle_fail.
+                if let MatchOperation::Branch { name, .. } = &match_pat.operation {
+                    if self
+                        .skipped_branches
+                        .iter()
+                        .any(|(c, n)| *c == start && n == name)
+                    {
+                        continue;
+                    }
+                }
 
                 if let Some(match_region) = self.search_with_end(
                     line,
@@ -1177,7 +1222,7 @@ impl ParseState {
     fn handle_fail(
         &mut self,
         name: &str,
-        line: &str,
+        _line: &str,
         start: &mut usize,
         non_consuming_push_at: &mut (usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
@@ -1373,14 +1418,21 @@ impl ParseState {
                 return Ok(true);
             }
 
-            // Same-line exhaustion: advance one char past the branch_point match
-            // to avoid immediately re-matching the same `(?=...)` lookahead.
-            if let Some((i, _)) = line[match_start_pos..].char_indices().nth(1) {
-                *start = match_start_pos + i;
-            } else {
-                // End of line — no character to advance past.
-                *start = line.len();
-            }
+            // Same-line exhaustion: rewind the cursor to the BP's
+            // original position and record the branch_point's name so
+            // subsequent `find_best_match` calls at that position skip
+            // the same-name Branch pattern. This lets the parent
+            // context's NEXT rule fire instead of advancing past the
+            // lookahead match — mirrors ST's branch-point exhaustion
+            // semantics. The previous behaviour (advance one char) let
+            // stale keyword rules match in the middle of identifiers,
+            // e.g. `package` inside `$package` after `declarations`
+            // exhausted on the leading `$`. If `find_best_match`
+            // returns nothing at this cursor, `parse_next_token`'s
+            // no-match fallback advances one char as a last resort.
+            self.skipped_branches
+                .push((match_start_pos, name.to_string()));
+            *start = match_start_pos;
             search_cache.clear();
             return Ok(true);
         }
@@ -7347,5 +7399,59 @@ contexts:
                 state.shadow,
             );
         }
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn exhausted_branch_point_falls_through_to_parent_next_rule() {
+        // Java's `$x ;` at top level: the `declarations` branch_point's
+        // zero-width `(?=[\p{L}_$@<])` lookahead matches `$`. All five
+        // alternatives (class/enum/interface/variable/method) fail
+        // because `$x` isn't a valid declaration. ST then falls through
+        // to the `java` context's NEXT rule (`else-expressions`), which
+        // pushes an `expression` chain that scopes `$x` as
+        // `meta.variable.identifier.java variable.other.java`. Syntect
+        // previously advanced one character past the lookahead, letting
+        // the next iteration's regex set match `package` / `class` etc.
+        // in the middle of identifiers like `package$` or `$package`.
+        //
+        // After this fix, exhausting a branch_point at a position
+        // rewinds the cursor to that position and marks the
+        // branch_point's name as skipped — so the parent context's
+        // remaining rules get a chance to fire at the same cursor.
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        let dollar_id = "$x ;\n";
+        let out = state.parse_line(dollar_id, &ss).expect("parse");
+        for (_, op) in &out.ops {
+            let _ = stack.apply(op);
+        }
+        let var_id = Scope::new("meta.variable.identifier.java").unwrap();
+        let var_other = Scope::new("variable.other.java").unwrap();
+        // `$x` itself is fully popped at `;`; reconstruct the per-byte
+        // scope by walking ops up to byte 1 (`x`) and confirm the
+        // identifier scope was active there.
+        let mut mid = ScopeStack::new();
+        for (pos, op) in &out.ops {
+            if *pos > 1 {
+                break;
+            }
+            let _ = mid.apply(op);
+        }
+        assert!(
+            mid.as_slice().contains(&var_id),
+            "expected meta.variable.identifier.java active over `$x`; got: {:?}",
+            mid,
+        );
+        assert!(
+            mid.as_slice().contains(&var_other),
+            "expected variable.other.java active over `$x`; got: {:?}",
+            mid,
+        );
     }
 }
