@@ -392,6 +392,20 @@ impl SyntaxDefinition {
                     ctx_refs: SyntaxDefinition::parse_pushargs(s, state, contexts, namer)?,
                     pop_count: y as usize,
                 }
+            } else if let Ok(p) = get_key(map, "push", Some) {
+                // `pop: N + push: X` pops N contexts then pushes X —
+                // equivalent stack effect to `pop: N + set: X`. Without
+                // this case the `push` was silently dropped and the rule
+                // degraded to a plain `Pop(N)`, leaving the parser on the
+                // outer context instead of the intended target.
+                // Observed on Java's `pop: 2 + push: annotation-parameters-body`
+                // (annotation arg lists) and `pop: 1 + push: case-label-expression`,
+                // and on Python's `pop: 2 + push: function-parameter-list-body`
+                // / `type-parameter-list-body`.
+                MatchOperation::Set {
+                    ctx_refs: SyntaxDefinition::parse_pushargs(p, state, contexts, namer)?,
+                    pop_count: y as usize,
+                }
             } else {
                 MatchOperation::Pop(y as usize)
             }
@@ -1289,6 +1303,55 @@ mod tests {
                 }
                 _ => panic!(
                     "Expected Embed operation, got {:?}",
+                    match_pattern.operation
+                ),
+            }
+        } else {
+            panic!("Expected Match pattern");
+        }
+    }
+
+    #[test]
+    fn pop_plus_push_becomes_set_with_pop_count() {
+        // Regression: Java's `pop: 2 + push: annotation-parameters-body`
+        // (and Python's `pop: 2 + push: function-parameter-list-body` etc.)
+        // were silently dropping the `push` half and degrading to a plain
+        // `Pop(N)`, so the target context never appeared on the stack.
+        let def = SyntaxDefinition::load_from_str(
+            r#"
+        name: Test
+        scope: text.test
+        file_extensions: [test]
+        contexts:
+          main:
+            - match: \(
+              pop: 2
+              push: target
+          target:
+            - meta_scope: meta.target
+            - include: main
+        "#,
+            false,
+            None,
+        )
+        .unwrap();
+
+        let ctx = &def.contexts["main"];
+        if let Pattern::Match(ref match_pattern) = ctx.patterns[0] {
+            match match_pattern.operation {
+                MatchOperation::Set {
+                    ref ctx_refs,
+                    pop_count,
+                } => {
+                    assert_eq!(pop_count, 2);
+                    assert_eq!(ctx_refs.len(), 1);
+                    assert!(matches!(
+                        ctx_refs[0],
+                        ContextReference::Named(ref n) if n == "target"
+                    ));
+                }
+                _ => panic!(
+                    "Expected Set operation with pop_count=2, got {:?}",
                     match_pattern.operation
                 ),
             }
