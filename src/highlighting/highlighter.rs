@@ -299,6 +299,12 @@ impl<'a> Highlighter<'a> {
         }
     }
 
+    /// Access the highlighter's theme
+    #[inline]
+    pub fn theme(&self) -> &'a Theme {
+        self.theme
+    }
+
     /// The default style in the absence of any matched rules.
     /// Basically what plain text gets highlighted as.
     pub fn get_default(&self) -> Style {
