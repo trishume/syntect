@@ -8339,4 +8339,162 @@ contexts:
             stack
         );
     }
+
+    /// Regression: an `embed: scope:source.guest#leaf` (with `#fragment`)
+    /// must NOT mark the wrapper as `embed_scope_replaces`. The fragment
+    /// context's `meta_content_scope` is independent of the syntax's
+    /// top-level scope; suppressing it strips a real grammar atom and the
+    /// next `clear_scopes:` then bites the wrapper instead. Observed on
+    /// Python's PEP 723 inline TOML (`#toml`).
+    #[test]
+    fn fragment_embed_preserves_target_meta_content_scope() {
+        use crate::parsing::ScopeStack;
+
+        let host = SyntaxDefinition::load_from_str(
+            r#"
+name: FragHost
+scope: source.fraghost
+file_extensions: [fraghost]
+version: 2
+contexts:
+  main:
+    - match: '<<'
+      embed: scope:source.fragguest#leaf
+      embed_scope: wrapper.atom
+      escape: '>>'
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let guest = SyntaxDefinition::load_from_str(
+            r#"
+name: FragGuest
+scope: source.fragguest
+file_extensions: [fragguest]
+version: 2
+hidden: true
+contexts:
+  main:
+    - match: ''
+      pop: true
+  leaf:
+    - meta_content_scope: leaf.mcs.atom
+    - match: '\w+'
+      scope: keyword.fragguest
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(host);
+        builder.add(guest);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("FragHost").unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        // Parse a line that opens the embed but never closes it, so the
+        // wrapper + leaf stay on the final stack for inspection.
+        let out = state.parse_line("<<word\n", &ss).expect("parse");
+        for (_, op) in &out.ops {
+            stack.apply(op).expect("apply");
+        }
+
+        let scopes: Vec<String> = stack
+            .as_slice()
+            .iter()
+            .map(|s| format!("{:?}", s))
+            .collect();
+        let wrapper = Scope::new("wrapper.atom").unwrap();
+        let leaf = Scope::new("leaf.mcs.atom").unwrap();
+        assert!(
+            stack.as_slice().contains(&wrapper),
+            "wrapper.atom must remain visible inside fragment embed; got: {:?}",
+            scopes
+        );
+        assert!(
+            stack.as_slice().contains(&leaf),
+            "leaf.mcs.atom (fragment target's meta_content_scope) must be \
+             pushed and visible; got: {:?}",
+            scopes
+        );
+    }
+
+    /// Regression gate: `embed: scope:source.guest` (NO fragment) still
+    /// keeps the `embed_scope_replaces` suppression. The wrapper's last
+    /// embed_scope atom equals the guest syntax's top-level scope (the
+    /// auto-insert at `yaml_load.rs:706-713`); without suppression the
+    /// scope would appear twice on the stack.
+    #[test]
+    fn non_fragment_embed_still_suppresses_main_mcs() {
+        use crate::parsing::ScopeStack;
+
+        let host = SyntaxDefinition::load_from_str(
+            r#"
+name: NonFragHost
+scope: source.nonfraghost
+file_extensions: [nonfraghost]
+version: 2
+contexts:
+  main:
+    - match: '<<'
+      embed: scope:source.nonfragguest
+      embed_scope: wrapper2.atom source.nonfragguest
+      escape: '>>'
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let guest = SyntaxDefinition::load_from_str(
+            r#"
+name: NonFragGuest
+scope: source.nonfragguest
+file_extensions: [nonfragguest]
+version: 2
+hidden: true
+contexts:
+  main:
+    - match: '\w+'
+      scope: keyword.nonfragguest
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(host);
+        builder.add(guest);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("NonFragHost").unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        // Parse a line that opens the embed but never closes it, so the
+        // wrapper + guest scopes stay on the final stack for inspection.
+        let out = state.parse_line("<<word\n", &ss).expect("parse");
+        for (_, op) in &out.ops {
+            stack.apply(op).expect("apply");
+        }
+
+        let guest_scope = Scope::new("source.nonfragguest").unwrap();
+        let count = stack
+            .as_slice()
+            .iter()
+            .filter(|s| **s == guest_scope)
+            .count();
+        assert_eq!(
+            count, 1,
+            "source.nonfragguest must appear exactly once (wrapper's last \
+             embed_scope atom; guest main's auto-inserted top-level scope \
+             must be suppressed); stack: {:?}",
+            stack
+        );
+    }
 }

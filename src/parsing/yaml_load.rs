@@ -492,6 +492,30 @@ impl SyntaxDefinition {
         // and the embedded context reference
         let mut embed_contexts = Vec::new();
 
+        // Parse the target reference up front so the wrapper construction
+        // below can tell whether the embed enters via the embedded syntax's
+        // `main` (no fragment) or via a `#fragment`. Only the no-fragment
+        // case needs `embed_scope_replaces=true`: that's the case where the
+        // top-level scope auto-inserted into `main`'s mcs by `add_initial_contexts`
+        // duplicates the wrapper's last embed_scope atom and the per-target
+        // loop must suppress it. Fragment embeds enter a named context whose
+        // mcs is independent of the syntax's top-level scope; suppressing it
+        // strips real grammar atoms (e.g., TOML's `meta.mapping.toml`) and
+        // downstream `clear_scopes:` then bites the wrapper instead of the
+        // intended grammar atom. Observed on Python's PEP 723 inline TOML
+        // (`embed: scope:source.toml.embedded.python#toml`).
+        let target_ref = SyntaxDefinition::parse_reference(y, state, contexts, namer, true)?;
+        let target_has_fragment = matches!(
+            &target_ref,
+            ContextReference::ByScope {
+                sub_context: Some(_),
+                ..
+            } | ContextReference::File {
+                sub_context: Some(_),
+                ..
+            }
+        );
+
         // Create wrapper context with embed_scope if present
         let has_embed_scope = get_key(map, "embed_scope", Some).is_ok();
         if has_embed_scope {
@@ -517,8 +541,10 @@ impl SyntaxDefinition {
             embed_scope_context_yaml.push(Yaml::Hash(match_map));
             let scope_ctx_name =
                 SyntaxDefinition::parse_context(&embed_scope_context_yaml, state, contexts, namer)?;
-            // In v2, embed_scope replaces the embedded syntax's scope
-            if state.version >= 2 {
+            // In v2, embed_scope replaces the embedded syntax's scope — but
+            // only when the embed enters via `main`. See the comment above
+            // `target_has_fragment` for the rationale.
+            if state.version >= 2 && !target_has_fragment {
                 if let Some(ctx) = contexts.get_mut(&scope_ctx_name) {
                     ctx.embed_scope_replaces = true;
                 }
@@ -526,9 +552,7 @@ impl SyntaxDefinition {
             embed_contexts.push(ContextReference::Inline(scope_ctx_name));
         }
 
-        embed_contexts.push(SyntaxDefinition::parse_reference(
-            y, state, contexts, namer, true,
-        )?);
+        embed_contexts.push(target_ref);
 
         Ok(MatchOperation::Embed {
             contexts: embed_contexts,
