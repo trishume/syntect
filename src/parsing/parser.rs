@@ -2076,6 +2076,58 @@ impl ParseState {
                             || !cur_context.meta_content_scope.is_empty();
                         let single_context_set_clear =
                             is_set && context_refs.len() == 1 && !cur_has_meta;
+                        // Multi-context `set:` whose target body declares
+                        // `clear_scopes: N` AND a non-empty `meta_scope`,
+                        // with cur empty: ST drops one EXTRA atom beyond
+                        // Clear(N) on the trigger token. The body content
+                        // sees only Clear(N) atoms gone. Observed on PHP
+                        // `function bye(): never {` — at the `:`, ST drops
+                        // both `meta.function.php` (function-block's mcs,
+                        // what Clear(1) would clear) AND the next-deeper
+                        // `source.php.embedded.html` (the embed wrapper's
+                        // mcs); syntect previously kept both, leaking
+                        // nested `meta.function.php` /
+                        // `meta.function.return-type.php` into the colon.
+                        // See `php_multi_set_target_clear_drops_extra_parent_mcs_on_trigger`.
+                        //
+                        // The target's `meta_scope` non-emptiness is what
+                        // anchors the extra drop on the trigger: that ms
+                        // is pushed on top of the trigger and asks ST to
+                        // strip one more parent atom below Clear's reach.
+                        // Targets with `meta_content_scope` only (e.g.
+                        // Zsh's `zsh-redirection-glob-range-end`, which has
+                        // `clear_scopes: 1` + `meta_content_scope` but no
+                        // `meta_scope`) must NOT trigger this — there's no
+                        // ms to anchor the extra drop on the trigger token,
+                        // so doing it strips fundamental scopes
+                        // (`source.shell.zsh`,
+                        // `meta.function-call.arguments.shell`) that ST
+                        // keeps.
+                        let target_clear_amt = if is_set {
+                            context_refs.iter().find_map(|r| {
+                                r.resolve(syntax_set)
+                                    .ok()
+                                    .and_then(|c| match c.clear_scopes {
+                                        Some(ClearAmount::TopN(n))
+                                            if n > 0 && !c.meta_scope.is_empty() =>
+                                        {
+                                            Some(n)
+                                        }
+                                        _ => None,
+                                    })
+                            })
+                        } else {
+                            None
+                        };
+                        let cur_inert = !cur_has_meta && cur_context.clear_scopes.is_none();
+                        let multi_set_extra_drop = is_set
+                            && set_pop_count == 1
+                            && context_refs.len() > 1
+                            && cur_inert
+                            && target_clear_amt.is_some();
+                        if let (true, Some(amt)) = (multi_set_extra_drop, target_clear_amt) {
+                            ops.push((index, ScopeStackOp::Clear(ClearAmount::TopN(amt + 1))));
+                        }
                         for r in context_refs.iter() {
                             let ctx = r.resolve(syntax_set)?;
 
@@ -2187,6 +2239,46 @@ impl ParseState {
                         // push have been popped off. The restored atoms land below
                         // the target's upcoming meta_scope / meta_content_scope push.
                         if is_set && cur_context.clear_scopes.is_some() && !restore_before_pop {
+                            ops.push((index, ScopeStackOp::Restore));
+                        }
+
+                        // Pair to the initial-phase Clear(N+1) emitted for the
+                        // multi-context-set + cur-empty + target-clear case
+                        // above. The body content needs only the target's own
+                        // Clear(N) applied (emitted by the per-context loop
+                        // below); restoring here brings the (N+1)-atom batch
+                        // back onto the live stack, then the per-context
+                        // Clear(N) eats N of them and leaves the extra atom
+                        // visible to the body. The target context's matching
+                        // Restore in `MatchOperation::Pop` then unwinds the
+                        // smaller batch and the larger trigger-only batch is
+                        // left consumed.
+                        let cur_inert_restore = !cur_context.meta_scope.is_empty()
+                            || !cur_context.meta_content_scope.is_empty()
+                            || cur_context.clear_scopes.is_some();
+                        let target_clear_amt_restore = if is_set {
+                            context_refs.iter().find_map(|r| {
+                                r.resolve(syntax_set)
+                                    .ok()
+                                    .and_then(|c| match c.clear_scopes {
+                                        Some(ClearAmount::TopN(n))
+                                            if n > 0 && !c.meta_scope.is_empty() =>
+                                        {
+                                            Some(n)
+                                        }
+                                        _ => None,
+                                    })
+                            })
+                        } else {
+                            None
+                        };
+                        let multi_set_extra_drop_restore = is_set
+                            && version >= 2
+                            && set_pop_count == 1
+                            && context_refs.len() > 1
+                            && !cur_inert_restore
+                            && target_clear_amt_restore.is_some();
+                        if multi_set_extra_drop_restore {
                             ops.push((index, ScopeStackOp::Restore));
                         }
 
@@ -6414,6 +6506,202 @@ contexts:
                 leaked
             );
         }
+    }
+
+    #[test]
+    fn php_multi_set_target_clear_drops_extra_parent_mcs_on_trigger() {
+        // Multi-context `set:` whose target body has `clear_scopes: 1` AND
+        // a non-empty `meta_scope`, fired from a cur with no ms/mcs/clear.
+        // ST drops the immediate parent's mcs atom (Clear(1)) AND one
+        // EXTRA atom (the next-deeper mcs) on the trigger token; the body
+        // content sees only Clear(1) atoms gone, so the extra atom is
+        // restored. Reduced from PHP `function bye(): never {`: cur is
+        // `function-return-type`; target is
+        // `[function-return-type-body, type-hint-simple-type]` with
+        // `function-return-type-body` declaring `clear_scopes: 1` and
+        // `meta_scope: meta.function.return-type.php`; the `:` sits below
+        // `function-block`'s `meta_content_scope: meta.function.php` and
+        // the embed wrapper's `source.php.embedded.html`, both of which
+        // ST drops on the colon and only `source.php.embedded.html` is
+        // restored for the body.
+        let syntax_str = r#"
+name: PhpMultiSetClear
+scope: source.phpmultisetclear
+version: 2
+contexts:
+  main:
+    - match: '(?=\S)'
+      push: outer
+
+  outer:
+    - meta_content_scope: outer.mcs.test
+    - match: 'F'
+      scope: keyword.f.test
+      push: parent
+
+  parent:
+    - meta_content_scope: parent.mcs.test
+    - match: '\('
+      scope: parent.lparen.test
+      push: cur
+
+  cur:
+    - match: ':'
+      scope: trigger.colon.test
+      set: [body, helper]
+    - match: '(?=\S)'
+      pop: 1
+
+  body:
+    - clear_scopes: 1
+    - meta_scope: body.ms.test
+    - match: '\w+'
+      scope: body.word.test
+      pop: 1
+
+  helper:
+    - match: '(?=\S)'
+      pop: 1
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        // `F(:foo`: F enters parent via outer, `(` enters cur via parent,
+        // `:` sets [body, helper], helper else-pops, body matches "foo".
+        let raw_ops = ops(&mut state, "F(:foo\n", &ss);
+        let states = stack_states(raw_ops);
+
+        let colon_state = states
+            .iter()
+            .find(|s| s.contains("trigger.colon.test"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected a state containing trigger.colon.test, got: {:?}",
+                    states
+                )
+            });
+        assert!(
+            !colon_state.contains("parent.mcs.test"),
+            "trigger must drop parent.mcs (Clear(1) target): {}",
+            colon_state
+        );
+        assert!(
+            !colon_state.contains("outer.mcs.test"),
+            "trigger must drop outer.mcs (the EXTRA atom anchored by body.ms): {}",
+            colon_state
+        );
+        assert!(
+            colon_state.contains("body.ms.test"),
+            "trigger must carry body.ms (target's meta_scope): {}",
+            colon_state
+        );
+
+        let body_state = states
+            .iter()
+            .find(|s| s.contains("body.word.test"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected a state containing body.word.test, got: {:?}",
+                    states
+                )
+            });
+        assert!(
+            !body_state.contains("parent.mcs.test"),
+            "body must drop parent.mcs (Clear(1) target): {}",
+            body_state
+        );
+        assert!(
+            body_state.contains("outer.mcs.test"),
+            "body must keep outer.mcs (the extra-drop is trigger-only): {}",
+            body_state
+        );
+        assert!(
+            body_state.contains("body.ms.test"),
+            "body must carry body.ms: {}",
+            body_state
+        );
+    }
+
+    #[test]
+    fn multi_set_target_clear_with_target_mcs_only_does_not_extra_drop() {
+        // Companion to `php_multi_set_target_clear_drops_extra_parent_mcs_on_trigger`:
+        // the same shape but the clear-bearing target has only
+        // `meta_content_scope` (no `meta_scope`). ST does NOT drop any
+        // extra atom on the trigger here; the trigger keeps both parent
+        // mcs atoms. Real-world: Zsh's
+        // `zsh-redirection-glob-range-end` (`clear_scopes: 1` +
+        // `meta_content_scope: meta.range.shell.zsh`, no meta_scope) at
+        // the head of a 5-context set from `zsh-redirection-glob-range-begin`.
+        // Without this gate, the fix above strips
+        // `meta.function-call.arguments.shell` and even
+        // `source.shell.zsh` on the `<` trigger.
+        let syntax_str = r#"
+name: ZshLikeMultiSetTargetMcsOnly
+scope: source.zshlikemulti
+version: 2
+contexts:
+  main:
+    - match: '(?=\S)'
+      push: outer
+
+  outer:
+    - meta_content_scope: outer.mcs.test
+    - match: 'F'
+      scope: keyword.f.test
+      push: parent
+
+  parent:
+    - meta_content_scope: parent.mcs.test
+    - match: '\('
+      scope: parent.lparen.test
+      push: cur
+
+  cur:
+    - match: ':'
+      scope: trigger.colon.test
+      set: [body, helper]
+    - match: '(?=\S)'
+      pop: 1
+
+  body:
+    - clear_scopes: 1
+    - meta_content_scope: body.mcs.test
+    - match: '\w+'
+      scope: body.word.test
+      pop: 1
+
+  helper:
+    - match: '(?=\S)'
+      pop: 1
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "F(:foo\n", &ss);
+        let states = stack_states(raw_ops);
+
+        let colon_state = states
+            .iter()
+            .find(|s| s.contains("trigger.colon.test"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected a state containing trigger.colon.test, got: {:?}",
+                    states
+                )
+            });
+        // No extra-drop must apply: both parent atoms must remain on the
+        // trigger token. The Clear(1) for body's clear_scopes is
+        // post-match, so even parent.mcs is still on the trigger.
+        assert!(
+            colon_state.contains("parent.mcs.test"),
+            "trigger must keep parent.mcs (target has no meta_scope, no extra-drop): {}",
+            colon_state
+        );
+        assert!(
+            colon_state.contains("outer.mcs.test"),
+            "trigger must keep outer.mcs (target has no meta_scope, no extra-drop): {}",
+            colon_state
+        );
     }
 
     #[test]
