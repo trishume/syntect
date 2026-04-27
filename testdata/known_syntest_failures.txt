@@ -1,10 +1,9 @@
 loading syntax definitions from testdata/Packages
 FAILED testdata/Packages/C#/tests/syntax_test_C#11.cs: 35
-FAILED testdata/Packages/C#/tests/syntax_test_GeneralStructure.cs: 2
 FAILED testdata/Packages/Clojure/tests/syntax_test_shebang.clj: 1
 FAILED testdata/Packages/D/tests/syntax_test_shebang.d: 1
-FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 50
-FAILED testdata/Packages/Java/tests/syntax_test_java.java: 1987
+FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 49
+FAILED testdata/Packages/Java/tests/syntax_test_java.java: 949
 FAILED testdata/Packages/Markdown/tests/syntax_test_markdown.md: 158
 FAILED testdata/Packages/PHP/tests/syntax_test_php.php: 1
 FAILED testdata/Packages/Python/tests/syntax_test_python.py: 66

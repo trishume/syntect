@@ -1839,19 +1839,29 @@ impl ParseState {
                     if !cur_context.meta_scope.is_empty() {
                         ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
                     }
+                    // Restore cur_context's `clear_scopes` BEFORE
+                    // popping deeper contexts. The Clear hid the
+                    // deeper context's meta_scope/mcs atoms; with the
+                    // Restore deferred to the very end, the
+                    // depth-loop's `Pop(deep.meta_scope.len())` would
+                    // pop visible-stack scopes that don't belong to
+                    // the deeper context — observed on Java's
+                    // `case DayType when -> "incomplete"`, where
+                    // `case-label-expression`'s `clear_scopes: 1`
+                    // cleared `case-label`'s `meta.case.java` and
+                    // `case-label-end`'s `pop: 2` then popped the
+                    // surrounding `meta.block.java` (switch's block)
+                    // off the consumer's stack instead.
+                    if cur_context.clear_scopes.is_some() {
+                        ops.push((index, ScopeStackOp::Restore))
+                    }
                     // Each deeper context's scopes are popped in
                     // top-to-bottom order: meta_content_scope first
                     // (pushed after its own meta_scope, hence above on
                     // the stack), then meta_scope, then any Restore
                     // paired with that context's own `clear_scopes`
                     // (mirrors the push order Clear → meta_scope → mcs
-                    // in reverse). Without the Restore, a `pop: N`
-                    // from the top that also unwinds a deeper context
-                    // with `clear_scopes` leaves the originally cleared
-                    // atoms orphaned — observed on Python f/t-string
-                    // interpolation close, where `f-string-replacement-end`
-                    // fires `pop: 2` that also pops
-                    // `f-string-replacement-meta`.
+                    // in reverse).
                     for depth in 1..pop_count {
                         let level_idx = stack_len - 1 - depth;
                         let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
@@ -1871,11 +1881,6 @@ impl ParseState {
                             ops.push((index, ScopeStackOp::Restore));
                         }
                     }
-                }
-
-                // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
-                if !initial && cur_context.clear_scopes.is_some() {
-                    ops.push((index, ScopeStackOp::Restore))
                 }
             }
             // for some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
@@ -7452,6 +7457,55 @@ contexts:
             mid.as_slice().contains(&var_other),
             "expected variable.other.java active over `$x`; got: {:?}",
             mid,
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn pop_n_restores_clear_before_unwinding_deeper_meta_scopes() {
+        // Java's `case DayType when -> "incomplete";` lands in
+        // `case-label-expression` (clear_scopes:1, mcs: case.label).
+        // The `clear_scopes:1` hides the parent `case-label`'s
+        // `meta_scope` (meta.case). When `case-label-end` matches
+        // `->` with `pop: 2`, the rule must unwind both
+        // `case-label-expression` AND `case-label`. With the deeper
+        // meta_scope Pop emitted before the cur_context's clear was
+        // restored, the consumer popped the wrong (still-visible)
+        // scope — the surrounding `meta.block.java` (switch's block)
+        // — leaving `meta.case.java` orphaned past the `->`.
+        //
+        // Restoring cur_context's clear BEFORE the depth-loop's
+        // deeper-meta_scope pops makes the previously-cleared atom
+        // visible again so it can be popped correctly.
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        for line in [
+            "class C {\n",
+            "  void f(Object o) {\n",
+            "    return switch (o) {\n",
+            "       case DayType when -> \"incomplete\";\n",
+        ] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+        }
+        let case = Scope::new("meta.statement.conditional.case.java").unwrap();
+        let label = Scope::new("meta.statement.conditional.case.label.java").unwrap();
+        assert!(
+            !stack.as_slice().contains(&case),
+            "meta.statement.conditional.case.java leaked past `->`; stack: {:?}",
+            stack,
+        );
+        assert!(
+            !stack.as_slice().contains(&label),
+            "meta.statement.conditional.case.label.java leaked past `->`; stack: {:?}",
+            stack,
         );
     }
 }
