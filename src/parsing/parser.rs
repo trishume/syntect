@@ -2179,59 +2179,46 @@ impl ParseState {
                                 || (ctx.clear_scopes.is_some() && is_set)
                         });
                     if repush {
-                        // remove previously pushed meta scopes, so that meta content scopes will be applied in the correct order
-                        let mut num_to_pop: usize = context_refs
+                        // Head pop: target.meta_scope (just pushed in the
+                        // initial phase) + cur's own meta scopes. These come
+                        // off as one Pop because they sit at the top of the
+                        // visible stack and don't need per-frame Restore.
+                        let target_ms_sum: usize = context_refs
                             .iter()
                             .map(|r| {
                                 let ctx = r.resolve(syntax_set).unwrap();
                                 ctx.meta_scope.len()
                             })
                             .sum();
-
-                        // also pop off the original context's meta scopes
+                        let mut head_pop = target_ms_sum;
                         if is_set {
                             if version >= 2 {
                                 // v2: set excludes parent meta_content_scope from matched text
-                                num_to_pop += cur_context.meta_scope.len();
+                                head_pop += cur_context.meta_scope.len();
                             } else {
-                                num_to_pop += cur_context.meta_content_scope.len()
+                                head_pop += cur_context.meta_content_scope.len()
                                     + cur_context.meta_scope.len();
-                            }
-                            // For `pop: N + set:` (set_pop_count > 1), also
-                            // unwind the N-1 deeper contexts' scope atoms. They
-                            // were pushed when those contexts entered; without
-                            // this they'd linger on the stack under the new
-                            // target's meta_scope.
-                            if set_pop_count > 1 {
-                                let stack_len = self.stack.len();
-                                for depth in 1..set_pop_count.min(stack_len) {
-                                    let level_idx = stack_len - 1 - depth;
-                                    let ctx =
-                                        syntax_set.get_context(&self.stack[level_idx].context)?;
-                                    num_to_pop +=
-                                        ctx.meta_content_scope.len() + ctx.meta_scope.len();
-                                }
                             }
                         }
 
                         // `pop: N + set:` with clear_scopes on the leaving
                         // context: restore the cleared atoms BEFORE the
-                        // compound Pop so num_to_pop finds the popped frames'
-                        // full meta_content_scope on the scope stack. Without
-                        // this, Pop eats atoms from below the popped range —
-                        // observed on Batch File `cmd-set-quoted-value-inner-end`
-                        // (`clear_scopes: 1`) firing `pop: 2, set: ignored-tail-outer`,
-                        // which otherwise drops `meta.command.set.dosbatch` from
-                        // the trailing content of every `set "var"=...` line.
+                        // head Pop so its count finds the visible stack
+                        // intact. Without this, Pop eats atoms from below
+                        // the popped range — observed on Batch File
+                        // `cmd-set-quoted-value-inner-end` (`clear_scopes: 1`)
+                        // firing `pop: 2, set: ignored-tail-outer`, which
+                        // otherwise drops `meta.command.set.dosbatch` from
+                        // the trailing content of every `set "var"=...`
+                        // line.
                         let restore_before_pop =
                             is_set && set_pop_count > 1 && cur_context.clear_scopes.is_some();
                         if restore_before_pop {
                             ops.push((index, ScopeStackOp::Restore));
                         }
 
-                        // do all the popping as one operation
-                        if num_to_pop > 0 {
-                            ops.push((index, ScopeStackOp::Pop(num_to_pop)));
+                        if head_pop > 0 {
+                            ops.push((index, ScopeStackOp::Pop(head_pop)));
                         }
 
                         // Restore scopes cleared by the leaving context, now that
@@ -2240,6 +2227,43 @@ impl ParseState {
                         // the target's upcoming meta_scope / meta_content_scope push.
                         if is_set && cur_context.clear_scopes.is_some() && !restore_before_pop {
                             ops.push((index, ScopeStackOp::Restore));
+                        }
+
+                        // `pop: N + set:` (set_pop_count > 1) unwinds N-1
+                        // deeper contexts in addition to the usual
+                        // set-replace semantics. Mirror the
+                        // `MatchOperation::Pop` arm at lines 1954-1971: pop
+                        // each deeper frame's mcs+ms in top-to-bottom order,
+                        // then Restore that frame's `clear_scopes` if any.
+                        // Without the per-depth Restore, atoms cleared by a
+                        // deeper frame stay in clear_stack out of reach,
+                        // and the per-target Clear below then bites one
+                        // atom too deep. Observed on Python regex inside
+                        // a `r'''(?ix:...)` triple-quoted string: the
+                        // activate-x-mode `pop: 3 + set:[group-body-extended,
+                        // maybe-unexpected-quantifiers]` left
+                        // `group-body-extended_outer`'s cleared
+                        // `meta.mode.extended.regexp` in clear_stack;
+                        // group-body-extended_target's `clear_scopes: 1`
+                        // then cleared `source.regexp.python` instead.
+                        if is_set && set_pop_count > 1 {
+                            let stack_len = self.stack.len();
+                            for depth in 1..set_pop_count.min(stack_len) {
+                                let level_idx = stack_len - 1 - depth;
+                                let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
+                                if !ctx.meta_content_scope.is_empty() {
+                                    ops.push((
+                                        index,
+                                        ScopeStackOp::Pop(ctx.meta_content_scope.len()),
+                                    ));
+                                }
+                                if !ctx.meta_scope.is_empty() {
+                                    ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
+                                }
+                                if ctx.clear_scopes.is_some() {
+                                    ops.push((index, ScopeStackOp::Restore));
+                                }
+                            }
                         }
 
                         // Pair to the initial-phase Clear(N+1) emitted for the
@@ -6407,6 +6431,183 @@ contexts:
             !d_state.contains("mid1.test") && !d_state.contains("mid2.test"),
             "middle's meta_content_scope atoms must not linger after pop:2+set:, \
              including the atom that was in clear_stack: {}",
+            d_state
+        );
+    }
+
+    #[test]
+    fn pop_n_set_restores_deeper_frame_clear_scopes() {
+        // `pop: N + set: [...]` (set_pop_count > 1) where one of the
+        // popped DEEPER frames has `clear_scopes`: the deeper frame's
+        // cleared atoms must be restored as part of the unwind, otherwise
+        // they linger in `clear_stack` and the per-target Clear that
+        // follows bites one atom too deep on the visible stack.
+        //
+        // Shape mirrors the Python `r'''(?ix:...)` triple-quoted-string
+        // regex case: the regex embed pushes `base-literal-extended`
+        // (a 1-atom meta_scope), then `(` matches `groups-extended` and
+        // pushes `[group-body-extended_outer, maybe-unexpected-quantifiers,
+        // group-start]`. `group-body-extended` has `clear_scopes: 1` (it
+        // clears `base-literal-extended`'s ms atom) and a 2-atom meta_scope.
+        // `(?ix:` then matches `group-start`'s `pop: 3 + set:
+        // [group-body-extended_target, maybe-unexpected-quantifiers]` —
+        // a multi-context set that unwinds the three pushed frames and
+        // re-pushes [group-body-extended_target, maybe-unexpected-quantifiers].
+        // Without the per-depth Restore in the unwind,
+        // `group-body-extended_outer`'s cleared atom stayed in clear_stack
+        // and the new target's `clear_scopes: 1` then cleared the
+        // `source.regexp.python` mcs atom from below — leaking it from the
+        // body content scope.
+        let syntax_str = r#"
+name: PopNSetDeeperClear
+scope: source.popnsetdeepclear
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      scope: p.a
+      push: outer
+
+  outer:
+    - meta_content_scope: keep-me.test
+    - match: 'b'
+      scope: p.b
+      push: lit
+
+  lit:
+    - meta_scope: clear-me.test
+    - match: 'c'
+      scope: p.c
+      push: [frame, inner]
+
+  frame:
+    - clear_scopes: 1
+    - meta_scope: fra.test frb.test
+    - match: 'z'
+      pop: 1
+
+  inner:
+    - match: 'd'
+      scope: p.d
+      pop: 2
+      set: [target, popper]
+
+  target:
+    - clear_scopes: 1
+    - meta_scope: tgt.test
+    - match: 'e'
+      scope: p.e
+      pop: 1
+
+  popper:
+    - match: ''
+      pop: 1
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "abcde", &ss);
+        let states = stack_states(raw_ops);
+
+        // The state recorded on the body token `e` (in `target`) must
+        // contain `keep-me.test` (outer's mcs, which sits below the
+        // popped frames) and `tgt.test` (target's ms). It must NOT
+        // contain `fra.test`/`frb.test` (frame's ms — the popped frame)
+        // or `clear-me.test` (cleared by frame on entry, restored by
+        // the deeper-clear unwind, then cleared again by target's
+        // own `clear_scopes: 1`).
+        let e_state = states
+            .iter()
+            .find(|s| s.contains("p.e"))
+            .unwrap_or_else(|| panic!("expected a state containing `p.e`, got: {:?}", states));
+        assert!(
+            e_state.contains("keep-me.test"),
+            "keep-me.test must survive pop:3+set: with deeper clear_scopes \
+             (without per-depth Restore, target's clear ate this atom): {}",
+            e_state
+        );
+        assert!(
+            e_state.contains("tgt.test"),
+            "tgt.test must be on the stack (target was pushed by set:): {}",
+            e_state
+        );
+        assert!(
+            !e_state.contains("fra.test") && !e_state.contains("frb.test"),
+            "frame's meta_scope must not linger after pop:3+set:: {}",
+            e_state
+        );
+        assert!(
+            !e_state.contains("clear-me.test"),
+            "clear-me.test must be cleared by target's clear_scopes:1 \
+             (it was first cleared by frame on entry, restored by the \
+             deeper-clear unwind, then cleared again by target): {}",
+            e_state
+        );
+    }
+
+    #[test]
+    fn pop_n_set_without_deeper_clear_scopes_unaffected() {
+        // Same shape as the test above but with no `clear_scopes` on the
+        // deeper popped frame. Verifies the head-pop split doesn't change
+        // behavior when the per-depth Restore would be a no-op — defends
+        // against regression of Java's `pop:2 + push: annotation-parameters-body`
+        // and similar shapes where deeper frames have no clears.
+        let syntax_str = r#"
+name: PopNSetNoDeeperClear
+scope: source.popnsetnodeepclear
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      scope: p.a
+      push: outer
+
+  outer:
+    - meta_scope: outer.test
+    - match: 'b'
+      scope: p.b
+      push: [frame, inner]
+
+  frame:
+    - meta_scope: fra.test frb.test
+    - match: 'z'
+      pop: 1
+
+  inner:
+    - match: 'c'
+      scope: p.c
+      pop: 2
+      set: target
+
+  target:
+    - meta_scope: tgt.test
+    - match: 'd'
+      scope: p.d
+      pop: 1
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "abcd", &ss);
+        let states = stack_states(raw_ops);
+
+        let d_state = states
+            .iter()
+            .find(|s| s.contains("p.d"))
+            .unwrap_or_else(|| panic!("expected a state containing `p.d`, got: {:?}", states));
+        assert!(
+            d_state.contains("outer.test"),
+            "outer.test must survive pop:2+set: (sits below the popped range): {}",
+            d_state
+        );
+        assert!(
+            d_state.contains("tgt.test"),
+            "tgt.test must be on the stack (target was pushed by set:): {}",
+            d_state
+        );
+        assert!(
+            !d_state.contains("fra.test") && !d_state.contains("frb.test"),
+            "frame's meta_scope must not linger after pop:2+set:: {}",
             d_state
         );
     }
