@@ -90,15 +90,81 @@ pub struct ParseState {
     /// cross-line `fail` replay. Only the strings are stored; the ops are
     /// returned to callers immediately (same as before).
     pending_lines: Vec<String>,
+    /// Snapshot of `shadow` at the start of each buffered line in
+    /// `pending_lines`. Used by the cross-line-fail replay to restore
+    /// `shadow` to its state at the first replayed line's beginning, so
+    /// the shadow mirrors what the consumer does (reset + apply
+    /// replayed).
+    pending_line_start_shadows: Vec<ScopeStack>,
     /// Corrected ops produced by a cross-line `fail` replay, to be returned
-    /// as `ParseLineOutput::replayed` at the end of `parse_line`.
+    /// as `ParseLineOutput::replayed` at the end of `parse_line`. When
+    /// populated, entry `i` corresponds to `pending_lines[flushed_ops_start + i]`.
     flushed_ops: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// Pending-lines index that `flushed_ops[0]` maps to when `flushed_ops`
+    /// is non-empty. Reset to `None` between `parse_line` calls.
+    flushed_ops_start: Option<usize>,
     /// Warnings accumulated during parsing, drained into `ParseLineOutput`.
     warnings: Vec<String>,
     /// Active escape patterns from embed operations. The escape regex takes
     /// strict precedence over normal patterns — it is checked first and can
     /// truncate the search region.
     escape_stack: Vec<EscapeEntry>,
+    /// Mirror of the consumer's scope stack. Updated at `parse_line`
+    /// boundaries (not mid-line) from the returned `ops` and
+    /// `replayed`, mirroring the consumer's behaviour (reset to the
+    /// first-replayed line's start, then apply replayed, then apply
+    /// current ops). `exec_escape` uses it to detect orphan atoms left
+    /// on the consumer's stack by a prior cross-line replay whose
+    /// later same-line fails truncated the owning context out of
+    /// `self.stack` (the Push for the atom is committed in
+    /// `flushed_ops`, so it can't be taken back by `ops.truncate`) —
+    /// and emits a balancing Pop before the normal escape pops.
+    shadow: ScopeStack,
+    /// Active while `handle_fail` recurses into `parse_line_inner*` to
+    /// replay a buffered past line under a new alternative. Overrides
+    /// the "current line" / "pending_lines slot" bookkeeping that
+    /// branches created during the re-parse record, so they anchor to
+    /// the replay line `L+i` rather than the outer `parse_line`'s
+    /// current line. Without it, a later fail on the outer line
+    /// misclassifies the replay-born branch as same-line and applies
+    /// its replay-line-relative `match_start` to a shorter outer line
+    /// (the byte-20-out-of-13 panic on `syntax_test_java.java:10263`
+    /// inside `@MultiLineAnnotation(...)`).
+    replay_ctx: Option<ReplayCtx>,
+    /// Ops the outer cross-line replay has already composed for the
+    /// first replayed line — outer prefix_ops + new-alt meta/pat/capture
+    /// emission. A branch_point created during the inner re-parse
+    /// records `replay_prefix_ops + ops` as its own `prefix_ops`, so
+    /// when it later fails and reconstructs its line, the outer
+    /// captures (e.g. `[foo]:` LRD opener) survive instead of being
+    /// rebuilt from an empty Vec — the cause of `meta.link.reference`
+    /// scope loss in `syntax_test_markdown.md`'s `[foo]: /url` cases
+    /// where `link-def-title-continuation`'s fail spawns a nested
+    /// `link-def-attr-continuation` whose own fail then replayed line 3
+    /// without the original captures.
+    replay_prefix_ops: Option<Vec<(usize, ScopeStackOp)>>,
+    /// Branch_points whose alternatives have all been exhausted at a
+    /// specific cursor position on the current line. Subsequent
+    /// `find_best_match` calls at that position skip the matching pattern
+    /// so the parent context's NEXT rule gets a chance — Sublime Text's
+    /// behaviour. Without this, syntect's prior approach (advance one
+    /// character past the lookahead) lets stale keyword rules match in
+    /// the middle of identifiers (e.g. `package` inside `$package` after
+    /// `declarations` exhausted on the leading `$`). Cleared whenever
+    /// the cursor moves.
+    skipped_branches: Vec<(usize, String)>,
+}
+
+/// Bookkeeping override used while `handle_fail` is re-parsing a
+/// buffered past line. See the `replay_ctx` field on `ParseState`.
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ReplayCtx {
+    /// Virtual "current line" of the inner re-parse (`bp.line_number + i`).
+    line_number: usize,
+    /// Slot in `self.pending_lines` that a branch created during this
+    /// replay iteration should record as its snapshot length, so a
+    /// future cross-line fail replays from `L+i` onward.
+    pending_lines_snapshot_offset: usize,
 }
 
 /// A resolved escape pattern from an `embed` operation, stored on the escape stack.
@@ -157,6 +223,14 @@ struct BranchPoint {
     /// ESCAPE …`, every non-whitespace before the `LIKE` fires
     /// `else-pop` in the escape-alternative, derailing the stack).
     prefix_ops: Vec<(usize, ScopeStackOp)>,
+    /// Capture Push/Pop ops emitted alongside the branch_point match's
+    /// `pat_scope`. Re-emitted on fail-retry between the pat_scope
+    /// Push and Pop so captures like `keyword.declaration.data.haskell`
+    /// on the first capture group of `(data)(?:\s+(family|instance))?`
+    /// survive a branch swap — without this, a `data CtxCls ctx => …`
+    /// (where `alt[0]` `data-signature` fails into `alt[1]` `data-context`)
+    /// drops the keyword scope from the `data` token.
+    capture_ops: Vec<(usize, ScopeStackOp)>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -179,6 +253,46 @@ struct RegexMatch<'a> {
 
 /// Maps the pattern to the start index, which is -1 if not found.
 type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
+
+/// Build the ordered Push/Pop ops for a match's `captures:` mapping over
+/// its regex `regions`. Captures can appear in arbitrary source order
+/// (e.g. `((bob)|(hi))*` matching `hibob` — the outer group must Push
+/// before any inner group). Empty captures are skipped because they'd
+/// otherwise sort a Pop before its Push. The returned ops are already
+/// position-ordered and safe to append to a parser ops vec.
+///
+/// Each capture's `(cap_start, cap_end)` is clipped to the outer match
+/// range `regions.pos(0)` so a group matching inside a `(?=...)` /
+/// `(?<=...)` whose own span extends past the consumed range still
+/// colours the overlap (the boundary char) and nothing beyond it. This
+/// mirrors Sublime Text; without the clip, a lookahead-internal
+/// `captures:` entry leaked scope over unmatched trailing chars or was
+/// silently dropped upstream in `parse_captures`.
+fn build_capture_ops(capture_map: &CaptureMapping, regions: &Region) -> Vec<(usize, ScopeStackOp)> {
+    let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
+    let (match_start, match_end) = match regions.pos(0) {
+        Some(bounds) => bounds,
+        None => return Vec::new(),
+    };
+    for &(cap_index, ref scopes) in capture_map.iter() {
+        if let Some((cap_start, cap_end)) = regions.pos(cap_index) {
+            let clipped_start = cap_start.max(match_start);
+            let clipped_end = cap_end.min(match_end);
+            if clipped_start >= clipped_end {
+                continue;
+            }
+            for scope in scopes.iter() {
+                map.push((
+                    (clipped_start, -((clipped_end - clipped_start) as i32)),
+                    ScopeStackOp::Push(*scope),
+                ));
+            }
+            map.push(((clipped_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
+        }
+    }
+    map.sort_by(|a, b| a.0.cmp(&b.0));
+    map.into_iter().map(|((i, _), op)| (i, op)).collect()
+}
 
 // To understand the implementation of this, here's an introduction to how
 // Sublime Text syntax definitions work.
@@ -288,9 +402,15 @@ impl ParseState {
             branch_points: Vec::new(),
             line_number: 0,
             pending_lines: Vec::new(),
+            pending_line_start_shadows: Vec::new(),
             flushed_ops: Vec::new(),
+            flushed_ops_start: None,
             warnings: Vec::new(),
             escape_stack: Vec::new(),
+            shadow: ScopeStack::new(),
+            replay_ctx: None,
+            replay_prefix_ops: None,
+            skipped_branches: Vec::new(),
         }
     }
 
@@ -322,6 +442,10 @@ impl ParseState {
             return Err(ParsingError::MissingMainContext);
         }
 
+        // Skipped-branch entries are tied to byte offsets within a single
+        // line — they don't survive across line boundaries.
+        self.skipped_branches.clear();
+
         // Prune branch points older than 128 lines
         let cur_line = self.line_number;
         let warnings = &mut self.warnings;
@@ -337,18 +461,70 @@ impl ParseState {
         });
         self.line_number += 1;
 
+        let pending_lines_before = self.pending_lines.len();
+
         let ops = self.parse_line_inner(line, syntax_set)?;
 
         // Collect any corrected ops produced by a cross-line `fail` during the
         // parse above.  These are stored by `handle_fail` in `self.flushed_ops`.
         let replayed = std::mem::take(&mut self.flushed_ops);
+        self.flushed_ops_start = None;
+
+        // Update shadow to reflect consumer's view at end of this line.
+        // The consumer (see `syntest`) resets its scope stack to
+        // `parsed_line_buffer[start_idx].stack_before` when `replayed` is
+        // non-empty, then applies replayed then applies current-line ops.
+        // Mirror that here so `shadow` matches the consumer downstream.
+        //
+        // While re-applying replays, also overwrite each buffered line's
+        // pending_line_start_shadows entry with the corrected baseline.
+        // Without this, a later replay covering this same line would reset
+        // shadow to a stale snapshot captured before the prior replay's
+        // correction landed, causing scope leaks (e.g.
+        // meta.link.reference.def.markdown persisting past back-to-back
+        // Markdown link reference definitions, since each LRD's correction
+        // arrives in the *next* line's parse_line and the snapshot for
+        // that next line was captured from the buggy uncorrected stack).
+        if !replayed.is_empty() {
+            let start_idx = pending_lines_before
+                .checked_sub(replayed.len())
+                .unwrap_or(0);
+            if let Some(snap) = self.pending_line_start_shadows.get(start_idx) {
+                self.shadow = snap.clone();
+            }
+            for (i, line_ops) in replayed.iter().enumerate() {
+                for (_, op) in line_ops {
+                    let _ = self.shadow.apply(op);
+                }
+                // After applying replayed[i], shadow == start of buffered
+                // line (start_idx + i + 1). Overwrite that snapshot so the
+                // next replay covering it starts from the corrected
+                // baseline rather than the stale one captured pre-replay.
+                let next_idx = start_idx + i + 1;
+                if next_idx < self.pending_line_start_shadows.len() {
+                    self.pending_line_start_shadows[next_idx] = self.shadow.clone();
+                }
+            }
+        }
+
+        // Snapshot the shadow now (post-replays, pre-current-ops) — this
+        // becomes the baseline for the next line if the current line ends
+        // with live branch_points and gets buffered for future replay.
+        let shadow_at_start_corrected = self.shadow.clone();
+
+        for (_, op) in &ops {
+            let _ = self.shadow.apply(op);
+        }
 
         // Keep the line string for potential future cross-line replay.
         if !self.branch_points.is_empty() {
             self.pending_lines.push(line.to_string());
+            self.pending_line_start_shadows
+                .push(shadow_at_start_corrected);
         } else {
             // No active branch points: any buffered strings are stale.
             self.pending_lines.clear();
+            self.pending_line_start_shadows.clear();
         }
 
         let warnings = std::mem::take(&mut self.warnings);
@@ -540,6 +716,11 @@ impl ParseState {
 
             *start = match_end;
 
+            // Prune stale skipped_branches entries: a BP marked as skipped
+            // at an older cursor position no longer matters once the
+            // cursor has advanced past that position.
+            self.skipped_branches.retain(|(c, _)| *c >= *start);
+
             // ignore `with_prototype`s below this if a context is pushed
             if reg_match.from_with_prototype {
                 // use current height, since we're before the actual push
@@ -562,6 +743,18 @@ impl ParseState {
             )?;
 
             Ok(true)
+        } else if self.skipped_branches.iter().any(|(c, _)| *c == *start) {
+            // No pattern matched, but we suppressed at least one Branch
+            // at this cursor (its alts all exhausted). Advance one char as
+            // a last resort to break the loop.
+            self.skipped_branches.retain(|(c, _)| *c != *start);
+            if let Some((i, _)) = line[*start..].char_indices().nth(1) {
+                *start += i;
+                search_cache.clear();
+                Ok(true)
+            } else {
+                Ok(false)
+            }
         } else {
             Ok(false)
         }
@@ -645,6 +838,19 @@ impl ParseState {
         for (from_with_proto, ctx, captures) in context_chain {
             for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)?) {
                 let match_pat = pat_context.match_at(pat_index)?;
+
+                // Skip Branch patterns whose name was just exhausted at this
+                // cursor. See ParseState::skipped_branches and the same-line
+                // exhaustion handler in handle_fail.
+                if let MatchOperation::Branch { name, .. } = &match_pat.operation {
+                    if self
+                        .skipped_branches
+                        .iter()
+                        .any(|(c, n)| *c == start && n == name)
+                    {
+                        continue;
+                    }
+                }
 
                 if let Some(match_region) = self.search_with_end(
                     line,
@@ -854,6 +1060,33 @@ impl ParseState {
                 // keyword's own scopes so a same-line fail rewind can
                 // re-emit them (they were truncated off `ops` along
                 // with the alt[0]'s subsequent work).
+                // When `handle_fail` is mid-replay, `self.line_number` /
+                // `self.pending_lines` still reflect the *outer* current
+                // line — read through `replay_ctx` so a branch born
+                // during replay anchors to the virtual replay line `L+i`.
+                let (bp_line_number, bp_pending_lines_snapshot_len) = match &self.replay_ctx {
+                    Some(ctx) => (ctx.line_number, ctx.pending_lines_snapshot_offset),
+                    None => (self.line_number.saturating_sub(1), self.pending_lines.len()),
+                };
+                // When this branch is born inside an outer cross-line
+                // replay's `parse_line_inner_from`, the local `ops` Vec
+                // is the inner re-parse's `res` — it does *not* include
+                // the outer prefix the outer replay is about to splice
+                // in front. Without prepending that outer prefix, a
+                // later fail of *this* branch reconstructs its line
+                // from an empty prefix, dropping the outer captures
+                // entirely (the `[foo]:` LRD opener vanished from
+                // `syntax_test_markdown.md`'s `[foo]: /url` cases when
+                // a `link-def-attr-continuation` born inside the
+                // `link-def-title-continuation` replay later failed).
+                let prefix_ops = match &self.replay_prefix_ops {
+                    Some(outer) => {
+                        let mut combined = outer.clone();
+                        combined.extend(ops.iter().cloned());
+                        combined
+                    }
+                    None => ops.clone(),
+                };
                 let bp = BranchPoint {
                     name: name.clone(),
                     next_alternative: 1, // 0 is about to be pushed
@@ -863,16 +1096,21 @@ impl ParseState {
                     match_start: *start, // position before this match's advance
                     trigger_match_start: match_start,
                     pat_scope: pat.scope.clone(),
-                    line_number: self.line_number.saturating_sub(1), // current line (already incremented)
+                    line_number: bp_line_number,
                     ops_snapshot_len: ops.len(),
                     stack_depth: self.stack.len(),
                     non_consuming_push_at_snapshot: *non_consuming_push_at,
                     first_line_snapshot: self.first_line,
                     with_prototype: pat.with_prototype.clone(),
-                    pending_lines_snapshot_len: self.pending_lines.len(),
+                    pending_lines_snapshot_len: bp_pending_lines_snapshot_len,
                     escape_stack_snapshot: self.escape_stack.clone(),
                     pop_count,
-                    prefix_ops: ops.clone(),
+                    prefix_ops,
+                    capture_ops: pat
+                        .captures
+                        .as_ref()
+                        .map(|m| build_capture_ops(m, &reg_match.regions))
+                        .unwrap_or_default(),
                 };
                 self.branch_points.push(bp);
                 // When pop_count > 0 (pop + branch), use Set semantics to
@@ -902,31 +1140,12 @@ impl ParseState {
         for s in &pat.scope {
             ops.push((match_start, ScopeStackOp::Push(*s)));
         }
-        if let Some(ref capture_map) = pat.captures {
-            // captures could appear in an arbitrary order, have to produce ops in right order
-            // ex: ((bob)|(hi))* could match hibob in wrong order, and outer has to push first
-            // we don't have to handle a capture matching multiple times, Sublime doesn't
-            let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
-            for &(cap_index, ref scopes) in capture_map.iter() {
-                if let Some((cap_start, cap_end)) = reg_match.regions.pos(cap_index) {
-                    // marking up empty captures causes pops to be sorted wrong
-                    if cap_start == cap_end {
-                        continue;
-                    }
-                    for scope in scopes.iter() {
-                        map.push((
-                            (cap_start, -((cap_end - cap_start) as i32)),
-                            ScopeStackOp::Push(*scope),
-                        ));
-                    }
-                    map.push(((cap_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
-                }
-            }
-            map.sort_by(|a, b| a.0.cmp(&b.0));
-            for ((index, _), op) in map.into_iter() {
-                ops.push((index, op));
-            }
-        }
+        let capture_ops = pat
+            .captures
+            .as_ref()
+            .map(|m| build_capture_ops(m, &reg_match.regions))
+            .unwrap_or_default();
+        ops.extend(capture_ops.iter().cloned());
         if !pat.scope.is_empty() {
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
@@ -948,13 +1167,62 @@ impl ParseState {
         }
     }
 
+    /// Merge a cross-line replay's per-line corrected ops into `flushed_ops`.
+    ///
+    /// Multiple cross-line fails can fire on a single `parse_line` call (e.g.
+    /// Java line 624 with two live branches from line 615, both snapshotted at
+    /// `pending_lines_snapshot_len = 0`). Each fail's replay covers
+    /// `pending_lines[snap..pending_lines.len())`. A naive `extend` leaves
+    /// `flushed_ops` with duplicates — consumers of `ParseLineOutput::replayed`
+    /// index `replayed[i] ↔ pending_lines[i]` by `buf_len - replayed.len()`,
+    /// so duplicates misalign every byte offset.
+    ///
+    /// Composition rule, given current start `a` and new fail's `snap`:
+    /// - `snap <= a`: new fail supersedes everything; replace.
+    /// - `snap > a`: keep `[a..snap)` from prior fails, replace `[snap..N)`.
+    fn merge_flushed(&mut self, snap: usize, new_ops: Vec<Vec<(usize, ScopeStackOp)>>) {
+        match self.flushed_ops_start {
+            None => {
+                self.flushed_ops = new_ops;
+                self.flushed_ops_start = Some(snap);
+            }
+            Some(start) if snap <= start => {
+                self.flushed_ops = new_ops;
+                self.flushed_ops_start = Some(snap);
+            }
+            Some(start) => {
+                let keep = snap - start;
+                self.flushed_ops.truncate(keep);
+                self.flushed_ops.extend(new_ops);
+            }
+        }
+    }
+
+    fn prefer_inner_replay_corrections(
+        outer_snap: usize,
+        replayed_ops: &mut [Vec<(usize, ScopeStackOp)>],
+        inner_ops: &[Vec<(usize, ScopeStackOp)>],
+        inner_start: usize,
+    ) {
+        for (i, outer_local) in replayed_ops.iter_mut().enumerate() {
+            let global_i = outer_snap + i;
+            if global_i < inner_start {
+                continue;
+            }
+            let inner_idx = global_i - inner_start;
+            if let Some(corrected) = inner_ops.get(inner_idx) {
+                *outer_local = corrected.clone();
+            }
+        }
+    }
+
     /// Handle a `fail` operation by rewinding to the named branch point.
     /// Returns Ok(true) if backtracking happened (caller should continue from rewound position).
     /// Returns Ok(false) if the fail had no effect.
     fn handle_fail(
         &mut self,
         name: &str,
-        line: &str,
+        _line: &str,
         start: &mut usize,
         non_consuming_push_at: &mut (usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
@@ -980,7 +1248,15 @@ impl ParseState {
             None => return Ok(false), // No such branch point, fail is no-op
         };
 
-        let cur_line = self.line_number.saturating_sub(1);
+        // During a replay recursion, `cur_line` is the virtual replay
+        // line — without this override a same-line fail fired inside
+        // the re-parse would be misclassified as cross-line, and a
+        // fail on the outer line for a branch created during replay
+        // would be misclassified as same-line.
+        let cur_line = match &self.replay_ctx {
+            Some(ctx) => ctx.line_number,
+            None => self.line_number.saturating_sub(1),
+        };
         let bp = &self.branch_points[bp_index];
 
         // Check validity: not >128 lines old
@@ -993,8 +1269,15 @@ impl ParseState {
             return Ok(false);
         }
 
-        // Check validity: stack depth still >= branch's stack_depth
-        if self.stack.len() < bp.stack_depth {
+        // Check validity: the alt frame is still on the stack. Mirrors the
+        // bp lookup predicate above (`stack_len > bp.stack_depth.saturating_sub(bp.pop_count)`)
+        // so a `pop: N + branch_point` whose snapshot captures the
+        // pre-pop depth doesn't false-positive here. Without subtracting
+        // `pop_count`, Java's `pop: 2 + branch_point: annotation-qualified-parameters`
+        // failed lookup with `self.stack.len() < bp.stack_depth` and the
+        // fail became a no-op, leaking `meta.annotation.identifier.java`
+        // into every nested-annotation extends path.
+        if self.stack.len() <= bp.stack_depth.saturating_sub(bp.pop_count) {
             self.branch_points.remove(bp_index);
             return Ok(false);
         }
@@ -1026,6 +1309,7 @@ impl ParseState {
             // stack with `meta.type.js, meta.group.js` — 274 cascading
             // assertion failures in `syntax_test_typescript.ts`.
             let is_cross_line = bp.line_number < cur_line;
+            let bp_line_number = bp.line_number;
             let stack_snapshot = bp.stack_snapshot.clone();
             let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
             let escape_stack_snapshot = bp.escape_stack_snapshot.clone();
@@ -1060,11 +1344,30 @@ impl ParseState {
                 // buffered lines.
                 let truncated_lines: Vec<String> =
                     self.pending_lines[pending_lines_snapshot_len..].to_vec();
+                // Save prior flushed_ops state and clear it so any nested
+                // cross-line fails firing during the replay loop below
+                // write into a clean slot we can detect afterward.
+                let saved_flushed = std::mem::take(&mut self.flushed_ops);
+                let saved_flushed_start = self.flushed_ops_start.take();
                 let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                     Vec::with_capacity(truncated_lines.len());
                 for (i, replay_line) in truncated_lines.iter().enumerate() {
-                    let line_ops = if i == 0 {
-                        let mut first_line_ops = prefix_ops.clone();
+                    // Tag branches created during this iteration with
+                    // the replay line's identity, not the outer line's.
+                    let prev_replay_ctx = self.replay_ctx.replace(ReplayCtx {
+                        line_number: bp_line_number + i,
+                        pending_lines_snapshot_offset: pending_lines_snapshot_len + i,
+                    });
+                    // No new-alt construction here (all alternatives
+                    // exhausted), so the first-line prefix is just
+                    // `prefix_ops`. Surface it to inner branch creations
+                    // so their `prefix_ops` keeps the outer captures.
+                    let prev_replay_prefix = if i == 0 {
+                        self.replay_prefix_ops.replace(prefix_ops.clone())
+                    } else {
+                        self.replay_prefix_ops.take()
+                    };
+                    let inner_result = if i == 0 {
                         let resume_at = if let Some((j, _)) =
                             replay_line[match_start_pos..].char_indices().nth(1)
                         {
@@ -1072,16 +1375,39 @@ impl ParseState {
                         } else {
                             replay_line.len()
                         };
-                        let tail_ops =
-                            self.parse_line_inner_from(replay_line, syntax_set, resume_at)?;
+                        self.parse_line_inner_from(replay_line, syntax_set, resume_at)
+                    } else {
+                        self.parse_line_inner(replay_line, syntax_set)
+                    };
+                    self.replay_ctx = prev_replay_ctx;
+                    self.replay_prefix_ops = prev_replay_prefix;
+                    let tail_ops = inner_result?;
+                    let line_ops = if i == 0 {
+                        let mut first_line_ops = prefix_ops.clone();
                         first_line_ops.extend(tail_ops);
                         first_line_ops
                     } else {
-                        self.parse_line_inner(replay_line, syntax_set)?
+                        tail_ops
                     };
                     replayed_ops.push(line_ops);
                 }
-                self.flushed_ops.extend(replayed_ops);
+                // Capture inner corrections (if any), restore prior state,
+                // then prefer the inner corrections for overlapping indices.
+                let inner_corrections = std::mem::take(&mut self.flushed_ops);
+                let inner_corrections_start = self.flushed_ops_start.take();
+                self.flushed_ops = saved_flushed;
+                self.flushed_ops_start = saved_flushed_start;
+                if let Some(start) = inner_corrections_start {
+                    if !inner_corrections.is_empty() {
+                        Self::prefer_inner_replay_corrections(
+                            pending_lines_snapshot_len,
+                            &mut replayed_ops,
+                            &inner_corrections,
+                            start,
+                        );
+                    }
+                }
+                self.merge_flushed(pending_lines_snapshot_len, replayed_ops);
 
                 // Restart the current line from the beginning under the
                 // restored state.
@@ -1092,14 +1418,21 @@ impl ParseState {
                 return Ok(true);
             }
 
-            // Same-line exhaustion: advance one char past the branch_point match
-            // to avoid immediately re-matching the same `(?=...)` lookahead.
-            if let Some((i, _)) = line[match_start_pos..].char_indices().nth(1) {
-                *start = match_start_pos + i;
-            } else {
-                // End of line — no character to advance past.
-                *start = line.len();
-            }
+            // Same-line exhaustion: rewind the cursor to the BP's
+            // original position and record the branch_point's name so
+            // subsequent `find_best_match` calls at that position skip
+            // the same-name Branch pattern. This lets the parent
+            // context's NEXT rule fire instead of advancing past the
+            // lookahead match — mirrors ST's branch-point exhaustion
+            // semantics. The previous behaviour (advance one char) let
+            // stale keyword rules match in the middle of identifiers,
+            // e.g. `package` inside `$package` after `declarations`
+            // exhausted on the leading `$`. If `find_best_match`
+            // returns nothing at this cursor, `parse_next_token`'s
+            // no-match fallback advances one char as a last resort.
+            self.skipped_branches
+                .push((match_start_pos, name.to_string()));
+            *start = match_start_pos;
             search_cache.clear();
             return Ok(true);
         }
@@ -1108,11 +1441,13 @@ impl ParseState {
         let is_cross_line = bp.line_number < cur_line;
 
         // Extract everything we need from bp before mutating self.
+        let bp_line_number = bp.line_number;
         let next_alt_index = bp.next_alternative;
         let next_alt = bp.alternatives[next_alt_index].clone();
         let match_start_pos = bp.match_start;
         let trigger_match_start = bp.trigger_match_start;
         let trigger_pat_scope = bp.pat_scope.clone();
+        let trigger_capture_ops = bp.capture_ops.clone();
         let stack_snapshot = bp.stack_snapshot.clone();
         let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
         let first_line_snapshot = bp.first_line_snapshot;
@@ -1126,7 +1461,10 @@ impl ParseState {
         let pop_count = self.branch_points[bp_index].pop_count;
 
         // Restore parser state to the snapshot.
-        self.stack = stack_snapshot;
+        // Keep `stack_snapshot` available — the same-line fix below needs
+        // it to compute popped-context meta_scope clearance via
+        // `push_meta_ops`.
+        self.stack = stack_snapshot.clone();
         self.proto_starts = proto_starts_snapshot;
         self.escape_stack = escape_stack_snapshot;
         self.first_line = first_line_snapshot;
@@ -1146,7 +1484,6 @@ impl ParseState {
         // Push the next alternative onto the stack.
         let with_prototype = self.branch_points[bp_index].with_prototype.clone();
         let context_id = next_alt.id()?;
-        let context = syntax_set.get_context(&context_id)?;
         let captures = None; // no captures available at rewind time
 
         let proto_ids = match with_prototype {
@@ -1185,50 +1522,141 @@ impl ParseState {
             let truncated_lines: Vec<String> =
                 self.pending_lines[pending_lines_snapshot_len..].to_vec();
 
+            // Compose the first replayed line's prefix (outer prefix_ops +
+            // new-alt meta/pat/capture/meta_content emission) up front so a
+            // branch_point born inside the inner re-parse can inherit it
+            // via `self.replay_prefix_ops`. Built once per fail; cloned
+            // and extended with `tail_ops` to form the final line_ops.
+            //
+            // Use `push_meta_ops` with a synthetic Set/Push for the
+            // new alternative — same path the same-line fail above and
+            // the original branch creation take — so both the new
+            // alternative's own meta scopes AND the popped contexts'
+            // meta_scope/mcs clearance Pop (for `pop: N + branch_point`,
+            // N > 0) get re-emitted. A bespoke re-emit of just
+            // `context.meta_scope` / `context.meta_content_scope` is
+            // missing the popped-contexts Pop, leaving Java's
+            // `pop: 2 + branch_point: annotation-qualified-parameters`
+            // crossing a line boundary with both the popped context's
+            // meta_scope (`meta.annotation.identifier.java`) AND the
+            // outer declaration's meta_scope (`meta.enum.java` /
+            // `meta.class.java` / `meta.interface.java`) leaked on the
+            // stack — cascading across 8000+ lines past the multi-line
+            // annotation-modified declaration at lines 2260-2297 of
+            // `syntax_test_java.java`.
+            //
+            // `push_meta_ops` reads `self.stack` to compute the popped
+            // contexts' scope atoms, so swap in `stack_snapshot` (pre-pop
+            // state captured at branch creation) for the duration of the
+            // calls — `self.stack` currently holds the post-set state
+            // (alt N already pushed).
+            let mut first_line_prefix = prefix_ops.clone();
+            let synthetic_op_alt_n = if pop_count > 0 {
+                MatchOperation::Set {
+                    ctx_refs: vec![next_alt.clone()],
+                    pop_count,
+                }
+            } else {
+                MatchOperation::Push(vec![next_alt.clone()])
+            };
+            let level_ctx_id = stack_snapshot.last().map(|l| l.context);
+            let post_set_stack = std::mem::replace(&mut self.stack, stack_snapshot.clone());
+            if let Some(level_ctx_id) = level_ctx_id {
+                let level_context = syntax_set.get_context(&level_ctx_id)?;
+                self.push_meta_ops(
+                    true,
+                    trigger_match_start,
+                    level_context,
+                    &synthetic_op_alt_n,
+                    syntax_set,
+                    &mut first_line_prefix,
+                )?;
+                for scope in &trigger_pat_scope {
+                    first_line_prefix.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+                }
+                first_line_prefix.extend(trigger_capture_ops.iter().cloned());
+                if !trigger_pat_scope.is_empty() {
+                    first_line_prefix
+                        .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
+                }
+                self.push_meta_ops(
+                    false,
+                    match_start_pos,
+                    level_context,
+                    &synthetic_op_alt_n,
+                    syntax_set,
+                    &mut first_line_prefix,
+                )?;
+            }
+            self.stack = post_set_stack;
+
+            // Save prior flushed_ops state and clear it so any nested
+            // cross-line fails firing during the replay loop below write
+            // into a clean slot we can detect afterward.
+            let saved_flushed = std::mem::take(&mut self.flushed_ops);
+            let saved_flushed_start = self.flushed_ops_start.take();
+
             let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
                 Vec::with_capacity(truncated_lines.len());
             for (i, replay_line) in truncated_lines.iter().enumerate() {
+                // Tag branches created during this iteration with the
+                // replay line's identity, not the outer line's.
+                let prev_replay_ctx = self.replay_ctx.replace(ReplayCtx {
+                    line_number: bp_line_number + i,
+                    pending_lines_snapshot_offset: pending_lines_snapshot_len + i,
+                });
+                // Expose the first-line prefix so a branch_point born
+                // during this line's re-parse anchors its `prefix_ops`
+                // to the full line state — outer captures included.
+                // Subsequent replayed lines start fresh.
+                let prev_replay_prefix = if i == 0 {
+                    self.replay_prefix_ops.replace(first_line_prefix.clone())
+                } else {
+                    self.replay_prefix_ops.take()
+                };
+                let inner_result = if i == 0 {
+                    self.parse_line_inner_from(replay_line, syntax_set, match_start_pos)
+                } else {
+                    self.parse_line_inner(replay_line, syntax_set)
+                };
+                self.replay_ctx = prev_replay_ctx;
+                self.replay_prefix_ops = prev_replay_prefix;
+                let tail_ops = inner_result?;
                 let line_ops = if i == 0 {
-                    // First buffered line: compose prefix + branch ops + resume.
-                    let mut first_line_ops = prefix_ops.clone();
-                    // Re-emit the trigger's pat.scope and the new
-                    // alternative's meta scope ops in the same order
-                    // the non-fail push path uses: clear_scopes and
-                    // meta_scope at `trigger_match_start` (so the
-                    // matched text sees them), then pat.scope at the
-                    // same position, popped at `match_start_pos`.
-                    // meta_content_scope only applies after the
-                    // matched text, so it lands at `match_start_pos`.
-                    if let Some(clear_amount) = context.clear_scopes {
-                        first_line_ops
-                            .push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
-                    }
-                    for scope in context.meta_scope.iter() {
-                        first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-                    }
-                    for scope in &trigger_pat_scope {
-                        first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-                    }
-                    if !trigger_pat_scope.is_empty() {
-                        first_line_ops
-                            .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
-                    }
-                    for scope in context.meta_content_scope.iter() {
-                        first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
-                    }
-                    // Resume parsing from the branch match's end position.
-                    let tail_ops =
-                        self.parse_line_inner_from(replay_line, syntax_set, match_start_pos)?;
+                    let mut first_line_ops = first_line_prefix.clone();
                     first_line_ops.extend(tail_ops);
                     first_line_ops
                 } else {
-                    self.parse_line_inner(replay_line, syntax_set)?
+                    tail_ops
                 };
                 replayed_ops.push(line_ops);
             }
-            // Append (rather than overwrite) in case multiple cross-line fails
-            // fire on the same parse_line call.
-            self.flushed_ops.extend(replayed_ops);
+            // Capture inner corrections (if any), restore prior state, then
+            // prefer the inner corrections for overlapping indices. Without
+            // this, the outer's locally-computed `replayed_ops[i]` for
+            // indices an inner cross-line fail later corrected (during a
+            // later iteration of this same loop) would silently overwrite
+            // the inner's more accurate correction in `flushed_ops` —
+            // observed on Java's `@A.B\n(par=1)\nenum E {}` where the
+            // outer `declarations` cross-line replay's line-1 ops froze the
+            // dotted annotation as `path` alt before the inner
+            // `annotation-qualified-identifier` cross-line fail's `name`-alt
+            // resolution arrived (during line-2 reparse).
+            let inner_corrections = std::mem::take(&mut self.flushed_ops);
+            let inner_corrections_start = self.flushed_ops_start.take();
+            self.flushed_ops = saved_flushed;
+            self.flushed_ops_start = saved_flushed_start;
+            if let Some(start) = inner_corrections_start {
+                if !inner_corrections.is_empty() {
+                    Self::prefer_inner_replay_corrections(
+                        pending_lines_snapshot_len,
+                        &mut replayed_ops,
+                        &inner_corrections,
+                        start,
+                    );
+                }
+            }
+            self.merge_flushed(pending_lines_snapshot_len, replayed_ops);
 
             // Restart the current line from the beginning.
             ops.clear();
@@ -1272,32 +1700,67 @@ impl ParseState {
             // because the original Push/Pop pair was truncated off
             // `ops` together with alt[0]'s subsequent work.
             //
-            // The new alternative's `clear_scopes` and `meta_scope`
-            // are emitted at `trigger_match_start` *before* the
-            // trigger's `pat.scope`, mirroring the non-fail push path
-            // in `push_meta_ops` (initial phase): meta_scope sits
-            // below the match scope on the stack so the matched text
-            // sees both. Placing them at `match_start_pos` would mean
-            // the trigger character (e.g. `(` of `for (var i = 0; …)`)
-            // never sees the alternative's `meta_scope`. The
-            // `meta_content_scope` legitimately stays at
-            // `match_start_pos` — mcs only applies after the matched
-            // text.
-            if let Some(clear_amount) = context.clear_scopes {
-                ops.push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
+            // Use `push_meta_ops` with a synthetic Set/Push for the
+            // new alternative — same path the original branch creation
+            // takes — so both the new alternative's own meta scopes
+            // AND the popped contexts' meta_scope/mcs clearance Pop
+            // (for `pop: N + branch_point`, N > 0) get re-emitted.
+            // A bespoke re-emit of just `context.meta_scope` /
+            // `context.meta_content_scope` was missing the
+            // popped-contexts Pop, leaving Java's
+            // `pop: 2 + branch_point: annotation-qualified-parameters`
+            // with `meta.annotation.identifier.java meta.path.java`
+            // (annotation-qualified-identifier's `meta_scope`) leaked
+            // on the stack after the branch_point's first alt failed
+            // and the second alt (`immediately-pop`) ran.
+            //
+            // `push_meta_ops` reads `self.stack` to compute the
+            // popped contexts' scope atoms, so swap in `stack_snapshot`
+            // (pre-pop state captured at branch creation) for the
+            // duration of the calls — `self.stack` currently holds the
+            // post-set state (alt N already pushed).
+            let synthetic_op_alt_n = if pop_count > 0 {
+                MatchOperation::Set {
+                    ctx_refs: vec![next_alt.clone()],
+                    pop_count,
+                }
+            } else {
+                MatchOperation::Push(vec![next_alt.clone()])
+            };
+            let level_ctx_id = stack_snapshot.last().map(|l| l.context);
+            let post_set_stack = std::mem::replace(&mut self.stack, stack_snapshot.clone());
+            if let Some(level_ctx_id) = level_ctx_id {
+                let level_context = syntax_set.get_context(&level_ctx_id)?;
+                self.push_meta_ops(
+                    true,
+                    trigger_match_start,
+                    level_context,
+                    &synthetic_op_alt_n,
+                    syntax_set,
+                    ops,
+                )?;
+                for scope in &trigger_pat_scope {
+                    ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+                }
+                // Captures emitted alongside the original pat.scope (e.g.
+                // `keyword.declaration.data.haskell` on the first capture of
+                // `(data)(?:\s+(family|instance))?`) were truncated off with
+                // alt[0]'s ops. Re-emit them inside the pat_scope brackets so
+                // the keyword scope survives the branch swap.
+                ops.extend(trigger_capture_ops.iter().cloned());
+                if !trigger_pat_scope.is_empty() {
+                    ops.push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
+                }
+                self.push_meta_ops(
+                    false,
+                    match_start_pos,
+                    level_context,
+                    &synthetic_op_alt_n,
+                    syntax_set,
+                    ops,
+                )?;
             }
-            for scope in context.meta_scope.iter() {
-                ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-            }
-            for scope in &trigger_pat_scope {
-                ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-            }
-            if !trigger_pat_scope.is_empty() {
-                ops.push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
-            }
-            for scope in context.meta_content_scope.iter() {
-                ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
-            }
+            self.stack = post_set_stack;
         }
 
         // Clear search cache since we're rewinding.
@@ -1376,19 +1839,29 @@ impl ParseState {
                     if !cur_context.meta_scope.is_empty() {
                         ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
                     }
+                    // Restore cur_context's `clear_scopes` BEFORE
+                    // popping deeper contexts. The Clear hid the
+                    // deeper context's meta_scope/mcs atoms; with the
+                    // Restore deferred to the very end, the
+                    // depth-loop's `Pop(deep.meta_scope.len())` would
+                    // pop visible-stack scopes that don't belong to
+                    // the deeper context — observed on Java's
+                    // `case DayType when -> "incomplete"`, where
+                    // `case-label-expression`'s `clear_scopes: 1`
+                    // cleared `case-label`'s `meta.case.java` and
+                    // `case-label-end`'s `pop: 2` then popped the
+                    // surrounding `meta.block.java` (switch's block)
+                    // off the consumer's stack instead.
+                    if cur_context.clear_scopes.is_some() {
+                        ops.push((index, ScopeStackOp::Restore))
+                    }
                     // Each deeper context's scopes are popped in
                     // top-to-bottom order: meta_content_scope first
                     // (pushed after its own meta_scope, hence above on
                     // the stack), then meta_scope, then any Restore
                     // paired with that context's own `clear_scopes`
                     // (mirrors the push order Clear → meta_scope → mcs
-                    // in reverse). Without the Restore, a `pop: N`
-                    // from the top that also unwinds a deeper context
-                    // with `clear_scopes` leaves the originally cleared
-                    // atoms orphaned — observed on Python f/t-string
-                    // interpolation close, where `f-string-replacement-end`
-                    // fires `pop: 2` that also pops
-                    // `f-string-replacement-meta`.
+                    // in reverse).
                     for depth in 1..pop_count {
                         let level_idx = stack_len - 1 - depth;
                         let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
@@ -1408,11 +1881,6 @@ impl ParseState {
                             ops.push((index, ScopeStackOp::Restore));
                         }
                     }
-                }
-
-                // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
-                if !initial && cur_context.clear_scopes.is_some() {
-                    ops.push((index, ScopeStackOp::Restore))
                 }
             }
             // for some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
@@ -1567,6 +2035,21 @@ impl ParseState {
                             }
                         }
 
+                        // `pop: N + set:` with clear_scopes on the leaving
+                        // context: restore the cleared atoms BEFORE the
+                        // compound Pop so num_to_pop finds the popped frames'
+                        // full meta_content_scope on the scope stack. Without
+                        // this, Pop eats atoms from below the popped range —
+                        // observed on Batch File `cmd-set-quoted-value-inner-end`
+                        // (`clear_scopes: 1`) firing `pop: 2, set: ignored-tail-outer`,
+                        // which otherwise drops `meta.command.set.dosbatch` from
+                        // the trailing content of every `set "var"=...` line.
+                        let restore_before_pop =
+                            is_set && set_pop_count > 1 && cur_context.clear_scopes.is_some();
+                        if restore_before_pop {
+                            ops.push((index, ScopeStackOp::Restore));
+                        }
+
                         // do all the popping as one operation
                         if num_to_pop > 0 {
                             ops.push((index, ScopeStackOp::Pop(num_to_pop)));
@@ -1576,7 +2059,7 @@ impl ParseState {
                         // cur.meta_scope and the initial phase's target.meta_scope
                         // push have been popped off. The restored atoms land below
                         // the target's upcoming meta_scope / meta_content_scope push.
-                        if is_set && cur_context.clear_scopes.is_some() {
+                        if is_set && cur_context.clear_scopes.is_some() && !restore_before_pop {
                             ops.push((index, ScopeStackOp::Restore));
                         }
 
@@ -1662,6 +2145,50 @@ impl ParseState {
                 } else {
                     MatchOperation::Push(contexts.clone())
                 };
+                if pop_count > 0 {
+                    // ST-observed divergence from plain `pop + set:`: on
+                    // `pop + embed:` the trigger match's text sees **neither**
+                    // `cur_context.meta_scope` nor `cur_context.meta_content_scope`.
+                    // Both are suppressed on match text, then never restored
+                    // — the embed replaces cur entirely. The probe lives at
+                    // the top of `v2_pop_embed_suppresses_cur_meta_scope_on_match`.
+                    //
+                    // Emit those Pops ourselves in the initial phase, then pass
+                    // a scope-stripped cur_context through to the recursive
+                    // Set-semantic logic so its `num_to_pop` in the non-initial
+                    // phase does not double-count these atoms (they are already
+                    // off the stack). clear_scopes, with_prototype, and other
+                    // fields are preserved on the stripped context — only the
+                    // meta-scope vectors differ.
+                    //
+                    // Observed divergence on `<jsp:declaration>`'s `>`:
+                    // syntect was producing
+                    //   [..., meta.tag.jsp.declaration.begin.html,
+                    //        meta.tag.jsp.declaration.begin.html,
+                    //        punctuation.definition.tag.end.html]
+                    // because the rule's explicit
+                    //   scope: meta.tag.jsp.declaration.begin.html
+                    //          punctuation.definition.tag.end.html
+                    // was re-adding the atom that ST drops through the embed.
+                    if initial {
+                        if !cur_context.meta_content_scope.is_empty() {
+                            ops.push((
+                                index,
+                                ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
+                            ));
+                        }
+                        if !cur_context.meta_scope.is_empty() {
+                            ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
+                        }
+                    }
+                    let stripped = Context {
+                        meta_scope: Vec::new(),
+                        meta_content_scope: Vec::new(),
+                        ..cur_context.clone()
+                    };
+                    return self
+                        .push_meta_ops(initial, index, &stripped, &synthetic, syntax_set, ops);
+                }
                 return self.push_meta_ops(
                     initial,
                     index,
@@ -1721,10 +2248,10 @@ impl ParseState {
                     for _ in 0..pop_count {
                         self.stack.pop();
                     }
+                    let stack_len = self.stack.len();
                     self.branch_points
-                        .retain(|bp| bp.stack_depth <= self.stack.len());
-                    self.escape_stack
-                        .retain(|e| e.stack_depth < self.stack.len());
+                        .retain(|bp| stack_len > bp.stack_depth.saturating_sub(bp.pop_count));
+                    self.escape_stack.retain(|e| e.stack_depth < stack_len);
                 }
                 (contexts, None, true)
             }
@@ -1743,11 +2270,25 @@ impl ParseState {
                     self.stack.pop();
                 }
                 // Prune branch_points / escape_stack against the *final* stack
-                // length (after the common push loop below), so a branch_point
-                // captured at the pre-set depth survives a pop-1 + push-1 set
-                // — the depth the bp references is still valid after the push.
+                // length (after the common push loop below).
+                //
+                // The retain predicate must mirror `handle_fail`'s validity
+                // check (`stack.len() > bp.stack_depth - bp.pop_count`),
+                // which subtracts the bp's own `pop_count`. Without that
+                // subtraction, a `pop: N + branch_point` whose synthetic
+                // Set has `pop_count: N` removes its own freshly-created
+                // bp here — `bp.stack_depth` snapshots the *pre-pop*
+                // depth, so `bp.stack_depth > final_len` even though the
+                // alt-0 frame lives on at `final_len`. Symptom in Java:
+                // the `branch_point: annotation-qualified-parameters`
+                // declared on `annotation-qualified-identifier-name`'s
+                // `pop: 2 + branch_point` was dropped at creation,
+                // making its later `(?=\S)` `fail` a no-op and leaking
+                // `meta.annotation.identifier.java meta.path.java` past
+                // every nested-annotation extends path.
                 let final_len = self.stack.len() + ctx_refs.len();
-                self.branch_points.retain(|bp| bp.stack_depth <= final_len);
+                self.branch_points
+                    .retain(|bp| final_len > bp.stack_depth.saturating_sub(bp.pop_count));
                 self.escape_stack.retain(|e| e.stack_depth < final_len);
                 (ctx_refs, old_proto_ids, false)
             }
@@ -1755,12 +2296,14 @@ impl ParseState {
                 for _ in 0..n {
                     self.stack.pop();
                 }
-                // Invalidate branch points whose stack depth is now above current stack
+                // Invalidate branch points whose alt frame is no longer on
+                // the stack. Use the same threshold as `handle_fail`'s
+                // validity check — see the comment in the Set arm above.
+                let stack_len = self.stack.len();
                 self.branch_points
-                    .retain(|bp| bp.stack_depth <= self.stack.len());
+                    .retain(|bp| stack_len > bp.stack_depth.saturating_sub(bp.pop_count));
                 // Remove escape entries whose stack_depth >= current stack
-                self.escape_stack
-                    .retain(|e| e.stack_depth < self.stack.len());
+                self.escape_stack.retain(|e| e.stack_depth < stack_len);
                 return Ok(true);
             }
             MatchOperation::None => return Ok(false),
@@ -1852,6 +2395,47 @@ impl ParseState {
         let entry = &self.escape_stack[escape_idx];
         let target_depth = entry.stack_depth;
         let escape_captures = entry.captures.clone();
+
+        // Drain orphan scope atoms left on the consumer's scope stack by
+        // a prior cross-line replay whose later same-line fails
+        // truncated the owning context out of `self.stack` — the Push
+        // was committed to `flushed_ops` and can't be unwound by
+        // `ops.truncate`, so we emit a balancing Pop here. Without this,
+        // e.g. LaTeX `\end{lstlisting}` leaves
+        // `meta.environment.verbatim.lstlisting.latex` on the stack
+        // because a speculative `meta.path.java` atom pushed inside the
+        // embedded Java shifts every subsequent Pop by one.
+        //
+        // `shadow` mirrors what the consumer will actually hold at this
+        // point: end-of-prior-line shadow + ops-so-far on the current
+        // line. `expected_depth` is what the consumer *should* have
+        // based on `self.stack`'s meta_scope / meta_content_scope
+        // contributions (with the v2 `embed_scope_replaces` mcs gating
+        // applied below, matching the pop loop).
+        let mut current_shadow = self.shadow.clone();
+        for (_, op) in ops.iter() {
+            let _ = current_shadow.apply(op);
+        }
+        let consumer_depth = current_shadow.as_slice().len();
+        let expected_depth: usize = {
+            let mut total = 0usize;
+            let mut prev_embed_scope_replaces = false;
+            for lvl in &self.stack {
+                let ctx = syntax_set.get_context(&lvl.context)?;
+                total += ctx.meta_scope.len();
+                if !prev_embed_scope_replaces {
+                    total += ctx.meta_content_scope.len();
+                }
+                prev_embed_scope_replaces = ctx.embed_scope_replaces;
+            }
+            total
+        };
+        if consumer_depth > expected_depth {
+            ops.push((
+                match_start,
+                ScopeStackOp::Pop(consumer_depth - expected_depth),
+            ));
+        }
 
         // Pop all stack levels down to target_depth, emitting proper meta scope pops
         while self.stack.len() > target_depth {
@@ -3487,6 +4071,51 @@ contexts:
                   alt-fails:
                     - match: (?=\S)
                       fail: t
+                  alt-succeeds:
+                    - match: \S+
+                      scope: ok.test
+                      pop: 1
+                "#,
+        );
+    }
+
+    /// Regression guard for "branch_point fail-retry drops the
+    /// trigger match's `captures:` scopes". The non-fail path emits
+    /// capture Push/Pop ops inside the pat_scope brackets; the
+    /// same-line fail re-emit must do the same — otherwise the
+    /// inner capture scopes are truncated off `ops` together with
+    /// alt[0]'s subsequent work and never replayed. Observed on
+    /// Haskell's `data CtxCls ctx => ModId.QTyCls`, where the
+    /// `(data)(?:\s+(family|instance))?` branch_point match's first
+    /// capture `keyword.declaration.data.haskell` was dropped from
+    /// the `data` token whenever `data-signature` failed into
+    /// `data-context` — 22 assertion failures in
+    /// `syntax_test_haskell.hs`.
+    #[test]
+    fn branch_point_capture_scopes_survive_fail_retry() {
+        // The `(word)\s` branch_point match carries both `scope:`
+        // and `captures:`. Alt[0] fails on the `!` lookahead,
+        // forcing replay into alt[1]. `inner.capture` on the first
+        // capture group must remain on the stack over `word`.
+        expect_scope_stacks(
+            "word !",
+            &["<outer.match>, <inner.capture>"],
+            r#"
+                name: Branch Capture Re-emit Test
+                scope: source.test
+                contexts:
+                  main:
+                    - match: (word)\s
+                      scope: outer.match
+                      captures:
+                        1: inner.capture
+                      branch_point: bp
+                      branch:
+                        - alt-fails
+                        - alt-succeeds
+                  alt-fails:
+                    - match: (?=!)
+                      fail: bp
                   alt-succeeds:
                     - match: \S+
                       scope: ok.test
@@ -5137,6 +5766,75 @@ contexts:
     }
 
     #[test]
+    fn captures_clipped_to_match_bounds_when_group_extends_past_match_end() {
+        // Repro of a C# generic-function-call divergence against ST.
+        // Rule shape: a consumed identifier, then a lookahead containing
+        // a capturing group whose match extends *past* the outer rule's
+        // consumed end, then a second consumed group starting at the
+        // same column where the lookahead began. `captures: 2:` targets
+        // the lookahead-internal group. ST clips each captures:N span
+        // to the rule's match bounds and only colours the overlap —
+        // which here is the single consumed char at the match-end
+        // boundary. Syntect used to colour the full group-2 range,
+        // emitting a Pop past match_end and leaving the scope active
+        // over chars the match never consumed.
+        let syntax_str = r#"
+name: CapturesClip
+scope: source.capclip
+contexts:
+  main:
+    - match: '(foo)(?=(barrr)baz)(bar)'
+      captures:
+        1: captured-foo.capclip
+        2: lookahead-group.capclip
+        3: consumed-bar.capclip
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "foobarrrbaz\n", &ss);
+
+        // The rule consumes "foobar" — match_start=0, match_end=6.
+        // Group 2's own range (the lookahead match "barrr") extends to
+        // column 8. Every op emitted by the captures application must
+        // sit within [match_start, match_end]; anything at col 7+ means
+        // the lookahead-internal group's span leaked past the match.
+        // match_start=0, match_end=6 (rule consumes "foobar"). Group 2's
+        // own range (the lookahead match "barrr") extends to col 8.
+        //
+        // After the fix we expect:
+        //   * `lookahead-group.capclip` Pushed at col 3 (cap_start of
+        //     group 2, which overlaps the consumed region).
+        //   * The matching Pop no later than col 6 (clipped to match_end).
+        //   * No op at col 7 or 8 — anything there means the lookahead
+        //     range leaked past the match.
+        let lookahead_pushes: Vec<usize> = raw_ops
+            .iter()
+            .filter_map(|(pos, op)| match op {
+                ScopeStackOp::Push(s) if format!("{:?}", s).contains("lookahead-group") => {
+                    Some(*pos)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            lookahead_pushes,
+            vec![3],
+            "`captures: 2:` (lookahead-internal group) must Push the \
+             clipped scope at match_start=3; raw_ops={:?}",
+            raw_ops
+        );
+        let match_end = 6;
+        let past_match: Vec<_> = raw_ops.iter().filter(|(pos, _)| *pos > match_end).collect();
+        assert!(
+            past_match.is_empty(),
+            "No capture op should sit past match_end={}; found {:?}",
+            match_end,
+            past_match
+        );
+    }
+
+    #[test]
     fn capture_sort_by_span_length() {
         // Kills: L709 replace - with + in exec_pattern (capture sort key)
         // Captures are sorted so that longer spans come first (pushed before
@@ -5401,6 +6099,85 @@ contexts:
                 .any(|s| s.contains("meta.function.v2settargetclear")),
             "meta.function must be restored after params-body pops, got trailing states: {:?}",
             after_inner_close
+        );
+    }
+
+    #[test]
+    fn pop_n_set_with_cur_clear_scopes_restores_before_popping_deeper_frames() {
+        // `pop: N + set: X` fired from a context that itself declares
+        // `clear_scopes` at the context level: the deeper popped frame's
+        // meta_content_scope is partly on the live scope stack and partly
+        // in `clear_stack` (stripped by cur's Clear on entry). Emitting the
+        // compound Pop before Restore makes Pop eat atoms from below the
+        // intended popped range, dropping the outer frame's meta_scope.
+        // Shape mirrors Batch File's `cmd-set-quoted-value-inner-end`
+        // (`clear_scopes: 1`) firing `pop: 2, set: ignored-tail-outer` below
+        // a `cmd-set-quoted-value-inner` that carries a 2-atom
+        // meta_content_scope.
+        let syntax_str = r#"
+name: PopNSetClear
+scope: source.popnsetclear
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      scope: p.a
+      push: [outer, middle]
+
+  outer:
+    - meta_scope: outer.test
+    - match: 'z'
+      pop: 1
+
+  middle:
+    - meta_content_scope: mid1.test mid2.test
+    - match: 'b'
+      scope: p.b
+      push: top
+
+  top:
+    - clear_scopes: 1
+    - match: 'c'
+      scope: p.c
+      pop: 2
+      set: target
+
+  target:
+    - meta_scope: target.test
+    - match: 'd'
+      scope: p.d
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "abcd", &ss);
+        let states = stack_states(raw_ops);
+
+        // The scope stack state recorded on the `d` token (in `target`):
+        // must contain `outer.test` (outer's meta_scope still on the stack)
+        // and `target.test` (target's meta_scope, pushed by the pop:2+set:)
+        // and must NOT contain `mid1.test` or `mid2.test` (middle was popped
+        // by pop:2 and its meta_content_scope atoms — one live, one in
+        // clear_stack — should both be gone).
+        let d_state = states
+            .iter()
+            .find(|s| s.contains("p.d"))
+            .unwrap_or_else(|| panic!("expected a state containing `p.d`, got: {:?}", states));
+        assert!(
+            d_state.contains("outer.test"),
+            "outer.test must survive pop:2+set: (it sits below the popped range): {}",
+            d_state
+        );
+        assert!(
+            d_state.contains("target.test"),
+            "target.test must be on the stack (target was pushed by set:): {}",
+            d_state
+        );
+        assert!(
+            !d_state.contains("mid1.test") && !d_state.contains("mid2.test"),
+            "middle's meta_content_scope atoms must not linger after pop:2+set:, \
+             including the atom that was in clear_stack: {}",
+            d_state
         );
     }
 
@@ -5965,5 +6742,770 @@ contexts:
                 stack_str
             );
         }
+    }
+
+    #[test]
+    fn v2_pop_embed_suppresses_cur_meta_scope_on_match() {
+        // `pop: N + embed:` trigger text must NOT carry the popped context's
+        // `meta_scope` through, unlike `pop: N + set:` which preserves both
+        // cur's and target's meta_scope on the match. Probe against ST confirms:
+        //
+        //   <tag>hi</tag>            (pop+embed)
+        //   col 4 '>'                -> ['source.host', 'end.scope']            (cur ms gone)
+        //   col 5 'h' (body)         -> ['source.host', 'embed.scope', 'guest.meta']
+        //
+        //   <tag>after               (pop+set — contrast)
+        //   col 4 '>'                -> ['source.host', 'meta.a', 'after.meta', 'end.scope']
+        //
+        // Without this guard, syntect emitted
+        //   [source.host, meta.a, meta.a, end.scope]
+        // because the rule's explicit scope atom shadowed cur.meta_scope onto
+        // itself on the trigger text — observed as 5 duplicated
+        // `meta.tag.jsp.*.begin.html` atoms on `<jsp:declaration>`/ expression/
+        // scriptlet's `>` in `syntax_test_jsp.jsp`.
+        let host = SyntaxDefinition::load_from_str(
+            r#"
+name: PopEmbedHost
+scope: source.popembed
+file_extensions: [popembed]
+version: 2
+contexts:
+  main:
+    - match: '<tag'
+      scope: begin.scope
+      push: tag-attrs
+  tag-attrs:
+    - meta_include_prototype: false
+    - meta_scope: meta.a
+    - match: '>'
+      scope: meta.a end.scope
+      pop: 1
+      embed: scope:source.popembedguest
+      embed_scope: embed.scope
+      escape: '(?=</tag)'
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+        let guest = SyntaxDefinition::load_from_str(
+            r#"
+name: PopEmbedGuest
+scope: source.popembedguest
+version: 2
+hidden: true
+contexts:
+  main:
+    - meta_scope: guest.meta
+    - match: '\w+'
+      scope: word.guest
+"#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(host);
+        builder.add(guest);
+        let ss = builder.build();
+        let syntax = ss.find_syntax_by_name("PopEmbedHost").unwrap();
+        let mut state = ParseState::new(syntax);
+        let ops = state.parse_line("<tag>hi</tag>\n", &ss).unwrap().ops;
+
+        // Walk (range, op) pairs; after applying each op, snapshot the stack
+        // keyed by the character position we're at. The `>` match occupies
+        // col 4, so we expect the post-op snapshot at that position to have
+        // exactly ONE `meta.a` atom, not two.
+        use crate::easy::ScopeRangeIterator;
+        let line = "<tag>hi</tag>\n";
+        let mut stack = ScopeStack::new();
+        let mut at_gt: Option<Vec<String>> = None;
+        for (range, op) in ScopeRangeIterator::new(&ops, line) {
+            stack.apply(op).expect("op stream must apply cleanly");
+            // Capture the stack state for the character range covering the `>`
+            // trigger (col 4..5, the match text of the pop+embed rule).
+            if range.start <= 4 && 4 < range.end {
+                at_gt = Some(
+                    stack
+                        .as_slice()
+                        .iter()
+                        .map(|s| format!("{:?}", s))
+                        .collect(),
+                );
+            }
+        }
+        let at_gt = at_gt.expect("range covering `>` must exist in op stream");
+        let meta_a_count = at_gt.iter().filter(|s| s.contains("meta.a")).count();
+        assert_eq!(
+            meta_a_count, 1,
+            "match text of pop+embed must carry exactly one `meta.a` atom \
+             (from the rule's explicit scope); cur_context.meta_scope must \
+             not stack a second copy on top. Got stack: {:?}",
+            at_gt
+        );
+        // And `end.scope` must be the top of the stack (the match's second
+        // explicit atom) — if the ordering shifted we'd see a different trailer.
+        assert!(
+            at_gt
+                .last()
+                .map(|s| s.contains("end.scope"))
+                .unwrap_or(false),
+            "stack top on `>` must be `end.scope`, got: {:?}",
+            at_gt
+        );
+    }
+
+    #[test]
+    fn cross_line_multi_fail_deduplicates_flushed_ops() {
+        // Two nested branch_points created on line 1 that both fail on a
+        // later line exercise `handle_fail`'s cross-line path twice on a
+        // single `parse_line` call. Before dedup, each fail `extend`ed
+        // `flushed_ops` with its own replay, so `ParseLineOutput::replayed`
+        // ended up ~2× the pending-lines count — and the consumer (see
+        // `examples/syntest.rs`) paired `replayed[i]` with
+        // `parsed_line_buffer[buf_len - replayed.len() + i]`, sliding ops
+        // from one buffered line onto another's text. That panicked in
+        // `ScopeRegionIterator::next` as "byte index N out of bounds" —
+        // observed originally at `syntax_test_java.java` line 624.
+        let syntax_str = r#"
+name: DedupCrossLine
+scope: source.dup
+contexts:
+  main:
+    - match: 'A'
+      branch_point: bp1
+      branch: [a1, a2]
+  a1:
+    - match: 'B'
+      branch_point: bp2
+      branch: [b1, b2]
+    - match: '(?=FAIL)'
+      fail: bp1
+  a2:
+    - match: '.*'
+      scope: a2.fallback
+      pop: true
+  b1:
+    - match: '\n'
+    - match: '(?=FAIL)'
+      fail: bp2
+    - match: 'XYZ'
+      pop: true
+  b2:
+    - match: '\n'
+    - match: '(?=FAIL)'
+      fail: bp2
+    - match: 'XYZ'
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        let out1 = state.parse_line("AB\n", &ss).expect("line 1");
+        assert!(out1.replayed.is_empty());
+
+        let out2 = state.parse_line("FOO\n", &ss).expect("line 2");
+        assert!(out2.replayed.is_empty());
+
+        // Line 3 fires `fail: bp2` twice (once for alt[1], once to exhaust)
+        // and then `fail: bp1` — three cross-line fails back-to-back.
+        let out3 = state.parse_line("FAIL\n", &ss).expect("line 3");
+
+        // Invariant: one replayed entry per buffered pending line (2), not
+        // `number_of_fails × pending_lines`.
+        assert_eq!(
+            out3.replayed.len(),
+            2,
+            "expected exactly 2 replayed lines (one per buffered pending line), got {}: {:?}",
+            out3.replayed.len(),
+            out3.replayed,
+        );
+
+        // Panic guard: each `replayed[i]`'s byte offsets must fit within the
+        // corresponding buffered line's length. The original misalignment
+        // paired line 617's ops (77 bytes) with line 609's text (59 bytes).
+        let line_lens = ["AB\n".len(), "FOO\n".len()];
+        for (i, line_ops) in out3.replayed.iter().enumerate() {
+            for (pos, op) in line_ops {
+                assert!(
+                    *pos <= line_lens[i],
+                    "replayed[{}] op past EOL: pos={} line_len={} op={:?}",
+                    i,
+                    pos,
+                    line_lens[i],
+                    op,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn replay_born_branch_routes_as_cross_line_on_later_fail() {
+        // A branch created while `handle_fail` is re-parsing a past buffered
+        // line must record the *replay line's* number, not the outer
+        // `parse_line`'s current line. Otherwise `handle_fail`'s later
+        // `is_cross_line = bp.line_number < cur_line` sees equal values on
+        // the second fail, routes into the same-line path, and applies
+        // `bp.match_start` (a byte offset into the long replay line) to a
+        // shorter outer line. That shipped as the `byte index N out of
+        // bounds` panic on `syntax_test_java.java:10263` (`  foo = BAR,\n`)
+        // and on `syntax_test_markdown.md` under multi-line math blocks.
+        let syntax_str = r#"
+name: ReplayBornBranch
+scope: source.rbb
+contexts:
+  main:
+    - match: 'A'
+      branch_point: bp1
+      branch: [a1, a2]
+  a1:
+    - match: '(?=FAIL1)'
+      fail: bp1
+    - match: '.'
+  a2:
+    - match: 'B'
+      branch_point: bp2
+      branch: [b1, b2]
+    - match: '.'
+  b1:
+    - match: '(?=FAIL2)'
+      fail: bp2
+    - match: '.'
+  b2:
+    - match: '.*'
+      scope: b2.fallback
+      pop: true
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // Long line 1 so `B` sits past the short outer line's length; bp2's
+        // replay-relative `match_start` would OOB a same-line rewind there.
+        let line1 = "A pad pad pad pad pad pad pad pad pad pad B tail\n";
+        assert!(line1.find('B').unwrap() > "FAIL2\n".len());
+
+        let out1 = state.parse_line(line1, &ss).expect("line 1 parses");
+        assert!(out1.replayed.is_empty());
+
+        // First cross-line fail: swap bp1 → a2. During a2's replay of line 1,
+        // `B` fires bp2 and records (with the fix) `line_number = 0` and
+        // `pending_lines_snapshot_len = 0` — anchored to line 1, not line 2.
+        let out2 = state.parse_line("FAIL1\n", &ss).expect("line 2 parses");
+        assert_eq!(out2.replayed.len(), 1, "bp1 replay covers line 1");
+
+        // Second cross-line fail: bp2 must be classified cross-line on this
+        // outer line. With the fix it is (line 0 < line 2), so the handler
+        // takes the replay path and re-parses past buffered lines under b2.
+        // Without the fix bp2 appears same-line (line 2 == line 2) and the
+        // handler applies `match_start` = offset-of-B-in-line1 to the
+        // 6-byte outer line, corrupting ops / panicking downstream.
+        let outer = "FAIL2\n";
+        let out3 = state.parse_line(outer, &ss).expect("line 3 parses");
+
+        // Cross-line classification fired a second replay covering the
+        // two buffered lines (line 1 + line 2).
+        assert_eq!(
+            out3.replayed.len(),
+            2,
+            "expected replay from bp2's cross-line fail to cover both buffered lines, got {}: {:?}",
+            out3.replayed.len(),
+            out3.replayed,
+        );
+
+        // Panic guard: every op offset in both `ops` and `replayed` must
+        // fit within its paired line's byte length.
+        for (pos, op) in &out3.ops {
+            assert!(
+                *pos <= outer.len(),
+                "outer op past EOL: pos={} len={} op={:?}",
+                pos,
+                outer.len(),
+                op,
+            );
+        }
+        let replay_lines = [line1, "FAIL1\n"];
+        for (i, line_ops) in out3.replayed.iter().enumerate() {
+            for (pos, op) in line_ops {
+                assert!(
+                    *pos <= replay_lines[i].len(),
+                    "replayed[{}] op past EOL: pos={} len={} op={:?}",
+                    i,
+                    pos,
+                    replay_lines[i].len(),
+                    op,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn replay_born_branch_inherits_outer_prefix_ops() {
+        // Branch born inside another branch's cross-line replay must
+        // record the outer replay's first-line prefix as part of its
+        // own `prefix_ops`. Otherwise its later cross-line fail
+        // reconstructs the replayed line from an empty prefix and the
+        // captures emitted before the *outer* branch trigger vanish.
+        // Shipped as `[foo]: /url` losing its
+        // `meta.link.reference.def.markdown` / `entity.name.reference`
+        // scopes in `syntax_test_markdown.md`: the line creates an
+        // outer `link-def-title-continuation` branch whose alt-1
+        // (`immediately-pop2`) replay spawns a nested
+        // `link-def-attr-continuation` branch — when *that* branch
+        // fails on the next line its replay drops the original LRD
+        // opener captures.
+        let syntax_str = r#"
+name: ReplayPrefix
+scope: source.rp
+contexts:
+  main:
+    - match: '(K)(EY)'
+      captures:
+        1: keyword.k.rp
+        2: variable.k.rp
+      push: outer
+  outer:
+    - match: '$'
+      branch_point: bp1
+      branch: [a1, a2]
+  a1:
+    - meta_include_prototype: false
+    - match: '(?=FAIL1)'
+      fail: bp1
+    - match: '.'
+  a2:
+    - meta_include_prototype: false
+    - match: '$'
+      branch_point: bp2
+      branch: [b1, b2]
+    - match: '.'
+  b1:
+    - meta_include_prototype: false
+    - match: '(?=FAIL2)'
+      fail: bp2
+    - match: '.'
+  b2:
+    - meta_include_prototype: false
+    - match: '\n'
+      scope: support.fallback.rp
+      pop: 2
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+
+        // line 1 — captures `K` and `EY`, pushes `outer`, then `$` fires bp1.
+        let line1 = "KEY\n";
+        let _ = state.parse_line(line1, &ss).expect("line 1 parses");
+
+        // line 2 — `(?=FAIL1)` in a1 trips bp1's cross-line fail. The
+        // alt-1 replay of line 1 spawns bp2 in a2 at end-of-line.
+        let line2 = "FAIL1\n";
+        let _ = state.parse_line(line2, &ss).expect("line 2 parses");
+
+        // line 3 — `(?=FAIL2)` in b1 trips bp2's cross-line fail. With
+        // the fix bp2's `prefix_ops` carries the K / EY captures from
+        // bp1's replay, so the second cross-line replay re-emits them.
+        // Without the fix bp2's `prefix_ops` is empty and the replayed
+        // line 1 ops collapse to just `support.fallback.rp` push/pop.
+        let line3 = "FAIL2\n";
+        let out3 = state.parse_line(line3, &ss).expect("line 3 parses");
+
+        // bp2's cross-line replay covered both buffered lines (line 1
+        // + line 2). Line 1 is the one that must keep its captures.
+        assert_eq!(
+            out3.replayed.len(),
+            2,
+            "bp2 cross-line replay should cover line1 + line2, got {:?}",
+            out3.replayed,
+        );
+        let line1_ops = &out3.replayed[0];
+
+        let pushes_keyword = line1_ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if *s == Scope::new("keyword.k.rp").unwrap())
+        });
+        let pushes_variable = line1_ops.iter().any(|(_, op)| {
+            matches!(op, ScopeStackOp::Push(s) if *s == Scope::new("variable.k.rp").unwrap())
+        });
+        assert!(
+            pushes_keyword,
+            "line 1 replayed ops should still push keyword.k.rp; got {:?}",
+            line1_ops,
+        );
+        assert!(
+            pushes_variable,
+            "line 1 replayed ops should still push variable.k.rp; got {:?}",
+            line1_ops,
+        );
+    }
+
+    /// Two back-to-back link reference definitions followed by a
+    /// paragraph: each LRD's chain is closed by the *next* line's parse
+    /// emitting a `Pop` against the LRD's `meta_scope` via
+    /// `flushed_ops`. Without snapshot-drift correction, the
+    /// pre-correction `pending_line_start_shadows` (and the consumer's
+    /// `parsed_line_buffer[i].stack_before`) used by the second
+    /// replay's stack-reset still reflected the first LRD's leftover
+    /// `meta.link.reference.def.markdown` push, so the corrected line
+    /// 4 ops re-applied that scope onto a stale baseline — leaking it
+    /// into the paragraph and on through the rest of the file.
+    /// Sized 408 chars / 88 assertions in
+    /// `syntax_test_markdown.md`.
+    #[test]
+    fn back_to_back_lrds_clear_meta_scope_via_corrected_baseline() {
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Markdown/Markdown.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+
+        // Mirror the syntest consumer's stack-tracking with the
+        // snapshot-drift correction the bug requires.
+        struct Record {
+            stack_before: ScopeStack,
+        }
+        let mut buffer: Vec<Record> = Vec::new();
+        let mut stack = ScopeStack::new();
+
+        for line in ["[foo]: first\n", "[foo]: second\n", "bar\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            if !out.replayed.is_empty() {
+                let buf_len = buffer.len();
+                let start_idx = buf_len - out.replayed.len();
+                stack = buffer[start_idx].stack_before.clone();
+                let mut corrected: Vec<(usize, ScopeStack)> = Vec::new();
+                for (i, replayed_ops) in out.replayed.iter().enumerate() {
+                    for (_, op) in replayed_ops {
+                        let _ = stack.apply(op);
+                    }
+                    let next_idx = start_idx + i + 1;
+                    if next_idx < buf_len {
+                        corrected.push((next_idx, stack.clone()));
+                    }
+                }
+                for (idx, c) in corrected {
+                    buffer[idx].stack_before = c;
+                }
+            }
+            let stack_before = stack.clone();
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+            buffer.push(Record { stack_before });
+        }
+
+        let lrd = Scope::new("meta.link.reference.def.markdown").unwrap();
+        let leaked = stack.as_slice().contains(&lrd);
+        assert!(
+            !leaked,
+            "meta.link.reference.def.markdown leaked past back-to-back \
+             LRDs into 'bar' paragraph; consumer stack at end: {:?}",
+            stack,
+        );
+        let shadow_leaked = state.shadow.as_slice().contains(&lrd);
+        assert!(
+            !shadow_leaked,
+            "syntect shadow disagrees with corrected consumer stack; \
+             shadow at end: {:?}",
+            state.shadow,
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn pop_n_branch_point_keeps_bp_so_alt_fail_unwinds_meta_scope() {
+        // Real-syntax repro for the Java class-extends annotation leak:
+        // `class T extends a.@b.c Foo {}`. The branch_point on
+        // `annotation-qualified-identifier-name`'s `pop: 2 + branch_point:
+        // annotation-qualified-parameters` was being pruned by perform_op's
+        // post-Set retain (`bp.stack_depth <= final_len` ignored
+        // `bp.pop_count`), so the branch's first alt — which has
+        // `meta_content_scope: meta.annotation.identifier.java` — was
+        // never failed-out, leaking `meta.annotation.identifier.java`
+        // past every nested-annotation extends path in the Java suite.
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        for line in ["class T extends a.@b.c Foo {}\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+        }
+        let ann = Scope::new("meta.annotation.identifier.java").unwrap();
+        assert!(
+            !stack.as_slice().contains(&ann),
+            "meta.annotation.identifier.java leaked past `@b.c` annotation \
+             into the outer extends path; final stack: {:?}",
+            stack,
+        );
+        assert!(
+            !state.shadow.as_slice().contains(&ann),
+            "syntect shadow still carries meta.annotation.identifier.java; \
+             shadow: {:?}",
+            state.shadow,
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn cross_line_pop_n_branch_point_alt_fail_unwinds_meta_scope() {
+        // Cross-line variant of the Java annotation leak:
+        // `@A.B\nclass E {}\n`. At end of line 1, the
+        // `annotation-qualified-parameters` branch_point is live waiting
+        // for `(`. Line 2 starts with `class`, so alt 1 fails and alt 2
+        // (`immediately-pop`) runs via handle_fail's cross-line path. That
+        // path used a bespoke re-emit of just `context.meta_scope` /
+        // `meta_content_scope`, missing the popped contexts' Pop — leaving
+        // `meta.annotation.identifier.java` and the surrounding
+        // declaration's meta_scope (`meta.class.java` /
+        // `meta.enum.java` / `meta.interface.java`) on the stack. Routing
+        // through `push_meta_ops` with a synthetic Set/Push (mirroring the
+        // same-line fix) emits the popped contexts' Pop alongside the new
+        // alternative's meta_scope push.
+        //
+        // The consumer must apply `out.replayed` corrected ops the same
+        // way `examples/syntest.rs` does: rewind to the buffered line's
+        // pre-parse stack, replay the corrected ops in order, then apply
+        // the current line's ops. This mirrors the LRD test above.
+        use crate::parsing::SyntaxSet;
+        struct Record {
+            stack_before: ScopeStack,
+        }
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        let mut buffer: Vec<Record> = Vec::new();
+        for line in ["@A.B\n", "class E {}\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            if !out.replayed.is_empty() {
+                let buf_len = buffer.len();
+                let start_idx = buf_len - out.replayed.len();
+                stack = buffer[start_idx].stack_before.clone();
+                let mut corrected: Vec<(usize, ScopeStack)> = Vec::new();
+                for (i, replayed_ops) in out.replayed.iter().enumerate() {
+                    for (_, op) in replayed_ops {
+                        let _ = stack.apply(op);
+                    }
+                    let next_idx = start_idx + i + 1;
+                    if next_idx < buf_len {
+                        corrected.push((next_idx, stack.clone()));
+                    }
+                }
+                for (idx, c) in corrected {
+                    buffer[idx].stack_before = c;
+                }
+            }
+            let stack_before = stack.clone();
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+            buffer.push(Record { stack_before });
+        }
+        let ann = Scope::new("meta.annotation.identifier.java").unwrap();
+        let cls = Scope::new("meta.class.java").unwrap();
+        assert!(
+            !stack.as_slice().contains(&ann),
+            "meta.annotation.identifier.java leaked past `@A.B` annotation \
+             into top-level scope after cross-line `class E {{}}`; final \
+             stack: {:?}",
+            stack,
+        );
+        assert!(
+            !stack.as_slice().contains(&cls),
+            "meta.class.java leaked past `class E {{}}` body close into \
+             top-level scope; final stack: {:?}",
+            stack,
+        );
+        assert!(
+            !state.shadow.as_slice().contains(&ann),
+            "syntect shadow still carries meta.annotation.identifier.java; \
+             shadow: {:?}",
+            state.shadow,
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn outer_cross_line_replay_prefers_inner_correction() {
+        // Java's `@A.B\n(par=1)\nenum E {}\n` triggers a NESTED cross-line
+        // fail: the outer `declarations` BP fails alt-0 (class) on line 3
+        // and replays lines 1-2 under alt-1 (enum); during line-2 reparse
+        // the inner `annotation-qualified-identifier` BP fails alt-0 (path)
+        // and replays both lines under alt-1 (name). The outer's locally-
+        // computed `replayed_ops[0]` was the (now stale) path-alt parse;
+        // the inner's correction in `flushed_ops` was the name-alt parse,
+        // and the outer's `merge_flushed` previously overwrote it. Without
+        // preferring the inner correction, `meta.enum.java`,
+        // `meta.annotation.identifier.java`, and `meta.path.java` leaked
+        // past the closing `}`.
+        use crate::parsing::SyntaxSet;
+        struct Record {
+            stack_before: ScopeStack,
+        }
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        let mut buffer: Vec<Record> = Vec::new();
+        for line in ["@A.B\n", "(par=1)\n", "enum E {}\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            if !out.replayed.is_empty() {
+                let buf_len = buffer.len();
+                let start_idx = buf_len - out.replayed.len();
+                stack = buffer[start_idx].stack_before.clone();
+                let mut corrected: Vec<(usize, ScopeStack)> = Vec::new();
+                for (i, replayed_ops) in out.replayed.iter().enumerate() {
+                    for (_, op) in replayed_ops {
+                        let _ = stack.apply(op);
+                    }
+                    let next_idx = start_idx + i + 1;
+                    if next_idx < buf_len {
+                        corrected.push((next_idx, stack.clone()));
+                    }
+                }
+                for (idx, c) in corrected {
+                    buffer[idx].stack_before = c;
+                }
+            }
+            let stack_before = stack.clone();
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+            buffer.push(Record { stack_before });
+        }
+        let ann = Scope::new("meta.annotation.identifier.java").unwrap();
+        let path = Scope::new("meta.path.java").unwrap();
+        let enum_scope = Scope::new("meta.enum.java").unwrap();
+        for scope in [ann, path, enum_scope] {
+            assert!(
+                !stack.as_slice().contains(&scope),
+                "{:?} leaked past closing `}}` into top-level scope; \
+                 final stack: {:?}",
+                scope,
+                stack,
+            );
+            assert!(
+                !state.shadow.as_slice().contains(&scope),
+                "syntect shadow still carries {:?}; shadow: {:?}",
+                scope,
+                state.shadow,
+            );
+        }
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn exhausted_branch_point_falls_through_to_parent_next_rule() {
+        // Java's `$x ;` at top level: the `declarations` branch_point's
+        // zero-width `(?=[\p{L}_$@<])` lookahead matches `$`. All five
+        // alternatives (class/enum/interface/variable/method) fail
+        // because `$x` isn't a valid declaration. ST then falls through
+        // to the `java` context's NEXT rule (`else-expressions`), which
+        // pushes an `expression` chain that scopes `$x` as
+        // `meta.variable.identifier.java variable.other.java`. Syntect
+        // previously advanced one character past the lookahead, letting
+        // the next iteration's regex set match `package` / `class` etc.
+        // in the middle of identifiers like `package$` or `$package`.
+        //
+        // After this fix, exhausting a branch_point at a position
+        // rewinds the cursor to that position and marks the
+        // branch_point's name as skipped — so the parent context's
+        // remaining rules get a chance to fire at the same cursor.
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        let dollar_id = "$x ;\n";
+        let out = state.parse_line(dollar_id, &ss).expect("parse");
+        for (_, op) in &out.ops {
+            let _ = stack.apply(op);
+        }
+        let var_id = Scope::new("meta.variable.identifier.java").unwrap();
+        let var_other = Scope::new("variable.other.java").unwrap();
+        // `$x` itself is fully popped at `;`; reconstruct the per-byte
+        // scope by walking ops up to byte 1 (`x`) and confirm the
+        // identifier scope was active there.
+        let mut mid = ScopeStack::new();
+        for (pos, op) in &out.ops {
+            if *pos > 1 {
+                break;
+            }
+            let _ = mid.apply(op);
+        }
+        assert!(
+            mid.as_slice().contains(&var_id),
+            "expected meta.variable.identifier.java active over `$x`; got: {:?}",
+            mid,
+        );
+        assert!(
+            mid.as_slice().contains(&var_other),
+            "expected variable.other.java active over `$x`; got: {:?}",
+            mid,
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn pop_n_restores_clear_before_unwinding_deeper_meta_scopes() {
+        // Java's `case DayType when -> "incomplete";` lands in
+        // `case-label-expression` (clear_scopes:1, mcs: case.label).
+        // The `clear_scopes:1` hides the parent `case-label`'s
+        // `meta_scope` (meta.case). When `case-label-end` matches
+        // `->` with `pop: 2`, the rule must unwind both
+        // `case-label-expression` AND `case-label`. With the deeper
+        // meta_scope Pop emitted before the cur_context's clear was
+        // restored, the consumer popped the wrong (still-visible)
+        // scope — the surrounding `meta.block.java` (switch's block)
+        // — leaving `meta.case.java` orphaned past the `->`.
+        //
+        // Restoring cur_context's clear BEFORE the depth-loop's
+        // deeper-meta_scope pops makes the previously-cleared atom
+        // visible again so it can be popped correctly.
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        for line in [
+            "class C {\n",
+            "  void f(Object o) {\n",
+            "    return switch (o) {\n",
+            "       case DayType when -> \"incomplete\";\n",
+        ] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+        }
+        let case = Scope::new("meta.statement.conditional.case.java").unwrap();
+        let label = Scope::new("meta.statement.conditional.case.label.java").unwrap();
+        assert!(
+            !stack.as_slice().contains(&case),
+            "meta.statement.conditional.case.java leaked past `->`; stack: {:?}",
+            stack,
+        );
+        assert!(
+            !stack.as_slice().contains(&label),
+            "meta.statement.conditional.case.label.java leaked past `->`; stack: {:?}",
+            stack,
+        );
     }
 }
