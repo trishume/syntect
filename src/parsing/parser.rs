@@ -971,23 +971,27 @@ impl ParseState {
         // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
         let match_ptr = match_pat as *const MatchPattern;
 
-        if let Some(maybe_region) = search_cache.get(&match_ptr) {
-            if let Some(ref region) = *maybe_region {
-                let (cached_start, cached_end) = region.pos(0).unwrap();
-                if cached_start >= start && cached_end <= search_end {
-                    // Cached match is valid within the truncated region.
-                    return Some(region.clone());
-                } else if cached_start >= start && cached_start < search_end {
-                    // Match starts within range but extends past search_end.
-                    // Can't use cache — need to re-search. Fall through below.
-                } else if cached_start >= search_end {
-                    // Cached match is beyond our search end — treat as no match
+        // Only consult the cache when searching the full line. Cached entries
+        // are produced under full-line lookahead semantics: a truncated search
+        // at an embed-escape boundary may flip lookahead/lookbehind results
+        // that depended on chars past `search_end`. Concretely, ``done`` at
+        // the close of a backticked `for…done` would be cached as
+        // no-match (the keyword's `(?!cmd_char)` saw the closing backtick
+        // through full-line search) and then short-circuited inside the
+        // backtick embed even though the lookahead actually succeeds against
+        // the embed's escape boundary.
+        if search_end == line.len() {
+            if let Some(maybe_region) = search_cache.get(&match_ptr) {
+                if let Some(ref region) = *maybe_region {
+                    let (cached_start, _cached_end) = region.pos(0).unwrap();
+                    if cached_start >= start {
+                        return Some(region.clone());
+                    }
+                    // cached_start < start: cache miss, re-search below
+                } else {
+                    // Didn't find a match earlier, so no point trying again.
                     return None;
                 }
-                // cached_start < start: cache miss, re-search below
-            } else {
-                // Didn't find a match earlier, so no point trying to match it again
-                return None;
             }
         }
 
