@@ -157,6 +157,14 @@ struct BranchPoint {
     /// ESCAPE …`, every non-whitespace before the `LIKE` fires
     /// `else-pop` in the escape-alternative, derailing the stack).
     prefix_ops: Vec<(usize, ScopeStackOp)>,
+    /// Capture Push/Pop ops emitted alongside the branch_point match's
+    /// `pat_scope`. Re-emitted on fail-retry between the pat_scope
+    /// Push and Pop so captures like `keyword.declaration.data.haskell`
+    /// on the first capture group of `(data)(?:\s+(family|instance))?`
+    /// survive a branch swap — without this, a `data CtxCls ctx => …`
+    /// (where `alt[0]` `data-signature` fails into `alt[1]` `data-context`)
+    /// drops the keyword scope from the `data` token.
+    capture_ops: Vec<(usize, ScopeStackOp)>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -179,6 +187,32 @@ struct RegexMatch<'a> {
 
 /// Maps the pattern to the start index, which is -1 if not found.
 type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
+
+/// Build the ordered Push/Pop ops for a match's `captures:` mapping over
+/// its regex `regions`. Captures can appear in arbitrary source order
+/// (e.g. `((bob)|(hi))*` matching `hibob` — the outer group must Push
+/// before any inner group). Empty captures are skipped because they'd
+/// otherwise sort a Pop before its Push. The returned ops are already
+/// position-ordered and safe to append to a parser ops vec.
+fn build_capture_ops(capture_map: &CaptureMapping, regions: &Region) -> Vec<(usize, ScopeStackOp)> {
+    let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
+    for &(cap_index, ref scopes) in capture_map.iter() {
+        if let Some((cap_start, cap_end)) = regions.pos(cap_index) {
+            if cap_start == cap_end {
+                continue;
+            }
+            for scope in scopes.iter() {
+                map.push((
+                    (cap_start, -((cap_end - cap_start) as i32)),
+                    ScopeStackOp::Push(*scope),
+                ));
+            }
+            map.push(((cap_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
+        }
+    }
+    map.sort_by(|a, b| a.0.cmp(&b.0));
+    map.into_iter().map(|((i, _), op)| (i, op)).collect()
+}
 
 // To understand the implementation of this, here's an introduction to how
 // Sublime Text syntax definitions work.
@@ -873,6 +907,11 @@ impl ParseState {
                     escape_stack_snapshot: self.escape_stack.clone(),
                     pop_count,
                     prefix_ops: ops.clone(),
+                    capture_ops: pat
+                        .captures
+                        .as_ref()
+                        .map(|m| build_capture_ops(m, &reg_match.regions))
+                        .unwrap_or_default(),
                 };
                 self.branch_points.push(bp);
                 // When pop_count > 0 (pop + branch), use Set semantics to
@@ -902,31 +941,12 @@ impl ParseState {
         for s in &pat.scope {
             ops.push((match_start, ScopeStackOp::Push(*s)));
         }
-        if let Some(ref capture_map) = pat.captures {
-            // captures could appear in an arbitrary order, have to produce ops in right order
-            // ex: ((bob)|(hi))* could match hibob in wrong order, and outer has to push first
-            // we don't have to handle a capture matching multiple times, Sublime doesn't
-            let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
-            for &(cap_index, ref scopes) in capture_map.iter() {
-                if let Some((cap_start, cap_end)) = reg_match.regions.pos(cap_index) {
-                    // marking up empty captures causes pops to be sorted wrong
-                    if cap_start == cap_end {
-                        continue;
-                    }
-                    for scope in scopes.iter() {
-                        map.push((
-                            (cap_start, -((cap_end - cap_start) as i32)),
-                            ScopeStackOp::Push(*scope),
-                        ));
-                    }
-                    map.push(((cap_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
-                }
-            }
-            map.sort_by(|a, b| a.0.cmp(&b.0));
-            for ((index, _), op) in map.into_iter() {
-                ops.push((index, op));
-            }
-        }
+        let capture_ops = pat
+            .captures
+            .as_ref()
+            .map(|m| build_capture_ops(m, &reg_match.regions))
+            .unwrap_or_default();
+        ops.extend(capture_ops.iter().cloned());
         if !pat.scope.is_empty() {
             ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
         }
@@ -1113,6 +1133,7 @@ impl ParseState {
         let match_start_pos = bp.match_start;
         let trigger_match_start = bp.trigger_match_start;
         let trigger_pat_scope = bp.pat_scope.clone();
+        let trigger_capture_ops = bp.capture_ops.clone();
         let stack_snapshot = bp.stack_snapshot.clone();
         let proto_starts_snapshot = bp.proto_starts_snapshot.clone();
         let first_line_snapshot = bp.first_line_snapshot;
@@ -1209,6 +1230,10 @@ impl ParseState {
                     for scope in &trigger_pat_scope {
                         first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
                     }
+                    // See matching comment in the same-line branch below —
+                    // re-emit the trigger match's captures inside the
+                    // pat_scope brackets so they survive the branch swap.
+                    first_line_ops.extend(trigger_capture_ops.iter().cloned());
                     if !trigger_pat_scope.is_empty() {
                         first_line_ops
                             .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
@@ -1292,6 +1317,12 @@ impl ParseState {
             for scope in &trigger_pat_scope {
                 ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
             }
+            // Captures emitted alongside the original pat.scope (e.g.
+            // `keyword.declaration.data.haskell` on the first capture of
+            // `(data)(?:\s+(family|instance))?`) were truncated off with
+            // alt[0]'s ops. Re-emit them inside the pat_scope brackets so
+            // the keyword scope survives the branch swap.
+            ops.extend(trigger_capture_ops.iter().cloned());
             if !trigger_pat_scope.is_empty() {
                 ops.push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
             }
@@ -3487,6 +3518,51 @@ contexts:
                   alt-fails:
                     - match: (?=\S)
                       fail: t
+                  alt-succeeds:
+                    - match: \S+
+                      scope: ok.test
+                      pop: 1
+                "#,
+        );
+    }
+
+    /// Regression guard for "branch_point fail-retry drops the
+    /// trigger match's `captures:` scopes". The non-fail path emits
+    /// capture Push/Pop ops inside the pat_scope brackets; the
+    /// same-line fail re-emit must do the same — otherwise the
+    /// inner capture scopes are truncated off `ops` together with
+    /// alt[0]'s subsequent work and never replayed. Observed on
+    /// Haskell's `data CtxCls ctx => ModId.QTyCls`, where the
+    /// `(data)(?:\s+(family|instance))?` branch_point match's first
+    /// capture `keyword.declaration.data.haskell` was dropped from
+    /// the `data` token whenever `data-signature` failed into
+    /// `data-context` — 22 assertion failures in
+    /// `syntax_test_haskell.hs`.
+    #[test]
+    fn branch_point_capture_scopes_survive_fail_retry() {
+        // The `(word)\s` branch_point match carries both `scope:`
+        // and `captures:`. Alt[0] fails on the `!` lookahead,
+        // forcing replay into alt[1]. `inner.capture` on the first
+        // capture group must remain on the stack over `word`.
+        expect_scope_stacks(
+            "word !",
+            &["<outer.match>, <inner.capture>"],
+            r#"
+                name: Branch Capture Re-emit Test
+                scope: source.test
+                contexts:
+                  main:
+                    - match: (word)\s
+                      scope: outer.match
+                      captures:
+                        1: inner.capture
+                      branch_point: bp
+                      branch:
+                        - alt-fails
+                        - alt-succeeds
+                  alt-fails:
+                    - match: (?=!)
+                      fail: bp
                   alt-succeeds:
                     - match: \S+
                       scope: ok.test
