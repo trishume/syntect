@@ -714,6 +714,7 @@ impl SyntaxSetBuilder {
                     &all_context_ids[syntax_index],
                     &all_contexts,
                     &mut no_prototype,
+                    false,
                 );
             }
 
@@ -1158,11 +1159,37 @@ impl SyntaxSetBuilder {
 
     /// Anything recursively included by the prototype shouldn't include the prototype.
     /// This marks them as such.
+    ///
+    /// Reachability from the prototype propagates through `include` AND through
+    /// `Push` / `Set` / `Branch` / `Embed` targets — both can produce a recursive
+    /// `prototype → … → prototype` loop if the target also gets the prototype
+    /// attached. The classic case is YAML's `prototype: include: property` where
+    /// `property` pushes `property-body`: if `property-body` had the prototype,
+    /// every match in property-body would re-fire `property` and push another
+    /// property-body forever (`meta.property.yaml` × ∞).
+    ///
+    /// The `via_push` flag distinguishes "still inside the prototype's include
+    /// chain" from "already inside a body that the prototype pushed/embedded
+    /// into". Once we transition through Push/Set/Branch/Embed (`via_push: true`)
+    /// we keep following further Push/Set/Branch/Embed targets — those targets
+    /// chain back via `set:` to the same family of contexts (Lua's
+    /// `line-doc-comment-body → set: maybe-line-doc-comment → set:
+    /// line-doc-comment-body`) and would loop through the prototype. But we
+    /// stop following `include:` of independent named contexts: those `include`s
+    /// reach into general code-parsing land that has nothing to do with the
+    /// prototype's intent (Haskell's `preprocessor-pragma-signature-value`
+    /// `include: functions`, which would otherwise mark every function context
+    /// in the syntax — including `variable-name-end`, breaking the
+    /// `meta.function.identifier.haskell` cross-line replay because the
+    /// prototype's `line-comments` rule would then never fire inside
+    /// `variable-name-end` and the `(?=\S)` pop:2 would orphan the `functions`
+    /// branch_point on every assertion-comment line).
     fn recursively_mark_no_prototype(
         context_id: &ContextId,
         syntax_context_ids: &HashMap<String, ContextId>,
         all_contexts: &[Vec<Context>],
         no_prototype: &mut HashSet<ContextId>,
+        via_push: bool,
     ) {
         let first_time = no_prototype.insert(*context_id);
         if !first_time {
@@ -1203,6 +1230,7 @@ impl SyntaxSetBuilder {
                                             syntax_context_ids,
                                             all_contexts,
                                             no_prototype,
+                                            true,
                                         );
                                     }
                                 }
@@ -1212,6 +1240,7 @@ impl SyntaxSetBuilder {
                                         syntax_context_ids,
                                         all_contexts,
                                         no_prototype,
+                                        true,
                                     );
                                 }
                                 _ => (),
@@ -1220,6 +1249,14 @@ impl SyntaxSetBuilder {
                     }
                 }
                 Pattern::Include(ref reference) | Pattern::IncludeWithPrototype(ref reference) => {
+                    // Once we've crossed a Push/Set/Branch/Embed transition,
+                    // the body's `include:`s reach into the syntax's general
+                    // code-parsing contexts and don't actually reintroduce a
+                    // prototype loop — stop following them. See the function
+                    // doc-comment for the Haskell case that motivated this.
+                    if via_push {
+                        continue;
+                    }
                     match reference {
                         ContextReference::Named(ref s) => {
                             if let Some(id) = syntax_context_ids.get(s) {
@@ -1228,6 +1265,7 @@ impl SyntaxSetBuilder {
                                     syntax_context_ids,
                                     all_contexts,
                                     no_prototype,
+                                    false,
                                 );
                             }
                         }
@@ -1237,6 +1275,7 @@ impl SyntaxSetBuilder {
                                 syntax_context_ids,
                                 all_contexts,
                                 no_prototype,
+                                false,
                             );
                         }
                         _ => (),
@@ -1847,6 +1886,76 @@ mod tests {
         // handle that correctly.
         let rebuilt = ss.into_builder().build();
         assert_prototype_only_on(&["main", "other"], &rebuilt, &rebuilt.syntaxes()[0]);
+    }
+
+    #[test]
+    fn prototype_attached_to_named_contexts_reachable_only_via_push_then_include() {
+        // Regression guard for the Haskell `meta.function.identifier.haskell`
+        // case (`syntax_test_haskell.hs:2312-2348`). The chain:
+        //   prototype          (include)
+        //   → push-source      (push: pushed-body)
+        //   → pushed-body      (mip: false; include: code)
+        //   → code             (push: var-name → push: var-name-end)
+        // The `include: code` inside `pushed-body` is the boundary: `code`,
+        // `var-name`, and `var-name-end` are general syntax contexts that
+        // should still get the prototype attached (so the `--`-comment rule
+        // declared in the prototype fires inside them). The pre-fix logic
+        // marked all of them as `no_prototype`, suppressing the cross-line
+        // `fail` replay that installs `meta.function.identifier.haskell`.
+        let mut builder = SyntaxSetBuilder::new();
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+                name: Test Prototype Push
+                scope: source.test
+                file_extensions: [test]
+                contexts:
+                  prototype:
+                    - include: push-source
+                  main:
+                    - include: code
+                  push-source:
+                    - match: 'p'
+                      push: pushed-body
+                  pushed-body:
+                    - meta_include_prototype: false
+                    - meta_scope: meta.pushed-body
+                    - match: 'q'
+                      pop: 1
+                    - include: code
+                  code:
+                    - match: 'a'
+                      push: var-name
+                  var-name:
+                    - match: 'b'
+                      push: var-name-end
+                  var-name-end:
+                    - match: 'c'
+                      pop: 2
+                "#,
+            true,
+            None,
+        )
+        .unwrap();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        // `prototype`, `push-source`, and `pushed-body` are reachable from the
+        // prototype before/at the Push boundary and stay out of the prototype.
+        // `main`, `code`, `var-name`, and `var-name-end` are reachable only
+        // through `pushed-body`'s `include: code` and must keep the prototype
+        // attached.
+        assert_prototype_only_on(
+            &["main", "code", "var-name", "var-name-end"],
+            &ss,
+            &ss.syntaxes()[0],
+        );
+
+        let rebuilt = ss.into_builder().build();
+        assert_prototype_only_on(
+            &["main", "code", "var-name", "var-name-end"],
+            &rebuilt,
+            &rebuilt.syntaxes()[0],
+        );
     }
 
     #[test]
