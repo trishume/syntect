@@ -45,7 +45,7 @@ pub enum SyntaxTestFileResult {
 }
 
 // The header-line shape Sublime Text accepts is:
-//   <testtoken_start> SYNTAX TEST [<modifier>] "<syntax_file>" [<testtoken_end> [<free-form tail>]]
+//   <testtoken_start> SYNTAX TEST [<modifier>] "<syntax_file>" [<testtoken_end>]
 //
 // * `testtoken_start` is the line's comment marker (e.g. `//`, `#`,
 //   `/*`, `<!--`, `T:` for MultiMarkdown). Matched lazily so
@@ -59,13 +59,16 @@ pub enum SyntaxTestFileResult {
 //   Sublime's evolving modifier list here. A present modifier is
 //   the signal that the file is not a scope test (see
 //   `SyntaxTestFileResult::Skipped`).
-// * `testtoken_end` is the matching closing comment marker for
-//   block-comment syntaxes (`*/`, `-->`, `%>`, `}}`, …). Restricted
-//   to punctuation-only so alphabetic tails like `dotnet` in
-//   `#! SYNTAX TEST "…" dotnet run` don't get mis-captured.
-// * The trailing `(?:\s.*)?$` absorbs whatever follows the (optional)
-//   testtoken_end — shebang-style instructions like `dotnet run`
-//   go here and are ignored.
+// * `testtoken_end` is whatever follows the closing quote, with
+//   surrounding whitespace stripped. For block-comment syntaxes it
+//   is the matching closing marker (`*/`, `-->`, `%>`, `}}`, …);
+//   for line-comment shebang headers it is the entire trailing tail
+//   (`dmd`, `clojure`, `dotnet run`, `tclsh8.6`, …) — alphabetic
+//   and multi-word tails included. ST searches each assertion line
+//   for this token and clips the scope-selector text at the first
+//   substring match, so capturing the full tail is required to keep
+//   selectors like `<- keyword.operator.logical.d dmd` from leaking
+//   the trailing `dmd` into the selector.
 pub static SYNTAX_TEST_HEADER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?xm)
@@ -73,8 +76,8 @@ pub static SYNTAX_TEST_HEADER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         \s*SYNTAX\sTEST\s+
         (?:(?P<modifier>[^\s"]+)\s+)?
         "(?P<syntax_file>[^"]+)"
-        (?:\s+(?P<testtoken_end>[^\s\w]+))?
-        (?:\s.*)?$
+        (?:\s+(?P<testtoken_end>\S(?:.*\S)?))?
+        \s*$
     "#,
     )
     .unwrap()
@@ -236,20 +239,20 @@ fn get_line_assertion_details<'a>(
             // The trailing `(.*)$` group comes after the four named alternatives,
             // so use the last group to stay robust against future marker additions.
             let mut sst = captures.get(captures.len() - 1).unwrap().as_str();
-            let mut only_whitespace_after_token_end = true;
 
             if let Some(token) = testtoken_end {
-                // if there is an end token defined in the test file header
+                // ST clips the scope-selector text at the first occurrence of
+                // testtoken_end (substring match) — necessary so block-comment
+                // closers (`*/`, `-->`) and shebang tails (`dmd`, `clojure`,
+                // `dotnet run`) don't leak into the selector. Note this fires
+                // even when the token is a substring of a scope name (the
+                // `clojure` inside `comment.line.shebang.clojure` for the
+                // Clojure shebang test); ST relies on the test author not
+                // picking selectors whose first dotted atom shares a prefix
+                // with the closing token.
                 if let Some(end_token_pos) = sst.find(token) {
-                    // and there is an end token in the line
-                    let (ss, rest_from_end_token) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
+                    let (ss, _) = sst.split_at(end_token_pos);
                     sst = ss;
-                    // Skip the end token itself when checking what follows.
-                    // Without this, a line like `/* ^ scope */` would always
-                    // be classified as non-pure because `rest_from_end_token`
-                    // begins with the `*/` glyph (non-whitespace).
-                    let after_token_end = &rest_from_end_token[token.len()..];
-                    only_whitespace_after_token_end = after_token_end.trim_end().is_empty();
                 }
             }
             // A column-range marker (`^+` or `@+`) spans the columns it covers;
@@ -268,8 +271,7 @@ fn get_line_assertion_details<'a>(
             let is_reference = captures.name("reference_label").is_some()
                 || captures.name("reference_assertion").is_some();
             // ST's syntax-test format requires assertions on dedicated
-            // comment-only lines: only whitespace before testtoken_start and
-            // after testtoken_end (or after the selector if no end token).
+            // comment-only lines: only whitespace before testtoken_start.
             // When source code precedes the testtoken (e.g. bash `: ${#^pat}`,
             // where `#` is the parameter-length operator and `^pat` is
             // substitution), the markers that follow are coincidental code,
@@ -278,9 +280,12 @@ fn get_line_assertion_details<'a>(
             // failures pile up against the wrong target line, and the
             // misclassification also blocks `test_against_line_number` from
             // advancing onto the source line, so the *next* genuine
-            // assertion tests against stale scopes.
-            let is_pure_assertion_line =
-                before_token_start.trim_start().is_empty() && only_whitespace_after_token_end;
+            // assertion tests against stale scopes. We don't gate on what
+            // follows testtoken_end: ST itself processes such lines as
+            // assertions (the trailing content is just ignored), and our
+            // tests don't include lines that mix an assertion with real
+            // source code after the closing token.
+            let is_pure_assertion_line = before_token_start.trim_start().is_empty();
             if !is_pure_assertion_line {
                 return None;
             }
