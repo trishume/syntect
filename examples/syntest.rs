@@ -242,8 +242,13 @@ fn get_line_assertion_details<'a>(
                 // if there is an end token defined in the test file header
                 if let Some(end_token_pos) = sst.find(token) {
                     // and there is an end token in the line
-                    let (ss, after_token_end) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
+                    let (ss, rest_from_end_token) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
                     sst = ss;
+                    // Skip the end token itself when checking what follows.
+                    // Without this, a line like `/* ^ scope */` would always
+                    // be classified as non-pure because `rest_from_end_token`
+                    // begins with the `*/` glyph (non-whitespace).
+                    let after_token_end = &rest_from_end_token[token.len()..];
                     only_whitespace_after_token_end = after_token_end.trim_end().is_empty();
                 }
             }
@@ -262,12 +267,28 @@ fn get_line_assertion_details<'a>(
             };
             let is_reference = captures.name("reference_label").is_some()
                 || captures.name("reference_assertion").is_some();
+            // ST's syntax-test format requires assertions on dedicated
+            // comment-only lines: only whitespace before testtoken_start and
+            // after testtoken_end (or after the selector if no end token).
+            // When source code precedes the testtoken (e.g. bash `: ${#^pat}`,
+            // where `#` is the parameter-length operator and `^pat` is
+            // substitution), the markers that follow are coincidental code,
+            // not test-author intent. Such lines must not be treated as
+            // assertion-bearing — otherwise spurious `process_assertions`
+            // failures pile up against the wrong target line, and the
+            // misclassification also blocks `test_against_line_number` from
+            // advancing onto the source line, so the *next* genuine
+            // assertion tests against stale scopes.
+            let is_pure_assertion_line =
+                before_token_start.trim_start().is_empty() && only_whitespace_after_token_end;
+            if !is_pure_assertion_line {
+                return None;
+            }
             return Some(AssertionRange {
                 begin_char,
                 end_char,
                 scope_selector_text: sst,
-                is_pure_assertion_line: before_token_start.trim_start().is_empty()
-                    && only_whitespace_after_token_end, // if only whitespace surrounds the test tokens on the line, then it is a pure assertion line
+                is_pure_assertion_line,
                 is_reference,
             });
         }
@@ -1029,6 +1050,21 @@ mod tests {
         // marker-boundary requirement).
         let a = details(CC, None, "//   @@@").unwrap();
         assert!(a.is_reference);
+    }
+    #[test]
+    fn shell_parameter_length_is_not_mistaken_for_column_range() {
+        // bash `: ${#^pattern}` — `#` is the parameter-length operator, not
+        // a comment. Source code precedes the testtoken, so the line is not
+        // a pure-assertion line and must not be processed as an assertion.
+        assert!(details(HASH, None, ": ${#^pattern}").is_none());
+        assert!(details(HASH, None, ": ${#^^pattern}").is_none());
+    }
+    #[test]
+    fn trailing_comment_with_left_arrow_is_not_mistaken_for_assertion() {
+        // bash `[ <<doc ]  # <- ]` — a real comment whose body happens to
+        // start with `<-`. Because source code precedes the testtoken, the
+        // `<-` is not author-intended as an assertion marker.
+        assert!(details(HASH, None, "[ <<doc ]  # <- ]").is_none());
     }
 
     /// Build a `ScopedText` from a string of space-separated scope atoms.
