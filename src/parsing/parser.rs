@@ -1598,6 +1598,21 @@ impl ParseState {
                             }
                         }
 
+                        // `pop: N + set:` with clear_scopes on the leaving
+                        // context: restore the cleared atoms BEFORE the
+                        // compound Pop so num_to_pop finds the popped frames'
+                        // full meta_content_scope on the scope stack. Without
+                        // this, Pop eats atoms from below the popped range —
+                        // observed on Batch File `cmd-set-quoted-value-inner-end`
+                        // (`clear_scopes: 1`) firing `pop: 2, set: ignored-tail-outer`,
+                        // which otherwise drops `meta.command.set.dosbatch` from
+                        // the trailing content of every `set "var"=...` line.
+                        let restore_before_pop =
+                            is_set && set_pop_count > 1 && cur_context.clear_scopes.is_some();
+                        if restore_before_pop {
+                            ops.push((index, ScopeStackOp::Restore));
+                        }
+
                         // do all the popping as one operation
                         if num_to_pop > 0 {
                             ops.push((index, ScopeStackOp::Pop(num_to_pop)));
@@ -1607,7 +1622,7 @@ impl ParseState {
                         // cur.meta_scope and the initial phase's target.meta_scope
                         // push have been popped off. The restored atoms land below
                         // the target's upcoming meta_scope / meta_content_scope push.
-                        if is_set && cur_context.clear_scopes.is_some() {
+                        if is_set && cur_context.clear_scopes.is_some() && !restore_before_pop {
                             ops.push((index, ScopeStackOp::Restore));
                         }
 
@@ -5477,6 +5492,85 @@ contexts:
                 .any(|s| s.contains("meta.function.v2settargetclear")),
             "meta.function must be restored after params-body pops, got trailing states: {:?}",
             after_inner_close
+        );
+    }
+
+    #[test]
+    fn pop_n_set_with_cur_clear_scopes_restores_before_popping_deeper_frames() {
+        // `pop: N + set: X` fired from a context that itself declares
+        // `clear_scopes` at the context level: the deeper popped frame's
+        // meta_content_scope is partly on the live scope stack and partly
+        // in `clear_stack` (stripped by cur's Clear on entry). Emitting the
+        // compound Pop before Restore makes Pop eat atoms from below the
+        // intended popped range, dropping the outer frame's meta_scope.
+        // Shape mirrors Batch File's `cmd-set-quoted-value-inner-end`
+        // (`clear_scopes: 1`) firing `pop: 2, set: ignored-tail-outer` below
+        // a `cmd-set-quoted-value-inner` that carries a 2-atom
+        // meta_content_scope.
+        let syntax_str = r#"
+name: PopNSetClear
+scope: source.popnsetclear
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      scope: p.a
+      push: [outer, middle]
+
+  outer:
+    - meta_scope: outer.test
+    - match: 'z'
+      pop: 1
+
+  middle:
+    - meta_content_scope: mid1.test mid2.test
+    - match: 'b'
+      scope: p.b
+      push: top
+
+  top:
+    - clear_scopes: 1
+    - match: 'c'
+      scope: p.c
+      pop: 2
+      set: target
+
+  target:
+    - meta_scope: target.test
+    - match: 'd'
+      scope: p.d
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "abcd", &ss);
+        let states = stack_states(raw_ops);
+
+        // The scope stack state recorded on the `d` token (in `target`):
+        // must contain `outer.test` (outer's meta_scope still on the stack)
+        // and `target.test` (target's meta_scope, pushed by the pop:2+set:)
+        // and must NOT contain `mid1.test` or `mid2.test` (middle was popped
+        // by pop:2 and its meta_content_scope atoms — one live, one in
+        // clear_stack — should both be gone).
+        let d_state = states
+            .iter()
+            .find(|s| s.contains("p.d"))
+            .unwrap_or_else(|| panic!("expected a state containing `p.d`, got: {:?}", states));
+        assert!(
+            d_state.contains("outer.test"),
+            "outer.test must survive pop:2+set: (it sits below the popped range): {}",
+            d_state
+        );
+        assert!(
+            d_state.contains("target.test"),
+            "target.test must be on the stack (target was pushed by set:): {}",
+            d_state
+        );
+        assert!(
+            !d_state.contains("mid1.test") && !d_state.contains("mid2.test"),
+            "middle's meta_content_scope atoms must not linger after pop:2+set:, \
+             including the atom that was in clear_stack: {}",
+            d_state
         );
     }
 
