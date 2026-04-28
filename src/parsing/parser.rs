@@ -734,6 +734,25 @@ impl ParseState {
                 ) {
                     *non_consuming_push_at = (match_end, self.stack.len() + 1);
                 }
+                // Inside a cross-line replay, a non-consuming `Branch` whose
+                // match lands past every character of the replay line creates
+                // a chained `branch_point` that the outer parse will then
+                // exhaust on the next (often empty) line. The exhaustion's
+                // pop ops attach to *this* replay line — i.e. the next line's
+                // baseline — collapsing the parent context one boundary too
+                // early. Skip the branch creation; the parent rule will fire
+                // again at the start of the outer line and the BP will be
+                // anchored there instead. Observed on Markdown's LRD blank
+                // line: link-def-attr's `match: $` was creating a BP-2
+                // inside link-title-continuation's exhaustion replay, then
+                // collapsing `meta.link.reference.def.markdown` on the empty
+                // line.
+                if matches!(match_pattern.operation, MatchOperation::Branch { .. })
+                    && self.replay_ctx.is_some()
+                    && match_end >= line.len()
+                {
+                    return Ok(false);
+                }
             }
 
             *start = match_end;
@@ -1287,7 +1306,7 @@ impl ParseState {
     fn handle_fail(
         &mut self,
         name: &str,
-        _line: &str,
+        line: &str,
         start: &mut usize,
         non_consuming_push_at: &mut (usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
@@ -1772,7 +1791,24 @@ impl ParseState {
         } else {
             // Same-line fail: truncate ops back to the snapshot point and rewind.
             ops.truncate(ops_snapshot_len.min(ops.len()));
-            *start = match_start_pos;
+            // Empty-line continuation: when the same-line fail fires at
+            // pos 0 of an empty line (just `\n`), the alt-N replacement
+            // is typically a `match: '' pop: N` (e.g. Markdown's
+            // `link-def-attr-continuation` failing into
+            // `immediately-pop2`). Executing that pop at pos 0 emits
+            // visible scope Pops on the empty line's only character —
+            // collapsing the parent meta_scope (e.g.
+            // `meta.link.reference.def.markdown`) before the empty
+            // line's own scope is recorded. Advance to past-EOL so the
+            // pop emits there instead, which ScopeRegionIterator wraps
+            // to the next line's baseline. ST's behavior matches: the
+            // LRD pop straddles line 3→line 4, not line 2→line 3.
+            let resume = if match_start_pos == 0 && line.len() <= 1 && line.trim().is_empty() {
+                line.len()
+            } else {
+                match_start_pos
+            };
+            *start = resume;
 
             // Keep `ops_snapshot_len` pointing at the pre-branch state.
             // Subsequent fails on the same branch_point must truncate
@@ -8576,6 +8612,98 @@ contexts:
             "must not fall through to comment.line.number-sign.shell \
              (regular comments rule)"
         );
+    }
+
+    /// Regression: in a non-terminated Markdown link reference definition
+    /// title, the empty line between the title's last content line and the
+    /// next paragraph must keep the LRD's `meta_scope`
+    /// (`meta.link.reference.def.markdown`) active at column 0. Without
+    /// the fix, the chained branch_point exhaustion
+    /// (`link-title-continuation` + `link-def-attr-continuation`) collapses
+    /// the entire LRD frame on line 2's `\n`, dropping the LRD scope on
+    /// the empty line.
+    ///
+    /// Mirrors syntest's per-character scope semantics: ops at position
+    /// `>= line.len()` apply to the next line's stack baseline (per
+    /// `ScopeRegionIterator`), so the per-char stack at line 3 col 0
+    /// reflects the post-replay baseline plus only the in-line ops at
+    /// position 0.
+    #[test]
+    #[ignore = "requires testdata/Packages submodule"]
+    fn lrd_blank_line_keeps_meta_scope_active() {
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let md = ss
+            .find_syntax_by_scope(Scope::new("text.html.markdown").unwrap())
+            .expect("Markdown loaded");
+        let mut state = ParseState::new(md);
+        let mut baseline = ScopeStack::new();
+        let mut buffered_lines: Vec<(String, Vec<(usize, ScopeStackOp)>, ScopeStack)> = Vec::new();
+        // (line_text, ops, stack_before)
+
+        for &line in &["[//]: # (testing\n", "blah\n", "\n", "text\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            // Replay handling: reset baseline to pre-first-replayed-line state,
+            // then apply replay ops in order to rebuild the live baseline.
+            if !out.replayed.is_empty() {
+                let start_idx = buffered_lines.len() - out.replayed.len();
+                baseline = buffered_lines[start_idx].2.clone();
+                for (i, replay_ops) in out.replayed.iter().enumerate() {
+                    for (_, op) in replay_ops {
+                        let _ = baseline.apply(op);
+                    }
+                    let entry = &mut buffered_lines[start_idx + i];
+                    entry.1 = replay_ops.clone();
+                }
+            }
+            // Snapshot stack_before for this line (for future replay base).
+            let stack_before = baseline.clone();
+            // Apply this line's live ops at positions < line.len() only —
+            // ops at >= line.len() belong to the next line's baseline (per
+            // syntest's wrap convention).
+            let mut col_0_stack = stack_before.clone();
+            let mut after_in_line_stack = stack_before.clone();
+            for (pos, op) in &out.ops {
+                let _ = baseline.apply(op);
+                if *pos < line.len() {
+                    let _ = after_in_line_stack.apply(op);
+                }
+                if *pos == 0 {
+                    let _ = col_0_stack.apply(op);
+                }
+            }
+            buffered_lines.push((line.to_string(), out.ops.clone(), stack_before));
+
+            if line == "\n" {
+                let lrd = Scope::new("meta.link.reference.def.markdown").unwrap();
+                assert!(
+                    col_0_stack.as_slice().contains(&lrd),
+                    "expected `meta.link.reference.def.markdown` at empty \
+                     line col 0; got: {:?}",
+                    col_0_stack
+                        .as_slice()
+                        .iter()
+                        .map(|s| s.build_string())
+                        .collect::<Vec<_>>()
+                );
+            }
+            if line == "text\n" {
+                let paragraph = Scope::new("meta.paragraph.markdown").unwrap();
+                let lrd = Scope::new("meta.link.reference.def.markdown").unwrap();
+                assert!(
+                    after_in_line_stack.as_slice().contains(&paragraph),
+                    "expected `meta.paragraph.markdown` on `text` line"
+                );
+                assert!(
+                    !after_in_line_stack.as_slice().contains(&lrd),
+                    "LRD must be popped on `text` line; got: {:?}",
+                    after_in_line_stack
+                        .as_slice()
+                        .iter()
+                        .map(|s| s.build_string())
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
     }
 
     /// Regression: an `embed: scope:source.guest#leaf` (with `#fragment`)
