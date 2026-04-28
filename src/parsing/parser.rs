@@ -2132,8 +2132,44 @@ impl ParseState {
                         if let (true, Some(amt)) = (multi_set_extra_drop, target_clear_amt) {
                             ops.push((index, ScopeStackOp::Clear(ClearAmount::TopN(amt + 1))));
                         }
+                        // Multi-context `set:` whose non-topmost target has
+                        // `clear_scopes: N` + an empty `meta_scope`
+                        // (`meta_content_scope`-only): ST applies the Clear
+                        // to atoms that EARLIER targets pushed via their
+                        // `meta_scope`, and the strip is visible to the
+                        // trigger token's own scopes — observed on Zsh's
+                        // `zsh-redirection-glob-range-begin`'s
+                        //   set: [string-path-pattern-body,
+                        //         zsh-redirection-glob-range-end, …]
+                        // where `string-path-pattern-body` pushes
+                        // `meta.string.glob.shell string.unquoted.shell` and
+                        // `…-range-end` declares `clear_scopes: 1`. The
+                        // capture-2 scope `meta.range.shell.zsh
+                        // punctuation.definition.range.begin.shell.zsh` on
+                        // the `<` is asserted with `- string`, so
+                        // `string.unquoted.shell` must be hidden at the
+                        // trigger. Without this preview Clear it leaks into
+                        // every glob-range opening. The matching Restore is
+                        // emitted at the start of the non-initial phase
+                        // below so `head_pop` finds the full visible stack.
+                        // See
+                        // `v2_multi_set_non_topmost_clear_scopes_strips_preceding_meta_scope_at_trigger`.
+                        let mut initial_atoms_pushed: usize = 0;
                         for r in context_refs.iter() {
                             let ctx = r.resolve(syntax_set)?;
+
+                            if is_set && context_refs.len() > 1 && ctx.meta_scope.is_empty() {
+                                if let Some(ClearAmount::TopN(n)) = ctx.clear_scopes {
+                                    let initial_clear = n.min(initial_atoms_pushed);
+                                    if initial_clear > 0 {
+                                        ops.push((
+                                            index,
+                                            ScopeStackOp::Clear(ClearAmount::TopN(initial_clear)),
+                                        ));
+                                        initial_atoms_pushed -= initial_clear;
+                                    }
+                                }
+                            }
 
                             let emit_clear_here = !is_set || single_context_set_clear;
                             if emit_clear_here {
@@ -2144,6 +2180,7 @@ impl ParseState {
 
                             for scope in ctx.meta_scope.iter() {
                                 ops.push((index, ScopeStackOp::Push(*scope)));
+                                initial_atoms_pushed += 1;
                             }
                         }
                     } else {
@@ -2219,6 +2256,35 @@ impl ParseState {
                             is_set && set_pop_count > 1 && cur_context.clear_scopes.is_some();
                         if restore_before_pop {
                             ops.push((index, ScopeStackOp::Restore));
+                        }
+
+                        // Pair to the initial-phase preview Clears emitted
+                        // above for non-topmost `clear_scopes` targets with
+                        // empty `meta_scope`. Each Restore here undoes one
+                        // such preview Clear so the upcoming `head_pop`
+                        // sees the full visible stack the captures pushed
+                        // onto. The body's matching Clears are re-emitted
+                        // below in the per-target loop, so the steady-state
+                        // post-trigger view is unchanged.
+                        if is_set && version >= 2 && context_refs.len() > 1 {
+                            let mut atoms = 0usize;
+                            let mut preview_clears = 0usize;
+                            for r in context_refs.iter() {
+                                let ctx = r.resolve(syntax_set)?;
+                                if ctx.meta_scope.is_empty() {
+                                    if let Some(ClearAmount::TopN(n)) = ctx.clear_scopes {
+                                        let initial_clear = n.min(atoms);
+                                        if initial_clear > 0 {
+                                            preview_clears += 1;
+                                            atoms -= initial_clear;
+                                        }
+                                    }
+                                }
+                                atoms += ctx.meta_scope.len();
+                            }
+                            for _ in 0..preview_clears {
+                                ops.push((index, ScopeStackOp::Restore));
+                            }
                         }
 
                         if head_pop > 0 {
@@ -6978,6 +7044,129 @@ contexts:
         // Reaching this point without a panic proves the Restore emitted on
         // ctx-middle's pop didn't underflow the clear_stack — the
         // regression the Bash `func () {}` minimal reproducer uncovered.
+    }
+
+    #[test]
+    fn v2_multi_set_non_topmost_clear_scopes_strips_preceding_meta_scope_at_trigger() {
+        // v2: in a multi-context `set:` whose non-topmost target declares
+        // `clear_scopes: N` + a non-empty `meta_content_scope` (and an
+        // empty `meta_scope`), the Clear must strip atoms that EARLIER
+        // contexts in the set list pushed via their `meta_scope` — and
+        // the strip must be visible to the TRIGGER match's own scopes
+        // (top-level `scope:` and capture scopes).
+        //
+        // Real-world repro: Zsh's `zsh-redirection-glob-range-begin` is
+        // entered via a pop+branch from `redirection-input`. Its match
+        // `(\d*)(<)` runs `set: [string-path-pattern-body,
+        // zsh-redirection-glob-range-end, zsh-glob-range-number,
+        // zsh-redirection-glob-range-operator, zsh-glob-range-number]`.
+        // `string-path-pattern-body` has
+        // `meta_scope: meta.string.glob.shell string.unquoted.shell`, and
+        // `zsh-redirection-glob-range-end` has
+        // `clear_scopes: 1` + `meta_content_scope: meta.range.shell.zsh`.
+        // The capture-2 scope `meta.range.shell.zsh
+        // punctuation.definition.range.begin.shell.zsh` is asserted with
+        // `- string` exclusion, so `string.unquoted.shell` must be hidden
+        // at the `<` token.
+        let syntax_str = r#"
+name: V2MultiSetNonTopClear
+scope: source.v2mscstrigger
+version: 2
+contexts:
+  main:
+    - match: '\['
+      scope: punctuation.section.brackets.begin
+      set: middle
+  middle:
+    - meta_include_prototype: false
+    - match: '(<)'
+      captures:
+        1: meta.range.begin punctuation.definition.range.begin
+      set:
+        - body
+        - end
+        - top
+  body:
+    - meta_include_prototype: false
+    - meta_scope: meta.glob string.unquoted
+    - match: '\]'
+      scope: punctuation.section.brackets.end
+      pop: true
+  end:
+    - clear_scopes: 1
+    - meta_include_prototype: false
+    - meta_content_scope: meta.range
+    - match: '>'
+      scope: punctuation.definition.range.end
+      pop: 1
+  top:
+    - meta_include_prototype: false
+    - match: '\d+'
+      scope: constant.numeric
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "[<1>x]\n", &ss);
+        let states = stack_states(raw_ops);
+
+        // The `<` token (capture 1) must carry meta.glob + meta.range.begin
+        // + punctuation.definition.range.begin, with `string.unquoted`
+        // CLEARED by end's `clear_scopes: 1`.
+        let begin_states: Vec<_> = states
+            .iter()
+            .filter(|s| s.contains("punctuation.definition.range.begin"))
+            .collect();
+        assert!(
+            !begin_states.is_empty(),
+            "expected punctuation.definition.range.begin in some state, got: {:?}",
+            states
+        );
+        for s in &begin_states {
+            assert!(
+                s.contains("meta.glob"),
+                "meta.glob should remain on the stack at the `<` token, got: {:?}",
+                s
+            );
+            assert!(
+                !s.contains("string.unquoted"),
+                "string.unquoted should have been cleared by end's \
+                 `clear_scopes: 1` on entry, got: {:?}",
+                s
+            );
+            assert!(
+                s.contains("meta.range.begin"),
+                "meta.range.begin (capture scope) must be on the stack at the \
+                 `<` token, got: {:?}",
+                s
+            );
+        }
+
+        // After the trigger, body content (`1`) sees end's
+        // meta_content_scope (meta.range) and NOT string.unquoted.
+        let digit_states: Vec<_> = states
+            .iter()
+            .filter(|s| s.contains("constant.numeric"))
+            .collect();
+        assert!(
+            !digit_states.is_empty(),
+            "expected constant.numeric in some state, got: {:?}",
+            states
+        );
+        for s in &digit_states {
+            assert!(
+                !s.contains("string.unquoted"),
+                "string.unquoted must stay cleared while inside the range body, \
+                 got: {:?}",
+                s
+            );
+            assert!(
+                s.contains("meta.range"),
+                "end's meta_content_scope (meta.range) must be on the body \
+                 content's stack, got: {:?}",
+                s
+            );
+        }
     }
 
     #[test]
