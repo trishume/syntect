@@ -274,17 +274,20 @@ impl<'a> Iterator for MatchIter<'a> {
                             _ => return self.next(),
                         };
                         let ctx_ptr = self.syntax_set.get_context(context_id).unwrap();
-                        // Also include the external syntax's prototype if the context allows it
+                        // Push target first, then external prototype on top so
+                        // its patterns are iterated first: `MatchIter::next`
+                        // reads the stack top, and ST's `apply_prototype` runs
+                        // the prototype ahead of the included context — mirror
+                        // of `ParseState::find_best_match`'s prototype chaining.
+                        self.ctx_stack.push(ctx_ptr);
+                        self.index_stack.push(0);
                         if ctx_ptr.meta_include_prototype.unwrap_or(true) {
                             if let Some(ref proto_id) = ctx_ptr.prototype {
                                 let proto_ctx = self.syntax_set.get_context(proto_id).unwrap();
-                                // Push prototype first (it will be iterated first)
                                 self.ctx_stack.push(proto_ctx);
                                 self.index_stack.push(0);
                             }
                         }
-                        self.ctx_stack.push(ctx_ptr);
-                        self.index_stack.push(0);
                     }
                 }
             } else {
