@@ -8340,6 +8340,51 @@ contexts:
         );
     }
 
+    /// Regression: in a Markdown zsh fenced block, the indented shebang
+    /// `   #!/usr/bin/env zsh` must enter `comment.line.shebang.shell`
+    /// (lenient `Bash (for Markdown).main` rule), not the regular
+    /// `comment.line.number-sign.shell` (strict inherited Bash main).
+    /// `Zsh (for Markdown)` extends both `Bash (for Markdown)` (which
+    /// owns a custom `main`) and `Zsh` (which inherits Bash's standard
+    /// strict `main`). The parent merge must prefer the own definition
+    /// over the inherited one.
+    #[test]
+    #[ignore = "requires testdata/Packages submodule"]
+    fn zsh_for_markdown_uses_lenient_shebang_main_from_bash_for_markdown() {
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let md = ss
+            .find_syntax_by_scope(Scope::new("text.html.markdown").unwrap())
+            .expect("Markdown loaded");
+        let mut state = ParseState::new(md);
+        let shebang = Scope::new("comment.line.shebang.shell").unwrap();
+        let number_sign = Scope::new("comment.line.number-sign.shell").unwrap();
+        let mut saw_shebang = false;
+        let mut saw_number_sign = false;
+        for line in ["```zsh\n", "   #!/usr/bin/env zsh\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            for (_, op) in &out.ops {
+                if let ScopeStackOp::Push(s) = op {
+                    if *s == shebang {
+                        saw_shebang = true;
+                    }
+                    if *s == number_sign {
+                        saw_number_sign = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            saw_shebang,
+            "expected a Push(comment.line.shebang.shell) op (lenient \
+             Bash (for Markdown).main wins over Zsh's inherited Bash main)"
+        );
+        assert!(
+            !saw_number_sign,
+            "must not fall through to comment.line.number-sign.shell \
+             (regular comments rule)"
+        );
+    }
+
     /// Regression: an `embed: scope:source.guest#leaf` (with `#fragment`)
     /// must NOT mark the wrapper as `embed_scope_replaces`. The fragment
     /// context's `meta_content_scope` is independent of the syntax's

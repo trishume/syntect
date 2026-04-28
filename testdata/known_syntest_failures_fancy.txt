@@ -4,7 +4,7 @@ FAILED testdata/Packages/Clojure/tests/syntax_test_shebang.clj: 1
 FAILED testdata/Packages/D/tests/syntax_test_shebang.d: 1
 FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 49
 FAILED testdata/Packages/Java/tests/syntax_test_java.java: 221
-FAILED testdata/Packages/Markdown/tests/syntax_test_markdown.md: 31
+FAILED testdata/Packages/Markdown/tests/syntax_test_markdown.md: 1
 FAILED testdata/Packages/ShellScript/Bash/tests/syntax_test_scope.bash: 30
 FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 25
 exiting with code 1
