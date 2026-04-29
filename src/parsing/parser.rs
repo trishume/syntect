@@ -314,6 +314,66 @@ fn build_capture_ops(capture_map: &CaptureMapping, regions: &Region) -> Vec<(usi
     map.into_iter().map(|((i, _), op)| (i, op)).collect()
 }
 
+/// Number of leading atoms in `pat_scope` that ST collapses against
+/// the popped contexts' `meta_scope` atoms. Only fires when the
+/// action is a `Set` whose `pop_count` actually pops contexts whose
+/// `meta_scope` matches `pat_scope`'s leading atoms — i.e. the rule
+/// re-states the popped frames' meta_scope on the matched text. ST
+/// collapses these adjacent duplicates rather than re-pushing them.
+///
+/// Reproduces ST's collapse on Java's
+/// `annotation-qualified-identifier-name` (whose `scope:` re-states
+/// the popped `annotation-qualified-identifier`'s `meta_scope` while
+/// `pop: 2 + branch:` unwinds it) — observed as doubled
+/// `meta.annotation.identifier.java meta.path.java` on
+/// `@ClassName.FixMethodOrder(...)`.
+///
+/// The leading-atom match against popped meta_scopes is the gate that
+/// keeps CSS `selector(.bar)` inside `@import supports(...)` from
+/// collapsing the inner `meta.function-call.arguments.css meta.group.css`
+/// level: there the action `set:` pops a frame with empty
+/// `meta_scope`, the rule's leading atoms come from the *outer*
+/// (non-popped) `meta_content_scope`, no popped-ms match, no collapse.
+fn pat_scope_skip_count(
+    pat_scope: &[Scope],
+    match_op: &MatchOperation,
+    stack: &[StateLevel],
+    syntax_set: &SyntaxSet,
+) -> Result<usize, ParsingError> {
+    if pat_scope.is_empty() {
+        return Ok(0);
+    }
+    let pop_count = match match_op {
+        MatchOperation::Set { pop_count, .. } => *pop_count,
+        _ => return Ok(0),
+    };
+    if pop_count == 0 {
+        return Ok(0);
+    }
+    let stack_len = stack.len();
+    let pops = pop_count.min(stack_len);
+    let mut popped_ms: Vec<Scope> = Vec::new();
+    // Bottom-to-top: deepest popped frame first, so the `pat_scope`'s
+    // leftmost (deeper) atom aligns with the deepest popped ms atom.
+    for depth in (0..pops).rev() {
+        let level = &stack[stack_len - 1 - depth];
+        let ctx = syntax_set.get_context(&level.context)?;
+        popped_ms.extend(ctx.meta_scope.iter().copied());
+    }
+    if popped_ms.is_empty() {
+        return Ok(0);
+    }
+    let max = pat_scope.len().min(popped_ms.len());
+    let mut k = max;
+    while k > 0 {
+        if pat_scope[..k] == popped_ms[popped_ms.len() - k..] {
+            return Ok(k);
+        }
+        k -= 1;
+    }
+    Ok(0)
+}
+
 // To understand the implementation of this, here's an introduction to how
 // Sublime Text syntax definitions work.
 //
@@ -1182,7 +1242,19 @@ impl ParseState {
         };
 
         self.push_meta_ops(true, match_start, level_context, op_to_use, syntax_set, ops)?;
-        for s in &pat.scope {
+        // ST collapses adjacent duplicate scope atoms: when a rule's
+        // `scope:` leads with atoms identical to the top of the visible
+        // stack at match_start (typically the parent context's
+        // `meta_scope` contributing those atoms), only the
+        // non-overlapping suffix is pushed onto the matched text. Without
+        // this, qualified-annotation rules whose scope explicitly
+        // re-states the parent's meta_scope produce doubled atoms — e.g.
+        // `meta.annotation.identifier.java meta.path.java` appearing
+        // twice on `@ClassName.FixMethodOrder(...)` in Java's
+        // `annotation-qualified-identifier-name` (whose `scope:`
+        // re-states `annotation-qualified-identifier`'s `meta_scope`).
+        let scope_skip = pat_scope_skip_count(&pat.scope, op_to_use, &self.stack, syntax_set)?;
+        for s in &pat.scope[scope_skip..] {
             ops.push((match_start, ScopeStackOp::Push(*s)));
         }
         let capture_ops = pat
@@ -1191,8 +1263,8 @@ impl ParseState {
             .map(|m| build_capture_ops(m, &reg_match.regions))
             .unwrap_or_default();
         ops.extend(capture_ops.iter().cloned());
-        if !pat.scope.is_empty() {
-            ops.push((match_end, ScopeStackOp::Pop(pat.scope.len())));
+        if pat.scope.len() > scope_skip {
+            ops.push((match_end, ScopeStackOp::Pop(pat.scope.len() - scope_skip)));
         }
         self.push_meta_ops(false, match_end, level_context, op_to_use, syntax_set, ops)?;
 
@@ -8664,6 +8736,55 @@ contexts:
              line 5 (expected at most 1); stack: {:?}",
             doubled,
             at_object,
+        );
+    }
+
+    /// Regression guard for the qualified-class annotation duplicate
+    /// atoms case (`syntax_test_java.java:10108`). The
+    /// `annotation-qualified-identifier-name` rule's `scope:`
+    /// re-states the popped `annotation-qualified-identifier`'s
+    /// `meta_scope` atoms while `pop: 2 + branch:` unwinds them.
+    /// Without `pat_scope_skip_count`, the matched text retains both
+    /// the popped frames' meta_scope atoms AND the rule scope's
+    /// re-statement, producing a stack like
+    /// `... meta.annotation.identifier.java meta.path.java
+    /// meta.annotation.identifier.java meta.path.java
+    /// variable.annotation.java`. ST collapses the duplicate.
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn qualified_annotation_does_not_double_identifier_path_atoms() {
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        let line = "@ClassName.FixMethodOrder( MethodSorters.NAME_ASCENDING )\n";
+        let out = state.parse_line(line, &ss).expect("parse");
+        // Reconstruct the running stack at byte position 11 (start of
+        // `FixMethodOrder`), where the duplicated push was visible.
+        for (pos, op) in &out.ops {
+            if *pos > 11 {
+                break;
+            }
+            let _ = stack.apply(op);
+        }
+        let identifier = Scope::new("meta.annotation.identifier.java").unwrap();
+        let path = Scope::new("meta.path.java").unwrap();
+        let id_count = stack
+            .as_slice()
+            .iter()
+            .filter(|s| **s == identifier)
+            .count();
+        let path_count = stack.as_slice().iter().filter(|s| **s == path).count();
+        assert!(
+            id_count == 1 && path_count == 1,
+            "meta.annotation.identifier.java pushed {} times, meta.path.java pushed {} times \
+             entering `FixMethodOrder` (expected each at most 1); stack: {:?}",
+            id_count,
+            path_count,
+            stack,
         );
     }
 
