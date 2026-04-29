@@ -2094,6 +2094,77 @@ impl ParseState {
                             ops.push((index, ScopeStackOp::Pop(pop_count)));
                         }
                     }
+                    // `pop: N + set:` with N > 1 AND non-empty target
+                    // meta_scope: the (N-1) deeper popped contexts'
+                    // meta_scope / meta_content_scope atoms must be dropped
+                    // from the visible stack BEFORE the trigger token
+                    // records its scope. Without this, the trigger token
+                    // observes the leaked deeper meta_scope — observed on
+                    // Java's `@RunWith(JUnit4.class)` where
+                    // `pop: 2 + push: annotation-parameters-body` (becoming
+                    // `Set { pop_count: 2 }` per yaml_load) left
+                    // `meta.annotation.identifier.java`
+                    // (annotation-unqualified-identifier's meta_scope) on
+                    // the stack at the `(` token instead of just
+                    // `meta.annotation.parameters.java meta.group.java`.
+                    //
+                    // ST's quirk: when the target has NO meta_scope, ST
+                    // keeps the deeper popped context's meta_scope visible
+                    // to the matched text and pops it AFTER the match —
+                    // verified on TS's
+                    // `(?:get|set|async){{identifier_break}} pop: 2 + set:`
+                    // in `object-property-name`, where ST keeps
+                    // `meta.mapping.key.js` (object-literal-meta-key's
+                    // meta_scope) on the `get` token. Gating on a
+                    // non-empty target meta_scope keeps that path intact.
+                    //
+                    // Skip when cur or any popped deeper context has
+                    // `clear_scopes`: those interact with the clear_stack
+                    // through the existing non-initial pipeline (Restore
+                    // ordering vs head_pop, multi-target Clear preview),
+                    // and the rotation here would race with that. Batch
+                    // File's `cmd-set-quoted-value-inner-end`
+                    // (`clear_scopes: 1` + `pop: 2 + set: ignored-tail-outer`)
+                    // is the canonical clear_scopes-having case the gate
+                    // protects.
+                    let target_has_ms = context_refs.iter().any(|r| {
+                        r.resolve(syntax_set)
+                            .map(|c| !c.meta_scope.is_empty())
+                            .unwrap_or(false)
+                    });
+                    let mut apply_initial_deeper_pop = is_set && set_pop_count > 1 && target_has_ms;
+                    apply_initial_deeper_pop &= cur_context.clear_scopes.is_none();
+                    if apply_initial_deeper_pop {
+                        let stack_len = self.stack.len();
+                        for depth in 1..set_pop_count.min(stack_len) {
+                            let level_idx = stack_len - 1 - depth;
+                            let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
+                            if ctx.clear_scopes.is_some() {
+                                apply_initial_deeper_pop = false;
+                                break;
+                            }
+                        }
+                    }
+                    if apply_initial_deeper_pop {
+                        let cur_ms_rotate = cur_context.meta_scope.len();
+                        if cur_ms_rotate > 0 {
+                            ops.push((index, ScopeStackOp::Pop(cur_ms_rotate)));
+                        }
+                        let stack_len = self.stack.len();
+                        for depth in 1..set_pop_count.min(stack_len) {
+                            let level_idx = stack_len - 1 - depth;
+                            let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
+                            if !ctx.meta_content_scope.is_empty() {
+                                ops.push((index, ScopeStackOp::Pop(ctx.meta_content_scope.len())));
+                            }
+                            if !ctx.meta_scope.is_empty() {
+                                ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
+                            }
+                        }
+                        for scope in cur_context.meta_scope.iter() {
+                            ops.push((index, ScopeStackOp::Push(*scope)));
+                        }
+                    }
                     // NOTE: cur_context.clear_scopes Restore is emitted in the
                     // non-initial phase below, AFTER Pop(cur.meta_scope + target.meta_scope)
                     // has run. Restoring here (pre-match) would place the cleared
@@ -2383,21 +2454,53 @@ impl ParseState {
                         // `pop: N + set:` (set_pop_count > 1) unwinds N-1
                         // deeper contexts in addition to the usual
                         // set-replace semantics. Mirror the
-                        // `MatchOperation::Pop` arm at lines 1954-1971: pop
-                        // each deeper frame's mcs+ms in top-to-bottom order,
-                        // then Restore that frame's `clear_scopes` if any.
-                        // Without the per-depth Restore, atoms cleared by a
-                        // deeper frame stay in clear_stack out of reach,
-                        // and the per-target Clear below then bites one
-                        // atom too deep. Observed on Python regex inside
-                        // a `r'''(?ix:...)` triple-quoted string: the
-                        // activate-x-mode `pop: 3 + set:[group-body-extended,
-                        // maybe-unexpected-quantifiers]` left
-                        // `group-body-extended_outer`'s cleared
-                        // `meta.mode.extended.regexp` in clear_stack;
-                        // group-body-extended_target's `clear_scopes: 1`
-                        // then cleared `source.regexp.python` instead.
-                        if is_set && set_pop_count > 1 {
+                        // `MatchOperation::Pop` arm: pop each deeper frame's
+                        // mcs+ms in top-to-bottom order, then Restore that
+                        // frame's `clear_scopes` if any. Without the
+                        // per-depth Restore, atoms cleared by a deeper
+                        // frame stay in clear_stack out of reach, and the
+                        // per-target Clear below then bites one atom too
+                        // deep. Observed on Python regex inside a
+                        // `r'''(?ix:...)` triple-quoted string: the
+                        // activate-x-mode `pop: 3 + set:[...]` left the
+                        // outer's cleared `meta.mode.extended.regexp` in
+                        // clear_stack; the inner's `clear_scopes: 1` then
+                        // cleared `source.regexp.python` instead.
+                        //
+                        // Skip when the initial-phase deeper-pop already
+                        // ran (target has non-empty meta_scope, no
+                        // clear_scopes interactions): the deeper atoms are
+                        // already off the visible stack, and re-running
+                        // here would double-pop. The same condition is
+                        // computed in initial — keep them aligned. ST
+                        // keeps deeper popped atoms visible to the matched
+                        // token when the target has no meta_scope, so the
+                        // initial-phase pop is gated off and the deeper
+                        // pop must happen here (post-match) — observed on
+                        // TS's
+                        // `(?:get|set|async){{identifier_break}} pop: 2 +
+                        // set:` in `object-property-name`.
+                        let target_has_ms_ni = context_refs.iter().any(|r| {
+                            r.resolve(syntax_set)
+                                .map(|c| !c.meta_scope.is_empty())
+                                .unwrap_or(false)
+                        });
+                        let mut skip_ni_depth = is_set
+                            && set_pop_count > 1
+                            && target_has_ms_ni
+                            && cur_context.clear_scopes.is_none();
+                        if skip_ni_depth {
+                            let stack_len = self.stack.len();
+                            for depth in 1..set_pop_count.min(stack_len) {
+                                let level_idx = stack_len - 1 - depth;
+                                let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
+                                if ctx.clear_scopes.is_some() {
+                                    skip_ni_depth = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if is_set && set_pop_count > 1 && !skip_ni_depth {
                             let stack_len = self.stack.len();
                             for depth in 1..set_pop_count.min(stack_len) {
                                 let level_idx = stack_len - 1 - depth;
@@ -8209,6 +8312,58 @@ contexts:
             "syntect shadow disagrees with corrected consumer stack; \
              shadow at end: {:?}",
             state.shadow,
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn pop_n_set_with_target_meta_scope_pops_deeper_meta_scope_at_trigger() {
+        // Java's `@RunWith(JUnit4.class)` inside a class block:
+        // `annotation-unqualified-parameters`'s
+        // `match: \( pop: 2 push: annotation-parameters-body` (becoming
+        // `Set { pop_count: 2, ctx_refs: [annotation-parameters-body] }`
+        // per yaml_load) leaked
+        // `annotation-unqualified-identifier`'s `meta.annotation.identifier.java`
+        // onto the `(` trigger token. ST drops the deeper popped context's
+        // meta_scope before the trigger sees its scope when the target
+        // declares its own meta_scope.
+        use crate::parsing::SyntaxSet;
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        let lines = [
+            "class MethodDeclarationTests {\n",
+            "  @RunWith(JUnit4.class)\n",
+        ];
+        let ann = Scope::new("meta.annotation.identifier.java").unwrap();
+        let params = Scope::new("meta.annotation.parameters.java").unwrap();
+        let mut probed = false;
+        for (line_idx, line) in lines.iter().enumerate() {
+            let out = state.parse_line(line, &ss).expect("parse");
+            for (idx, op) in &out.ops {
+                let _ = stack.apply(op);
+                if line_idx == 1 && *idx == 10 {
+                    let slice = stack.as_slice();
+                    if slice.contains(&params) {
+                        assert!(
+                            !slice.contains(&ann),
+                            "meta.annotation.identifier.java leaked onto `(` trigger \
+                             of `@RunWith(JUnit4.class)`; stack at idx 10: {:?}",
+                            stack
+                        );
+                        probed = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            probed,
+            "test never reached `(` trigger op at line 2 idx 10 — did the \
+             ops layout change? final stack: {:?}",
+            stack
         );
     }
 
