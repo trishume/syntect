@@ -1355,31 +1355,39 @@ impl ParseState {
         outer_bp: &BpInfo,
         inner_bp: Option<&BpInfo>,
     ) {
-        if let Some(inner) = inner_bp {
-            // Substitute only when inner is at outer's exact depth
-            // (sibling resolution of the same branch family) or
-            // exactly one deeper (immediate refinement, e.g.
-            // outer=declarations(3), inner=annotation-identifier(4)
-            // on the same line — inner brings `meta.path.java` from
-            // the qualified-identifier alt that outer's
-            // locally-computed parse drops).
-            //
-            // Skip when inner is shallower OR more than one deeper:
-            // - Inner shallower: inner is a fresh top-level-style
-            //   BP created during outer's replay; its commitment is
-            //   structurally less specific than outer's and would
-            //   overwrite outer's correct refined parse with a
-            //   coarser one.
-            // - Inner more than one deeper (multigen16-style: outer
-            //   class-members(4), inner object-type(11)): inner is
-            //   nested INSIDE outer's resolved alt and its reparse
-            //   adds atoms outer's alt already provides
-            //   (`deeper_inner_bp_correction_does_not_double_outer_meta_scope`).
-            let depth_diff = inner.stack_depth as isize - outer_bp.stack_depth as isize;
-            if !(depth_diff == 0 || depth_diff == 1) {
-                return;
-            }
-        }
+        // Two regimes:
+        //
+        // 1. Inner at outer's exact depth (sibling resolution of the
+        //    same branch family) or exactly one deeper (immediate
+        //    refinement, e.g. outer=declarations(3),
+        //    inner=annotation-identifier(4) on the same line — inner
+        //    brings `meta.path.java` from the qualified-identifier alt
+        //    that outer's locally-computed parse drops). Always
+        //    substitute.
+        //
+        // 2. Inner more than one deeper (multigen16-style: outer
+        //    class-members(4), inner object-type(11)). Inner is
+        //    nested INSIDE outer's resolved alt, and its reparse may
+        //    push atoms outer's alt already provides — substituting
+        //    blindly would double them
+        //    (`deeper_inner_bp_correction_does_not_double_outer_meta_scope`).
+        //    Substitute only when the inner's ops are an `immediately-
+        //    pop`-style tail-extension of outer's: identical prefix +
+        //    one or more `Pop` ops appended at positions outer
+        //    already covers. That's what an `immediately-pop`-alt
+        //    failover commits at the inner BP's trigger position
+        //    when outer's per-line replay terminated before the
+        //    nested fail fired (cluster-C
+        //    `multi_line_annotation_pops_meta_scope_at_eol`).
+        //
+        // Inner shallower than outer is also skipped: such inners
+        // are fresh top-level-style BPs whose commitment is
+        // structurally less specific than outer's and would overwrite
+        // outer's correct refined parse with a coarser one.
+        let depth_diff =
+            inner_bp.map(|inner| inner.stack_depth as isize - outer_bp.stack_depth as isize);
+        let in_depth_window = matches!(depth_diff, Some(0) | Some(1));
+        let allow_deep_extension = matches!(depth_diff, Some(d) if d > 1);
         for (i, outer_local) in replayed_ops.iter_mut().enumerate() {
             let global_i = outer_snap + i;
             if global_i < inner_start {
@@ -1387,9 +1395,35 @@ impl ParseState {
             }
             let inner_idx = global_i - inner_start;
             if let Some(corrected) = inner_ops.get(inner_idx) {
-                *outer_local = corrected.clone();
+                if in_depth_window {
+                    *outer_local = corrected.clone();
+                } else if allow_deep_extension && Self::inner_extends_outer(outer_local, corrected)
+                {
+                    *outer_local = corrected.clone();
+                }
             }
         }
+    }
+
+    /// True when `inner` starts with the entire `outer` op sequence and
+    /// the trailing extension contains only `Pop` ops at positions
+    /// `outer` already covers (i.e. the inner reparse adds end-of-line
+    /// pops that the outer's locally-computed parse did not emit, and
+    /// nothing else).
+    fn inner_extends_outer(
+        outer: &[(usize, ScopeStackOp)],
+        inner: &[(usize, ScopeStackOp)],
+    ) -> bool {
+        if inner.len() <= outer.len() {
+            return false;
+        }
+        if inner[..outer.len()] != *outer {
+            return false;
+        }
+        let max_pos = outer.last().map(|(p, _)| *p).unwrap_or(0);
+        inner[outer.len()..]
+            .iter()
+            .all(|(pos, op)| *pos <= max_pos && matches!(op, ScopeStackOp::Pop(_)))
     }
 
     /// Handle a `fail` operation by rewinding to the named branch point.
@@ -8785,6 +8819,84 @@ contexts:
             id_count,
             path_count,
             stack,
+        );
+    }
+
+    /// Regression guard for the multi-line annotation tail-pop case
+    /// (`syntax_test_java.java:5018-5020`). A standalone `@Number`
+    /// followed by `final\n int\n …` triggers nested cross-line
+    /// fails: an outer `declarations` BP exhausts on `int` (line 5)
+    /// and replays lines 3–4 under the next alt; the inner
+    /// `annotation-unqualified-parameters` BP commits to its
+    /// `immediately-pop2` failover when `final` (line 4) trips its
+    /// `(?=\S)` probe. The inner commit's `meta.annotation.identifier`
+    /// pop sits at the BP trigger position (col 11 of line 3 — the
+    /// `\n` after `Number`), but `prefer_inner_replay_corrections`
+    /// would discard it because the inner is several frames deeper
+    /// than the outer (`object-type`-style depth gap). Substituting
+    /// blindly regresses other Java constructs (lost
+    /// `meta.enum.java`); the discriminator allows substitution only
+    /// when the inner ops are an `immediately-pop`-style tail-extension
+    /// of outer's (identical prefix + appended `Pop` ops at outer's
+    /// covered positions).
+    #[test]
+    #[ignore = "requires testdata/Packages submodule"]
+    fn multi_line_annotation_eol_pop_survives_outer_replay() {
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        // Track the "effective" ops for each line. parse_line returns
+        // both fresh ops for the current line and replayed ops for
+        // prior lines whose original ops have been corrected; the
+        // replayed entries supersede earlier records, mirroring what
+        // the syntest harness does in `parsed_line_buffer`.
+        let mut effective: Vec<Vec<(usize, ScopeStackOp)>> = Vec::new();
+        let mut start_indices: Vec<usize> = Vec::new();
+        let lines = [
+            "class Foo {\n",
+            "  void m() {\n",
+            "    @Number\n",
+            "    final\n",
+            "    int\n",
+            "    foo\n",
+            "  }\n",
+            "}\n",
+        ];
+        for line in lines {
+            let out = state.parse_line(line, &ss).expect("parse");
+            if !out.replayed.is_empty() {
+                let start = effective.len() - out.replayed.len();
+                for (i, replayed_ops) in out.replayed.into_iter().enumerate() {
+                    effective[start + i] = replayed_ops;
+                }
+            }
+            effective.push(out.ops);
+            start_indices.push(effective.len() - 1);
+        }
+        // Reconstruct the running stack at byte position 11 of line 3
+        // (`@Number\n`), where the missing pop was visible.
+        let mut stack = ScopeStack::new();
+        for (i, ops) in effective.iter().enumerate() {
+            for (pos, op) in ops {
+                if i == 2 && *pos > 11 {
+                    break;
+                }
+                let _ = stack.apply(op);
+            }
+            if i == 2 {
+                break;
+            }
+        }
+        let identifier = Scope::new("meta.annotation.identifier.java").unwrap();
+        let leaked = stack.as_slice().contains(&identifier);
+        assert!(
+            !leaked,
+            "meta.annotation.identifier.java leaked past `\\n` after \
+             `@Number` (pos 11 of line 3) into `final\\n int` parsing; \
+             stack: {:?}",
+            stack
         );
     }
 
