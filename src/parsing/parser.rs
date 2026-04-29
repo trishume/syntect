@@ -1284,7 +1284,27 @@ impl ParseState {
         inner_bp: Option<&BpInfo>,
     ) {
         if let Some(inner) = inner_bp {
-            if inner.stack_depth > outer_bp.stack_depth {
+            // Substitute only when inner is at outer's exact depth
+            // (sibling resolution of the same branch family) or
+            // exactly one deeper (immediate refinement, e.g.
+            // outer=declarations(3), inner=annotation-identifier(4)
+            // on the same line — inner brings `meta.path.java` from
+            // the qualified-identifier alt that outer's
+            // locally-computed parse drops).
+            //
+            // Skip when inner is shallower OR more than one deeper:
+            // - Inner shallower: inner is a fresh top-level-style
+            //   BP created during outer's replay; its commitment is
+            //   structurally less specific than outer's and would
+            //   overwrite outer's correct refined parse with a
+            //   coarser one.
+            // - Inner more than one deeper (multigen16-style: outer
+            //   class-members(4), inner object-type(11)): inner is
+            //   nested INSIDE outer's resolved alt and its reparse
+            //   adds atoms outer's alt already provides
+            //   (`deeper_inner_bp_correction_does_not_double_outer_meta_scope`).
+            let depth_diff = inner.stack_depth as isize - outer_bp.stack_depth as isize;
+            if !(depth_diff == 0 || depth_diff == 1) {
                 return;
             }
         }
@@ -8815,6 +8835,107 @@ contexts:
              embed_scope atom; guest main's auto-inserted top-level scope \
              must be suppressed); stack: {:?}",
             stack
+        );
+    }
+
+    #[cfg(feature = "default-onig")]
+    #[test]
+    fn cross_line_all_exhaust_with_pop_count_emits_popped_meta_scope_pops() {
+        // Java's `@Anno\n.\nAnno\n(par=1)\nenum E {}` at top level. Line 1
+        // creates the `annotations` (alt unqualified) and the inner
+        // `annotation-unqualified-parameters` BPs; line 2's `.` matches
+        // `(?={{single_dot}}) fail: annotation-identifier`, retrying alt 1
+        // (`annotation-qualified-identifier`) cross-line. The qualified
+        // alt has `meta_scope: meta.annotation.identifier.java
+        // meta.path.java`, which the cross-line replay's outer-locally-
+        // computed line-1 ops do NOT carry — outer (`declarations`)'s
+        // `parse_line_inner_from(line0, …)` re-parses line 1 under its
+        // resolved alt-1 stack and picks alt-0 (unqualified) of the inner
+        // `annotation-identifier` BP, only retrying to alt-1 (qualified)
+        // when line 2's `.` arrives during outer's replay of line 1.
+        // Inner's flushed corrections carry `meta.path.java`, and the
+        // refined depth-bounded gate in `prefer_inner_replay_corrections`
+        // (`depth_diff in {0, 1}`) substitutes them onto outer's locally
+        // computed ops while still skipping the deeper-inner case the
+        // doubling guard
+        // (`deeper_inner_bp_correction_does_not_double_outer_meta_scope`)
+        // protects against.
+        //
+        // Test setup applies `out.replayed` corrected ops via the same
+        // consumer pattern as
+        // `cross_line_pop_n_branch_point_alt_fail_unwinds_meta_scope`,
+        // then samples the corrected stack at byte 0 of line 1 (`@`).
+        use crate::parsing::SyntaxSet;
+        struct Record {
+            stack_before: ScopeStack,
+            ops: Vec<(usize, ScopeStackOp)>,
+        }
+        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
+        let syntax = ss
+            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
+            .unwrap();
+        let mut state = ParseState::new(syntax);
+        let mut stack = ScopeStack::new();
+        let mut buffer: Vec<Record> = Vec::new();
+        for line in ["@Anno\n", ".\n", "Anno\n", "(par=1)\n", "enum E {}\n"] {
+            let out = state.parse_line(line, &ss).expect("parse");
+            if !out.replayed.is_empty() {
+                let buf_len = buffer.len();
+                let start_idx = buf_len - out.replayed.len();
+                stack = buffer[start_idx].stack_before.clone();
+                let mut corrected: Vec<(usize, ScopeStack, Vec<(usize, ScopeStackOp)>)> =
+                    Vec::new();
+                for (i, replayed_ops) in out.replayed.iter().enumerate() {
+                    for (_, op) in replayed_ops {
+                        let _ = stack.apply(op);
+                    }
+                    let next_idx = start_idx + i + 1;
+                    if next_idx < buf_len {
+                        corrected.push((next_idx, stack.clone(), replayed_ops.clone()));
+                    }
+                    // Capture the replayed ops for this index so a later
+                    // sample can reconstruct the line's running stack.
+                    if let Some(rec) = buffer.get_mut(start_idx + i) {
+                        rec.ops = replayed_ops.clone();
+                    }
+                }
+                for (idx, c_stack, _) in corrected {
+                    buffer[idx].stack_before = c_stack;
+                }
+            }
+            let stack_before = stack.clone();
+            for (_, op) in &out.ops {
+                let _ = stack.apply(op);
+            }
+            buffer.push(Record {
+                stack_before,
+                ops: out.ops.clone(),
+            });
+        }
+        // Reconstruct the running scope at byte 0 of line 1 (the `@`)
+        // using the buffered (possibly replayed) ops.
+        let line0 = &buffer[0];
+        let mut at_at = line0.stack_before.clone();
+        for (pos, op) in &line0.ops {
+            if *pos > 0 {
+                break;
+            }
+            let _ = at_at.apply(op);
+        }
+        let ann = Scope::new("meta.annotation.identifier.java").unwrap();
+        let path = Scope::new("meta.path.java").unwrap();
+        assert!(
+            at_at.as_slice().contains(&ann),
+            "meta.annotation.identifier.java should be active at `@` of \
+             line 1 after cross-line retry to qualified alt; stack: {:?}",
+            at_at,
+        );
+        assert!(
+            at_at.as_slice().contains(&path),
+            "meta.path.java should be active at `@` of line 1 after \
+             cross-line retry to qualified alt (its meta_scope is \
+             `meta.annotation.identifier.java meta.path.java`); stack: {:?}",
+            at_at,
         );
     }
 }
