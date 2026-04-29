@@ -500,7 +500,9 @@ mod tests {
         let r = RawMetadataEntry::load(comments_file);
         assert!(r.is_ok());
 
-        let indent_file: &str = "testdata/Packages/Go/Indentation Rules.tmPreferences";
+        // v4202 still has the upstream "Indention" typo; renamed to
+        // "Indentation" by `1c86d7f9` post-v4202 (#4519).
+        let indent_file: &str = "testdata/Packages/Go/Indention Rules.tmPreferences";
         assert!(Path::new(indent_file).exists());
 
         let r = RawMetadataEntry::load(indent_file).unwrap();
