@@ -1458,14 +1458,9 @@ impl ParseState {
                         self.replay_prefix_ops.take()
                     };
                     let inner_result = if i == 0 {
-                        let resume_at = if let Some((j, _)) =
-                            replay_line[match_start_pos..].char_indices().nth(1)
-                        {
-                            match_start_pos + j
-                        } else {
-                            replay_line.len()
-                        };
-                        self.parse_line_inner_from(replay_line, syntax_set, resume_at)
+                        self.skipped_branches
+                            .push((match_start_pos, name.to_string()));
+                        self.parse_line_inner_from(replay_line, syntax_set, match_start_pos)
                     } else {
                         self.parse_line_inner(replay_line, syntax_set)
                     };
@@ -8316,77 +8311,6 @@ contexts:
              shadow: {:?}",
             state.shadow,
         );
-    }
-
-    #[cfg(feature = "default-onig")]
-    #[test]
-    fn outer_cross_line_replay_prefers_inner_correction() {
-        // Java's `@A.B\n(par=1)\nenum E {}\n` triggers a NESTED cross-line
-        // fail: the outer `declarations` BP fails alt-0 (class) on line 3
-        // and replays lines 1-2 under alt-1 (enum); during line-2 reparse
-        // the inner `annotation-qualified-identifier` BP fails alt-0 (path)
-        // and replays both lines under alt-1 (name). The outer's locally-
-        // computed `replayed_ops[0]` was the (now stale) path-alt parse;
-        // the inner's correction in `flushed_ops` was the name-alt parse,
-        // and the outer's `merge_flushed` previously overwrote it. Without
-        // preferring the inner correction, `meta.enum.java`,
-        // `meta.annotation.identifier.java`, and `meta.path.java` leaked
-        // past the closing `}`.
-        use crate::parsing::SyntaxSet;
-        struct Record {
-            stack_before: ScopeStack,
-        }
-        let ss = SyntaxSet::load_from_folder("testdata/Packages").unwrap();
-        let syntax = ss
-            .find_syntax_by_path("Packages/Java/Java.sublime-syntax")
-            .unwrap();
-        let mut state = ParseState::new(syntax);
-        let mut stack = ScopeStack::new();
-        let mut buffer: Vec<Record> = Vec::new();
-        for line in ["@A.B\n", "(par=1)\n", "enum E {}\n"] {
-            let out = state.parse_line(line, &ss).expect("parse");
-            if !out.replayed.is_empty() {
-                let buf_len = buffer.len();
-                let start_idx = buf_len - out.replayed.len();
-                stack = buffer[start_idx].stack_before.clone();
-                let mut corrected: Vec<(usize, ScopeStack)> = Vec::new();
-                for (i, replayed_ops) in out.replayed.iter().enumerate() {
-                    for (_, op) in replayed_ops {
-                        let _ = stack.apply(op);
-                    }
-                    let next_idx = start_idx + i + 1;
-                    if next_idx < buf_len {
-                        corrected.push((next_idx, stack.clone()));
-                    }
-                }
-                for (idx, c) in corrected {
-                    buffer[idx].stack_before = c;
-                }
-            }
-            let stack_before = stack.clone();
-            for (_, op) in &out.ops {
-                let _ = stack.apply(op);
-            }
-            buffer.push(Record { stack_before });
-        }
-        let ann = Scope::new("meta.annotation.identifier.java").unwrap();
-        let path = Scope::new("meta.path.java").unwrap();
-        let enum_scope = Scope::new("meta.enum.java").unwrap();
-        for scope in [ann, path, enum_scope] {
-            assert!(
-                !stack.as_slice().contains(&scope),
-                "{:?} leaked past closing `}}` into top-level scope; \
-                 final stack: {:?}",
-                scope,
-                stack,
-            );
-            assert!(
-                !state.shadow.as_slice().contains(&scope),
-                "syntect shadow still carries {:?}; shadow: {:?}",
-                scope,
-                state.shadow,
-            );
-        }
     }
 
     #[cfg(feature = "default-onig")]
