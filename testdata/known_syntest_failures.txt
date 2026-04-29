@@ -1,4 +1,3 @@
 loading syntax definitions from testdata/Packages
-FAILED testdata/Packages/C#/tests/syntax_test_C#11.cs: 35
 FAILED testdata/Packages/Java/tests/syntax_test_java.java: 212
 exiting with code 1

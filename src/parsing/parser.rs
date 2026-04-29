@@ -2028,14 +2028,26 @@ impl ParseState {
                 };
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
-                    // v2: pop parent's meta_content_scope so matched text does not see it.
-                    // Skip when cur_context's mcs was never pushed because the
-                    // context immediately below has embed_scope_replaces (the
-                    // embedded syntax's main mcs is suppressed in favor of
-                    // embed_scope on the wrapper). Without this, the Pop takes
-                    // off the topmost wrapper-pushed scope — observed on
-                    // Markdown bash fenced blocks where `source.shell.bash`
-                    // (the third embed_scope token) was disappearing on the
+                    // v2: pop the USER-DECLARED part of cur.mcs so the
+                    // matched text doesn't see it. The AUTO-INJECTED
+                    // top-level scope (added to `main.meta_content_scope[0]`
+                    // by `add_initial_contexts`) stays on the stack across
+                    // the trigger — verified against ST 4200 stable on
+                    // TOML's `[section]` rule, where the `[` trigger sees
+                    // `source.toml` (TOML main's auto-injected mcs)
+                    // alongside the trigger's own `meta.section.toml`. The
+                    // distinction matches ST's documented v2 set behavior:
+                    // the matched text doesn't inherit cur.mcs, but the
+                    // file's top-level scope is conceptually always on.
+                    //
+                    // Skip when cur_context's mcs was never pushed because
+                    // the context immediately below has
+                    // `embed_scope_replaces` (the embedded syntax's main
+                    // mcs is suppressed in favor of `embed_scope` on the
+                    // wrapper). Without this, the Pop takes off the
+                    // topmost wrapper-pushed scope — observed on Markdown
+                    // bash fenced blocks where `source.shell.bash` (the
+                    // last embed_scope token) was disappearing on the
                     // embedded main's first `set:` rule.
                     let stack_len = self.stack.len();
                     let skip_cur_mcs_pop = version >= 2
@@ -2049,10 +2061,23 @@ impl ParseState {
                         && !cur_context.meta_content_scope.is_empty()
                         && !skip_cur_mcs_pop
                     {
-                        ops.push((
-                            index,
-                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
-                        ));
+                        // Identify the auto-injected top-level scope: the
+                        // syntax's `scope:` directive lands at
+                        // `main.meta_content_scope[0]` via
+                        // `add_initial_contexts`. Compare cur.mcs[0] to
+                        // the syntax's top-level scope; if they match,
+                        // exclude position 0 from the Pop so the matched
+                        // text retains the file scope.
+                        let cur_syntax_idx = self.stack[stack_len - 1].context.syntax_index;
+                        let top_level_scope =
+                            syntax_set.syntaxes().get(cur_syntax_idx).map(|s| s.scope);
+                        let mut pop_count = cur_context.meta_content_scope.len();
+                        if top_level_scope == cur_context.meta_content_scope.first().copied() {
+                            pop_count -= 1;
+                        }
+                        if pop_count > 0 {
+                            ops.push((index, ScopeStackOp::Pop(pop_count)));
+                        }
                     }
                     // NOTE: cur_context.clear_scopes Restore is emitted in the
                     // non-initial phase below, AFTER Pop(cur.meta_scope + target.meta_scope)
@@ -2270,7 +2295,12 @@ impl ParseState {
                         let mut head_pop = target_ms_sum;
                         if is_set {
                             if version >= 2 {
-                                // v2: set excludes parent meta_content_scope from matched text
+                                // v2: the user-declared part of
+                                // cur.meta_content_scope was popped in the
+                                // initial phase (the auto-injected
+                                // top-level scope, if any, stays). Only
+                                // cur.meta_scope sits on top of the
+                                // visible stack at this point.
                                 head_pop += cur_context.meta_scope.len();
                             } else {
                                 head_pop += cur_context.meta_content_scope.len()
