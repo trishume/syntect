@@ -1,3 +1,3 @@
 loading syntax definitions from testdata/Packages
-FAILED testdata/Packages/Java/tests/syntax_test_java.java: 99
+FAILED testdata/Packages/Java/tests/syntax_test_java.java: 97
 exiting with code 1
