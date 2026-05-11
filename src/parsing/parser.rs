@@ -194,20 +194,34 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 /// before any inner group). Empty captures are skipped because they'd
 /// otherwise sort a Pop before its Push. The returned ops are already
 /// position-ordered and safe to append to a parser ops vec.
+///
+/// Each capture's `(cap_start, cap_end)` is clipped to the outer match
+/// range `regions.pos(0)` so a group matching inside a `(?=...)` /
+/// `(?<=...)` whose own span extends past the consumed range still
+/// colours the overlap (the boundary char) and nothing beyond it. This
+/// mirrors Sublime Text; without the clip, a lookahead-internal
+/// `captures:` entry leaked scope over unmatched trailing chars or was
+/// silently dropped upstream in `parse_captures`.
 fn build_capture_ops(capture_map: &CaptureMapping, regions: &Region) -> Vec<(usize, ScopeStackOp)> {
     let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
+    let (match_start, match_end) = match regions.pos(0) {
+        Some(bounds) => bounds,
+        None => return Vec::new(),
+    };
     for &(cap_index, ref scopes) in capture_map.iter() {
         if let Some((cap_start, cap_end)) = regions.pos(cap_index) {
-            if cap_start == cap_end {
+            let clipped_start = cap_start.max(match_start);
+            let clipped_end = cap_end.min(match_end);
+            if clipped_start >= clipped_end {
                 continue;
             }
             for scope in scopes.iter() {
                 map.push((
-                    (cap_start, -((cap_end - cap_start) as i32)),
+                    (clipped_start, -((clipped_end - clipped_start) as i32)),
                     ScopeStackOp::Push(*scope),
                 ));
             }
-            map.push(((cap_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
+            map.push(((clipped_end, i32::MIN), ScopeStackOp::Pop(scopes.len())));
         }
     }
     map.sort_by(|a, b| a.0.cmp(&b.0));
@@ -1598,6 +1612,21 @@ impl ParseState {
                             }
                         }
 
+                        // `pop: N + set:` with clear_scopes on the leaving
+                        // context: restore the cleared atoms BEFORE the
+                        // compound Pop so num_to_pop finds the popped frames'
+                        // full meta_content_scope on the scope stack. Without
+                        // this, Pop eats atoms from below the popped range —
+                        // observed on Batch File `cmd-set-quoted-value-inner-end`
+                        // (`clear_scopes: 1`) firing `pop: 2, set: ignored-tail-outer`,
+                        // which otherwise drops `meta.command.set.dosbatch` from
+                        // the trailing content of every `set "var"=...` line.
+                        let restore_before_pop =
+                            is_set && set_pop_count > 1 && cur_context.clear_scopes.is_some();
+                        if restore_before_pop {
+                            ops.push((index, ScopeStackOp::Restore));
+                        }
+
                         // do all the popping as one operation
                         if num_to_pop > 0 {
                             ops.push((index, ScopeStackOp::Pop(num_to_pop)));
@@ -1607,7 +1636,7 @@ impl ParseState {
                         // cur.meta_scope and the initial phase's target.meta_scope
                         // push have been popped off. The restored atoms land below
                         // the target's upcoming meta_scope / meta_content_scope push.
-                        if is_set && cur_context.clear_scopes.is_some() {
+                        if is_set && cur_context.clear_scopes.is_some() && !restore_before_pop {
                             ops.push((index, ScopeStackOp::Restore));
                         }
 
@@ -5213,6 +5242,75 @@ contexts:
     }
 
     #[test]
+    fn captures_clipped_to_match_bounds_when_group_extends_past_match_end() {
+        // Repro of a C# generic-function-call divergence against ST.
+        // Rule shape: a consumed identifier, then a lookahead containing
+        // a capturing group whose match extends *past* the outer rule's
+        // consumed end, then a second consumed group starting at the
+        // same column where the lookahead began. `captures: 2:` targets
+        // the lookahead-internal group. ST clips each captures:N span
+        // to the rule's match bounds and only colours the overlap —
+        // which here is the single consumed char at the match-end
+        // boundary. Syntect used to colour the full group-2 range,
+        // emitting a Pop past match_end and leaving the scope active
+        // over chars the match never consumed.
+        let syntax_str = r#"
+name: CapturesClip
+scope: source.capclip
+contexts:
+  main:
+    - match: '(foo)(?=(barrr)baz)(bar)'
+      captures:
+        1: captured-foo.capclip
+        2: lookahead-group.capclip
+        3: consumed-bar.capclip
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "foobarrrbaz\n", &ss);
+
+        // The rule consumes "foobar" — match_start=0, match_end=6.
+        // Group 2's own range (the lookahead match "barrr") extends to
+        // column 8. Every op emitted by the captures application must
+        // sit within [match_start, match_end]; anything at col 7+ means
+        // the lookahead-internal group's span leaked past the match.
+        // match_start=0, match_end=6 (rule consumes "foobar"). Group 2's
+        // own range (the lookahead match "barrr") extends to col 8.
+        //
+        // After the fix we expect:
+        //   * `lookahead-group.capclip` Pushed at col 3 (cap_start of
+        //     group 2, which overlaps the consumed region).
+        //   * The matching Pop no later than col 6 (clipped to match_end).
+        //   * No op at col 7 or 8 — anything there means the lookahead
+        //     range leaked past the match.
+        let lookahead_pushes: Vec<usize> = raw_ops
+            .iter()
+            .filter_map(|(pos, op)| match op {
+                ScopeStackOp::Push(s) if format!("{:?}", s).contains("lookahead-group") => {
+                    Some(*pos)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            lookahead_pushes,
+            vec![3],
+            "`captures: 2:` (lookahead-internal group) must Push the \
+             clipped scope at match_start=3; raw_ops={:?}",
+            raw_ops
+        );
+        let match_end = 6;
+        let past_match: Vec<_> = raw_ops.iter().filter(|(pos, _)| *pos > match_end).collect();
+        assert!(
+            past_match.is_empty(),
+            "No capture op should sit past match_end={}; found {:?}",
+            match_end,
+            past_match
+        );
+    }
+
+    #[test]
     fn capture_sort_by_span_length() {
         // Kills: L709 replace - with + in exec_pattern (capture sort key)
         // Captures are sorted so that longer spans come first (pushed before
@@ -5477,6 +5575,85 @@ contexts:
                 .any(|s| s.contains("meta.function.v2settargetclear")),
             "meta.function must be restored after params-body pops, got trailing states: {:?}",
             after_inner_close
+        );
+    }
+
+    #[test]
+    fn pop_n_set_with_cur_clear_scopes_restores_before_popping_deeper_frames() {
+        // `pop: N + set: X` fired from a context that itself declares
+        // `clear_scopes` at the context level: the deeper popped frame's
+        // meta_content_scope is partly on the live scope stack and partly
+        // in `clear_stack` (stripped by cur's Clear on entry). Emitting the
+        // compound Pop before Restore makes Pop eat atoms from below the
+        // intended popped range, dropping the outer frame's meta_scope.
+        // Shape mirrors Batch File's `cmd-set-quoted-value-inner-end`
+        // (`clear_scopes: 1`) firing `pop: 2, set: ignored-tail-outer` below
+        // a `cmd-set-quoted-value-inner` that carries a 2-atom
+        // meta_content_scope.
+        let syntax_str = r#"
+name: PopNSetClear
+scope: source.popnsetclear
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      scope: p.a
+      push: [outer, middle]
+
+  outer:
+    - meta_scope: outer.test
+    - match: 'z'
+      pop: 1
+
+  middle:
+    - meta_content_scope: mid1.test mid2.test
+    - match: 'b'
+      scope: p.b
+      push: top
+
+  top:
+    - clear_scopes: 1
+    - match: 'c'
+      scope: p.c
+      pop: 2
+      set: target
+
+  target:
+    - meta_scope: target.test
+    - match: 'd'
+      scope: p.d
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let raw_ops = ops(&mut state, "abcd", &ss);
+        let states = stack_states(raw_ops);
+
+        // The scope stack state recorded on the `d` token (in `target`):
+        // must contain `outer.test` (outer's meta_scope still on the stack)
+        // and `target.test` (target's meta_scope, pushed by the pop:2+set:)
+        // and must NOT contain `mid1.test` or `mid2.test` (middle was popped
+        // by pop:2 and its meta_content_scope atoms — one live, one in
+        // clear_stack — should both be gone).
+        let d_state = states
+            .iter()
+            .find(|s| s.contains("p.d"))
+            .unwrap_or_else(|| panic!("expected a state containing `p.d`, got: {:?}", states));
+        assert!(
+            d_state.contains("outer.test"),
+            "outer.test must survive pop:2+set: (it sits below the popped range): {}",
+            d_state
+        );
+        assert!(
+            d_state.contains("target.test"),
+            "target.test must be on the stack (target was pushed by set:): {}",
+            d_state
+        );
+        assert!(
+            !d_state.contains("mid1.test") && !d_state.contains("mid2.test"),
+            "middle's meta_content_scope atoms must not linger after pop:2+set:, \
+             including the atom that was in clear_stack: {}",
+            d_state
         );
     }
 
