@@ -251,6 +251,7 @@ Below is a list of projects using Syntect, in approximate order by how long they
 - [code-to-pdf](https://github.com/Tommypop2/code-to-pdf), a tool that generates a syntax-highlighted PDF of a directory
 - [Comrak](https://github.com/kivikakk/comrak), a CommonMark parser and formatter that uses `syntect` for highlighting code blocks.
 - [zsh-patina](https://github.com/michel-kraemer/zsh-patina), a blazingly fast Zsh syntax highlighter.
+- [leaf](https://github.com/RivoLink/leaf), a GUI-like terminal Markdown previewer, uses `syntect` for code blocks.
 
 ## License and Acknowledgements
 
