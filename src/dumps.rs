@@ -17,10 +17,6 @@ use crate::highlighting::ThemeSet;
 #[cfg(feature = "default-syntaxes")]
 use crate::parsing::SyntaxSet;
 #[cfg(feature = "dump-load")]
-use bincode::deserialize_from;
-#[cfg(feature = "dump-create")]
-use bincode::serialize_into;
-#[cfg(feature = "dump-load")]
 use flate2::bufread::ZlibDecoder;
 #[cfg(feature = "dump-create")]
 use flate2::write::ZlibEncoder;
@@ -51,7 +47,7 @@ pub enum DumpError {
 
 /// Dumps an object to the given writer in a compressed binary format
 ///
-/// The writer is encoded with the `bincode` crate and compressed with `flate2`.
+/// The writer is encoded with the `serde-wincode` crate and compressed with `flate2`.
 #[cfg(feature = "dump-create")]
 pub fn dump_to_writer<T: Serialize, W: Write>(to_dump: &T, output: W) -> Result<(), DumpError> {
     serialize_to_writer_impl(to_dump, output, true)
@@ -70,7 +66,7 @@ pub fn dump_binary<T: Serialize>(o: &T) -> Vec<u8> {
 /// Dumps an encodable object to a file at a given path, in the same format as [`dump_to_writer`]
 ///
 /// If a file already exists at that path it will be overwritten. The files created are encoded with
-/// the `bincode` crate and then compressed with the `flate2` crate.
+/// the `serde-wincode` crate and then compressed with the `flate2` crate.
 ///
 /// [`dump_to_writer`]: fn.dump_to_writer.html
 #[cfg(feature = "dump-create")]
@@ -138,12 +134,19 @@ fn serialize_to_writer_impl<T: Serialize, W: Write>(
     output: W,
     use_compression: bool,
 ) -> Result<(), DumpError> {
+    let mut buf = Vec::new();
+    let serializer: serde_wincode::Serializer<_> = serde_wincode::Serializer::new(&mut buf);
+    to_dump
+        .serialize(serializer)
+        .map_err(|e| DumpError::Serialize(Box::new(e)))?;
     if use_compression {
-        let mut encoder = std::io::BufWriter::new(ZlibEncoder::new(output, Compression::best()));
-        serialize_into(&mut encoder, to_dump).map_err(|e| DumpError::Serialize(Box::new(e)))
+        let mut encoder = BufWriter::new(ZlibEncoder::new(output, Compression::best()));
+        encoder.write_all(&buf)?;
     } else {
-        serialize_into(output, to_dump).map_err(|e| DumpError::Serialize(Box::new(e)))
+        let mut writer = BufWriter::new(output);
+        writer.write_all(&buf)?;
     }
+    Ok(())
 }
 
 /// Private low level helper function used to implement the public API.
@@ -152,12 +155,19 @@ fn deserialize_from_reader_impl<T: DeserializeOwned, R: BufRead>(
     input: R,
     use_compression: bool,
 ) -> Result<T, DumpError> {
-    if use_compression {
+    let buf = if use_compression {
         let mut decoder = ZlibDecoder::new(input);
-        deserialize_from(&mut decoder).map_err(|e| DumpError::Serialize(Box::new(e)))
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut decoder, &mut buf)?;
+        buf
     } else {
-        deserialize_from(input).map_err(|e| DumpError::Serialize(Box::new(e)))
-    }
+        let mut buf = Vec::new();
+        let mut reader = input;
+        std::io::Read::read_to_end(&mut reader, &mut buf)?;
+        buf
+    };
+    let deserializer: serde_wincode::Deserializer<_> = serde_wincode::Deserializer::new(&buf[..]);
+    T::deserialize(deserializer).map_err(|e| DumpError::Serialize(Box::new(e)))
 }
 
 #[cfg(feature = "default-syntaxes")]
@@ -176,7 +186,7 @@ impl SyntaxSet {
     /// significantly faster than loading the YAML files.
     ///
     /// Note that you can load additional syntaxes after doing this. If you want you can even use
-    /// the fact that SyntaxDefinitions are serializable with the bincode crate to cache dumps of
+    /// the fact that SyntaxDefinitions are serializable with the serde-wincode crate to cache dumps of
     /// additional syntaxes yourself.
     ///
     /// [`load_defaults_newlines`]: #method.load_defaults_nonewlines
