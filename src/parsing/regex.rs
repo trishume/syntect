@@ -345,4 +345,27 @@ mod tests {
         let back_to_str = serde_json::to_string(&pattern).unwrap();
         assert_eq!(back_to_str, "\"just a string\"");
     }
+
+    // The parser uses `end < text.len()` to clip a search at an embed-escape
+    // boundary. Negative lookaheads inside the embedded context's rules must
+    // treat the boundary as effective end-of-input — otherwise patterns like
+    // `done(?!cmd_char)` fail when `done` is immediately followed by the
+    // closing escape glyph (e.g. `` `for...done` `` in shell).
+    #[test]
+    fn search_clips_lookahead_at_end() {
+        let regex = Regex::new(String::from(r"done(?!X)"));
+        let mut region = Region::new();
+        let matched = regex.search("doneX", 0, 4, Some(&mut region), true);
+        assert!(matched, "lookahead must not see byte at index 4");
+        assert_eq!(region.pos(0), Some((0, 4)));
+    }
+
+    // Sanity check: when not clipped, the same lookahead correctly fails.
+    #[test]
+    fn search_lookahead_fails_when_unclipped() {
+        let regex = Regex::new(String::from(r"done(?!X)"));
+        let mut region = Region::new();
+        let matched = regex.search("doneX", 0, 5, Some(&mut region), true);
+        assert!(!matched, "lookahead must see the X when end == text.len()");
+    }
 }
