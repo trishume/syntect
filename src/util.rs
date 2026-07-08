@@ -54,8 +54,6 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
     s
 }
 
-const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\\}")];
-
 /// Formats the styled fragments using LaTeX textcolor directive.
 ///
 /// Usage is similar to the `as_24_bit_terminal_escaped` function:
@@ -102,14 +100,13 @@ const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\
 pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
     let mut s: String = String::new();
     let mut prev_style: Option<Style> = None;
-    let mut content: String;
     fn textcolor(style: &Style, first: bool) -> String {
         format!(
             "{}\\textcolor[RGB]{{{},{},{}}}{{",
             if first { "" } else { "}" },
             style.foreground.r,
-            style.foreground.b,
-            style.foreground.g
+            style.foreground.g,
+            style.foreground.b
         )
     }
     for &(style, text) in v.iter() {
@@ -128,11 +125,14 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
         } else {
             write!(s, "{}", textcolor(&style, true)).unwrap();
         }
-        content = text.to_string();
-        for &(old, new) in LATEX_REPLACE.iter() {
-            content = content.replace(old, new);
+        for c in text.chars() {
+            match c {
+                '\\' => s.push_str("\\textbackslash{}"),
+                '{' => s.push_str("\\{"),
+                '}' => s.push_str("\\}"),
+                _ => s.push(c),
+            }
         }
-        write!(s, "{}", &content).unwrap();
         prev_style = Some(style);
     }
     s.push('}');
@@ -412,5 +412,31 @@ mod tests {
         };
         let s = as_24_bit_terminal_escaped(&[(style, "hello")], true);
         assert_eq!(s, "\x1b[48;2;0;0;0m\x1b[38;2;128;128;128mhello");
+    }
+
+    #[test]
+    fn test_as_latex_escaped() {
+        let style = Style {
+            foreground: Color {
+                r: 10,
+                g: 20,
+                b: 30,
+                a: 255,
+            },
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+
+        let s = as_latex_escaped(&[(style, "a\\b{c}")]);
+
+        // Foreground channels must be emitted in R, G, B order.
+        assert!(s.contains("\\textcolor[RGB]{10,20,30}"));
+        // A literal backslash becomes \textbackslash{} inside the commandchars environment.
+        assert!(s.contains("\\textbackslash{}"));
+        // Braces in the content are escaped.
+        assert!(s.contains("\\{"));
+        assert!(s.contains("\\}"));
+        // No bare double-backslash (the old escaping produced a LaTeX line break).
+        assert!(!s.contains("\\\\"));
     }
 }
