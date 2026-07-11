@@ -392,11 +392,30 @@ impl SyntaxDefinition {
                     ctx_refs: SyntaxDefinition::parse_pushargs(s, state, contexts, namer)?,
                     pop_count: y as usize,
                 }
+            } else if let Ok(p) = get_key(map, "push", Some) {
+                // `pop: N + push: X` pops N contexts then pushes X. ST docs:
+                // when `pop` is combined with another action, the pop happens
+                // first and the matched text is treated as a lookahead — so
+                // the trigger token does NOT inherit the popped frames'
+                // meta_scope atoms. This is distinct from `pop: N + set:`,
+                // which is the documented exception (stacking).
+                //
+                // Observed on Java's `pop: 2 + push: annotation-parameters-body`
+                // (annotation arg lists) and `pop: 1 + push: case-label-expression`,
+                // and on Python's `pop: 2 + push: function-parameter-list-body`
+                // / `type-parameter-list-body`.
+                MatchOperation::Push {
+                    ctx_refs: SyntaxDefinition::parse_pushargs(p, state, contexts, namer)?,
+                    pop_count: y as usize,
+                }
             } else {
                 MatchOperation::Pop(y as usize)
             }
         } else if let Ok(y) = get_key(map, "push", Some) {
-            MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
+            MatchOperation::Push {
+                ctx_refs: SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?,
+                pop_count: 0,
+            }
         } else if let Ok(y) = get_key(map, "set", Some) {
             MatchOperation::Set {
                 ctx_refs: SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?,
@@ -478,6 +497,30 @@ impl SyntaxDefinition {
         // and the embedded context reference
         let mut embed_contexts = Vec::new();
 
+        // Parse the target reference up front so the wrapper construction
+        // below can tell whether the embed enters via the embedded syntax's
+        // `main` (no fragment) or via a `#fragment`. Only the no-fragment
+        // case needs `embed_scope_replaces=true`: that's the case where the
+        // top-level scope auto-inserted into `main`'s mcs by `add_initial_contexts`
+        // duplicates the wrapper's last embed_scope atom and the per-target
+        // loop must suppress it. Fragment embeds enter a named context whose
+        // mcs is independent of the syntax's top-level scope; suppressing it
+        // strips real grammar atoms (e.g., TOML's `meta.mapping.toml`) and
+        // downstream `clear_scopes:` then bites the wrapper instead of the
+        // intended grammar atom. Observed on Python's PEP 723 inline TOML
+        // (`embed: scope:source.toml.embedded.python#toml`).
+        let target_ref = SyntaxDefinition::parse_reference(y, state, contexts, namer, true)?;
+        let target_has_fragment = matches!(
+            &target_ref,
+            ContextReference::ByScope {
+                sub_context: Some(_),
+                ..
+            } | ContextReference::File {
+                sub_context: Some(_),
+                ..
+            }
+        );
+
         // Create wrapper context with embed_scope if present
         let has_embed_scope = get_key(map, "embed_scope", Some).is_ok();
         if has_embed_scope {
@@ -503,8 +546,10 @@ impl SyntaxDefinition {
             embed_scope_context_yaml.push(Yaml::Hash(match_map));
             let scope_ctx_name =
                 SyntaxDefinition::parse_context(&embed_scope_context_yaml, state, contexts, namer)?;
-            // In v2, embed_scope replaces the embedded syntax's scope
-            if state.version >= 2 {
+            // In v2, embed_scope replaces the embedded syntax's scope — but
+            // only when the embed enters via `main`. See the comment above
+            // `target_has_fragment` for the rationale.
+            if state.version >= 2 && !target_has_fragment {
                 if let Some(ctx) = contexts.get_mut(&scope_ctx_name) {
                     ctx.embed_scope_replaces = true;
                 }
@@ -512,9 +557,7 @@ impl SyntaxDefinition {
             embed_contexts.push(ContextReference::Inline(scope_ctx_name));
         }
 
-        embed_contexts.push(SyntaxDefinition::parse_reference(
-            y, state, contexts, namer, true,
-        )?);
+        embed_contexts.push(target_ref);
 
         Ok(MatchOperation::Embed {
             contexts: embed_contexts,
@@ -611,16 +654,22 @@ impl SyntaxDefinition {
 
     fn parse_captures(
         map: &Hash,
-        regex_str: &str,
+        _regex_str: &str,
         state: &mut ParserState<'_>,
     ) -> Result<CaptureMapping, ParseSyntaxError> {
-        let valid_indexes = get_consuming_capture_indexes(regex_str);
+        // Accept every numeric capture entry. Groups inside lookarounds are
+        // kept — `build_capture_ops` clips each capture's span to the rule's
+        // consumed match range at parse time, mirroring Sublime Text. An
+        // earlier version filtered lookaround-internal indices here on the
+        // assumption "those scopes are not applied," which produced silent
+        // drops for valid rules like C#'s generic function-call pattern.
         let mut captures = Vec::new();
         for (key, value) in map.iter() {
             if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
-                if valid_indexes.contains(&(key_int as usize)) {
-                    captures.push((key_int as usize, str_to_scopes(val_str, state.scope_repo)?));
+                if key_int < 0 {
+                    continue;
                 }
+                captures.push((key_int as usize, str_to_scopes(val_str, state.scope_repo)?));
             }
         }
         Ok(captures)
@@ -945,101 +994,6 @@ impl RegexRewriterForNoNewlines<'_> {
     }
 }
 
-fn get_consuming_capture_indexes(regex: &str) -> Vec<usize> {
-    let parser = ConsumingCaptureIndexParser {
-        parser: Parser::new(regex.as_bytes()),
-    };
-    parser.get_consuming_capture_indexes()
-}
-
-struct ConsumingCaptureIndexParser<'a> {
-    parser: Parser<'a>,
-}
-
-impl ConsumingCaptureIndexParser<'_> {
-    /// Find capture groups which are not inside lookarounds.
-    ///
-    /// If, in a YAML syntax definition, a scope stack is applied to a capture group inside a
-    /// lookaround, (i.e. "captures:\n x: scope.stack goes.here", where "x" is the number of a
-    /// capture group in a lookahead/behind), those those scopes are not applied, so no need to
-    /// even parse them.
-    fn get_consuming_capture_indexes(mut self) -> Vec<usize> {
-        let mut result = Vec::new();
-        let mut stack = Vec::new();
-        let mut cap_num = 0;
-        let mut in_lookaround = false;
-        stack.push(in_lookaround);
-        result.push(cap_num);
-
-        while let Some(c) = self.parser.peek() {
-            match c {
-                b'\\' => {
-                    self.parser.next();
-                    self.parser.next();
-                }
-                b'[' => {
-                    self.parser.parse_character_class();
-                }
-                b'(' => {
-                    self.parser.next();
-                    // add the current lookaround state to the stack so we can just pop at a closing paren
-                    stack.push(in_lookaround);
-                    if let Some(c2) = self.parser.peek() {
-                        if c2 != b'?' {
-                            // simple numbered capture group
-                            cap_num += 1;
-                            // if we are not currently in a lookaround,
-                            // add this capture group number to the valid ones
-                            if !in_lookaround {
-                                result.push(cap_num);
-                            }
-                        } else {
-                            self.parser.next();
-                            if let Some(c3) = self.parser.peek() {
-                                self.parser.next();
-                                if c3 == b'=' || c3 == b'!' {
-                                    // lookahead
-                                    in_lookaround = true;
-                                } else if c3 == b'<' {
-                                    if let Some(c4) = self.parser.peek() {
-                                        if c4 == b'=' || c4 == b'!' {
-                                            self.parser.next();
-                                            // lookbehind
-                                            in_lookaround = true;
-                                        }
-                                    }
-                                } else if c3 == b'P' {
-                                    if let Some(c4) = self.parser.peek() {
-                                        if c4 == b'<' {
-                                            // named capture group
-                                            cap_num += 1;
-                                            // if we are not currently in a lookaround,
-                                            // add this capture group number to the valid ones
-                                            if !in_lookaround {
-                                                result.push(cap_num);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                b')' => {
-                    if let Some(value) = stack.pop() {
-                        in_lookaround = value;
-                    }
-                    self.parser.next();
-                }
-                _ => {
-                    self.parser.next();
-                }
-            }
-        }
-        result
-    }
-}
-
 struct Parser<'a> {
     bytes: &'a [u8],
     index: usize,
@@ -1211,19 +1165,22 @@ mod tests {
                 use crate::parsing::syntax_definition::ContextReference::*;
 
                 // this is sadly necessary because Context is not Eq because of the Regex
-                let expected = MatchOperation::Push(vec![
-                    Named("string".to_owned()),
-                    ByScope {
-                        scope: Scope::new("source.c").unwrap(),
-                        sub_context: Some("main".to_owned()),
-                        with_escape: false,
-                    },
-                    File {
-                        name: "CSS".to_owned(),
-                        sub_context: Some("rule-list-body".to_owned()),
-                        with_escape: false,
-                    },
-                ]);
+                let expected = MatchOperation::Push {
+                    ctx_refs: vec![
+                        Named("string".to_owned()),
+                        ByScope {
+                            scope: Scope::new("source.c").unwrap(),
+                            sub_context: Some("main".to_owned()),
+                            with_escape: false,
+                        },
+                        File {
+                            name: "CSS".to_owned(),
+                            sub_context: Some("rule-list-body".to_owned()),
+                            with_escape: false,
+                        },
+                    ],
+                    pop_count: 0,
+                };
                 assert_eq!(
                     format!("{:?}", match_pat.operation),
                     format!("{:?}", expected)
@@ -1378,6 +1335,63 @@ mod tests {
                 }
                 _ => panic!(
                     "Expected Embed operation, got {:?}",
+                    match_pattern.operation
+                ),
+            }
+        } else {
+            panic!("Expected Match pattern");
+        }
+    }
+
+    #[test]
+    fn pop_plus_push_becomes_push_with_pop_count() {
+        // `pop: N + push: X` is **lookahead** per ST docs ("when pop is
+        // combined with another action, the pop happens first and the match
+        // is treated as a lookahead"), distinct from `pop: N + set:` which
+        // ST documents as the stacking exception. yaml_load preserves that
+        // distinction by routing `pop:N + push:` to `Push { pop_count: N }`
+        // and `pop:N + set:` to `Set { pop_count: N }`. See
+        // `pop_plus_set_keeps_set_with_pop_count` for the sibling case.
+        //
+        // Real-world callers: Java's `pop: 2 + push: annotation-parameters-body`
+        // (annotation arg lists), `pop: 1 + push: case-label-expression`;
+        // Python's `pop: 2 + push: function-parameter-list-body` and
+        // `type-parameter-list-body`.
+        let def = SyntaxDefinition::load_from_str(
+            r#"
+        name: Test
+        scope: text.test
+        file_extensions: [test]
+        contexts:
+          main:
+            - match: \(
+              pop: 2
+              push: target
+          target:
+            - meta_scope: meta.target
+            - include: main
+        "#,
+            false,
+            None,
+        )
+        .unwrap();
+
+        let ctx = &def.contexts["main"];
+        if let Pattern::Match(ref match_pattern) = ctx.patterns[0] {
+            match match_pattern.operation {
+                MatchOperation::Push {
+                    ref ctx_refs,
+                    pop_count,
+                } => {
+                    assert_eq!(pop_count, 2);
+                    assert_eq!(ctx_refs.len(), 1);
+                    assert!(matches!(
+                        ctx_refs[0],
+                        ContextReference::Named(ref n) if n == "target"
+                    ));
+                }
+                _ => panic!(
+                    "Expected Push operation with pop_count=2, got {:?}",
                     match_pattern.operation
                 ),
             }
@@ -1578,33 +1592,6 @@ mod tests {
         assert_eq!(&rewrite(r"ab(?:\n)?"), r"ab(?:$|)");
         assert_eq!(&rewrite(r"(?<!\n)ab"), r"(?<!$)ab");
         assert_eq!(&rewrite(r"(?<=\n)ab"), r"(?<=$)ab");
-    }
-
-    #[test]
-    fn can_get_valid_captures_from_regex() {
-        let regex = "hello(test)(?=(world))(foo(?P<named>bar))";
-        println!("{:?}", regex);
-        let valid_indexes = get_consuming_capture_indexes(regex);
-        println!("{:?}", valid_indexes);
-        assert_eq!(valid_indexes, [0, 1, 3, 4]);
-    }
-
-    #[test]
-    fn can_get_valid_captures_from_regex2() {
-        let regex = "hello(test)[(?=tricked](foo(bar))";
-        println!("{:?}", regex);
-        let valid_indexes = get_consuming_capture_indexes(regex);
-        println!("{:?}", valid_indexes);
-        assert_eq!(valid_indexes, [0, 1, 2, 3]);
-    }
-
-    #[test]
-    fn can_get_valid_captures_from_nested_regex() {
-        let regex = "hello(test)(?=(world(?!(te(?<=(st))))))(foo(bar))";
-        println!("{:?}", regex);
-        let valid_indexes = get_consuming_capture_indexes(regex);
-        println!("{:?}", valid_indexes);
-        assert_eq!(valid_indexes, [0, 1, 5, 6]);
     }
 
     #[test]
