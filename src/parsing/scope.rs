@@ -182,9 +182,19 @@ impl ScopeRepository {
         if s.is_empty() {
             return Ok(Scope { a: 0, b: 0 });
         }
+        // Filter empty atoms so consecutive dots collapse — `variable.other..haskell`
+        // matches the same scope as `variable.other.haskell`. ST's selector engine
+        // treats them as equivalent (both score 48 against
+        // `source.haskell variable.other.haskell` via `sublime.score_selector`);
+        // syntect's previous implementation packed `""` as its own atom index,
+        // producing a 4-atom scope that didn't prefix-match the 3-atom target.
+        // Symmetric: applies to scope construction (`scope: foo..bar` typo) and
+        // to selector parsing (`syntax_test_haskell.hs:2348` line `:: a -> Bool`
+        // has `--         ^ variable.other..haskell` and ST passes it).
         let parts: Vec<usize> = s
             .trim_end_matches('.')
             .split('.')
+            .filter(|a| !a.is_empty())
             .map(|a| self.atom_to_index(a))
             .collect();
         // The internal representation supports at most 8 atoms (packed into
@@ -631,6 +641,20 @@ mod tests {
             repo.build("comment.line.").unwrap(),
             repo.build("comment.line").unwrap()
         );
+        // Empty atoms (consecutive dots) collapse, mirroring ST's selector
+        // engine where `score_selector('variable.other..haskell',
+        // 'source.haskell variable.other.haskell')` returns 48 — the same as
+        // for the single-dot form. Without the collapse, syntect packed `""`
+        // as its own atom, producing a 4-atom scope that didn't prefix-match
+        // the 3-atom target. Surfaced via `syntax_test_haskell.hs:2348` line
+        // `:: a -> Bool` whose `--         ^ variable.other..haskell`
+        // assertion ST passes against the same scope syntect produces.
+        assert_eq!(
+            repo.build("variable.other..haskell").unwrap(),
+            repo.build("variable.other.haskell").unwrap()
+        );
+        assert_eq!(repo.build("a..b").unwrap(), repo.build("a.b").unwrap());
+        assert_eq!(repo.build("a...b").unwrap(), repo.build("a.b").unwrap());
     }
 
     #[test]
@@ -724,6 +748,25 @@ mod tests {
                 .unwrap()
                 .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
             None
+        );
+        // Selector with consecutive dots collapses to the equivalent
+        // single-dot form before matching: ST's `score_selector` returns the
+        // same MatchPower for both, and so should syntect.
+        assert_eq!(
+            ScopeStack::from_str("variable.other..haskell")
+                .unwrap()
+                .does_match(
+                    ScopeStack::from_str("source.haskell variable.other.haskell")
+                        .unwrap()
+                        .as_slice()
+                ),
+            ScopeStack::from_str("variable.other.haskell")
+                .unwrap()
+                .does_match(
+                    ScopeStack::from_str("source.haskell variable.other.haskell")
+                        .unwrap()
+                        .as_slice()
+                )
         );
     }
 }
