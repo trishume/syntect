@@ -694,7 +694,9 @@ pub syntect::parsing::syntax_definition::MatchOperation::Embed::pop_count: usize
 pub syntect::parsing::syntax_definition::MatchOperation::Fail(alloc::string::String)
 pub syntect::parsing::syntax_definition::MatchOperation::None
 pub syntect::parsing::syntax_definition::MatchOperation::Pop(usize)
-pub syntect::parsing::syntax_definition::MatchOperation::Push(alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
+pub syntect::parsing::syntax_definition::MatchOperation::Push
+pub syntect::parsing::syntax_definition::MatchOperation::Push::ctx_refs: alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>
+pub syntect::parsing::syntax_definition::MatchOperation::Push::pop_count: usize
 pub syntect::parsing::syntax_definition::MatchOperation::Set
 pub syntect::parsing::syntax_definition::MatchOperation::Set::ctx_refs: alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>
 pub syntect::parsing::syntax_definition::MatchOperation::Set::pop_count: usize
