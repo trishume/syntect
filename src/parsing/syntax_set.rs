@@ -2576,8 +2576,159 @@ mod tests {
         builder.add(syntax_using_proto);
         let ss = builder.build();
 
-        // Just verify it builds without errors and the syntax exists
-        assert!(ss.find_syntax_by_name("UsingProto").is_some());
+        let syntax = ss.find_syntax_by_name("UsingProto").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("#", &ss).expect("#[cfg(test)]").ops;
+        // The external `prototype`'s `#` rule must be reachable from the
+        // including context via `apply_prototype: true`.
+        let expected = (0, ScopeStackOp::Push(Scope::new("comment.proto").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn apply_prototype_prototype_wins_tie_over_target_main() {
+        // Both the target's `main` and its `prototype` match `|` at the same
+        // position. ST's `apply_prototype` semantics put the prototype ahead
+        // of the target, so the prototype's scope wins the tie.
+        let target = SyntaxDefinition::load_from_str(
+            r#"
+            name: Target
+            scope: source.target
+            file_extensions: [t]
+            contexts:
+              prototype:
+                - match: '\|'
+                  scope: proto.pipe
+              main:
+                - match: '\|'
+                  scope: target.bitor
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let outer = SyntaxDefinition::load_from_str(
+            r#"
+            name: Outer
+            scope: source.outer
+            file_extensions: [o]
+            contexts:
+              main:
+                - include: scope:source.target
+                  apply_prototype: true
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(target);
+        builder.add(outer);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Outer").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("|", &ss).expect("#[cfg(test)]").ops;
+        assert_ops_contain(
+            &ops,
+            &(0, ScopeStackOp::Push(Scope::new("proto.pipe").unwrap())),
+        );
+        assert!(
+            !ops.iter()
+                .any(|(_, op)| matches!(op, ScopeStackOp::Push(s) if s == &Scope::new("target.bitor").unwrap())),
+            "target main's `|` rule must not pre-empt the external prototype's `|` rule: {:?}",
+            ops,
+        );
+    }
+
+    #[test]
+    fn apply_prototype_respects_meta_include_prototype_false() {
+        // When the include target opts out of prototype inclusion, the
+        // external prototype must NOT be injected even with
+        // `apply_prototype: true` on the include.
+        let target = SyntaxDefinition::load_from_str(
+            r#"
+            name: Target
+            scope: source.target
+            file_extensions: [t]
+            contexts:
+              prototype:
+                - match: '\|'
+                  scope: proto.pipe
+              main:
+                - meta_include_prototype: false
+                - match: '\|'
+                  scope: target.bitor
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let outer = SyntaxDefinition::load_from_str(
+            r#"
+            name: Outer
+            scope: source.outer
+            file_extensions: [o]
+            contexts:
+              main:
+                - include: scope:source.target
+                  apply_prototype: true
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(target);
+        builder.add(outer);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Outer").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("|", &ss).expect("#[cfg(test)]").ops;
+        assert_ops_contain(
+            &ops,
+            &(0, ScopeStackOp::Push(Scope::new("target.bitor").unwrap())),
+        );
+        assert!(
+            !ops.iter()
+                .any(|(_, op)| matches!(op, ScopeStackOp::Push(s) if s == &Scope::new("proto.pipe").unwrap())),
+            "prototype must stay out when target's `meta_include_prototype: false`: {:?}",
+            ops,
+        );
+    }
+
+    #[test]
+    fn haml_pipe_continuation_wins_over_ruby_bitor() {
+        // Real-package regression guard for the fix: inside HAML attribute
+        // braces, a trailing `|` must scope as HAML's pipe-continuation
+        // (injected via Ruby-for-HAML's prototype under `apply_prototype`),
+        // not as Ruby's bitwise-or operator.
+        let ss = &*testdata::PACKAGES_SYN_SET;
+        let syntax = ss.find_syntax_by_name("HAML").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state
+            .parse_line("%p{:a => 1, |", ss)
+            .expect("#[cfg(test)]")
+            .ops;
+        let pipe_cont = Scope::new("punctuation.separator.continuation.haml").unwrap();
+        let ruby_bitor = Scope::new("keyword.operator.bitwise.ruby").unwrap();
+        assert!(
+            ops.iter()
+                .any(|(_, op)| matches!(op, ScopeStackOp::Push(s) if s == &pipe_cont)),
+            "expected punctuation.separator.continuation.haml push: {:?}",
+            ops,
+        );
+        assert!(
+            !ops.iter()
+                .any(|(_, op)| matches!(op, ScopeStackOp::Push(s) if s == &ruby_bitor)),
+            "Ruby bitwise-or must not win over HAML pipe-continuation: {:?}",
+            ops,
+        );
     }
 
     // =====================================================
