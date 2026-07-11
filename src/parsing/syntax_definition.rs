@@ -198,9 +198,19 @@ pub enum ContextReference {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MatchOperation {
-    Push(Vec<ContextReference>),
+    /// Pushes `ctx_refs`, optionally popping `pop_count` contexts first.
+    /// A plain `push:` is `pop_count == 0`; `pop: N + push:` is
+    /// `pop_count == N`. Per ST, `pop:N + push:` is **lookahead**: the
+    /// trigger token does not inherit the popped frames' meta_scope.
+    Push {
+        ctx_refs: Vec<ContextReference>,
+        #[serde(default)]
+        pop_count: usize,
+    },
     /// Pops `pop_count` contexts off the stack, then pushes `ctx_refs`.
     /// A plain `set:` is `pop_count == 1`; `pop: N + set:` is `pop_count == N`.
+    /// Per ST, `pop:N + set:` is **stacking**: the trigger token receives
+    /// both the popped frames' meta_scope and the pushed meta_scope.
     Set {
         ctx_refs: Vec<ContextReference>,
         #[serde(default = "one")]
@@ -274,17 +284,20 @@ impl<'a> Iterator for MatchIter<'a> {
                             _ => return self.next(),
                         };
                         let ctx_ptr = self.syntax_set.get_context(context_id).unwrap();
-                        // Also include the external syntax's prototype if the context allows it
+                        // Push target first, then external prototype on top so
+                        // its patterns are iterated first: `MatchIter::next`
+                        // reads the stack top, and ST's `apply_prototype` runs
+                        // the prototype ahead of the included context — mirror
+                        // of `ParseState::find_best_match`'s prototype chaining.
+                        self.ctx_stack.push(ctx_ptr);
+                        self.index_stack.push(0);
                         if ctx_ptr.meta_include_prototype.unwrap_or(true) {
                             if let Some(ref proto_id) = ctx_ptr.prototype {
                                 let proto_ctx = self.syntax_set.get_context(proto_id).unwrap();
-                                // Push prototype first (it will be iterated first)
                                 self.ctx_stack.push(proto_ctx);
                                 self.index_stack.push(0);
                             }
                         }
-                        self.ctx_stack.push(ctx_ptr);
-                        self.index_stack.push(0);
                     }
                 }
             } else {

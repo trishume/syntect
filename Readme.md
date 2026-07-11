@@ -157,6 +157,10 @@ When a change is made to the text, because of the way Sublime Text grammars work
 Thus when a change is made to the text, search backwards in the parse state cache for the last state before the edit, then kick off a background task to start re-highlighting from there.
 Once the background task highlights past the end of the current editor viewport, render the new changes and continue re-highlighting the rest of the file in the background.
 
+One wrinkle since 6.0: while a `branch_point` speculation window is open, `parse_line`'s results for recent lines may still be revised by a later line (reported through `ParseLineOutput::revised`).
+Prefer snapshotting states where `ParseState::speculative_lines()` returns `0` — at those boundaries neither the state nor any line returned so far can be retroactively corrected.
+The `CommittedParser` wrapper implements this bookkeeping for batch consumers.
+
 This way from the time the edit happens to the time the new colouring gets rendered in the worst case only `999+length of viewport` lines must be re-highlighted.
 Given the speed of `syntect` even with a long file and the most complicated syntax and theme this should take less than 100ms.
 This is enough to re-highlight on every key-stroke of the world's fastest typist *in the worst possible case*.
