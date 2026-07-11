@@ -242,8 +242,13 @@ fn get_line_assertion_details<'a>(
                 // if there is an end token defined in the test file header
                 if let Some(end_token_pos) = sst.find(token) {
                     // and there is an end token in the line
-                    let (ss, after_token_end) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
+                    let (ss, rest_from_end_token) = sst.split_at(end_token_pos); // the scope selector text ends at the end token
                     sst = ss;
+                    // Skip the end token itself when checking what follows.
+                    // Without this, a line like `/* ^ scope */` would always
+                    // be classified as non-pure because `rest_from_end_token`
+                    // begins with the `*/` glyph (non-whitespace).
+                    let after_token_end = &rest_from_end_token[token.len()..];
                     only_whitespace_after_token_end = after_token_end.trim_end().is_empty();
                 }
             }
@@ -262,12 +267,28 @@ fn get_line_assertion_details<'a>(
             };
             let is_reference = captures.name("reference_label").is_some()
                 || captures.name("reference_assertion").is_some();
+            // ST's syntax-test format requires assertions on dedicated
+            // comment-only lines: only whitespace before testtoken_start and
+            // after testtoken_end (or after the selector if no end token).
+            // When source code precedes the testtoken (e.g. bash `: ${#^pat}`,
+            // where `#` is the parameter-length operator and `^pat` is
+            // substitution), the markers that follow are coincidental code,
+            // not test-author intent. Such lines must not be treated as
+            // assertion-bearing — otherwise spurious `process_assertions`
+            // failures pile up against the wrong target line, and the
+            // misclassification also blocks `test_against_line_number` from
+            // advancing onto the source line, so the *next* genuine
+            // assertion tests against stale scopes.
+            let is_pure_assertion_line =
+                before_token_start.trim_start().is_empty() && only_whitespace_after_token_end;
+            if !is_pure_assertion_line {
+                return None;
+            }
             return Some(AssertionRange {
                 begin_char,
                 end_char,
                 scope_selector_text: sst,
-                is_pure_assertion_line: before_token_start.trim_start().is_empty()
-                    && only_whitespace_after_token_end, // if only whitespace surrounds the test tokens on the line, then it is a pure assertion line
+                is_pure_assertion_line,
                 is_reference,
             });
         }
@@ -278,6 +299,7 @@ fn get_line_assertion_details<'a>(
 fn process_assertions(
     assertion: &AssertionRange<'_>,
     test_against_line_scopes: &[ScopedText],
+    next_line_scopes: Option<&[ScopedText]>,
 ) -> Vec<RangeTestResult> {
     // format the scope selector to include a space at the beginning, because, currently, ScopeSelector expects excludes to begin with " -"
     // and they are sometimes in the syntax test as ^^^-comment, for example
@@ -301,16 +323,59 @@ fn process_assertions(
         };
         results.push(result);
     }
-    // don't ignore assertions after the newline, they should be treated as though they are asserting against the newline
+    // Past-EOL columns: ST's `view.text_point(row, col)` overflows into the
+    // next row when `col` exceeds the current line's char count, so its
+    // syntax-test framework evaluates past-EOL assertions against the
+    // corresponding column on the line below. Mirror that here when we have
+    // the next line's scopes; otherwise fall back to the last char's scope.
     let last = test_against_line_scopes.last().unwrap();
-    if last.char_start + last.text_len < assertion.end_char {
-        let match_value = selector.does_match(last.scope.as_slice());
-        let result = RangeTestResult {
-            column_begin: max(last.char_start + last.text_len, assertion.begin_char),
-            column_end: assertion.end_char,
-            success: match_value.is_some(),
-        };
-        results.push(result);
+    let last_end = last.char_start + last.text_len;
+    if last_end < assertion.end_char {
+        let past_eol_begin = max(last_end, assertion.begin_char);
+        let past_eol_end = assertion.end_char;
+        if let Some(next_scopes) = next_line_scopes.filter(|s| !s.is_empty()) {
+            // Wrap formula: position `col` past EOL of a line of total length
+            // `last_end` (chars including trailing `\n`) lands on column
+            // `col - last_end` of the next line.
+            let wrap_begin = past_eol_begin - last_end;
+            let wrap_end = past_eol_end - last_end;
+            let mut covered = wrap_begin;
+            for scoped_text in next_scopes
+                .iter()
+                .skip_while(|s| s.char_start + s.text_len <= wrap_begin)
+                .take_while(|s| s.char_start < wrap_end)
+            {
+                let next_begin = max(scoped_text.char_start, wrap_begin);
+                let next_end = min(scoped_text.char_start + scoped_text.text_len, wrap_end);
+                let match_value = selector.does_match(scoped_text.scope.as_slice());
+                results.push(RangeTestResult {
+                    column_begin: next_begin + last_end,
+                    column_end: next_end + last_end,
+                    success: match_value.is_some(),
+                });
+                covered = next_end;
+            }
+            // Wrap target extends past the next line's content too — recursive
+            // wrap is not yet implemented; fall back to the next line's last
+            // scope so the assertion still gets a defined verdict instead of
+            // silently passing.
+            if covered < wrap_end {
+                let next_last = next_scopes.last().unwrap();
+                let match_value = selector.does_match(next_last.scope.as_slice());
+                results.push(RangeTestResult {
+                    column_begin: covered + last_end,
+                    column_end: past_eol_end,
+                    success: match_value.is_some(),
+                });
+            }
+        } else {
+            let match_value = selector.does_match(last.scope.as_slice());
+            results.push(RangeTestResult {
+                column_begin: past_eol_begin,
+                column_end: past_eol_end,
+                success: match_value.is_some(),
+            });
+        }
     }
     results
 }
@@ -368,7 +433,14 @@ fn test_file(
 
     let mut current_line_number = 1;
     let mut test_against_line_number = 1;
-    let mut scopes_on_line_being_tested = Vec::new();
+    let mut scopes_on_line_being_tested: Vec<ScopedText> = Vec::new();
+    // Scopes of the first line that follows the current target line. ST's
+    // syntax-test framework evaluates past-EOL assertion columns against the
+    // corresponding column on the next line (because `text_point(row, col)`
+    // overflows into the next row when `col` exceeds the row's length); we
+    // mirror that by remembering the next line's scopes once and feeding
+    // them into `process_assertions`. Reset whenever the target line changes.
+    let mut next_target_line_scopes: Option<Vec<ScopedText>> = None;
     let mut previous_non_assertion_line = line.to_string();
 
     let mut assertion_failures: usize = 0;
@@ -383,61 +455,21 @@ fn test_file(
 
     loop {
         // over lines of file, starting with the header line
-        let mut line_only_has_assertion = false;
-        let mut line_has_assertion = false;
-        if let Some(assertion) = get_line_assertion_details(testtoken_start, testtoken_end, &line) {
-            // `@+` and `>` lines are annotation-only (reference labels / reference
-            // assertions). They must be recognised so they do not drive
-            // `test_against_line_number`, but we do not yet implement
-            // cross-line label lookups, so no scope checks run here.
-            let mut current_assertion_failures: usize = 0;
-            if !assertion.is_reference {
-                let result = process_assertions(&assertion, &scopes_on_line_being_tested);
-                total_assertions += assertion.end_char - assertion.begin_char;
-                for failure in result.iter().filter(|r| !r.success) {
-                    let length = failure.column_end - failure.column_begin;
-                    let text: String = previous_non_assertion_line
-                        .chars()
-                        .skip(failure.column_begin)
-                        .take(length)
-                        .collect();
-                    pending_messages.push(BufferedFailureMessage {
-                        selector_text: assertion.scope_selector_text.trim().to_string(),
-                        assertion_line_number: current_line_number,
-                        test_against_line_number,
-                        column_begin: failure.column_begin,
-                        column_end: failure.column_end,
-                        text,
-                        scope: scopes_on_line_being_tested
-                            .iter()
-                            .find(|s| s.char_start + s.text_len > failure.column_begin)
-                            .unwrap_or_else(|| scopes_on_line_being_tested.last().unwrap())
-                            .scope
-                            .clone(),
-                    });
-                    assertion_failures += failure.column_end - failure.column_begin;
-                    current_assertion_failures += failure.column_end - failure.column_begin;
-                }
-                // Buffer this assertion for re-evaluation if backtracking replays the target line
-                if let Some(idx) = current_test_line_buffer_idx {
-                    if let Some(ref mut data) = parsed_line_buffer[idx].non_assertion_data {
-                        data.assertions.push(BufferedAssertion {
-                            begin_char: assertion.begin_char,
-                            end_char: assertion.end_char,
-                            scope_selector_text: assertion.scope_selector_text.to_string(),
-                            assertion_line_number: current_line_number,
-                        });
-                        data.assertion_failures += current_assertion_failures;
-                    }
-                }
-            } // end `if !assertion.is_reference`
-            line_only_has_assertion = assertion.is_pure_assertion_line;
-            line_has_assertion = true;
-        }
+        let assertion_opt = get_line_assertion_details(testtoken_start, testtoken_end, &line);
+        let line_has_assertion = assertion_opt.is_some();
+        let line_only_has_assertion = assertion_opt
+            .as_ref()
+            .map(|a| a.is_pure_assertion_line)
+            .unwrap_or(false);
+
+        // Parse first so the just-parsed scopes are available when the
+        // assertion runs immediately after — needed for past-EOL wrap on the
+        // first assertion line after a target.
         if !line_only_has_assertion || parse_test_lines {
             if !line_has_assertion {
                 // ST seems to ignore lines that have assertions when calculating which line the assertion tests against
                 scopes_on_line_being_tested.clear();
+                next_target_line_scopes = None;
                 test_against_line_number = current_line_number;
                 previous_non_assertion_line = line.to_string();
             }
@@ -447,7 +479,6 @@ fn test_file(
                     current_line_number, stack, state
                 );
             }
-            let stack_before = stack.clone();
             let output = match state.parse_line(&line, ss) {
                 Ok(output) => output,
                 Err(e) => {
@@ -496,6 +527,19 @@ fn test_file(
                 // Reset stack to the state before the first replayed line
                 stack = parsed_line_buffer[start_idx].stack_before.clone();
 
+                // Collect corrected baselines to apply post-loop, since the
+                // mutable record borrow inside the loop forbids touching
+                // sibling buffer entries. After applying replayed[i],
+                // `stack` is the corrected end-of-line for the buffered
+                // record at start_idx + i, i.e. the corrected
+                // start-of-line baseline for record at start_idx + i + 1.
+                // Overwriting that baseline prevents a future replay from
+                // resurrecting any meta_scope the prior replay had unwound
+                // (observed as meta.link.reference.def.markdown leak past
+                // back-to-back Markdown link reference definitions).
+                let buf_len = parsed_line_buffer.len();
+                let mut corrected_baselines: Vec<(usize, ScopeStack)> = Vec::new();
+
                 for (i, replayed_ops) in replayed.iter().enumerate() {
                     let record = &mut parsed_line_buffer[start_idx + i];
                     let has_non_assertion = record.non_assertion_data.is_some();
@@ -516,6 +560,10 @@ fn test_file(
                             col += len;
                         }
                     }
+                    let next_idx = start_idx + i + 1;
+                    if next_idx < buf_len {
+                        corrected_baselines.push((next_idx, stack.clone()));
+                    }
 
                     if let Some(ref mut data) = record.non_assertion_data {
                         if !data.assertions.is_empty() {
@@ -532,7 +580,12 @@ fn test_file(
                                     // above, so replays never hit reference lines.
                                     is_reference: false,
                                 };
-                                let result = process_assertions(&temp_assertion, &new_scoped);
+                                // Replay path: fall back to the previous
+                                // past-EOL semantics by passing no next-line
+                                // scopes. Replays are rare and per-target;
+                                // recomputing the next line's scopes here
+                                // would require also replaying its ops.
+                                let result = process_assertions(&temp_assertion, &new_scoped, None);
                                 for failure in result.iter().filter(|r| !r.success) {
                                     let length = failure.column_end - failure.column_begin;
                                     let text: String = record
@@ -574,6 +627,9 @@ fn test_file(
                         }
                     }
                 }
+                for (idx, corrected) in corrected_baselines {
+                    parsed_line_buffer[idx].stack_before = corrected;
+                }
             }
 
             if out_opts.debug && !line_only_has_assertion {
@@ -583,6 +639,18 @@ fn test_file(
                     debug_print_ops(&line, &ops);
                 }
             }
+            // Snapshot the stack now (post-replays, pre-current-ops) — this
+            // becomes the buffered `stack_before` for the current line, so a
+            // future replay covering it resets to the corrected baseline
+            // rather than the stale pre-parse value.
+            let stack_before = stack.clone();
+            // Build the just-parsed line's scopes. For non-assertion (target)
+            // lines they go into `scopes_on_line_being_tested`; for the FIRST
+            // assertion line that follows a target they go into a fresh vec
+            // that becomes `next_target_line_scopes` (used for past-EOL wrap).
+            // Subsequent assertion lines don't need their scopes captured.
+            let capture_for_next_target = line_has_assertion && next_target_line_scopes.is_none();
+            let mut next_target_buffer: Vec<ScopedText> = Vec::new();
             let mut col: usize = 0;
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
                 if let Err(_) = stack.apply(op) {
@@ -599,17 +667,23 @@ fn test_file(
                     // in this case we don't care about blank tokens
                     continue;
                 }
+                let len = s.chars().count();
+                let scoped = ScopedText {
+                    char_start: col,
+                    text_len: len,
+                    scope: stack.as_slice().to_vec(),
+                };
                 if !line_has_assertion {
                     // if the line has no assertions on it, remember the scopes on the line so we can test against them later
-                    let len = s.chars().count();
-                    scopes_on_line_being_tested.push(ScopedText {
-                        char_start: col,
-                        text_len: len,
-                        scope: stack.as_slice().to_vec(),
-                    });
-                    // TODO: warn when there are duplicate adjacent (non-meta?) scopes, as it is almost always undesired
-                    col += len;
+                    scopes_on_line_being_tested.push(scoped);
+                } else if capture_for_next_target {
+                    next_target_buffer.push(scoped);
                 }
+                // TODO: warn when there are duplicate adjacent (non-meta?) scopes, as it is almost always undesired
+                col += len;
+            }
+            if capture_for_next_target {
+                next_target_line_scopes = Some(next_target_buffer);
             }
 
             // Buffer this parsed line for potential future replay
@@ -630,11 +704,65 @@ fn test_file(
             if !line_has_assertion {
                 current_test_line_buffer_idx = Some(parsed_line_buffer.len() - 1);
             }
+        }
 
-            // Flush buffered failure messages once the parser commits
-            if !state.is_speculative() {
-                flush_pending_messages(&mut pending_messages, out_opts.summary);
+        // Process the assertion (after parsing, so past-EOL wrap can see the
+        // current line's scopes via `next_target_line_scopes`).
+        if let Some(assertion) = assertion_opt {
+            // `@+` and `>` lines are annotation-only (reference labels /
+            // reference assertions). They must be recognised so they do not
+            // drive `test_against_line_number`, but we do not yet implement
+            // cross-line label lookups, so no scope checks run here.
+            let mut current_assertion_failures: usize = 0;
+            if !assertion.is_reference {
+                let result = process_assertions(
+                    &assertion,
+                    &scopes_on_line_being_tested,
+                    next_target_line_scopes.as_deref(),
+                );
+                total_assertions += assertion.end_char - assertion.begin_char;
+                for failure in result.iter().filter(|r| !r.success) {
+                    let length = failure.column_end - failure.column_begin;
+                    let text: String = previous_non_assertion_line
+                        .chars()
+                        .skip(failure.column_begin)
+                        .take(length)
+                        .collect();
+                    pending_messages.push(BufferedFailureMessage {
+                        selector_text: assertion.scope_selector_text.trim().to_string(),
+                        assertion_line_number: current_line_number,
+                        test_against_line_number,
+                        column_begin: failure.column_begin,
+                        column_end: failure.column_end,
+                        text,
+                        scope: scopes_on_line_being_tested
+                            .iter()
+                            .find(|s| s.char_start + s.text_len > failure.column_begin)
+                            .unwrap_or_else(|| scopes_on_line_being_tested.last().unwrap())
+                            .scope
+                            .clone(),
+                    });
+                    assertion_failures += failure.column_end - failure.column_begin;
+                    current_assertion_failures += failure.column_end - failure.column_begin;
+                }
+                // Buffer this assertion for re-evaluation if backtracking replays the target line
+                if let Some(idx) = current_test_line_buffer_idx {
+                    if let Some(ref mut data) = parsed_line_buffer[idx].non_assertion_data {
+                        data.assertions.push(BufferedAssertion {
+                            begin_char: assertion.begin_char,
+                            end_char: assertion.end_char,
+                            scope_selector_text: assertion.scope_selector_text.to_string(),
+                            assertion_line_number: current_line_number,
+                        });
+                        data.assertion_failures += current_assertion_failures;
+                    }
+                }
             }
+        }
+
+        // Flush buffered failure messages once the parser commits
+        if !state.is_speculative() {
+            flush_pending_messages(&mut pending_messages, out_opts.summary);
         }
 
         line.clear();
@@ -922,5 +1050,120 @@ mod tests {
         // marker-boundary requirement).
         let a = details(CC, None, "//   @@@").unwrap();
         assert!(a.is_reference);
+    }
+    #[test]
+    fn shell_parameter_length_is_not_mistaken_for_column_range() {
+        // bash `: ${#^pattern}` — `#` is the parameter-length operator, not
+        // a comment. Source code precedes the testtoken, so the line is not
+        // a pure-assertion line and must not be processed as an assertion.
+        assert!(details(HASH, None, ": ${#^pattern}").is_none());
+        assert!(details(HASH, None, ": ${#^^pattern}").is_none());
+    }
+    #[test]
+    fn trailing_comment_with_left_arrow_is_not_mistaken_for_assertion() {
+        // bash `[ <<doc ]  # <- ]` — a real comment whose body happens to
+        // start with `<-`. Because source code precedes the testtoken, the
+        // `<-` is not author-intended as an assertion marker.
+        assert!(details(HASH, None, "[ <<doc ]  # <- ]").is_none());
+    }
+
+    /// Build a `ScopedText` from a string of space-separated scope atoms.
+    fn st(char_start: usize, text_len: usize, scopes: &str) -> ScopedText {
+        ScopedText {
+            char_start,
+            text_len,
+            scope: scopes
+                .split_whitespace()
+                .map(|s| Scope::new(s).unwrap())
+                .collect(),
+        }
+    }
+    fn assertion_range(begin_char: usize, end_char: usize, sel: &str) -> AssertionRange<'_> {
+        AssertionRange {
+            begin_char,
+            end_char,
+            scope_selector_text: sel,
+            is_pure_assertion_line: true,
+            is_reference: false,
+        }
+    }
+
+    #[test]
+    fn past_eol_negative_assertion_uses_next_line_wrap() {
+        // git_config-shaped: the consumed `\n` of the target line still
+        // carries the parent meta_scope (`meta.section`), but the next line
+        // is a comment whose scope does not include `meta.section`.
+        // Negative past-EOL assertion `- meta.section` must pass.
+        let target = vec![
+            st(0, 1, "text meta.section punctuation.section.brackets.begin"),
+            st(
+                28,
+                1,
+                "text meta.section meta.brackets invalid.illegal.unexpected.eol",
+            ),
+        ];
+        let next = vec![
+            st(0, 1, "text comment.line punctuation.definition.comment"),
+            st(1, 1, "text comment.line"),
+        ];
+        let a = assertion_range(29, 30, "- meta.section");
+        let r = process_assertions(&a, &target, Some(&next));
+        assert_eq!(r.len(), 1);
+        assert!(r[0].success, "expected pass via wrap to next line: {r:?}");
+    }
+
+    #[test]
+    fn past_eol_positive_assertion_matches_next_line_scope() {
+        // Past-EOL assertion expecting `comment.line` finds it on the next
+        // line — both git_config (lines 554-555) and Clojure (line 33) work
+        // this way in ST.
+        let target = vec![
+            st(
+                0,
+                1,
+                "text meta.mapping.value string.quoted.double punctuation.definition.string.end",
+            ),
+            st(81, 1, "text"),
+        ];
+        let next = vec![
+            st(0, 1, "text comment.line punctuation.definition.comment"),
+            st(1, 14, "text comment.line"),
+        ];
+        let a = assertion_range(82, 97, "comment.line");
+        let r = process_assertions(&a, &target, Some(&next));
+        assert!(
+            r.iter().all(|res| res.success),
+            "expected all wrap segments to pass: {r:?}",
+        );
+    }
+
+    #[test]
+    fn past_eol_falls_back_when_next_line_unavailable() {
+        // Without next-line scopes (end-of-file or replay path), keep the
+        // previous behaviour of testing against the last char's scope.
+        let target = vec![st(0, 5, "text constant.numeric"), st(5, 1, "text")];
+        let a_pass = assertion_range(6, 7, "- constant.numeric");
+        let r_pass = process_assertions(&a_pass, &target, None);
+        assert_eq!(r_pass.len(), 1);
+        assert!(r_pass[0].success);
+        let a_fail = assertion_range(6, 7, "constant.numeric");
+        let r_fail = process_assertions(&a_fail, &target, None);
+        assert_eq!(r_fail.len(), 1);
+        assert!(!r_fail[0].success);
+    }
+
+    #[test]
+    fn past_eol_wrap_overshooting_next_line_uses_next_line_last_scope() {
+        // When the wrap target extends past the next line's content too,
+        // fall back to the next line's last scope (recursive wrap is a v2
+        // concern). The verdict must still be defined, not silently skipped.
+        let target = vec![st(0, 1, "text"), st(1, 1, "text")];
+        let next = vec![st(0, 3, "text source.x")];
+        // Wrap range: cols [2, 8) on target → cols [0, 6) on next.
+        // Cols [3, 6) on next overshoot the 3-char `next` and should fall
+        // back to the next-line last scope (`text source.x`).
+        let a = assertion_range(2, 8, "source.x");
+        let r = process_assertions(&a, &target, Some(&next));
+        assert!(r.iter().all(|res| res.success), "got: {r:?}");
     }
 }
