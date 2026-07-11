@@ -714,6 +714,7 @@ impl SyntaxSetBuilder {
                     &all_context_ids[syntax_index],
                     &all_contexts,
                     &mut no_prototype,
+                    false,
                 );
             }
 
@@ -829,6 +830,22 @@ impl SyntaxSetBuilder {
             return (syntax_definitions, warnings);
         }
 
+        // Snapshot which contexts and variables each syntax defined directly
+        // (before any extends merging populates `.contexts` / `.variables`
+        // with parent entries). Used during multi-parent merge to prefer a
+        // parent's *own* definition over another parent's *inherited* one
+        // — see `extends_array_own_beats_inherited` regression test.
+        let own_contexts: HashMap<usize, HashSet<String>> = syntax_definitions
+            .iter()
+            .enumerate()
+            .map(|(i, sd)| (i, sd.contexts.keys().cloned().collect()))
+            .collect();
+        let own_variables: HashMap<usize, HashSet<String>> = syntax_definitions
+            .iter()
+            .enumerate()
+            .map(|(i, sd)| (i, sd.variables.keys().cloned().collect()))
+            .collect();
+
         // Track root ancestor for each syntax (syntaxes with no extends are their own root)
         let mut syntax_roots: HashMap<usize, usize> = HashMap::new();
         for (i, sd) in syntax_definitions.iter().enumerate() {
@@ -909,22 +926,50 @@ impl SyntaxSetBuilder {
                     continue;
                 }
 
-                // Merge all parents left-to-right: later parent overrides earlier
+                // Merge all parents left-to-right with provenance-aware
+                // tiebreaking: a parent's *own* (directly-defined) entry
+                // outranks another parent's *inherited* entry. Among
+                // entries of the same provenance, last parent wins.
+                //
+                // Without this, `Zsh (for Markdown)`'s extends list
+                // `[Bash (for Markdown), Zsh]` would let Zsh's inherited
+                // Bash `main` (strict shebang regex) overwrite
+                // Bash (for Markdown)'s own lenient `main`.
                 let mut merged_variables: HashMap<String, String> = HashMap::new();
+                let mut merged_var_is_own: HashMap<String, bool> = HashMap::new();
                 let mut merged_contexts: HashMap<String, Context> = HashMap::new();
+                let mut merged_ctx_is_own: HashMap<String, bool> = HashMap::new();
 
                 for &parent_idx in &parent_indices {
                     let parent_variables = syntax_definitions[parent_idx].variables.clone();
                     let parent_contexts = syntax_definitions[parent_idx].contexts.clone();
+                    let parent_own_vars = &own_variables[&parent_idx];
+                    let parent_own_ctxs = &own_contexts[&parent_idx];
 
-                    // Merge variables: later parent overrides earlier
                     for (k, v) in parent_variables {
-                        merged_variables.insert(k, v);
+                        let is_own = parent_own_vars.contains(&k);
+                        let take = match merged_var_is_own.get(&k).copied() {
+                            None => true,
+                            Some(false) => true,
+                            Some(true) => is_own,
+                        };
+                        if take {
+                            merged_var_is_own.insert(k.clone(), is_own);
+                            merged_variables.insert(k, v);
+                        }
                     }
 
-                    // Merge contexts: later parent overrides earlier
                     for (ctx_name, parent_ctx) in parent_contexts {
-                        merged_contexts.insert(ctx_name, parent_ctx);
+                        let is_own = parent_own_ctxs.contains(&ctx_name);
+                        let take = match merged_ctx_is_own.get(&ctx_name).copied() {
+                            None => true,
+                            Some(false) => true,
+                            Some(true) => is_own,
+                        };
+                        if take {
+                            merged_ctx_is_own.insert(ctx_name.clone(), is_own);
+                            merged_contexts.insert(ctx_name, parent_ctx);
+                        }
                     }
                 }
 
@@ -1114,11 +1159,37 @@ impl SyntaxSetBuilder {
 
     /// Anything recursively included by the prototype shouldn't include the prototype.
     /// This marks them as such.
+    ///
+    /// Reachability from the prototype propagates through `include` AND through
+    /// `Push` / `Set` / `Branch` / `Embed` targets — both can produce a recursive
+    /// `prototype → … → prototype` loop if the target also gets the prototype
+    /// attached. The classic case is YAML's `prototype: include: property` where
+    /// `property` pushes `property-body`: if `property-body` had the prototype,
+    /// every match in property-body would re-fire `property` and push another
+    /// property-body forever (`meta.property.yaml` × ∞).
+    ///
+    /// The `via_push` flag distinguishes "still inside the prototype's include
+    /// chain" from "already inside a body that the prototype pushed/embedded
+    /// into". Once we transition through Push/Set/Branch/Embed (`via_push: true`)
+    /// we keep following further Push/Set/Branch/Embed targets — those targets
+    /// chain back via `set:` to the same family of contexts (Lua's
+    /// `line-doc-comment-body → set: maybe-line-doc-comment → set:
+    /// line-doc-comment-body`) and would loop through the prototype. But we
+    /// stop following `include:` of independent named contexts: those `include`s
+    /// reach into general code-parsing land that has nothing to do with the
+    /// prototype's intent (Haskell's `preprocessor-pragma-signature-value`
+    /// `include: functions`, which would otherwise mark every function context
+    /// in the syntax — including `variable-name-end`, breaking the
+    /// `meta.function.identifier.haskell` cross-line replay because the
+    /// prototype's `line-comments` rule would then never fire inside
+    /// `variable-name-end` and the `(?=\S)` pop:2 would orphan the `functions`
+    /// branch_point on every assertion-comment line).
     fn recursively_mark_no_prototype(
         context_id: &ContextId,
         syntax_context_ids: &HashMap<String, ContextId>,
         all_contexts: &[Vec<Context>],
         no_prototype: &mut HashSet<ContextId>,
+        via_push: bool,
     ) {
         let first_time = no_prototype.insert(*context_id);
         if !first_time {
@@ -1159,6 +1230,7 @@ impl SyntaxSetBuilder {
                                             syntax_context_ids,
                                             all_contexts,
                                             no_prototype,
+                                            true,
                                         );
                                     }
                                 }
@@ -1168,6 +1240,7 @@ impl SyntaxSetBuilder {
                                         syntax_context_ids,
                                         all_contexts,
                                         no_prototype,
+                                        true,
                                     );
                                 }
                                 _ => (),
@@ -1176,6 +1249,14 @@ impl SyntaxSetBuilder {
                     }
                 }
                 Pattern::Include(ref reference) | Pattern::IncludeWithPrototype(ref reference) => {
+                    // Once we've crossed a Push/Set/Branch/Embed transition,
+                    // the body's `include:`s reach into the syntax's general
+                    // code-parsing contexts and don't actually reintroduce a
+                    // prototype loop — stop following them. See the function
+                    // doc-comment for the Haskell case that motivated this.
+                    if via_push {
+                        continue;
+                    }
                     match reference {
                         ContextReference::Named(ref s) => {
                             if let Some(id) = syntax_context_ids.get(s) {
@@ -1184,6 +1265,7 @@ impl SyntaxSetBuilder {
                                     syntax_context_ids,
                                     all_contexts,
                                     no_prototype,
+                                    false,
                                 );
                             }
                         }
@@ -1193,6 +1275,7 @@ impl SyntaxSetBuilder {
                                 syntax_context_ids,
                                 all_contexts,
                                 no_prototype,
+                                false,
                             );
                         }
                         _ => (),
@@ -1458,7 +1541,7 @@ mod tests {
             .get_context(&syntax.context_ids()["main"])
             .expect("#[cfg(test)]");
         let count = syntax_definition::context_iter(&ps, main_context).count();
-        assert_eq!(count, 185);
+        assert_eq!(count, 184);
     }
 
     #[test]
@@ -1803,6 +1886,76 @@ mod tests {
         // handle that correctly.
         let rebuilt = ss.into_builder().build();
         assert_prototype_only_on(&["main", "other"], &rebuilt, &rebuilt.syntaxes()[0]);
+    }
+
+    #[test]
+    fn prototype_attached_to_named_contexts_reachable_only_via_push_then_include() {
+        // Regression guard for the Haskell `meta.function.identifier.haskell`
+        // case (`syntax_test_haskell.hs:2312-2348`). The chain:
+        //   prototype          (include)
+        //   → push-source      (push: pushed-body)
+        //   → pushed-body      (mip: false; include: code)
+        //   → code             (push: var-name → push: var-name-end)
+        // The `include: code` inside `pushed-body` is the boundary: `code`,
+        // `var-name`, and `var-name-end` are general syntax contexts that
+        // should still get the prototype attached (so the `--`-comment rule
+        // declared in the prototype fires inside them). The pre-fix logic
+        // marked all of them as `no_prototype`, suppressing the cross-line
+        // `fail` replay that installs `meta.function.identifier.haskell`.
+        let mut builder = SyntaxSetBuilder::new();
+        let syntax = SyntaxDefinition::load_from_str(
+            r#"
+                name: Test Prototype Push
+                scope: source.test
+                file_extensions: [test]
+                contexts:
+                  prototype:
+                    - include: push-source
+                  main:
+                    - include: code
+                  push-source:
+                    - match: 'p'
+                      push: pushed-body
+                  pushed-body:
+                    - meta_include_prototype: false
+                    - meta_scope: meta.pushed-body
+                    - match: 'q'
+                      pop: 1
+                    - include: code
+                  code:
+                    - match: 'a'
+                      push: var-name
+                  var-name:
+                    - match: 'b'
+                      push: var-name-end
+                  var-name-end:
+                    - match: 'c'
+                      pop: 2
+                "#,
+            true,
+            None,
+        )
+        .unwrap();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        // `prototype`, `push-source`, and `pushed-body` are reachable from the
+        // prototype before/at the Push boundary and stay out of the prototype.
+        // `main`, `code`, `var-name`, and `var-name-end` are reachable only
+        // through `pushed-body`'s `include: code` and must keep the prototype
+        // attached.
+        assert_prototype_only_on(
+            &["main", "code", "var-name", "var-name-end"],
+            &ss,
+            &ss.syntaxes()[0],
+        );
+
+        let rebuilt = ss.into_builder().build();
+        assert_prototype_only_on(
+            &["main", "code", "var-name", "var-name-end"],
+            &rebuilt,
+            &rebuilt.syntaxes()[0],
+        );
     }
 
     #[test]
@@ -2576,8 +2729,159 @@ mod tests {
         builder.add(syntax_using_proto);
         let ss = builder.build();
 
-        // Just verify it builds without errors and the syntax exists
-        assert!(ss.find_syntax_by_name("UsingProto").is_some());
+        let syntax = ss.find_syntax_by_name("UsingProto").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("#", &ss).expect("#[cfg(test)]").ops;
+        // The external `prototype`'s `#` rule must be reachable from the
+        // including context via `apply_prototype: true`.
+        let expected = (0, ScopeStackOp::Push(Scope::new("comment.proto").unwrap()));
+        assert_ops_contain(&ops, &expected);
+    }
+
+    #[test]
+    fn apply_prototype_prototype_wins_tie_over_target_main() {
+        // Both the target's `main` and its `prototype` match `|` at the same
+        // position. ST's `apply_prototype` semantics put the prototype ahead
+        // of the target, so the prototype's scope wins the tie.
+        let target = SyntaxDefinition::load_from_str(
+            r#"
+            name: Target
+            scope: source.target
+            file_extensions: [t]
+            contexts:
+              prototype:
+                - match: '\|'
+                  scope: proto.pipe
+              main:
+                - match: '\|'
+                  scope: target.bitor
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let outer = SyntaxDefinition::load_from_str(
+            r#"
+            name: Outer
+            scope: source.outer
+            file_extensions: [o]
+            contexts:
+              main:
+                - include: scope:source.target
+                  apply_prototype: true
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(target);
+        builder.add(outer);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Outer").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("|", &ss).expect("#[cfg(test)]").ops;
+        assert_ops_contain(
+            &ops,
+            &(0, ScopeStackOp::Push(Scope::new("proto.pipe").unwrap())),
+        );
+        assert!(
+            !ops.iter()
+                .any(|(_, op)| matches!(op, ScopeStackOp::Push(s) if s == &Scope::new("target.bitor").unwrap())),
+            "target main's `|` rule must not pre-empt the external prototype's `|` rule: {:?}",
+            ops,
+        );
+    }
+
+    #[test]
+    fn apply_prototype_respects_meta_include_prototype_false() {
+        // When the include target opts out of prototype inclusion, the
+        // external prototype must NOT be injected even with
+        // `apply_prototype: true` on the include.
+        let target = SyntaxDefinition::load_from_str(
+            r#"
+            name: Target
+            scope: source.target
+            file_extensions: [t]
+            contexts:
+              prototype:
+                - match: '\|'
+                  scope: proto.pipe
+              main:
+                - meta_include_prototype: false
+                - match: '\|'
+                  scope: target.bitor
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let outer = SyntaxDefinition::load_from_str(
+            r#"
+            name: Outer
+            scope: source.outer
+            file_extensions: [o]
+            contexts:
+              main:
+                - include: scope:source.target
+                  apply_prototype: true
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(target);
+        builder.add(outer);
+        let ss = builder.build();
+
+        let syntax = ss.find_syntax_by_name("Outer").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state.parse_line("|", &ss).expect("#[cfg(test)]").ops;
+        assert_ops_contain(
+            &ops,
+            &(0, ScopeStackOp::Push(Scope::new("target.bitor").unwrap())),
+        );
+        assert!(
+            !ops.iter()
+                .any(|(_, op)| matches!(op, ScopeStackOp::Push(s) if s == &Scope::new("proto.pipe").unwrap())),
+            "prototype must stay out when target's `meta_include_prototype: false`: {:?}",
+            ops,
+        );
+    }
+
+    #[test]
+    fn haml_pipe_continuation_wins_over_ruby_bitor() {
+        // Real-package regression guard for the fix: inside HAML attribute
+        // braces, a trailing `|` must scope as HAML's pipe-continuation
+        // (injected via Ruby-for-HAML's prototype under `apply_prototype`),
+        // not as Ruby's bitwise-or operator.
+        let ss = &*testdata::PACKAGES_SYN_SET;
+        let syntax = ss.find_syntax_by_name("HAML").unwrap();
+        let mut parse_state = ParseState::new(syntax);
+        let ops = parse_state
+            .parse_line("%p{:a => 1, |", ss)
+            .expect("#[cfg(test)]")
+            .ops;
+        let pipe_cont = Scope::new("punctuation.separator.continuation.haml").unwrap();
+        let ruby_bitor = Scope::new("keyword.operator.bitwise.ruby").unwrap();
+        assert!(
+            ops.iter()
+                .any(|(_, op)| matches!(op, ScopeStackOp::Push(s) if s == &pipe_cont)),
+            "expected punctuation.separator.continuation.haml push: {:?}",
+            ops,
+        );
+        assert!(
+            !ops.iter()
+                .any(|(_, op)| matches!(op, ScopeStackOp::Push(s) if s == &ruby_bitor)),
+            "Ruby bitwise-or must not win over HAML pipe-continuation: {:?}",
+            ops,
+        );
     }
 
     // =====================================================
@@ -3421,21 +3725,135 @@ mod tests {
             "should have own child_ctx"
         );
 
-        // Variables: ExtB's NUM should be present, ExtA's IDENT override should be present
-        // (ExtA overrides Base's IDENT, then ExtB doesn't override it, so ExtA's wins)
-        // Actually, since ExtB extends Base too, it inherits IDENT from Base.
-        // Merge order: ExtA first, then ExtB. ExtB's IDENT is Base's '[a-z]+'.
-        // So the final IDENT depends on merge order: ExtB overrides ExtA's IDENT.
-        // But ExtB doesn't define IDENT itself, it inherits from Base.
-        // After resolving ExtB, its variables include Base's IDENT='[a-z]+' and NUM='[0-9]+'.
-        // After resolving ExtA, its variables include Base+ExtA IDENT='[a-zA-Z]+'.
-        // Child merges: ExtA first (IDENT='[a-zA-Z]+'), then ExtB (IDENT='[a-z]+', NUM='[0-9]+').
-        // So final IDENT = '[a-z]+' (from ExtB, which overrides ExtA).
+        // Variables: ExtA owns its `IDENT='[a-zA-Z]+'`; ExtB only inherits
+        // `IDENT='[a-z]+'` from Base. Per the own-beats-inherited rule
+        // (see `extends_array_own_beats_inherited`), Child's IDENT comes
+        // from ExtA, not ExtB. ExtB owns NUM, so Child gets NUM too.
 
         // Verify the child syntax can be used without panicking
         let syntax = ss.find_syntax_by_name("Child").unwrap();
         let mut state = crate::parsing::ParseState::new(syntax);
         let _ops = state.parse_line("hello\n", &ss).unwrap();
+    }
+
+    /// When a child extends multiple parents and they disagree on a
+    /// shared context, a parent's *own* (directly-defined) version
+    /// must win over another parent's *inherited* version — regardless
+    /// of position in the extends list. Models the real-world
+    /// `Zsh (for Markdown)` extends `[Bash (for Markdown), Zsh]` case
+    /// where Bash (for Markdown) owns `main` and Zsh inherits a
+    /// different `main` from Bash.
+    fn build_own_beats_inherited_set(child_yaml: &str) -> SyntaxSet {
+        let base = SyntaxDefinition::load_from_str(
+            r#"
+            name: Base
+            scope: source.obi_base
+            file_extensions: [obi_base]
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.from_base
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+
+        let owner = SyntaxDefinition::load_from_str(
+            r#"
+            name: Owner
+            scope: source.obi_owner
+            extends: Base
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.from_owner
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+
+        let inheritor = SyntaxDefinition::load_from_str(
+            r#"
+            name: Inheritor
+            scope: source.obi_inheritor
+            extends: Base
+            contexts:
+              inheritor_extra:
+                - match: 'i'
+                  scope: keyword.inheritor
+            "#,
+            false,
+            None,
+        )
+        .unwrap();
+
+        let child = SyntaxDefinition::load_from_str(child_yaml, false, None).unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(owner);
+        builder.add(inheritor);
+        builder.add(child);
+        builder.build()
+    }
+
+    fn assert_own_beats_inherited(ss: &SyntaxSet) {
+        let child_ref = ss.find_syntax_by_name("Child").unwrap();
+        let mut state = crate::parsing::ParseState::new(child_ref);
+        let out = state.parse_line("x", ss).unwrap();
+        let expected = Scope::new("keyword.from_owner").unwrap();
+        let unexpected = Scope::new("keyword.from_base").unwrap();
+        let pushes: Vec<Scope> = out
+            .ops
+            .iter()
+            .filter_map(|(_, op)| match op {
+                crate::parsing::ScopeStackOp::Push(s) => Some(*s),
+                _ => None,
+            })
+            .collect();
+        let names: Vec<String> = pushes.iter().map(|s| s.build_string()).collect();
+        assert!(
+            pushes.contains(&expected),
+            "expected Owner's own main to win (Push keyword.from_owner); got {:?}",
+            names
+        );
+        assert!(
+            !pushes.contains(&unexpected),
+            "Inheritor's inherited main from Base must NOT win; got Push keyword.from_base in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn extends_array_own_beats_inherited() {
+        let ss = build_own_beats_inherited_set(
+            r#"
+            name: Child
+            scope: source.obi_child
+            file_extensions: [obi_child]
+            extends:
+              - Owner
+              - Inheritor
+            "#,
+        );
+        assert_own_beats_inherited(&ss);
+    }
+
+    #[test]
+    fn extends_array_own_beats_inherited_reversed() {
+        let ss = build_own_beats_inherited_set(
+            r#"
+            name: Child
+            scope: source.obi_child
+            file_extensions: [obi_child]
+            extends:
+              - Inheritor
+              - Owner
+            "#,
+        );
+        assert_own_beats_inherited(&ss);
     }
 
     #[cfg(feature = "yaml-load")]
