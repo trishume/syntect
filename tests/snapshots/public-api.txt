@@ -637,6 +637,34 @@ impl<'a> !core::marker::Sync for syntect::html::ClassedHTMLGenerator<'a>
 impl<'a> core::marker::Unpin for syntect::html::ClassedHTMLGenerator<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for syntect::html::ClassedHTMLGenerator<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for syntect::html::ClassedHTMLGenerator<'a>
+pub struct syntect::html::ClassedHTMLScopeRenderer
+impl syntect::html::ClassedHTMLScopeRenderer
+pub fn syntect::html::ClassedHTMLScopeRenderer::new(style: syntect::html::ClassStyle) -> Self
+impl syntect::rendering::ScopeMarkup for syntect::html::ClassedHTMLScopeRenderer
+pub fn syntect::html::ClassedHTMLScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], output: &mut alloc::string::String)
+pub fn syntect::html::ClassedHTMLScopeRenderer::end_scope(&mut self, output: &mut alloc::string::String)
+pub fn syntect::html::ClassedHTMLScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl core::marker::Freeze for syntect::html::ClassedHTMLScopeRenderer
+impl core::marker::Send for syntect::html::ClassedHTMLScopeRenderer
+impl core::marker::Sync for syntect::html::ClassedHTMLScopeRenderer
+impl core::marker::Unpin for syntect::html::ClassedHTMLScopeRenderer
+impl core::panic::unwind_safe::RefUnwindSafe for syntect::html::ClassedHTMLScopeRenderer
+impl core::panic::unwind_safe::UnwindSafe for syntect::html::ClassedHTMLScopeRenderer
+pub struct syntect::html::HtmlStyledOutput
+impl syntect::html::HtmlStyledOutput
+pub fn syntect::html::HtmlStyledOutput::default_bg(&self) -> syntect::highlighting::Color
+pub fn syntect::html::HtmlStyledOutput::new(default_bg: syntect::highlighting::Color) -> Self
+impl syntect::rendering::StyledOutput for syntect::html::HtmlStyledOutput
+pub fn syntect::html::HtmlStyledOutput::begin_style(&mut self, style: syntect::highlighting::Style, output: &mut alloc::string::String)
+pub fn syntect::html::HtmlStyledOutput::end_style(&mut self, output: &mut alloc::string::String)
+pub fn syntect::html::HtmlStyledOutput::should_merge(&self, prev: syntect::highlighting::Style, next: syntect::highlighting::Style, text: &str) -> bool
+pub fn syntect::html::HtmlStyledOutput::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl core::marker::Freeze for syntect::html::HtmlStyledOutput
+impl core::marker::Send for syntect::html::HtmlStyledOutput
+impl core::marker::Sync for syntect::html::HtmlStyledOutput
+impl core::marker::Unpin for syntect::html::HtmlStyledOutput
+impl core::panic::unwind_safe::RefUnwindSafe for syntect::html::HtmlStyledOutput
+impl core::panic::unwind_safe::UnwindSafe for syntect::html::HtmlStyledOutput
 pub fn syntect::html::append_highlighted_html_for_styled_line(v: &[(syntect::highlighting::Style, &str)], bg: syntect::html::IncludeBackground, s: &mut alloc::string::String) -> core::result::Result<(), syntect::Error>
 pub fn syntect::html::css_for_theme(theme: &syntect::highlighting::Theme) -> alloc::string::String
 pub fn syntect::html::css_for_theme_with_class_style(theme: &syntect::highlighting::Theme, style: syntect::html::ClassStyle) -> core::result::Result<alloc::string::String, syntect::Error>
@@ -647,6 +675,39 @@ pub fn syntect::html::start_highlighted_html_snippet(t: &syntect::highlighting::
 pub fn syntect::html::styled_line_to_highlighted_html(v: &[(syntect::highlighting::Style, &str)], bg: syntect::html::IncludeBackground) -> core::result::Result<alloc::string::String, syntect::Error>
 pub fn syntect::html::tokens_to_classed_html(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], style: syntect::html::ClassStyle) -> alloc::string::String
 pub fn syntect::html::tokens_to_classed_spans(line: &str, ops: &[(usize, syntect::parsing::ScopeStackOp)], style: syntect::html::ClassStyle) -> (alloc::string::String, isize)
+pub mod syntect::io
+pub struct syntect::io::HighlightedWriter<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write>
+impl<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write> syntect::io::HighlightedWriter<'a, R, W>
+pub fn syntect::io::HighlightedWriter<'a, R, W>::into_inner(self) -> std::io::error::Result<W>
+pub fn syntect::io::HighlightedWriter<'a, R, W>::renderer(&self) -> &R
+pub fn syntect::io::HighlightedWriter<'a, R, W>::renderer_mut(&mut self) -> &mut R
+pub fn syntect::io::HighlightedWriter<'a, R, W>::state(&self) -> (&syntect::parsing::ParseState, &syntect::parsing::ScopeStack)
+impl<'a> syntect::io::HighlightedWriter<'a>
+pub fn syntect::io::HighlightedWriter<'a>::from_markup<M: syntect::rendering::ScopeMarkup>(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, markup: M) -> syntect::io::HighlightedWriterBuilder<'a, MarkupAdapter<M>>
+pub fn syntect::io::HighlightedWriter<'a>::from_renderer<R: syntect::rendering::ScopeRenderer>(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, renderer: R) -> syntect::io::HighlightedWriterBuilder<'a, R>
+pub fn syntect::io::HighlightedWriter<'a>::from_themed<O: syntect::rendering::StyledOutput>(syntax_reference: &'a syntect::parsing::SyntaxReference, syntax_set: &'a syntect::parsing::SyntaxSet, theme: &'a syntect::highlighting::Theme, output: O) -> syntect::io::HighlightedWriterBuilder<'a, syntect::rendering::ThemedRenderer<'a, O>>
+impl<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write> core::ops::drop::Drop for syntect::io::HighlightedWriter<'a, R, W>
+pub fn syntect::io::HighlightedWriter<'a, R, W>::drop(&mut self)
+impl<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write> std::io::Write for syntect::io::HighlightedWriter<'a, R, W>
+pub fn syntect::io::HighlightedWriter<'a, R, W>::flush(&mut self) -> std::io::error::Result<()>
+pub fn syntect::io::HighlightedWriter<'a, R, W>::write(&mut self, buf: &[u8]) -> std::io::error::Result<usize>
+impl<'a, R, W> core::marker::Freeze for syntect::io::HighlightedWriter<'a, R, W> where R: core::marker::Freeze, W: core::marker::Freeze
+impl<'a, R, W> !core::marker::Send for syntect::io::HighlightedWriter<'a, R, W>
+impl<'a, R, W> !core::marker::Sync for syntect::io::HighlightedWriter<'a, R, W>
+impl<'a, R, W> core::marker::Unpin for syntect::io::HighlightedWriter<'a, R, W> where R: core::marker::Unpin, W: core::marker::Unpin
+impl<'a, R, W> core::panic::unwind_safe::RefUnwindSafe for syntect::io::HighlightedWriter<'a, R, W> where R: core::panic::unwind_safe::RefUnwindSafe, W: core::panic::unwind_safe::RefUnwindSafe
+impl<'a, R, W> core::panic::unwind_safe::UnwindSafe for syntect::io::HighlightedWriter<'a, R, W> where R: core::panic::unwind_safe::UnwindSafe, W: core::panic::unwind_safe::UnwindSafe
+pub struct syntect::io::HighlightedWriterBuilder<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write>
+impl<'a, R: syntect::rendering::ScopeRenderer, W: std::io::Write> syntect::io::HighlightedWriterBuilder<'a, R, W>
+pub fn syntect::io::HighlightedWriterBuilder<'a, R, W>::build(self) -> syntect::io::HighlightedWriter<'a, R, W>
+pub fn syntect::io::HighlightedWriterBuilder<'a, R, W>::with_output<W2: std::io::Write>(self, output: W2) -> syntect::io::HighlightedWriterBuilder<'a, R, W2>
+pub fn syntect::io::HighlightedWriterBuilder<'a, R, W>::with_state(self, parse_state: syntect::parsing::ParseState, scope_stack: syntect::parsing::ScopeStack) -> Self
+impl<'a, R, W> core::marker::Freeze for syntect::io::HighlightedWriterBuilder<'a, R, W> where R: core::marker::Freeze, W: core::marker::Freeze
+impl<'a, R, W> !core::marker::Send for syntect::io::HighlightedWriterBuilder<'a, R, W>
+impl<'a, R, W> !core::marker::Sync for syntect::io::HighlightedWriterBuilder<'a, R, W>
+impl<'a, R, W> core::marker::Unpin for syntect::io::HighlightedWriterBuilder<'a, R, W> where R: core::marker::Unpin, W: core::marker::Unpin
+impl<'a, R, W> core::panic::unwind_safe::RefUnwindSafe for syntect::io::HighlightedWriterBuilder<'a, R, W> where R: core::panic::unwind_safe::RefUnwindSafe, W: core::panic::unwind_safe::RefUnwindSafe
+impl<'a, R, W> core::panic::unwind_safe::UnwindSafe for syntect::io::HighlightedWriterBuilder<'a, R, W> where R: core::panic::unwind_safe::UnwindSafe, W: core::panic::unwind_safe::UnwindSafe
 pub mod syntect::parsing
 pub mod syntect::parsing::syntax_definition
 #[non_exhaustive] pub enum syntect::parsing::syntax_definition::ContextReference
@@ -694,7 +755,9 @@ pub syntect::parsing::syntax_definition::MatchOperation::Embed::pop_count: usize
 pub syntect::parsing::syntax_definition::MatchOperation::Fail(alloc::string::String)
 pub syntect::parsing::syntax_definition::MatchOperation::None
 pub syntect::parsing::syntax_definition::MatchOperation::Pop(usize)
-pub syntect::parsing::syntax_definition::MatchOperation::Push(alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>)
+pub syntect::parsing::syntax_definition::MatchOperation::Push
+pub syntect::parsing::syntax_definition::MatchOperation::Push::ctx_refs: alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>
+pub syntect::parsing::syntax_definition::MatchOperation::Push::pop_count: usize
 pub syntect::parsing::syntax_definition::MatchOperation::Set
 pub syntect::parsing::syntax_definition::MatchOperation::Set::ctx_refs: alloc::vec::Vec<syntect::parsing::syntax_definition::ContextReference>
 pub syntect::parsing::syntax_definition::MatchOperation::Set::pop_count: usize
@@ -961,6 +1024,27 @@ impl core::marker::Sync for syntect::parsing::ParseSyntaxError
 impl core::marker::Unpin for syntect::parsing::ParseSyntaxError
 impl !core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ParseSyntaxError
 impl !core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseSyntaxError
+#[non_exhaustive] pub enum syntect::parsing::ParseWarning
+pub syntect::parsing::ParseWarning::BranchPointExpired
+pub syntect::parsing::ParseWarning::BranchPointExpired::name: alloc::string::String
+pub syntect::parsing::ParseWarning::SpeculationBudgetExhausted
+pub syntect::parsing::ParseWarning::SpeculationBudgetExhausted::name: alloc::string::String
+impl core::clone::Clone for syntect::parsing::ParseWarning
+pub fn syntect::parsing::ParseWarning::clone(&self) -> syntect::parsing::ParseWarning
+impl core::cmp::Eq for syntect::parsing::ParseWarning
+impl core::cmp::PartialEq for syntect::parsing::ParseWarning
+pub fn syntect::parsing::ParseWarning::eq(&self, other: &syntect::parsing::ParseWarning) -> bool
+impl core::fmt::Debug for syntect::parsing::ParseWarning
+pub fn syntect::parsing::ParseWarning::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for syntect::parsing::ParseWarning
+pub fn syntect::parsing::ParseWarning::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for syntect::parsing::ParseWarning
+impl core::marker::Freeze for syntect::parsing::ParseWarning
+impl core::marker::Send for syntect::parsing::ParseWarning
+impl core::marker::Sync for syntect::parsing::ParseWarning
+impl core::marker::Unpin for syntect::parsing::ParseWarning
+impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ParseWarning
+impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseWarning
 #[non_exhaustive] pub enum syntect::parsing::ParsingError
 pub syntect::parsing::ParsingError::BadMatchIndex(usize)
 pub syntect::parsing::ParsingError::MissingContext(syntect::parsing::syntax_definition::ContextId)
@@ -1014,6 +1098,23 @@ impl core::marker::Sync for syntect::parsing::ScopeStackOp
 impl core::marker::Unpin for syntect::parsing::ScopeStackOp
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::ScopeStackOp
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ScopeStackOp
+pub struct syntect::parsing::CommittedParser
+impl syntect::parsing::CommittedParser
+pub fn syntect::parsing::CommittedParser::feed(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<alloc::vec::Vec<alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>>, syntect::parsing::ParsingError>
+pub fn syntect::parsing::CommittedParser::finish(&mut self) -> alloc::vec::Vec<alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>>
+pub fn syntect::parsing::CommittedParser::new(syntax: &syntect::parsing::SyntaxReference) -> syntect::parsing::CommittedParser
+pub fn syntect::parsing::CommittedParser::state(&self) -> &syntect::parsing::ParseState
+pub fn syntect::parsing::CommittedParser::take_warnings(&mut self) -> alloc::vec::Vec<syntect::parsing::ParseWarning>
+impl core::clone::Clone for syntect::parsing::CommittedParser
+pub fn syntect::parsing::CommittedParser::clone(&self) -> syntect::parsing::CommittedParser
+impl core::fmt::Debug for syntect::parsing::CommittedParser
+pub fn syntect::parsing::CommittedParser::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for syntect::parsing::CommittedParser
+impl !core::marker::Send for syntect::parsing::CommittedParser
+impl !core::marker::Sync for syntect::parsing::CommittedParser
+impl core::marker::Unpin for syntect::parsing::CommittedParser
+impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::CommittedParser
+impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::CommittedParser
 pub struct syntect::parsing::MatchPower(pub f64)
 impl core::clone::Clone for syntect::parsing::MatchPower
 pub fn syntect::parsing::MatchPower::clone(&self) -> syntect::parsing::MatchPower
@@ -1036,8 +1137,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::MatchPower
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::MatchPower
 pub struct syntect::parsing::ParseLineOutput
 pub syntect::parsing::ParseLineOutput::ops: alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>
-pub syntect::parsing::ParseLineOutput::replayed: alloc::vec::Vec<alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>>
-pub syntect::parsing::ParseLineOutput::warnings: alloc::vec::Vec<alloc::string::String>
+pub syntect::parsing::ParseLineOutput::revised: core::option::Option<alloc::vec::Vec<alloc::vec::Vec<(usize, syntect::parsing::ScopeStackOp)>>>
+pub syntect::parsing::ParseLineOutput::warnings: alloc::vec::Vec<syntect::parsing::ParseWarning>
 impl core::clone::Clone for syntect::parsing::ParseLineOutput
 pub fn syntect::parsing::ParseLineOutput::clone(&self) -> syntect::parsing::ParseLineOutput
 impl core::default::Default for syntect::parsing::ParseLineOutput
@@ -1053,8 +1154,10 @@ impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseLineOutput
 pub struct syntect::parsing::ParseState
 impl syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::is_speculative(&self) -> bool
-pub fn syntect::parsing::ParseState::new(syntax: &syntect::parsing::SyntaxReference) -> syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::parse_line(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<syntect::parsing::ParseLineOutput, syntect::parsing::ParsingError>
+pub fn syntect::parsing::ParseState::speculative_lines(&self) -> usize
+impl syntect::parsing::ParseState
+pub fn syntect::parsing::ParseState::new(syntax: &syntect::parsing::SyntaxReference) -> syntect::parsing::ParseState
 impl core::clone::Clone for syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::clone(&self) -> syntect::parsing::ParseState
 impl core::cmp::Eq for syntect::parsing::ParseState
@@ -1121,6 +1224,7 @@ pub fn syntect::parsing::Scope::is_empty(self) -> bool
 pub fn syntect::parsing::Scope::is_prefix_of(self, s: syntect::parsing::Scope) -> bool
 pub fn syntect::parsing::Scope::len(self) -> u32
 pub fn syntect::parsing::Scope::new(s: &str) -> core::result::Result<syntect::parsing::Scope, syntect::parsing::ParseScopeError>
+pub fn syntect::parsing::Scope::with_atom_strs<F, R>(&self, f: F) -> R where F: core::ops::function::FnOnce(&[&str]) -> R
 impl core::clone::Clone for syntect::parsing::Scope
 pub fn syntect::parsing::Scope::clone(&self) -> syntect::parsing::Scope
 impl core::cmp::Eq for syntect::parsing::Scope
@@ -1313,7 +1417,81 @@ impl core::marker::Unpin for syntect::parsing::SyntaxSetBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for syntect::parsing::SyntaxSetBuilder
 impl core::panic::unwind_safe::UnwindSafe for syntect::parsing::SyntaxSetBuilder
 pub const syntect::parsing::ATOM_LEN_BITS: u16
-pub static syntect::parsing::SCOPE_REPO: std::sync::lazy_lock::LazyLock<std::sync::poison::mutex::Mutex<syntect::parsing::ScopeRepository>>
+pub mod syntect::rendering
+pub enum syntect::rendering::AnsiStyledOutput
+pub syntect::rendering::AnsiStyledOutput::Opaque
+pub syntect::rendering::AnsiStyledOutput::Transparent
+impl core::clone::Clone for syntect::rendering::AnsiStyledOutput
+pub fn syntect::rendering::AnsiStyledOutput::clone(&self) -> syntect::rendering::AnsiStyledOutput
+impl core::cmp::Eq for syntect::rendering::AnsiStyledOutput
+impl core::cmp::PartialEq for syntect::rendering::AnsiStyledOutput
+pub fn syntect::rendering::AnsiStyledOutput::eq(&self, other: &syntect::rendering::AnsiStyledOutput) -> bool
+impl core::fmt::Debug for syntect::rendering::AnsiStyledOutput
+pub fn syntect::rendering::AnsiStyledOutput::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntect::rendering::AnsiStyledOutput
+impl core::marker::StructuralPartialEq for syntect::rendering::AnsiStyledOutput
+impl syntect::rendering::StyledOutput for syntect::rendering::AnsiStyledOutput
+pub fn syntect::rendering::AnsiStyledOutput::begin_style(&mut self, style: syntect::highlighting::Style, output: &mut alloc::string::String)
+pub fn syntect::rendering::AnsiStyledOutput::end_style(&mut self, _output: &mut alloc::string::String)
+pub fn syntect::rendering::AnsiStyledOutput::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl core::marker::Freeze for syntect::rendering::AnsiStyledOutput
+impl core::marker::Send for syntect::rendering::AnsiStyledOutput
+impl core::marker::Sync for syntect::rendering::AnsiStyledOutput
+impl core::marker::Unpin for syntect::rendering::AnsiStyledOutput
+impl core::panic::unwind_safe::RefUnwindSafe for syntect::rendering::AnsiStyledOutput
+impl core::panic::unwind_safe::UnwindSafe for syntect::rendering::AnsiStyledOutput
+pub struct syntect::rendering::ThemedRenderer<'a, O: syntect::rendering::StyledOutput>
+impl<'a, O: syntect::rendering::StyledOutput> syntect::rendering::ThemedRenderer<'a, O>
+pub fn syntect::rendering::ThemedRenderer<'a, O>::into_output(self) -> O
+pub fn syntect::rendering::ThemedRenderer<'a, O>::new(theme: &'a syntect::highlighting::Theme, output: O) -> Self
+pub fn syntect::rendering::ThemedRenderer<'a, O>::output(&self) -> &O
+pub fn syntect::rendering::ThemedRenderer<'a, O>::output_mut(&mut self) -> &mut O
+impl<'a, O: syntect::rendering::StyledOutput> syntect::rendering::ScopeRenderer for syntect::rendering::ThemedRenderer<'a, O>
+pub fn syntect::rendering::ThemedRenderer<'a, O>::begin_scope(&mut self, _atom_strs: &[&str], _scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String) -> bool
+pub fn syntect::rendering::ThemedRenderer<'a, O>::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
+pub fn syntect::rendering::ThemedRenderer<'a, O>::end_scope(&mut self, _output: &mut alloc::string::String)
+pub fn syntect::rendering::ThemedRenderer<'a, O>::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl<'a, O> core::marker::Freeze for syntect::rendering::ThemedRenderer<'a, O> where O: core::marker::Freeze
+impl<'a, O> core::marker::Send for syntect::rendering::ThemedRenderer<'a, O> where O: core::marker::Send
+impl<'a, O> core::marker::Sync for syntect::rendering::ThemedRenderer<'a, O> where O: core::marker::Sync
+impl<'a, O> core::marker::Unpin for syntect::rendering::ThemedRenderer<'a, O> where O: core::marker::Unpin
+impl<'a, O> core::panic::unwind_safe::RefUnwindSafe for syntect::rendering::ThemedRenderer<'a, O> where O: core::panic::unwind_safe::RefUnwindSafe
+impl<'a, O> core::panic::unwind_safe::UnwindSafe for syntect::rendering::ThemedRenderer<'a, O> where O: core::panic::unwind_safe::UnwindSafe
+pub trait syntect::rendering::ScopeMarkup
+pub fn syntect::rendering::ScopeMarkup::begin_line(&mut self, _line_index: usize, _output: &mut alloc::string::String)
+pub fn syntect::rendering::ScopeMarkup::begin_scope(&mut self, atom_strs: &[&str], output: &mut alloc::string::String)
+pub fn syntect::rendering::ScopeMarkup::end_line(&mut self, _line_index: usize, _output: &mut alloc::string::String)
+pub fn syntect::rendering::ScopeMarkup::end_scope(&mut self, output: &mut alloc::string::String)
+pub fn syntect::rendering::ScopeMarkup::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl syntect::rendering::ScopeMarkup for syntect::html::ClassedHTMLScopeRenderer
+pub fn syntect::html::ClassedHTMLScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], output: &mut alloc::string::String)
+pub fn syntect::html::ClassedHTMLScopeRenderer::end_scope(&mut self, output: &mut alloc::string::String)
+pub fn syntect::html::ClassedHTMLScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+pub trait syntect::rendering::ScopeRenderer
+pub fn syntect::rendering::ScopeRenderer::begin_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String)
+pub fn syntect::rendering::ScopeRenderer::begin_scope(&mut self, atom_strs: &[&str], scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String) -> bool
+pub fn syntect::rendering::ScopeRenderer::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String)
+pub fn syntect::rendering::ScopeRenderer::end_scope(&mut self, output: &mut alloc::string::String)
+pub fn syntect::rendering::ScopeRenderer::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl<'a, O: syntect::rendering::StyledOutput> syntect::rendering::ScopeRenderer for syntect::rendering::ThemedRenderer<'a, O>
+pub fn syntect::rendering::ThemedRenderer<'a, O>::begin_scope(&mut self, _atom_strs: &[&str], _scope: syntect::parsing::Scope, scope_stack: &[syntect::parsing::Scope], _output: &mut alloc::string::String) -> bool
+pub fn syntect::rendering::ThemedRenderer<'a, O>::end_line(&mut self, _line_index: usize, _scope_stack: &[syntect::parsing::Scope], output: &mut alloc::string::String)
+pub fn syntect::rendering::ThemedRenderer<'a, O>::end_scope(&mut self, _output: &mut alloc::string::String)
+pub fn syntect::rendering::ThemedRenderer<'a, O>::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+pub trait syntect::rendering::StyledOutput
+pub fn syntect::rendering::StyledOutput::begin_style(&mut self, style: syntect::highlighting::Style, output: &mut alloc::string::String)
+pub fn syntect::rendering::StyledOutput::end_style(&mut self, output: &mut alloc::string::String)
+pub fn syntect::rendering::StyledOutput::should_merge(&self, prev: syntect::highlighting::Style, next: syntect::highlighting::Style, _text: &str) -> bool
+pub fn syntect::rendering::StyledOutput::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl syntect::rendering::StyledOutput for syntect::html::HtmlStyledOutput
+pub fn syntect::html::HtmlStyledOutput::begin_style(&mut self, style: syntect::highlighting::Style, output: &mut alloc::string::String)
+pub fn syntect::html::HtmlStyledOutput::end_style(&mut self, output: &mut alloc::string::String)
+pub fn syntect::html::HtmlStyledOutput::should_merge(&self, prev: syntect::highlighting::Style, next: syntect::highlighting::Style, text: &str) -> bool
+pub fn syntect::html::HtmlStyledOutput::write_text(&mut self, text: &str, output: &mut alloc::string::String)
+impl syntect::rendering::StyledOutput for syntect::rendering::AnsiStyledOutput
+pub fn syntect::rendering::AnsiStyledOutput::begin_style(&mut self, style: syntect::highlighting::Style, output: &mut alloc::string::String)
+pub fn syntect::rendering::AnsiStyledOutput::end_style(&mut self, _output: &mut alloc::string::String)
+pub fn syntect::rendering::AnsiStyledOutput::write_text(&mut self, text: &str, output: &mut alloc::string::String)
 pub mod syntect::util
 pub struct syntect::util::LinesWithEndings<'a>
 impl<'a> syntect::util::LinesWithEndings<'a>
