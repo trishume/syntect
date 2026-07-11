@@ -25,25 +25,10 @@ pub enum ScopeError {
 /// [`MatchPower`]: struct.MatchPower.html
 pub const ATOM_LEN_BITS: u16 = 3;
 
-/// The global scope repo, exposed in case you want to minimize locking and unlocking.
-///
-/// Ths shouldn't be necessary for you to use. See the [`ScopeRepository`] docs.
-///
-/// [`ScopeRepository`]: struct.ScopeRepository.html
-#[deprecated(
-    since = "5.3.0",
-    note = "\
-    Deprecated in anticipation of removal in the next semver-breaking release under the \
-    justification that it's incredibly niche functionality to expose. If you rely on this \
-    functionality then please express your particular use-case in the github issue: \
-    https://github.com/trishume/syntect/issues/575\
-    "
-)]
-pub static SCOPE_REPO: LazyLock<Mutex<ScopeRepository>> =
+pub(crate) static SCOPE_REPO: LazyLock<Mutex<ScopeRepository>> =
     LazyLock::new(|| Mutex::new(ScopeRepository::new()));
 
 pub(crate) fn lock_global_scope_repo() -> MutexGuard<'static, ScopeRepository> {
-    #[allow(deprecated)]
     SCOPE_REPO.lock().unwrap()
 }
 
@@ -83,15 +68,15 @@ pub enum ParseScopeError {
 }
 
 /// The structure used to keep track of the mapping between scope atom numbers and their string
-/// names
+/// names.
 ///
-/// It is only exposed in case you want to lock [`SCOPE_REPO`] and then allocate a bunch of scopes
-/// at once without thrashing the lock. In general, you should just use [`Scope::new()`].
+/// In general, you should just use [`Scope::new()`] to create scopes and
+/// [`Scope::with_atom_strs()`] to read their atom strings.
 ///
 /// Only [`Scope`]s created by the same repository have valid comparison results.
 ///
-/// [`SCOPE_REPO`]: struct.SCOPE_REPO.html
 /// [`Scope::new()`]: struct.Scope.html#method.new
+/// [`Scope::with_atom_strs()`]: struct.Scope.html#method.with_atom_strs
 /// [`Scope`]: struct.Scope.html
 #[derive(Debug)]
 pub struct ScopeRepository {
@@ -182,9 +167,19 @@ impl ScopeRepository {
         if s.is_empty() {
             return Ok(Scope { a: 0, b: 0 });
         }
+        // Filter empty atoms so consecutive dots collapse — `variable.other..haskell`
+        // matches the same scope as `variable.other.haskell`. ST's selector engine
+        // treats them as equivalent (both score 48 against
+        // `source.haskell variable.other.haskell` via `sublime.score_selector`);
+        // syntect's previous implementation packed `""` as its own atom index,
+        // producing a 4-atom scope that didn't prefix-match the 3-atom target.
+        // Symmetric: applies to scope construction (`scope: foo..bar` typo) and
+        // to selector parsing (`syntax_test_haskell.hs:2348` line `:: a -> Bool`
+        // has `--         ^ variable.other..haskell` and ST passes it).
         let parts: Vec<usize> = s
             .trim_end_matches('.')
             .split('.')
+            .filter(|a| !a.is_empty())
             .map(|a| self.atom_to_index(a))
             .collect();
         // The internal representation supports at most 8 atoms (packed into
@@ -284,6 +279,35 @@ impl Scope {
     pub fn build_string(self) -> String {
         let repo = lock_global_scope_repo();
         repo.to_string(self)
+    }
+
+    /// Calls a closure with the atom strings of this scope.
+    ///
+    /// This locks the global scope repository once and resolves all atom strings,
+    /// then passes them as a slice to the closure. This is more efficient than
+    /// calling [`build_string`] when you need individual atom access, and avoids
+    /// exposing the scope repository directly.
+    ///
+    /// [`build_string`]: #method.build_string
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use syntect::parsing::Scope;
+    /// let scope = Scope::new("keyword.operator.arithmetic").unwrap();
+    /// let atoms: Vec<String> = scope.with_atom_strs(|atoms| {
+    ///     atoms.iter().map(|s| s.to_string()).collect()
+    /// });
+    /// assert_eq!(atoms, vec!["keyword", "operator", "arithmetic"]);
+    /// ```
+    pub fn with_atom_strs<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&[&str]) -> R,
+    {
+        let repo = lock_global_scope_repo();
+        let len = self.len() as usize;
+        let atoms: Vec<&str> = (0..len).map(|i| repo.atom_str(self.atom_at(i))).collect();
+        f(&atoms)
     }
 
     /// Tests if this scope is a prefix of another scope. Note that the empty scope is always a
@@ -631,6 +655,20 @@ mod tests {
             repo.build("comment.line.").unwrap(),
             repo.build("comment.line").unwrap()
         );
+        // Empty atoms (consecutive dots) collapse, mirroring ST's selector
+        // engine where `score_selector('variable.other..haskell',
+        // 'source.haskell variable.other.haskell')` returns 48 — the same as
+        // for the single-dot form. Without the collapse, syntect packed `""`
+        // as its own atom, producing a 4-atom scope that didn't prefix-match
+        // the 3-atom target. Surfaced via `syntax_test_haskell.hs:2348` line
+        // `:: a -> Bool` whose `--         ^ variable.other..haskell`
+        // assertion ST passes against the same scope syntect produces.
+        assert_eq!(
+            repo.build("variable.other..haskell").unwrap(),
+            repo.build("variable.other.haskell").unwrap()
+        );
+        assert_eq!(repo.build("a..b").unwrap(), repo.build("a.b").unwrap());
+        assert_eq!(repo.build("a...b").unwrap(), repo.build("a.b").unwrap());
     }
 
     #[test]
@@ -725,5 +763,58 @@ mod tests {
                 .does_match(ScopeStack::from_str("a.b c.d e.f.g").unwrap().as_slice()),
             None
         );
+        // Selector with consecutive dots collapses to the equivalent
+        // single-dot form before matching: ST's `score_selector` returns the
+        // same MatchPower for both, and so should syntect.
+        assert_eq!(
+            ScopeStack::from_str("variable.other..haskell")
+                .unwrap()
+                .does_match(
+                    ScopeStack::from_str("source.haskell variable.other.haskell")
+                        .unwrap()
+                        .as_slice()
+                ),
+            ScopeStack::from_str("variable.other.haskell")
+                .unwrap()
+                .does_match(
+                    ScopeStack::from_str("source.haskell variable.other.haskell")
+                        .unwrap()
+                        .as_slice()
+                )
+        );
+    }
+
+    #[test]
+    fn with_atom_strs_passes_atoms_in_order_with_correct_length() {
+        // Pin the exact length and order of the slice handed to the closure.
+        // Catches mutants that drop atoms, reorder them, return an empty
+        // vector, or replace the closure return with `Default::default()`.
+        let scope = Scope::new("keyword.operator.arithmetic").unwrap();
+
+        let len: usize = scope.with_atom_strs(|atoms| atoms.len());
+        assert_eq!(len, 3);
+
+        let atoms: Vec<String> =
+            scope.with_atom_strs(|atoms| atoms.iter().map(|s| (*s).to_string()).collect());
+        assert_eq!(atoms, vec!["keyword", "operator", "arithmetic"]);
+
+        // Closure-return identity: the value returned by `with_atom_strs` is
+        // the value the closure returned (catches `Default::default()`
+        // substitution mutants).
+        let marker: u32 = scope.with_atom_strs(|_| 0xC0FFEE);
+        assert_eq!(marker, 0xC0FFEE);
+    }
+
+    #[test]
+    fn with_atom_strs_handles_empty_and_single_atom_scopes() {
+        let empty = Scope::new("").unwrap();
+        let empty_atoms: Vec<String> =
+            empty.with_atom_strs(|atoms| atoms.iter().map(|s| (*s).to_string()).collect());
+        assert!(empty_atoms.is_empty());
+
+        let single = Scope::new("source").unwrap();
+        let single_atoms: Vec<String> =
+            single.with_atom_strs(|atoms| atoms.iter().map(|s| (*s).to_string()).collect());
+        assert_eq!(single_atoms, vec!["source"]);
     }
 }

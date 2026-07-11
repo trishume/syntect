@@ -1,32 +1,68 @@
 //! Rendering highlighted code as HTML+CSS
-use crate::easy::{HighlightFile, HighlightLines};
 use crate::escape::Escape;
 use crate::highlighting::{Color, FontStyle, Style, Theme};
+use crate::io::HighlightedWriter;
 use crate::parsing::{
-    lock_global_scope_repo, BasicScopeStackOp, ParseState, Scope, ScopeStack, ScopeStackOp,
-    SyntaxReference, SyntaxSet,
+    lock_global_scope_repo, Scope, ScopeRepository, ScopeStack, ScopeStackOp, SyntaxReference,
+    SyntaxSet,
 };
-use crate::util::LinesWithEndings;
+use crate::rendering::{render_line, MarkupAdapter, ScopeMarkup, StyledOutput};
 use crate::Error;
 use std::fmt::Write;
 
-use std::io::BufRead;
+use std::io::Write as IoWrite;
 use std::path::Path;
 
-/// Output HTML for a line of code with `<span>` elements using class names
+/// An HTML renderer that produces `<span class="...">` elements with
+/// CSS class names derived from scope atoms.
+pub struct ClassedHTMLScopeRenderer {
+    style: ClassStyle,
+}
+
+impl ClassedHTMLScopeRenderer {
+    pub fn new(style: ClassStyle) -> Self {
+        Self { style }
+    }
+}
+
+impl ScopeMarkup for ClassedHTMLScopeRenderer {
+    fn begin_scope(&mut self, atom_strs: &[&str], output: &mut String) {
+        output.push_str("<span class=\"");
+        for (i, atom) in atom_strs.iter().enumerate() {
+            if i != 0 {
+                output.push(' ');
+            }
+            if let ClassStyle::SpacedPrefixed { prefix } = self.style {
+                output.push_str(prefix);
+            }
+            output.push_str(atom);
+        }
+        output.push_str("\">");
+    }
+
+    fn end_scope(&mut self, output: &mut String) {
+        output.push_str("</span>");
+    }
+
+    fn write_text(&mut self, text: &str, output: &mut String) {
+        write!(output, "{}", Escape(text)).expect("writing to a String never fails");
+    }
+}
+
+/// HTML-specific convenience wrapper around [`HighlightedWriter`].
 ///
-/// Because this has to keep track of open and closed `<span>` tags, it is a `struct` with
-/// additional state.
-///
-/// There is a [`finalize()`] method that must be called in the end in order
-/// to close all open `<span>` tags.
+/// Uses [`ClassedHTMLScopeRenderer`] to produce `<span class="...">` output with
+/// CSS class names derived from scope atoms.
 ///
 /// Note that because CSS classes have slightly different matching semantics
 /// than Textmate themes, this may produce somewhat less accurate
 /// highlighting than the other highlighting functions which directly use
 /// inline colors as opposed to classes and a stylesheet.
 ///
-/// [`finalize()`]: #method.finalize
+/// There is a [`finalize()`] method that must be called in the end in order
+/// to close all open `<span>` tags.
+///
+/// [`finalize()`]: ClassedHTMLGenerator::finalize
 ///
 /// # Example
 ///
@@ -50,12 +86,7 @@ use std::path::Path;
 /// let output_html = html_generator.finalize();
 /// ```
 pub struct ClassedHTMLGenerator<'a> {
-    syntax_set: &'a SyntaxSet,
-    open_spans: isize,
-    parse_state: ParseState,
-    scope_stack: ScopeStack,
-    html: String,
-    style: ClassStyle,
+    inner: HighlightedWriter<'a, MarkupAdapter<ClassedHTMLScopeRenderer>>,
 }
 
 impl<'a> ClassedHTMLGenerator<'a> {
@@ -72,17 +103,13 @@ impl<'a> ClassedHTMLGenerator<'a> {
         syntax_set: &'a SyntaxSet,
         style: ClassStyle,
     ) -> ClassedHTMLGenerator<'a> {
-        let parse_state = ParseState::new(syntax_reference);
-        let open_spans = 0;
-        let html = String::new();
-        let scope_stack = ScopeStack::new();
         ClassedHTMLGenerator {
-            syntax_set,
-            open_spans,
-            parse_state,
-            scope_stack,
-            html,
-            style,
+            inner: HighlightedWriter::from_markup(
+                syntax_reference,
+                syntax_set,
+                ClassedHTMLScopeRenderer::new(style),
+            )
+            .build(),
         }
     }
 
@@ -91,16 +118,7 @@ impl<'a> ClassedHTMLGenerator<'a> {
     /// *Note:* This function requires `line` to include a newline at the end and
     /// also use of the `load_defaults_newlines` version of the syntaxes.
     pub fn parse_html_for_line_which_includes_newline(&mut self, line: &str) -> Result<(), Error> {
-        let parsed_line = self.parse_state.parse_line(line, self.syntax_set)?.ops;
-        let (formatted_line, delta) = line_tokens_to_classed_spans(
-            line,
-            parsed_line.as_slice(),
-            self.style,
-            &mut self.scope_stack,
-        )?;
-        self.open_spans += delta;
-        self.html.push_str(formatted_line.as_str());
-
+        self.inner.write_all(line.as_bytes())?;
         Ok(())
     }
 
@@ -118,18 +136,23 @@ impl<'a> ClassedHTMLGenerator<'a> {
         note = "Please use `parse_html_for_line_which_includes_newline` instead"
     )]
     pub fn parse_html_for_line(&mut self, line: &str) {
-        self.parse_html_for_line_which_includes_newline(line)
+        // The deprecated quirk: append a newline so the renderer treats the
+        // input as a complete line and the output ends with `\n`.
+        let mut owned = String::with_capacity(line.len() + 1);
+        owned.push_str(line);
+        owned.push('\n');
+        self.inner
+            .write_all(owned.as_bytes())
             .expect("Please use `parse_html_for_line_which_includes_newline` instead");
-        // retain newline
-        self.html.push('\n');
     }
 
-    /// Close all open `<span>` tags and return the finished HTML string
-    pub fn finalize(mut self) -> String {
-        for _ in 0..self.open_spans {
-            self.html.push_str("</span>");
-        }
-        self.html
+    /// Close any remaining open `<span>` tags and return the finished HTML.
+    pub fn finalize(self) -> String {
+        let bytes = self
+            .inner
+            .into_inner()
+            .expect("renderer produces valid UTF-8");
+        String::from_utf8(bytes).expect("renderer produces valid UTF-8")
     }
 }
 
@@ -177,11 +200,12 @@ pub fn css_for_theme_with_class_style(theme: &Theme, style: ClassStyle) -> Resul
     }
     css.push_str("}\n\n");
 
+    let repo = lock_global_scope_repo();
     for i in &theme.scopes {
         for scope_selector in &i.scope.selectors {
             let scopes = scope_selector.extract_scopes();
             for k in &scopes {
-                scope_to_selector(&mut css, *k, style);
+                scope_to_selector(&mut css, *k, style, &repo);
                 css.push(' '); // join multiple scopes
             }
             css.pop(); // remove trailing space
@@ -241,26 +265,7 @@ pub enum ClassStyle {
     SpacedPrefixed { prefix: &'static str },
 }
 
-fn scope_to_classes(s: &mut String, scope: Scope, style: ClassStyle) {
-    let repo = lock_global_scope_repo();
-    for i in 0..(scope.len()) {
-        let atom = scope.atom_at(i as usize);
-        let atom_s = repo.atom_str(atom);
-        if i != 0 {
-            s.push(' ')
-        }
-        match style {
-            ClassStyle::Spaced => {}
-            ClassStyle::SpacedPrefixed { prefix } => {
-                s.push_str(prefix);
-            }
-        }
-        s.push_str(atom_s);
-    }
-}
-
-fn scope_to_selector(s: &mut String, scope: Scope, style: ClassStyle) {
-    let repo = lock_global_scope_repo();
+fn scope_to_selector(s: &mut String, scope: Scope, style: ClassStyle, repo: &ScopeRepository) {
     for i in 0..(scope.len()) {
         let atom = scope.atom_at(i as usize);
         let atom_s = repo.atom_str(atom);
@@ -294,9 +299,117 @@ fn escape_css_identifier(identifier: &str) -> String {
     )
 }
 
-/// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
-/// and `HighlightLines` from `syntect::easy` to create a full highlighted HTML snippet for
-/// a string (which can contain many lines).
+/// Output HTML for a line of code with `<span>` elements
+/// specifying classes for each token. The span elements are nested
+/// like the scope stack and the scopes are mapped to classes based
+/// on the `ClassStyle` (see it's docs).
+///
+/// **Deprecated.** This function cannot correctly handle cross-line
+/// branch-point failures: when the parser retroactively replays a span of
+/// previously-emitted ops, the rendered output for those lines has already
+/// been written to the caller and cannot be retracted. Use
+/// [`ClassedHTMLGenerator`] (or [`crate::io::HighlightedWriter::from_markup`]
+/// directly) instead — both buffer rendered output during speculative
+/// parsing and replay corrected ops once speculation resolves.
+///
+/// Returns the HTML string and the number of `<span>` tags opened
+/// (negative for closed). So that you can emit the correct number of closing
+/// tags at the end.
+#[deprecated(
+    since = "6.0.0",
+    note = "Cannot correctly handle cross-line branch-point failures. Use `ClassedHTMLGenerator` or `HighlightedWriter::from_markup` instead, which buffer rendered output during speculative parsing and replay corrected ops."
+)]
+pub fn line_tokens_to_classed_spans(
+    line: &str,
+    ops: &[(usize, ScopeStackOp)],
+    style: ClassStyle,
+    stack: &mut ScopeStack,
+) -> Result<(String, isize), Error> {
+    let mut renderer = MarkupAdapter::new(ClassedHTMLScopeRenderer::new(style));
+    render_line(line, ops, stack, &mut renderer, 0)
+}
+
+// ---------------------------------------------------------------------------
+// HtmlStyledOutput — inline-styled HTML via StyledOutput
+// ---------------------------------------------------------------------------
+
+/// A [`StyledOutput`] that produces `<span style="...">` elements with
+/// inline CSS resolved from a theme.
+///
+/// Wrap with [`crate::rendering::ThemedRenderer`] to use it as a
+/// [`crate::rendering::ScopeRenderer`], or pass directly to
+/// [`HighlightedWriter::from_themed`].
+///
+/// `default_bg` is the background colour of the containing element; the
+/// `background-color` CSS property is only emitted when the token's
+/// background differs from this default.
+///
+/// Adjacent text tokens with the same resolved [`Style`] are automatically
+/// merged into a single `<span>`. Whitespace-only tokens additionally fold
+/// into the previous span when their backgrounds match, even when the
+/// foreground differs — whitespace doesn't reveal a foreground difference.
+pub struct HtmlStyledOutput {
+    default_bg: Color,
+}
+
+impl HtmlStyledOutput {
+    /// Create a new inline HTML emitter.
+    ///
+    /// `default_bg` is the background colour of the containing element.
+    pub fn new(default_bg: Color) -> Self {
+        Self { default_bg }
+    }
+
+    /// Returns the configured default background colour.
+    pub fn default_bg(&self) -> Color {
+        self.default_bg
+    }
+}
+
+impl StyledOutput for HtmlStyledOutput {
+    fn begin_style(&mut self, style: Style, output: &mut String) {
+        output.push_str("<span style=\"");
+        if style.background != self.default_bg {
+            output.push_str("background-color:");
+            write_css_color(output, style.background);
+            output.push(';');
+        }
+        if style.font_style.contains(FontStyle::UNDERLINE) {
+            output.push_str("text-decoration:underline;");
+        }
+        if style.font_style.contains(FontStyle::BOLD) {
+            output.push_str("font-weight:bold;");
+        }
+        if style.font_style.contains(FontStyle::ITALIC) {
+            output.push_str("font-style:italic;");
+        }
+        output.push_str("color:");
+        write_css_color(output, style.foreground);
+        output.push_str(";\">");
+    }
+
+    fn end_style(&mut self, output: &mut String) {
+        output.push_str("</span>");
+    }
+
+    fn write_text(&mut self, text: &str, output: &mut String) {
+        write!(output, "{}", Escape(text)).expect("writing to a String never fails");
+    }
+
+    fn should_merge(&self, prev: Style, next: Style, text: &str) -> bool {
+        // Merge into the previous span when styles match exactly, or when
+        // the text is only whitespace and the background colours agree.
+        // Whitespace reveals no foreground difference, so collapsing the
+        // boundary is safe and produces smaller output.
+        prev == next || (prev.background == next.background && text.trim().is_empty())
+    }
+}
+
+/// Convenience method that creates a full highlighted HTML snippet for
+/// a string (which can contain many lines), using inline `style` attributes.
+///
+/// Uses [`HighlightedWriter`] with [`HtmlStyledOutput`] internally,
+/// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
@@ -306,24 +419,20 @@ pub fn highlighted_html_for_string(
     syntax: &SyntaxReference,
     theme: &Theme,
 ) -> Result<String, Error> {
-    let mut highlighter = HighlightLines::new(syntax, theme);
     let (mut output, bg) = start_highlighted_html_snippet(theme);
-
-    for line in LinesWithEndings::from(s) {
-        let regions = highlighter.highlight_line(line, ss)?;
-        append_highlighted_html_for_styled_line(
-            &regions[..],
-            IncludeBackground::IfDifferent(bg),
-            &mut output,
-        )?;
-    }
+    let mut w =
+        HighlightedWriter::from_themed(syntax, ss, theme, HtmlStyledOutput::new(bg)).build();
+    w.write_all(s.as_bytes())?;
+    output.push_str(&String::from_utf8(w.into_inner()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
     Ok(output)
 }
 
-/// Convenience method that combines `start_highlighted_html_snippet`, `styled_line_to_highlighted_html`
-/// and `HighlightFile` from `syntect::easy` to create a full highlighted HTML snippet for
-/// a file.
+/// Convenience method that creates a full highlighted HTML snippet for
+/// a file, using inline `style` attributes.
+///
+/// Uses [`HighlightedWriter`] with [`HtmlStyledOutput`] internally,
+/// which correctly handles branch-point backtracking.
 ///
 /// Note that the `syntax` passed in must be from a `SyntaxSet` compiled for newline characters.
 /// This is easy to get with `SyntaxSet::load_defaults_newlines()`. (Note: this was different before v3.0)
@@ -332,114 +441,48 @@ pub fn highlighted_html_for_file<P: AsRef<Path>>(
     ss: &SyntaxSet,
     theme: &Theme,
 ) -> Result<String, Error> {
-    let mut highlighter = HighlightFile::new(path, ss, theme)?;
-    let (mut output, bg) = start_highlighted_html_snippet(theme);
+    let path_ref: &Path = path.as_ref();
+    let mut f = std::fs::File::open(path_ref)?;
+    let syntax = ss
+        .find_syntax_for_file(path_ref)?
+        .unwrap_or_else(|| ss.find_syntax_plain_text());
 
-    let mut line = String::new();
-    while highlighter.reader.read_line(&mut line)? > 0 {
-        {
-            let regions = highlighter.highlight_lines.highlight_line(&line, ss)?;
-            append_highlighted_html_for_styled_line(
-                &regions[..],
-                IncludeBackground::IfDifferent(bg),
-                &mut output,
-            )?;
-        }
-        line.clear();
-    }
+    let (mut output, bg) = start_highlighted_html_snippet(theme);
+    let mut w =
+        HighlightedWriter::from_themed(syntax, ss, theme, HtmlStyledOutput::new(bg)).build();
+    std::io::copy(&mut f, &mut w)?;
+    output.push_str(&String::from_utf8(w.into_inner()?).expect("renderer produces valid UTF-8"));
     output.push_str("</pre>\n");
     Ok(output)
 }
 
-/// Output HTML for a line of code with `<span>` elements
-/// specifying classes for each token. The span elements are nested
-/// like the scope stack and the scopes are mapped to classes based
-/// on the `ClassStyle` (see it's docs).
-///
-/// See `ClassedHTMLGenerator` for a more convenient wrapper, this is the advanced
-/// version of the function that gives more control over the parsing flow.
-///
-/// For this to work correctly you must concatenate all the lines in a `<pre>`
-/// tag since some span tags opened on a line may not be closed on that line
-/// and later lines may close tags from previous lines.
-///
-/// Returns the HTML string and the number of `<span>` tags opened
-/// (negative for closed). So that you can emit the correct number of closing
-/// tags at the end.
-pub fn line_tokens_to_classed_spans(
-    line: &str,
-    ops: &[(usize, ScopeStackOp)],
-    style: ClassStyle,
-    stack: &mut ScopeStack,
-) -> Result<(String, isize), Error> {
-    let mut s = String::with_capacity(line.len() + ops.len() * 8); // a guess
-    let mut cur_index = 0;
-    let mut span_delta = 0;
-
-    // check and skip emty inner <span> tags
-    let mut span_empty = false;
-    let mut span_start = 0;
-
-    for &(i, ref op) in ops {
-        if i > cur_index {
-            span_empty = false;
-            write!(s, "{}", Escape(&line[cur_index..i]))?;
-            cur_index = i
-        }
-        stack.apply_with_hook(op, |basic_op, _| match basic_op {
-            BasicScopeStackOp::Push(scope) => {
-                span_start = s.len();
-                span_empty = true;
-                s.push_str("<span class=\"");
-                scope_to_classes(&mut s, scope, style);
-                s.push_str("\">");
-                span_delta += 1;
-            }
-            BasicScopeStackOp::Pop => {
-                if !span_empty {
-                    s.push_str("</span>");
-                } else {
-                    s.truncate(span_start);
-                }
-                span_delta -= 1;
-                span_empty = false;
-            }
-        })?;
-    }
-    write!(s, "{}", Escape(&line[cur_index..line.len()]))?;
-    Ok((s, span_delta))
-}
-
-/// Preserved for compatibility, always use `line_tokens_to_classed_spans`
-/// and keep a `ScopeStack` between lines for correct highlighting that won't
-/// sometimes crash.
+/// Preserved for compatibility. Use [`ClassedHTMLGenerator`] instead.
 #[deprecated(
     since = "4.6.0",
-    note = "Use `line_tokens_to_classed_spans` instead, this can panic and highlight incorrectly"
+    note = "Use `ClassedHTMLGenerator` instead, this can panic and highlight incorrectly and cannot handle cross-line branch-point failures"
 )]
+#[allow(deprecated)]
 pub fn tokens_to_classed_spans(
     line: &str,
     ops: &[(usize, ScopeStackOp)],
     style: ClassStyle,
 ) -> (String, isize) {
-    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new()).expect(
-        "Use `line_tokens_to_classed_spans` instead, this can panic and highlight incorrectly",
-    )
+    line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new())
+        .expect("Use `ClassedHTMLGenerator` instead")
 }
 
 #[deprecated(
     since = "3.1.0",
-    note = "Use `line_tokens_to_classed_spans` instead to avoid incorrect highlighting and panics"
+    note = "Use `ClassedHTMLGenerator` instead to avoid incorrect highlighting, panics, and cross-line branch-point failures"
 )]
+#[allow(deprecated)]
 pub fn tokens_to_classed_html(
     line: &str,
     ops: &[(usize, ScopeStackOp)],
     style: ClassStyle,
 ) -> String {
     line_tokens_to_classed_spans(line, ops, style, &mut ScopeStack::new())
-        .expect(
-            "Use `line_tokens_to_classed_spans` instead to avoid incorrect highlighting and panics",
-        )
+        .expect("Use `ClassedHTMLGenerator` instead")
         .0
 }
 
@@ -471,18 +514,20 @@ fn write_css_color(s: &mut String, c: Color) {
 /// # Examples
 ///
 /// ```
-/// use syntect::easy::HighlightLines;
-/// use syntect::parsing::SyntaxSet;
-/// use syntect::highlighting::{ThemeSet, Style};
+/// use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter, Style, ThemeSet};
+/// use syntect::parsing::{ParseState, ScopeStack, SyntaxSet};
 /// use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
 ///
-/// // Load these once at the start of your program
 /// let ps = SyntaxSet::load_defaults_newlines();
 /// let ts = ThemeSet::load_defaults();
 ///
 /// let syntax = ps.find_syntax_by_name("Ruby").unwrap();
-/// let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
-/// let regions = h.highlight_line("5", &ps).unwrap();
+/// let mut parse_state = ParseState::new(syntax);
+/// let highlighter = Highlighter::new(&ts.themes["base16-ocean.dark"]);
+/// let mut highlight_state = HighlightState::new(&highlighter, ScopeStack::new());
+/// let ops = parse_state.parse_line("5", &ps).unwrap().ops;
+/// let iter = HighlightIterator::new(&mut highlight_state, &ops, "5", &highlighter);
+/// let regions: Vec<(Style, &str)> = iter.collect();
 /// let html = styled_line_to_highlighted_html(&regions[..], IncludeBackground::No).unwrap();
 /// assert_eq!(html, "<span style=\"color:#d08770;\">5</span>");
 /// ```
@@ -579,6 +624,7 @@ mod tests {
     use crate::parsing::{ParseState, ScopeStack, SyntaxDefinition, SyntaxSet, SyntaxSetBuilder};
     use crate::util::LinesWithEndings;
     #[test]
+    #[allow(deprecated)]
     fn tokens() {
         let ss = SyntaxSet::load_defaults_newlines();
         let syntax = ss.find_syntax_by_name("Markdown").unwrap();
@@ -750,5 +796,341 @@ fn main() {
         let css = css_for_theme_with_class_style(theme, ClassStyle::Spaced).unwrap();
         assert!(!css.contains(".c++"));
         assert!(css.contains(".c\\2b \\2b "));
+    }
+
+    #[test]
+    fn test_custom_renderer_receives_atom_strs() {
+        use crate::rendering::ScopeMarkup;
+        use std::cell::RefCell;
+
+        struct CapturingMarkup {
+            captured: RefCell<Vec<Vec<String>>>,
+        }
+        impl ScopeMarkup for CapturingMarkup {
+            fn begin_scope(&mut self, atom_strs: &[&str], output: &mut String) {
+                self.captured
+                    .borrow_mut()
+                    .push(atom_strs.iter().map(|s| s.to_string()).collect());
+                output.push_str("<span>");
+            }
+            fn end_scope(&mut self, output: &mut String) {
+                output.push_str("</span>");
+            }
+        }
+
+        let code = "x + y\n";
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let markup = CapturingMarkup {
+            captured: RefCell::new(Vec::new()),
+        };
+        let mut gen =
+            crate::io::HighlightedWriter::from_markup(syntax, &syntax_set, markup).build();
+        gen.write_all(code.as_bytes()).expect("#[cfg(test)]");
+
+        // The R syntax should produce "source r" as the first scope
+        let captured = gen.renderer().inner().captured.borrow().clone();
+        assert!(!captured.is_empty());
+        assert_eq!(captured[0], vec!["source", "r"]);
+
+        gen.into_inner().expect("#[cfg(test)]");
+    }
+
+    #[test]
+    fn test_scope_with_atom_strs() {
+        let scope = Scope::new("keyword.operator.arithmetic").unwrap();
+        let atoms: Vec<String> =
+            scope.with_atom_strs(|atoms| atoms.iter().map(|s| s.to_string()).collect());
+        assert_eq!(atoms, vec!["keyword", "operator", "arithmetic"]);
+    }
+
+    /// Synthetic syntax + theme used by `HtmlStyledOutput` byte-exact tests.
+    /// Defining them inline (rather than relying on bundled defaults) keeps
+    /// the assertions stable across syntax/theme updates.
+    #[allow(clippy::type_complexity)]
+    fn make_pinned_ss_and_theme() -> (SyntaxSet, Theme, crate::highlighting::Color) {
+        use crate::highlighting::{
+            Color, FontStyle, ScopeSelectors, StyleModifier, Theme, ThemeItem, ThemeSettings,
+        };
+        use std::str::FromStr;
+
+        let syntax_str = r#"
+name: PingThing
+scope: source.ping
+contexts:
+  main:
+    - match: 'ping'
+      scope: kw.ping
+    - match: 'thing'
+      scope: lit.thing
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        let bg = Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0xff,
+        };
+        let theme = Theme {
+            name: Some("html-pin".into()),
+            author: None,
+            settings: ThemeSettings {
+                foreground: Some(Color {
+                    r: 200,
+                    g: 200,
+                    b: 200,
+                    a: 0xff,
+                }),
+                background: Some(bg),
+                ..Default::default()
+            },
+            scopes: vec![
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("kw").unwrap(),
+                    style: StyleModifier {
+                        foreground: Some(Color {
+                            r: 11,
+                            g: 22,
+                            b: 33,
+                            a: 0xff,
+                        }),
+                        background: None,
+                        font_style: Some(FontStyle::BOLD),
+                    },
+                },
+                ThemeItem {
+                    scope: ScopeSelectors::from_str("lit").unwrap(),
+                    style: StyleModifier {
+                        foreground: Some(Color {
+                            r: 44,
+                            g: 55,
+                            b: 66,
+                            a: 0xff,
+                        }),
+                        background: None,
+                        font_style: Some(FontStyle::ITALIC),
+                    },
+                },
+            ],
+        };
+        (ss, theme, bg)
+    }
+
+    #[test]
+    fn html_styled_output_emits_byte_exact_inline_spans() {
+        // Pin the exact `<span style="…">` markup for a known input. Catches
+        // mutants in `HtmlStyledOutput::begin_style` (e.g. dropping the
+        // `color:` attribute, swapping `background-color` for `color`, omitting
+        // the closing `;\">`), in `should_merge` (the boolean flips would
+        // either over-merge into one big span or under-merge into many tiny
+        // ones), and in `end_style` (which must emit `</span>`).
+        let (ss, theme, _bg) = make_pinned_ss_and_theme();
+        let syntax = &ss.syntaxes()[0];
+
+        let html = highlighted_html_for_string("ping thing\n", &ss, syntax, &theme).unwrap();
+
+        // Pin the entire snippet (including the `<pre>` wrapper) so any
+        // change in the styled spans, the merge boundary between the kw
+        // span and the trailing space, or the line-break handling will
+        // surface immediately.
+        //
+        // Layout: bold "ping " (the trailing space merges into the kw
+        // span via the whitespace-folding `should_merge` predicate),
+        // then italic "thing", then a literal `\n` outside any styled
+        // span (because `ThemedRenderer::write_text` always splits on
+        // newline).
+        assert_eq!(
+            html,
+            "<pre style=\"background-color:#000000;\">\n\
+             <span style=\"font-weight:bold;color:#0b1621;\">ping </span>\
+             <span style=\"font-style:italic;color:#2c3742;\">thing</span>\n\
+             </pre>\n"
+        );
+    }
+
+    #[test]
+    fn html_styled_output_should_merge_whitespace_into_previous_span() {
+        // Verify that the `should_merge` whitespace-fold path is actually
+        // exercised: the trailing space after "ping" must end up *inside*
+        // the kw span, NOT in its own span. This is the observable
+        // difference between `should_merge` returning true (correct,
+        // whitespace folds) and the mutant `should_merge -> false`
+        // (whitespace would get its own span with the default fg colour).
+        let (ss, theme, _bg) = make_pinned_ss_and_theme();
+        let syntax = &ss.syntaxes()[0];
+
+        let html = highlighted_html_for_string("ping thing\n", &ss, syntax, &theme).unwrap();
+
+        // The kw span (bold) must contain "ping " (with trailing space).
+        // If the merge predicate is broken, the space would land in a
+        // separate `color:#c8c8c8;` span instead.
+        assert!(
+            html.contains("<span style=\"font-weight:bold;color:#0b1621;\">ping </span>"),
+            "expected the trailing space to merge into the kw span, got: {html}"
+        );
+        assert!(
+            !html.contains("<span style=\"color:#c8c8c8;\">"),
+            "the default-foreground span for whitespace must not appear (the space should fold into the kw span), got: {html}"
+        );
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_parse_html_for_line_emits_nontrivial_html() {
+        // The deprecated line-parsing entry point must still drive the
+        // underlying parser and emit highlighted markup. A bug that turns
+        // it into a silent no-op would only surface as missing token
+        // markup in the finalized output.
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let mut g =
+            ClassedHTMLGenerator::new_with_class_style(syntax, &syntax_set, ClassStyle::Spaced);
+        // Note: this deprecated function takes a line WITHOUT a trailing
+        // newline (the function appends one internally — see its doc).
+        g.parse_html_for_line("x + y");
+        let html = g.finalize();
+        // The output must contain the literal token text and a classed span;
+        // a `with ()` mutant would skip the parse and the output would only
+        // hold the trailing newline appended by the (broken) function.
+        assert!(
+            html.contains("<span class=\""),
+            "expected at least one classed span, got: {html}"
+        );
+        assert!(
+            html.contains('x'),
+            "expected literal 'x' in output, got: {html}"
+        );
+        assert!(
+            html.contains('y'),
+            "expected literal 'y' in output, got: {html}"
+        );
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_tokens_to_classed_spans_pins_output_and_delta() {
+        // Pin both halves of the returned (html, delta) tuple. The HTML
+        // string must contain real classed spans for the parsed tokens
+        // (not an empty or sentinel string), and the scope-delta must
+        // reflect exactly one scope left open at end-of-line for the
+        // chosen input. Catches any silent degradation of the function
+        // body to a stub return value.
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let mut state = ParseState::new(syntax);
+        let line = "x + y\n";
+        let ops = state.parse_line(line, &syntax_set).unwrap().ops;
+
+        let (html, delta) = tokens_to_classed_spans(line, &ops, ClassStyle::Spaced);
+        // The R syntax produces a known nesting: the source.r meta scope plus
+        // an arithmetic operator span around `+`.
+        assert_eq!(
+            html,
+            "<span class=\"source r\">x <span class=\"keyword operator arithmetic r\">+</span> y\n"
+        );
+        // delta is +1 because exactly one scope (source.r) is left open at
+        // end of line.
+        assert_eq!(delta, 1);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_tokens_to_classed_html_returns_html_string_only() {
+        // The HTML-only convenience wrapper must produce the exact same
+        // markup as the spans variant for the same input. Catches a
+        // degenerate body that returns an empty or sentinel string.
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set.find_syntax_by_name("R").unwrap();
+        let mut state = ParseState::new(syntax);
+        let line = "x + y\n";
+        let ops = state.parse_line(line, &syntax_set).unwrap().ops;
+
+        let html = tokens_to_classed_html(line, &ops, ClassStyle::Spaced);
+        assert_eq!(
+            html,
+            "<span class=\"source r\">x <span class=\"keyword operator arithmetic r\">+</span> y\n"
+        );
+    }
+
+    #[test]
+    fn html_styled_output_emits_background_when_distinct_from_default() {
+        // When a token style has a background different from the containing
+        // element's default background, `HtmlStyledOutput::begin_style` must
+        // emit a `background-color:` declaration before the `color:` one.
+        // Catches mutants in the `style.background != self.default_bg`
+        // branch (replacing != with == would invert the emission).
+        use crate::highlighting::{
+            Color, FontStyle, ScopeSelectors, StyleModifier, Theme, ThemeItem, ThemeSettings,
+        };
+        use std::str::FromStr;
+
+        let syntax_str = r#"
+name: PingThing
+scope: source.ping
+contexts:
+  main:
+    - match: 'ping'
+      scope: kw.ping
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(syntax);
+        let ss = builder.build();
+
+        let bg = Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0xff,
+        };
+        let theme = Theme {
+            name: Some("html-pin-bg".into()),
+            author: None,
+            settings: ThemeSettings {
+                foreground: Some(Color {
+                    r: 200,
+                    g: 200,
+                    b: 200,
+                    a: 0xff,
+                }),
+                background: Some(bg),
+                ..Default::default()
+            },
+            scopes: vec![ThemeItem {
+                scope: ScopeSelectors::from_str("kw").unwrap(),
+                style: StyleModifier {
+                    foreground: Some(Color {
+                        r: 11,
+                        g: 22,
+                        b: 33,
+                        a: 0xff,
+                    }),
+                    background: Some(Color {
+                        r: 99,
+                        g: 88,
+                        b: 77,
+                        a: 0xff,
+                    }),
+                    font_style: Some(FontStyle::empty()),
+                },
+            }],
+        };
+
+        let syntax_ref = &ss.syntaxes()[0];
+        let html = highlighted_html_for_string("ping\n", &ss, syntax_ref, &theme).unwrap();
+        // Search the inner part — outside the `<pre>` wrapper.
+        assert!(
+            html.contains("background-color:#63584d;"),
+            "expected per-token background-color declaration, got: {html}"
+        );
+        // The order must be: background-color first, then color.
+        assert!(
+            html.contains("background-color:#63584d;color:#0b1621;"),
+            "expected `background-color:` before `color:` in begin_style emission, got: {html}"
+        );
     }
 }

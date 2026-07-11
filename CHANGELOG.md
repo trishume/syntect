@@ -4,6 +4,9 @@
 
 ### Breaking changes
 
+- `HighlightLines` and `HighlightFile` deprecated since 6.0.0 — use `syntect::io::HighlightedWriter` instead [#627]
+- `line_tokens_to_classed_spans` (`syntect::html`) deprecated since 6.0.0 — cannot correctly handle cross-line branch-point failures (the rendered output for earlier lines is already in the caller's hands when the parser retroactively replays). Use `ClassedHTMLGenerator` or `HighlightedWriter::from_markup` instead, both of which buffer rendered output during speculative parsing and replay corrected ops [#627]
+- `SCOPE_REPO` removed from public API (was already deprecated since 5.3.0) [#627]
 - `ParseState::parse_line` now returns `Result<ParseLineOutput, ParsingError>` instead of a bare `Vec` [#614]
 - `MatchOperation` enum: new `Branch`, `Fail` [#614], and `Embed` [#615] variants
 - `Pattern` enum: new `IncludeWithPrototype` variant [#610]
@@ -15,11 +18,32 @@
 
 ### Improvements
 
+- Add `syntect::io` module containing `HighlightedWriter<'a, R, W>`, a streaming highlighter that implements `std::io::Write` and handles branch-point backtracking, generic over the output sink (`Vec<u8>` by default, or any `io::Write` for streaming). Constructed via the new `HighlightedWriterBuilder`: pick a renderer category with `HighlightedWriter::from_themed` / `from_markup` / `from_renderer`, then chain `.with_output(...)` / `.with_state(...)` and finish with `.build()`. End-of-input cleanup runs implicitly via `Drop` on a best-effort basis; call `into_inner` explicitly when you need the inner sink back or want errors propagated [#627]
+- Add `syntect::rendering` module with a layered renderer trait design [#627]:
+    - `ScopeMarkup` — slim trait for stateless renderers that map scope structure 1:1 to output structure (e.g. CSS-classed HTML); receives only pre-resolved atom strings
+    - `StyledOutput` — small trait for theme-aware renderers (e.g. ANSI, inline-styled HTML, LaTeX `\textcolor`); only describes how to begin/end a styled span and write text
+    - `ThemedRenderer<O>` — adapter that turns any `StyledOutput` into a `ScopeRenderer` by managing the `Highlighter`, the style stack, and adjacent-token style merging
+    - `ScopeRenderer` — low-level engine trait kept as an escape hatch for advanced cases that need raw `Scope` / `&[Scope]` access
+    - `AnsiStyledOutput` — built-in 24-bit ANSI colour emitter; pair with `HighlightedWriter::from_themed` for terminal output
+- Add `ClassedHTMLScopeRenderer` (`syntect::html`) implementing `ScopeMarkup` for `<span class="...">` output with CSS classes derived from scope atoms [#627]
+- Add `HtmlStyledOutput` (`syntect::html`) implementing `StyledOutput` for theme-aware inline-styled `<span style="...">` HTML output with whitespace-merge optimization [#627]
+- Add `Scope::with_atom_strs()` closure-based API for reading atom strings without direct repository access [#627]
+- `ClassedHTMLGenerator` preserved as backward-compatible wrapper around `HighlightedWriter` (now driven by `MarkupAdapter<ClassedHTMLScopeRenderer>`) [#627]
+- `highlighted_html_for_string`/`highlighted_html_for_file` reworked to use `HighlightedWriter::from_themed` and `HtmlStyledOutput` [#627]
 - Implement sublime-syntax Build 4075 features: `extends` (single and multiple inheritance), `meta_prepend`/`meta_append`, `apply_prototype`, `version: 2`, and `first_line_match` variable resolution [#610] [#612]
 - Implement `branch_point`/`branch`/`fail` backtracking with cross-line replay support [#614]
 - Implement native `embed`/`escape` support, fixing cases where embedded context patterns could consume escape characters first [#615]
 - Gracefully skip syntax files that fail to load and hide syntaxes with unresolved `extends` parents [#610]
 - Add `warnings()` API on `SyntaxSetBuilder` and `SyntaxSet` to replace `eprintln!` warnings with programmatic access [#619]
+
+[#512]: https://github.com/trishume/syntect/pull/512
+[#576]: https://github.com/trishume/syntect/pull/576
+[#610]: https://github.com/trishume/syntect/pull/610
+[#612]: https://github.com/trishume/syntect/pull/612
+[#614]: https://github.com/trishume/syntect/pull/614
+[#615]: https://github.com/trishume/syntect/pull/615
+[#619]: https://github.com/trishume/syntect/pull/619
+[#627]: https://github.com/trishume/syntect/pull/627
 
 ## [Version 5.3.0](https://github.com/trishume/syntect/compare/v5.2.0...v5.3.0)
 

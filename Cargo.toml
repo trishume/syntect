@@ -59,6 +59,12 @@ regex-onig = ["dep:onig"]
 
 parsing = ["dep:regex-syntax", "dep:fnv", "dump-create", "dump-load"]
 
+# Use the trail-based re-execution engine for branch_point/fail
+# backtracking instead of the legacy op-correction engine. Development
+# flag for the syntect 6.0 parser simplification; will become the default
+# and then be removed.
+trail-engine = []
+
 # Support for .tmPreferenes metadata files (indentation, comment syntax, etc)
 metadata = ["parsing", "plist-load", "dep:serde_json"]
 
