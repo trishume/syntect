@@ -54,6 +54,27 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
     s
 }
 
+/// Appends `text` to `s`, escaping the characters that are special inside a
+/// `commandchars=\\\{\}` Verbatim environment.
+///
+/// The text is copied in chunks between the special characters, so text that
+/// contains none of them is appended with a single copy.
+fn write_latex_escaped(s: &mut String, text: &str) {
+    let mut copied_up_to = 0;
+    for (i, matched) in text.match_indices(['\\', '{', '}']) {
+        s.push_str(&text[copied_up_to..i]);
+        s.push_str(match matched {
+            // A literal `\` can't be written as `\\`, which is a line break
+            // in a Verbatim environment.
+            "\\" => "\\textbackslash{}",
+            "{" => "\\{",
+            _ => "\\}",
+        });
+        copied_up_to = i + matched.len();
+    }
+    s.push_str(&text[copied_up_to..]);
+}
+
 /// Formats the styled fragments using LaTeX textcolor directive.
 ///
 /// Usage is similar to the `as_24_bit_terminal_escaped` function:
@@ -125,14 +146,7 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
         } else {
             write!(s, "{}", textcolor(&style, true)).unwrap();
         }
-        for c in text.chars() {
-            match c {
-                '\\' => s.push_str("\\textbackslash{}"),
-                '{' => s.push_str("\\{"),
-                '}' => s.push_str("\\}"),
-                _ => s.push(c),
-            }
-        }
+        write_latex_escaped(&mut s, text);
         prev_style = Some(style);
     }
     s.push('}');
@@ -427,16 +441,32 @@ mod tests {
             font_style: FontStyle::default(),
         };
 
+        // Foreground channels are emitted in R, G, B order, a literal backslash
+        // becomes `\textbackslash{}` (a bare `\\` is a line break in a Verbatim
+        // environment) and braces are escaped.
         let s = as_latex_escaped(&[(style, "a\\b{c}")]);
+        assert_eq!(s, "\\textcolor[RGB]{10,20,30}{a\\textbackslash{}b\\{c\\}}");
 
-        // Foreground channels must be emitted in R, G, B order.
-        assert!(s.contains("\\textcolor[RGB]{10,20,30}"));
-        // A literal backslash becomes \textbackslash{} inside the commandchars environment.
-        assert!(s.contains("\\textbackslash{}"));
-        // Braces in the content are escaped.
-        assert!(s.contains("\\{"));
-        assert!(s.contains("\\}"));
-        // No bare double-backslash (the old escaping produced a LaTeX line break).
-        assert!(!s.contains("\\\\"));
+        // Text without any special characters is passed through unchanged.
+        let s = as_latex_escaped(&[(style, "hello")]);
+        assert_eq!(s, "\\textcolor[RGB]{10,20,30}{hello}");
+
+        // Escaping doesn't split multi-byte characters.
+        let s = as_latex_escaped(&[(style, "{こんにちは}")]);
+        assert_eq!(s, "\\textcolor[RGB]{10,20,30}{\\{こんにちは\\}}");
+
+        // A style change starts a new textcolor group.
+        let mut other = style;
+        other.foreground = Color {
+            r: 40,
+            g: 50,
+            b: 60,
+            a: 255,
+        };
+        let s = as_latex_escaped(&[(style, "a"), (other, "\\")]);
+        assert_eq!(
+            s,
+            "\\textcolor[RGB]{10,20,30}{a}\\textcolor[RGB]{40,50,60}{\\textbackslash{}}"
+        );
     }
 }
