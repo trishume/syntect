@@ -819,6 +819,11 @@ impl SyntaxSetBuilder {
 
         // Track which syntaxes need extends resolution
         let mut unresolved: HashSet<usize> = HashSet::new();
+        // And the ones whose `extends` was refused for a reason other than a
+        // missing parent. They leave the loop below with whatever they declared
+        // themselves, which for a definition that is nothing but an `extends` is
+        // nothing at all — see the pass at the end that gives them a `main`.
+        let mut broken: HashSet<usize> = HashSet::new();
         for (i, sd) in syntax_definitions.iter().enumerate() {
             if !sd.extends.is_empty() {
                 unresolved.insert(i);
@@ -885,6 +890,7 @@ impl SyntaxSetBuilder {
                          extends will not be applied",
                         syntax_definitions[child_idx].name
                     ));
+                    broken.insert(child_idx);
                     unresolved.remove(&child_idx);
                     syntax_roots.insert(child_idx, child_idx);
                     made_progress = true;
@@ -903,6 +909,7 @@ impl SyntaxSetBuilder {
                          extends will not be applied",
                         syntax_definitions[child_idx].name
                     ));
+                    broken.insert(child_idx);
                     unresolved.remove(&child_idx);
                     syntax_roots.insert(child_idx, child_idx);
                     made_progress = true;
@@ -1027,8 +1034,25 @@ impl SyntaxSetBuilder {
             }
         }
 
-        if !unresolved.is_empty() {
-            for idx in &unresolved {
+        // Every syntax whose `extends` was refused, not only the ones whose
+        // parent could not be found.
+        //
+        // The two refusals above — a version mismatch, and parents deriving from
+        // different base syntaxes — take the child out of `unresolved` and carry
+        // on, so it reaches the set with whatever contexts it declared itself.
+        // For a definition that is *nothing but* an `extends` that is none at
+        // all: no `main`, and no `__start`. `ParseState::new` indexes
+        // `context_ids()["__start"]`, so the first line parsed with it panics —
+        // which is exactly what the guard below was written for, and it was only
+        // ever reached from the missing-parent path.
+        //
+        // It is a file a user writes. Two lines extending a shipped `version: 2`
+        // syntax without repeating the version is the whole of it, and nothing
+        // in a curated package set can reach it, so no test that loads one
+        // notices.
+        let broken: BTreeSet<usize> = broken.union(&unresolved).copied().collect();
+        if !broken.is_empty() {
+            for idx in &broken {
                 let syntax = &mut syntax_definitions[*idx];
                 let e = &syntax.extends;
                 let extends_str = if e.is_empty() {
@@ -1036,10 +1060,12 @@ impl SyntaxSetBuilder {
                 } else {
                     e.join(", ")
                 };
-                warnings.push(format!(
-                    "syntax '{}' extends '{}' but parent was not found or has circular dependency",
-                    syntax.name, extends_str,
-                ));
+                if unresolved.contains(idx) {
+                    warnings.push(format!(
+                        "syntax '{}' extends '{}' but parent was not found or has circular dependency",
+                        syntax.name, extends_str,
+                    ));
+                }
                 // Mark broken syntaxes as hidden so they won't be found by
                 // name/extension lookups and won't cause panics when used.
                 syntax.hidden = true;
@@ -2288,6 +2314,68 @@ mod tests {
         // Should not panic
         let ss = builder.build();
         assert!(ss.find_syntax_by_name("Orphan").is_some());
+    }
+
+    /// A refused `extends` leaves a syntax that can still be parsed.
+    ///
+    /// The missing-parent path already ensures `main` and `__start` exist,
+    /// with a comment saying why: `ParseState::new` would panic otherwise. The
+    /// other two refusals — a version mismatch, and parents deriving from
+    /// different base syntaxes — did not go through it, so a definition that is
+    /// *nothing but* an `extends` reached the set with no contexts at all and
+    /// the first line parsed with it took the process down.
+    ///
+    /// It is a file a user writes: two lines extending a shipped `version: 2`
+    /// syntax without repeating the version. Nothing in a curated package set
+    /// can reach it.
+    #[test]
+    fn extends_refused_for_a_version_mismatch_still_parses() {
+        let base = SyntaxDefinition::load_from_str(
+            r#"
+            name: BaseV2
+            scope: source.basev2
+            file_extensions: [basev2]
+            version: 2
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.base
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+        // Version 1 by omission, and nothing of its own — every context it has
+        // would have come from the parent.
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: ChildV1
+            scope: source.childv1
+            file_extensions: [childv1]
+            extends: BaseV2.sublime-syntax
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(child);
+        let ss = builder.build();
+
+        let syntax = ss
+            .syntaxes()
+            .iter()
+            .find(|s| s.name == "ChildV1")
+            .expect("the child is in the set");
+        // Parses rather than panicking in `ParseState::new`, which is the
+        // whole of it.
+        let mut parse_state = ParseState::new(syntax);
+        parse_state.parse_line("x\n", &ss).expect("parse failed");
+        // And hidden, as the missing-parent case already does: it colours
+        // nothing, so it should not be offered by name or by extension.
+        assert!(syntax.hidden, "a syntax whose extends was refused is not hidden");
     }
 
     #[test]
