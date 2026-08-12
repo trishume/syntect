@@ -55,6 +55,14 @@ pub struct MetadataItems {
     pub decrease_indent_pattern: Option<Regex>,
     pub bracket_indent_next_line_pattern: Option<Regex>,
     pub disable_indent_next_line_pattern: Option<Regex>,
+    // The key in a `.tmPreferences` file is `unIndentedLinePattern`, with a
+    // capital I — Sublime spells this one that way and no other. `camelCase`
+    // over the field name gives `unindentedLinePattern`, so the key was dropped
+    // in silence: the file still deserialises because `KEYS_WE_USE` has the
+    // spelling right, and `ScopedMetadata::unindented_line` could never answer
+    // `true`. Of the 145 scopes in the metadata dump built from `testdata`,
+    // 0 carried this and 59 carry an increase-indent pattern.
+    #[serde(rename = "unIndentedLinePattern")]
     pub unindented_line_pattern: Option<Regex>,
     pub indent_parens: Option<bool>,
     #[serde(default)]
@@ -530,6 +538,27 @@ mod tests {
         assert!(rust_meta.selector_string == "source.rust");
         assert!(rust_meta.items.increase_indent_pattern.is_some());
         assert!(rust_meta.items.line_comment.is_some());
+    }
+
+    /// `unIndentedLinePattern` is spelled with a capital I in every
+    /// `.tmPreferences` file that has one, which `rename_all = "camelCase"`
+    /// cannot produce.
+    ///
+    /// The failure is silent in both directions: the file loads, because
+    /// `KEYS_WE_USE` names the key correctly, and every other item in it is
+    /// read — only this one is dropped, and `unindented_line` then answers
+    /// `false` for every line of every language.
+    #[test]
+    fn unindented_line_pattern_is_spelled_the_way_the_files_spell_it() {
+        let path = "testdata/Packages/C++/Indentation Rules.tmPreferences";
+        let metadata = LoadMetadata::quick_load(path).unwrap();
+        assert!(
+            metadata.items.unindented_line_pattern.is_some(),
+            "the `unIndentedLinePattern` in {} was dropped",
+            path
+        );
+        // The rest of the file reads either way, which is why nothing noticed.
+        assert!(metadata.items.increase_indent_pattern.is_some());
     }
 
     #[test]
