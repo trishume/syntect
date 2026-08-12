@@ -1085,9 +1085,24 @@ impl SyntaxSetBuilder {
         // Normalize separators for matching
         let normalized = extends_path.replace('\\', "/");
 
-        // First try matching against path_syntaxes (path ends with extends value)
+        // First try matching against path_syntaxes (path ends with extends value),
+        // taking the *last* definition that answers rather than the first.
+        //
+        // Everything else here resolves a reference to the last one: `find_id`
+        // does, and the `name_to_index` fallback below does, because that map is
+        // built by inserting every name in order. Only this loop took the first,
+        // and the difference shows the moment one builder holds two copies of a
+        // package — which is the supported way to let a user's `Packages` folder
+        // override the one that shipped.
+        //
+        // `TSX` is the file it was found on. With a second copy of
+        // `Packages/JavaScript/` added on top, `extends: JSX.sublime-syntax`
+        // resolved to the *first* copy's `JSX` while its other parent resolved
+        // to the second's, so the "parents derive from different base syntaxes"
+        // check below refused the inheritance outright and every `jsx-*` context
+        // TSX inherits went unresolved.
         let slash_normalized = format!("/{}", normalized);
-        for (path, idx) in path_syntaxes {
+        for (path, idx) in path_syntaxes.iter().rev() {
             let path_normalized = path.replace('\\', "/");
             if path_normalized.ends_with(&slash_normalized) || path_normalized == normalized {
                 return Some(*idx);
@@ -3439,6 +3454,50 @@ mod tests {
     }
 
     #[cfg(feature = "yaml-load")]
+    /// A path that two definitions answer for resolves to the last of them,
+    /// which is what every other lookup here does.
+    ///
+    /// One builder holding two copies of a package is the supported way to let
+    /// a user's `Packages` override the one that shipped: `add_from_folder` is
+    /// called twice and the second copy wins everywhere else. Taking the first
+    /// match here made a syntax with two parents resolve one of them out of each
+    /// copy, which the "parents derive from different base syntaxes" check then
+    /// refuses — so the child inherits nothing at all.
+    #[test]
+    fn find_parent_index_takes_the_last_definition_at_a_path() {
+        let syntax = |name: &str, scope: &str| SyntaxDefinition {
+            name: name.to_string(),
+            file_extensions: vec![],
+            scope: Scope::new(scope).unwrap(),
+            first_line_match: None,
+            hidden: false,
+            variables: HashMap::new(),
+            contexts: HashMap::new(),
+            extends: vec![],
+            version: 1,
+        };
+        // The same package twice, as a second `add_from_folder` leaves it.
+        let syntax_definitions = vec![syntax("JSX", "source.jsx"), syntax("JSX", "source.jsx")];
+        let path_syntaxes = vec![
+            ("Packages/JavaScript/JSX.sublime-syntax".to_string(), 0usize),
+            ("User/Packages/JavaScript/JSX.sublime-syntax".to_string(), 1usize),
+        ];
+        let mut name_to_index = HashMap::new();
+        name_to_index.insert("JSX".to_string(), 1);
+
+        let result = SyntaxSetBuilder::find_parent_index(
+            "JSX.sublime-syntax",
+            &path_syntaxes,
+            &syntax_definitions,
+            &name_to_index,
+        );
+        assert_eq!(
+            result,
+            Some(1),
+            "the path lookup disagreed with the name lookup about which copy answers"
+        );
+    }
+
     #[test]
     fn find_parent_index_resolves_relative_paths() {
         // Simulates a syntax loaded from "Packages/Test/syntaxes/Child.sublime-syntax"
