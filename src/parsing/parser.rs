@@ -539,7 +539,29 @@ impl ParseState {
             // Check if this is a Fail operation — handle before advancing start
             let context = reg_match.context;
             let match_pattern = context.match_at(reg_match.pat_index)?;
-            if let MatchOperation::Fail(_) = match_pattern.operation {
+            // A `fail` naming a branch point that is not on the stack is a rule
+            // like any other, so it is not routed to `handle_fail` at all.
+            //
+            // The reference: "If a `fail` action specifies a `branch_point`
+            // that was never pushed on the stack, or has already been popped
+            // off of it, it will have no effect." It is the *action* that has
+            // no effect — the match still consumes its text, its `scope` still
+            // applies, and the line carries on.
+            //
+            // `handle_fail` answers an unresolvable name with `Ok(false)`,
+            // which is not "no effect": `Ok(false)` is what `parse_next_token`
+            // returns to say *stop parsing this line*. So a stray `fail`
+            // silently threw away the colouring of everything after it on the
+            // line. CSS has one — `- match: ';' fail: property-or-selector`,
+            // reachable outside any branch.
+            //
+            // Falling through sends it down the ordinary path, where
+            // `MatchOperation::Fail` is already a no-op in `perform_op`.
+            let fail_that_resolves = match match_pattern.operation {
+                MatchOperation::Fail(ref name) => self.can_rewind_to(name),
+                _ => false,
+            };
+            if fail_that_resolves {
                 let level_context = {
                     let id = &self.stack[self.stack.len() - 1].context;
                     syntax_set.get_context(id)?
@@ -819,6 +841,15 @@ impl ParseState {
                 MatchOperation::Push(_)
                 | MatchOperation::Branch { .. }
                 | MatchOperation::Embed { .. } => self.stack.len() < 100,
+                // A `fail` naming a branch point that is not on the stack has
+                // no effect — the reference says so, and it is now let through
+                // to `perform_op` as an ordinary rule rather than stopping the
+                // line. So at a zero-length match it does nothing at all, and
+                // it loops for the same reason `MatchOperation::None` does.
+                // `- match: '(?=;)' fail: nonexistent` is the shape.
+                MatchOperation::Fail(ref name) => {
+                    match_start != match_end || self.can_rewind_to(name)
+                }
                 _ => true,
             };
             if can_cache && does_something && search_end == line.len() {
@@ -854,17 +885,22 @@ impl ParseState {
         let context = reg_match.context;
         let pat = context.match_at(reg_match.pat_index)?;
 
-        // Handle Fail: attempt backtracking
+        // Handle Fail: attempt backtracking, and only when there is somewhere
+        // to rewind to. The other half of the check in `parse_next_token`,
+        // which is where the reason is written down: an unresolvable `fail` is
+        // an ordinary rule, scope and all, and falls through to `perform_op`.
         if let MatchOperation::Fail(ref name) = pat.operation {
-            return self.handle_fail(
-                name,
-                line,
-                start,
-                non_consuming_push_at,
-                ops,
-                search_cache,
-                syntax_set,
-            );
+            if self.can_rewind_to(name) {
+                return self.handle_fail(
+                    name,
+                    line,
+                    start,
+                    non_consuming_push_at,
+                    ops,
+                    search_cache,
+                    syntax_set,
+                );
+            }
         }
 
         // For Branch, we need to snapshot state before executing, then synthesize a Push.
@@ -971,6 +1007,18 @@ impl ParseState {
     /// Handle a `fail` operation by rewinding to the named branch point.
     /// Returns Ok(true) if backtracking happened (caller should continue from rewound position).
     /// Returns Ok(false) if the fail had no effect.
+    /// Whether a `fail` naming this branch point has anywhere to rewind to.
+    ///
+    /// The same test `handle_fail` makes before it does anything, asked before
+    /// the rule is routed there at all — see the call in `parse_next_token`,
+    /// which is where the reason lives.
+    fn can_rewind_to(&self, name: &str) -> bool {
+        let stack_len = self.stack.len();
+        self.branch_points
+            .iter()
+            .any(|bp| bp.name == name && stack_len > bp.stack_depth.saturating_sub(bp.pop_count))
+    }
+
     fn handle_fail(
         &mut self,
         name: &str,
@@ -4884,6 +4932,48 @@ contexts:
         assert!(
             !states.iter().any(|s| s.contains("list.body")),
             "list.body meta_scope leaked past outer fail replay, got: {:?}",
+            states
+        );
+    }
+
+    /// A `fail` naming a branch point nobody opened is an ordinary rule: its
+    /// text is consumed, its `scope` applies, and the line carries on.
+    ///
+    /// The reference: "If a `fail` action specifies a `branch_point` that was
+    /// never pushed on the stack, or has already been popped off of it, it will
+    /// have no effect." It is the *action* that has no effect.
+    ///
+    /// `handle_fail` answered an unresolvable name with `Ok(false)`, which is
+    /// what `parse_next_token` returns to mean *stop parsing this line*, so
+    /// everything after the match came out unscoped. CSS has such a rule —
+    /// `- match: ';' fail: property-or-selector` — reachable outside any branch.
+    #[test]
+    fn fail_for_a_branch_point_nobody_opened_has_no_effect() {
+        let syntax_str = r#"
+name: StrayFail
+scope: source.stray-fail
+contexts:
+  main:
+    - match: 'a'
+      scope: keyword.a
+    - match: ';'
+      scope: punctuation.semi
+      fail: nobody
+    - match: 'b'
+      scope: keyword.b
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let states = stack_states(ops(&mut state, "a;b\n", &ss));
+        assert!(
+            states.iter().any(|s| s.contains("punctuation.semi")),
+            "the rule's own scope was dropped: {:?}",
+            states
+        );
+        assert!(
+            states.iter().any(|s| s.contains("keyword.b")),
+            "the rest of the line after the stray fail was never parsed: {:?}",
             states
         );
     }
