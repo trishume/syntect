@@ -111,6 +111,13 @@ struct EscapeEntry {
     /// Stack depth at the time of the embed push — when escape fires,
     /// pop down to this depth.
     stack_depth: usize,
+    /// The frame the `embed:` was declared in, when a `pop: N` took it off
+    /// before the embedded contexts went on: the escape's own text still wears
+    /// its meta scopes, and by then nothing on the stack can say what it was.
+    /// `None` when it is still on the stack, which is where the escape finds it
+    /// anyway. The flag is whether its `meta_content_scope` was ever pushed —
+    /// the same question the pop loop in `exec_escape` asks of the frame below.
+    holder: Option<(ContextId, bool)>,
 }
 
 /// Snapshot of parser state at a branch point, used for backtracking.
@@ -1917,6 +1924,9 @@ impl ParseState {
         pat: &MatchPattern,
         syntax_set: &SyntaxSet,
     ) -> Result<bool, ParsingError> {
+        // The frame a `pop: N + embed:` unwinds, for the escape — see
+        // `EscapeEntry::holder` and the push in `exec_escape`.
+        let mut embed_holder: Option<(ContextId, bool)> = None;
         let (ctx_refs, old_proto_ids, is_embed) = match pat.operation {
             MatchOperation::Push(ref ctx_refs) => (ctx_refs, None, false),
             MatchOperation::Embed {
@@ -1925,6 +1935,14 @@ impl ParseState {
                 ..
             } => {
                 if pop_count > 0 {
+                    embed_holder = self.stack.last().map(|l| {
+                        let mcs_pushed = !(self.stack.len() >= 2
+                            && syntax_set
+                                .get_context(&self.stack[self.stack.len() - 2].context)
+                                .map(|c| c.embed_scope_replaces)
+                                .unwrap_or(false));
+                        (l.context, mcs_pushed)
+                    });
                     for _ in 0..pop_count {
                         self.stack.pop();
                     }
@@ -2038,6 +2056,7 @@ impl ParseState {
                     regex: resolved_regex,
                     captures: escape.escape_captures.clone(),
                     stack_depth: stack_depth_before,
+                    holder: embed_holder,
                 });
             }
         }
@@ -2059,6 +2078,8 @@ impl ParseState {
         let entry = &self.escape_stack[escape_idx];
         let target_depth = entry.stack_depth;
         let escape_captures = entry.captures.clone();
+        // See below: the frame a `pop: N + embed:` took off before the embed.
+        let holder = entry.holder;
 
         // Pop all stack levels down to target_depth, emitting proper meta scope pops
         while self.stack.len() > target_depth {
@@ -2098,6 +2119,41 @@ impl ParseState {
 
             self.stack.pop();
         }
+
+        // A `pop: N + embed:`'s escape still wears the meta scopes of the
+        // context the `embed:` was declared in — the frame the `pop:` took off
+        // at the trigger, which is not on the stack for the escape to find.
+        //
+        // The reference's own example under "Using pop with another action" is
+        // a `paragraph` context with a `meta_scope` whose ```` ```py ```` fence
+        // fires `pop: 1` and embeds Python. Nothing in it says what the closing
+        // fence gets — it is the cross-product of two entries — so ST was
+        // asked, and the columns either side of the escape are what make this a
+        // retarget rather than a deferral: the trigger has no `meta_scope` (the
+        // pop is a lookahead, which the reference does say), the embedded text
+        // has none, the escape *does*, and the character after it does not.
+        //
+        // Version 1 wants none of it: there the escape is outside the context
+        // that holds it altogether, and the holder is off the stack already —
+        // see the block below.
+        let holder_metas = match (self.current_syntax_version(syntax_set) < 2, holder) {
+            (false, Some((context_id, mcs_pushed))) => {
+                let ctx = syntax_set.get_context(&context_id)?;
+                let mut pushed = 0;
+                for scope in ctx.meta_scope.iter() {
+                    ops.push((match_start, ScopeStackOp::Push(*scope)));
+                    pushed += 1;
+                }
+                if mcs_pushed {
+                    for scope in ctx.meta_content_scope.iter() {
+                        ops.push((match_start, ScopeStackOp::Push(*scope)));
+                        pushed += 1;
+                    }
+                }
+                pushed
+            }
+            _ => 0,
+        };
 
         // In a version 1 syntax the escape's own text is outside the context
         // that carries the `embed:` — it gets neither that context's
@@ -2156,6 +2212,11 @@ impl ParseState {
             for ((index, _), op) in map.into_iter() {
                 ops.push((index, op));
             }
+        }
+
+        // The holder's scopes come off again after the token.
+        if holder_metas > 0 {
+            ops.push((match_end, ScopeStackOp::Pop(holder_metas)));
         }
 
         // And back on, after the escape's own text, in the order they were
@@ -5379,6 +5440,90 @@ contexts:
         let two = columns(2, "'abc'\n");
         assert_eq!(two[4], "source.lang meta.group meta.content punctuation.end");
         assert_eq!(one[0], two[0], "and the opening quote is the same at both");
+    }
+
+    /// A `pop: N + embed:`'s escape still wears the meta scopes of the context
+    /// the `embed:` was declared in.
+    ///
+    /// The reference's own example under "Using pop with another action" is a
+    /// `paragraph` context with a `meta_scope` whose ```` ```py ```` fence
+    /// fires `pop: 1` and embeds Python; nothing in it says what the closing
+    /// fence gets, so ST 4206 was asked. Its columns for `p<a>t` are what make
+    /// this a retarget rather than a deferral — the frame is off the stack for
+    /// everything except its own escape:
+    ///
+    /// | column | ST |
+    /// |---|---|
+    /// | `p`, the push trigger | `m.para` |
+    /// | `<`, firing `pop: 1 + embed:` | no `m.para` — the pop is a lookahead |
+    /// | `a`, the embedded text | `m.embedded`, no `m.para` |
+    /// | `>`, the escape | **`m.para`** |
+    /// | `t`, after it | none |
+    #[test]
+    fn pop_n_embed_escape_wears_the_context_it_left() {
+        let syntax_str = r#"
+name: PopEmbed
+scope: source.pop-embed
+version: 2
+contexts:
+  main:
+    - match: 'p'
+      push: para
+  para:
+    - meta_scope: m.para
+    - match: '<'
+      scope: k.open
+      pop: 1
+      embed: inner
+      embed_scope: m.embedded
+      escape: '>'
+  inner:
+    - match: 'a'
+      scope: k.a
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let line_ops = ops(&mut state, "p<a>t\n", &ss);
+
+        let mut columns = Vec::new();
+        let mut stack = ScopeStack::new();
+        let mut iter = line_ops.into_iter().peekable();
+        for column in 0..5 {
+            while iter.peek().is_some_and(|(at, _)| *at <= column) {
+                let (_, op) = iter.next().unwrap();
+                stack.apply(&op).unwrap();
+            }
+            columns.push(
+                stack
+                    .as_slice()
+                    .iter()
+                    .map(|s| s.build_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+        }
+
+        // Column 1, the trigger, is left out on purpose: ST has no `m.para` on
+        // it, because the pop of a `pop: N + embed:` is a lookahead and unwinds
+        // before the match takes its scopes. That is a different rule, and a
+        // different change — see #687, which is about exactly that phase.
+        assert_eq!(
+            columns[0], "source.pop-embed m.para",
+            "the push trigger is inside the context it pushes"
+        );
+        assert_eq!(
+            columns[2], "source.pop-embed m.embedded k.a",
+            "the pop really did happen at the trigger"
+        );
+        assert_eq!(
+            columns[3], "source.pop-embed m.para",
+            "the escape did not wear the frame the pop took off"
+        );
+        assert_eq!(
+            columns[4], "source.pop-embed",
+            "and it kept it past its own token"
+        );
     }
 
     #[test]
