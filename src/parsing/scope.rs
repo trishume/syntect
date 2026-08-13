@@ -182,22 +182,21 @@ impl ScopeRepository {
         if s.is_empty() {
             return Ok(Scope { a: 0, b: 0 });
         }
-        // An empty component is not an atom, wherever it sits. Dropping only
-        // the trailing ones and interning the rest makes
-        // `meta.annotation..identifier.java` three atoms deep with an atom named
-        // `""` in the middle, which can never match
-        // `meta.annotation.identifier.java` — in a syntax test, and in any
-        // `.tmTheme` selector, where nothing reports it at all.
+        // TEXT-EDITOR FORK: an empty component is not an atom, wherever it is.
+        // Upstream drops the trailing ones (`trim_end_matches('.')`) and interns
+        // the rest, so `meta.annotation..identifier.java` came out three atoms
+        // deep with an atom named "" in the middle and could never match
+        // `meta.annotation.identifier.java`.
         //
-        // Sublime Text ignores them all. Asked directly, with a token scoped
-        // `keyword.foo.bar` and one syntax-test assertion per shape:
-        // `keyword..foo.bar`, `.keyword.foo.bar` and `keyword.foo.bar..` all
-        // pass, and `keyword..zzz.bar` fails with "scope does not match", so the
-        // selector is being evaluated rather than waved through.
+        // ST ignores them all — asked directly, with a token scoped
+        // `keyword.foo.bar` and one assertion per shape
+        // (`tools/sublime-oracle/probes/double_dot_*.probe`): `keyword..foo.bar`,
+        // `.keyword.foo.bar` and `keyword.foo.bar..` all pass, and
+        // `keyword..zzz.bar` fails with "scope does not match", so the selector
+        // is being evaluated rather than waved through.
         //
-        // `Packages/Java/tests/syntax_test_java.java` is the file: nine
-        // assertions asking for `meta.annotation..identifier.java`, which ST
-        // passes and this failed.
+        // `syntax_test_java.java:10197` is the file: nine assertions asking for
+        // `meta.annotation..identifier.java`, which ST passes and this failed.
         let parts: Vec<usize> = s
             .split('.')
             .filter(|a| !a.is_empty())
@@ -659,7 +658,6 @@ mod tests {
             "dropping the empty components dropped the difference too"
         );
     }
-
     #[test]
     fn repo_works() {
         let mut repo = ScopeRepository::new();

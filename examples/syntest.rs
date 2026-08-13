@@ -15,7 +15,6 @@ use syntect::parsing::{
 };
 
 use std::cmp::{max, min};
-use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -206,6 +205,9 @@ struct ParsedLineRecord {
     line_text: String,
     line_number: usize,
     stack_before: ScopeStack,
+    /// The ops this line finally has: what `parse_line` returned, replaced by a
+    /// correction when a cross-line `fail` decides the line differently.
+    ops: Vec<(usize, ScopeStackOp)>,
     /// Present only for non-assertion lines.
     non_assertion_data: Option<NonAssertionData>,
 }
@@ -484,31 +486,58 @@ fn test_file(
                 }
                 // Each correction names the line it is for — the parser's
                 // 1-based count of `parse_line` calls, which is this buffer's
-                // index plus one, since one record is pushed per call. A later
-                // correction for a line replaces an earlier one: two cross-line
-                // `fail`s can fire on one `parse_line`, and the parser appends
-                // the second run to the first.
-                let corrections: BTreeMap<usize, &Vec<(usize, ScopeStackOp)>> = replayed
+                // index plus one, since one record is pushed per call.
+                //
+                // They arrive in the order the parser decided them, and there
+                // can be more than one run over the same lines: a `fail` that
+                // fires while a replay is running asks for another round, and
+                // the later round is the reading that survives. So they are
+                // applied in order, and a step that is not the next line begins
+                // a run — the stack goes back to that line's recorded start
+                // before it is walked again.
+                let corrections: Vec<(usize, &Vec<(usize, ScopeStackOp)>)> = replayed
                     .iter()
                     .filter_map(|(line, ops)| line.checked_sub(1).map(|idx| (idx, ops)))
                     .filter(|(idx, _)| *idx < parsed_line_buffer.len())
                     .collect();
-                let start_idx = corrections.keys().next().copied().unwrap_or(0);
 
                 // Collect replayed line numbers for pruning pending messages
                 let replayed_line_numbers: Vec<usize> = corrections
-                    .keys()
-                    .map(|i| parsed_line_buffer[*i].line_number)
+                    .iter()
+                    .map(|(i, _)| parsed_line_buffer[*i].line_number)
                     .collect();
                 // Remove pending messages whose test_against_line_number
                 // matches any replayed line — they will be regenerated below
                 pending_messages
                     .retain(|m| !replayed_line_numbers.contains(&m.test_against_line_number));
 
-                // Reset stack to the state before the first replayed line
-                stack = parsed_line_buffer[start_idx].stack_before.clone();
-
+                // Fold the corrections into the lines they name — later wins,
+                // which is the order the parser decided them in — and then walk
+                // the buffer from the earliest corrected line to its end. A
+                // correction is the whole of that line's ops, so replaying them
+                // in place is what makes the stack agree with them; walking only
+                // the corrected lines leaves the ones between them on the ops
+                // they no longer have.
                 for (idx, replayed_ops) in corrections {
+                    parsed_line_buffer[idx].ops = replayed_ops.clone();
+                }
+                // And walk the file again from the top with the ops as they now
+                // stand.
+                //
+                // Not from the earliest corrected line: a correction is the
+                // whole of that line's ops, and a `Restore` in it can be paired
+                // with a `Clear` emitted on a line that was *not* corrected, so
+                // a walk that starts in the middle meets a `Restore` with
+                // nothing cleared. Java is the file — it panics with
+                // `NoClearedScopesToRestore` from any later start.
+                //
+                // It costs a re-walk per batch of corrections, and a batch is
+                // rare: a cross-line `fail` has to resolve for one to exist.
+                stack = ScopeStack::new();
+                for idx in 0..parsed_line_buffer.len() {
+                    parsed_line_buffer[idx].stack_before = stack.clone();
+                    let replayed_ops = parsed_line_buffer[idx].ops.clone();
+                    let replayed_ops = &replayed_ops;
                     let record = &mut parsed_line_buffer[idx];
                     let has_non_assertion = record.non_assertion_data.is_some();
 
@@ -637,6 +666,7 @@ fn test_file(
                 line_text: line.to_string(),
                 line_number: current_line_number,
                 stack_before,
+                ops: ops.clone(),
                 non_assertion_data,
             });
             if !line_has_assertion {

@@ -113,6 +113,20 @@ pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(
     serialize_to_writer_impl(o, out, false)
 }
 
+/// TEXT-EDITOR FORK: the same as [`dump_to_uncompressed_file`], to a writer
+/// rather than to a path.
+///
+/// The editor caches its merged syntax set in one file with a fingerprint in
+/// front of the dump, so that the two cannot be found disagreeing. That needs
+/// somewhere to write the dump that is not the start of a file.
+#[cfg(feature = "dump-create")]
+pub fn dump_uncompressed_to_writer<T: Serialize, W: Write>(
+    to_dump: &T,
+    output: W,
+) -> Result<(), DumpError> {
+    serialize_to_writer_impl(to_dump, output, false)
+}
+
 /// To be used when deserializing a [`SyntaxSet`] that was previously written to
 /// file using [dump_to_uncompressed_file].
 #[cfg(feature = "dump-load")]
