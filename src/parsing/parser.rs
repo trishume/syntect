@@ -3524,6 +3524,9 @@ mod tests {
 
     #[test]
     fn can_parse_preprocessor_rules() {
+        // The scopes here are `keyword.control.directive.conditional.*` since
+        // Packages v4206; they were `keyword.control.import.c` at v4050, which
+        // is what this asserted before the submodule bump.
         let ss = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ss.find_syntax_by_name("C").unwrap();
@@ -3535,7 +3538,10 @@ mod tests {
             vec![
                 (0, Push(Scope::new("source.c").unwrap())),
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
-                (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+                (
+                    0,
+                    Push(Scope::new("keyword.control.directive.conditional.if.c").unwrap())
+                ),
                 (6, Pop(1)),
                 (10, Pop(1)),
             ]
@@ -3555,7 +3561,10 @@ mod tests {
             ops(&mut state, "#else", ss),
             vec![
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
-                (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+                (
+                    0,
+                    Push(Scope::new("keyword.control.directive.conditional.elseif.c").unwrap())
+                ),
                 (5, Pop(1)),
                 (5, Pop(1)),
             ]
@@ -3577,7 +3586,10 @@ mod tests {
                 (0, Pop(1)),
                 (0, Push(Scope::new("meta.block.c").unwrap())),
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
-                (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+                (
+                    0,
+                    Push(Scope::new("keyword.control.directive.conditional.endif.c").unwrap())
+                ),
                 (6, Pop(2)),
                 (6, Pop(2)),
                 (6, Push(Scope::new("meta.block.c").unwrap())),
