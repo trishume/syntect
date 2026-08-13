@@ -60,12 +60,17 @@ pub enum SyntaxTestFileResult {
 //   the signal that the file is not a scope test (see
 //   `SyntaxTestFileResult::Skipped`).
 // * `testtoken_end` is the matching closing comment marker for
-//   block-comment syntaxes (`*/`, `-->`, `%>`, `}}`, …). Restricted
-//   to punctuation-only so alphabetic tails like `dotnet` in
-//   `#! SYNTAX TEST "…" dotnet run` don't get mis-captured.
-// * The trailing `(?:\s.*)?$` absorbs whatever follows the (optional)
-//   testtoken_end — shebang-style instructions like `dotnet run`
-//   go here and are ignored.
+//   block-comment syntaxes (`*/`, `-->`, `%>`, `}}`, …) — and it is
+//   **everything after the quoted path**, whatever it looks like.
+//   Restricting it to punctuation, so that an alphabetic tail like
+//   the `clojure` in `#! SYNTAX TEST "…" clojure` is left alone, is
+//   backwards: Sublime Text strips an alphabetic tail exactly as it
+//   strips `-->`, and a multi-word tail (`dotnet run`) is one token.
+//   Asked of ST, with a `foo` tail and a selector `keyword.foo.bar foo`
+//   — which passes — and the same tail against a selector naming a
+//   scope that is *not* there, which fails. Leaving it uncaptured
+//   makes every assertion in `syntax_test_shebang.clj` and
+//   `syntax_test_shebang.d` compare a selector ST would have clipped.
 pub static SYNTAX_TEST_HEADER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?xm)
@@ -73,8 +78,8 @@ pub static SYNTAX_TEST_HEADER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         \s*SYNTAX\sTEST\s+
         (?:(?P<modifier>[^\s"]+)\s+)?
         "(?P<syntax_file>[^"]+)"
-        (?:\s+(?P<testtoken_end>[^\s\w]+))?
-        (?:\s.*)?$
+        (?:\s+(?P<testtoken_end>\S.*?))?
+        \s*$
     "#,
     )
     .unwrap()
@@ -135,7 +140,7 @@ struct AssertionRange<'a> {
     is_reference: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ScopedText {
     scope: Vec<Scope>,
     char_start: usize,
@@ -281,6 +286,7 @@ fn get_line_assertion_details<'a>(
 fn process_assertions(
     assertion: &AssertionRange<'_>,
     test_against_line_scopes: &[ScopedText],
+    after_the_line: &[ScopedText],
 ) -> Vec<RangeTestResult> {
     // format the scope selector to include a space at the beginning, because, currently, ScopeSelector expects excludes to begin with " -"
     // and they are sometimes in the syntax test as ^^^-comment, for example
@@ -304,18 +310,80 @@ fn process_assertions(
         };
         results.push(result);
     }
-    // don't ignore assertions after the newline, they should be treated as though they are asserting against the newline
+    // A column *past* the end of the line under test is not the newline: it is
+    // the corresponding column of the **next row**.
+    //
+    // `text_point(row, col)` overflows a column beyond the row into the row
+    // below, and ST's syntax tests inherit that — asked of it directly, with a
+    // `^^^^` run reaching past a two-character line, which came back scoped as
+    // the comment on the line below rather than as anything on the line named.
+    // Reusing this line's last scope instead is what made `git_config` fail 17
+    // assertions that ST passes: every one of them is a `^` a column or two
+    // past the end of a short line.
+    //
+    // `after_the_line` is the first line following the one under test —
+    // usually the assertion line itself, which is why it has to be parsed
+    // before its own assertions are judged. Nothing beyond one row: ST would
+    // carry on into the row after that, and no assertion in the corpus reaches
+    // so far, so an absent column is an empty stack and fails loudly.
     let last = test_against_line_scopes.last().unwrap();
-    if last.char_start + last.text_len < assertion.end_char {
-        let match_value = selector.does_match(last.scope.as_slice());
-        let result = RangeTestResult {
-            column_begin: max(last.char_start + last.text_len, assertion.begin_char),
-            column_end: assertion.end_char,
-            success: match_value.is_some(),
-        };
-        results.push(result);
+    let last_end = last.char_start + last.text_len;
+    if last_end < assertion.end_char {
+        let empty: Vec<Scope> = Vec::new();
+        for column in max(last_end, assertion.begin_char)..assertion.end_char {
+            let scope = after_the_line
+                .iter()
+                .find(|s| {
+                    let at = column - last_end;
+                    s.char_start <= at && at < s.char_start + s.text_len
+                })
+                .map(|s| s.scope.as_slice())
+                .unwrap_or(&empty);
+            results.push(RangeTestResult {
+                column_begin: column,
+                column_end: column + 1,
+                success: selector.does_match(scope).is_some(),
+            });
+        }
     }
     results
+}
+
+/// The `ScopedText` runs of one line, walked from `stack` without disturbing it.
+///
+/// Used for the line *after* the one under test, which has to be parsed before
+/// its own assertions are judged — see `process_assertions`. The parse is made
+/// on a clone of the parser so the real state is untouched, and the line is
+/// parsed again by the loop in the ordinary way a moment later.
+fn scopes_of_line(
+    state: &ParseState,
+    stack: &ScopeStack,
+    line: &str,
+    ss: &SyntaxSet,
+) -> Vec<ScopedText> {
+    let mut state = state.clone();
+    let mut stack = stack.clone();
+    let mut out = Vec::new();
+    let Ok(output) = state.parse_line(line, ss) else {
+        return out;
+    };
+    let mut col: usize = 0;
+    for (s, op) in ScopeRegionIterator::new(&output.ops, line) {
+        if stack.apply(op).is_err() {
+            return out;
+        }
+        if s.is_empty() {
+            continue;
+        }
+        let len = s.chars().count();
+        out.push(ScopedText {
+            char_start: col,
+            text_len: len,
+            scope: stack.as_slice().to_vec(),
+        });
+        col += len;
+    }
+    out
 }
 
 /// If `parse_test_lines` is `false` then lines that only contain assertions are not parsed
@@ -372,6 +440,9 @@ fn test_file(
     let mut current_line_number = 1;
     let mut test_against_line_number = 1;
     let mut scopes_on_line_being_tested = Vec::new();
+    // The runs of the first line after the one under test — see
+    // `process_assertions`. `None` until an assertion needs it.
+    let mut scopes_after_line_being_tested: Option<Vec<ScopedText>> = None;
     let mut previous_non_assertion_line = line.to_string();
 
     let mut assertion_failures: usize = 0;
@@ -395,7 +466,17 @@ fn test_file(
             // cross-line label lookups, so no scope checks run here.
             let mut current_assertion_failures: usize = 0;
             if !assertion.is_reference {
-                let result = process_assertions(&assertion, &scopes_on_line_being_tested);
+                // The row a past-EOL column lands on is the first line *after*
+                // the one under test, which is normally this very line — so it
+                // is parsed here, on a clone, before its own assertions are
+                // judged. Only the first such line, however many assertions
+                // follow it.
+                if scopes_after_line_being_tested.is_none() {
+                    scopes_after_line_being_tested =
+                        Some(scopes_of_line(&state, &stack, &line, ss));
+                }
+                let after = scopes_after_line_being_tested.as_deref().unwrap_or(&[]);
+                let result = process_assertions(&assertion, &scopes_on_line_being_tested, after);
                 total_assertions += assertion.end_char - assertion.begin_char;
                 for failure in result.iter().filter(|r| !r.success) {
                     let length = failure.column_end - failure.column_begin;
@@ -441,6 +522,7 @@ fn test_file(
             if !line_has_assertion {
                 // ST seems to ignore lines that have assertions when calculating which line the assertion tests against
                 scopes_on_line_being_tested.clear();
+                scopes_after_line_being_tested = None;
                 test_against_line_number = current_line_number;
                 previous_non_assertion_line = line.to_string();
             }
@@ -534,30 +616,42 @@ fn test_file(
                 // It costs a re-walk per batch of corrections, and a batch is
                 // rare: a cross-line `fail` has to resolve for one to exist.
                 stack = ScopeStack::new();
+                // Pass one: the stack, and the runs of *every* line — assertion
+                // lines included, because a column past the end of one line is
+                // measured against the line after it, and that is nearly always
+                // an assertion line.
+                let mut runs: Vec<Vec<ScopedText>> =
+                    Vec::with_capacity(parsed_line_buffer.len());
                 for idx in 0..parsed_line_buffer.len() {
                     parsed_line_buffer[idx].stack_before = stack.clone();
-                    let replayed_ops = parsed_line_buffer[idx].ops.clone();
-                    let replayed_ops = &replayed_ops;
-                    let record = &mut parsed_line_buffer[idx];
-                    let has_non_assertion = record.non_assertion_data.is_some();
-
-                    // Advance the stack through the corrected ops, building
-                    // scoped text for non-assertion lines
-                    let mut new_scoped = Vec::new();
+                    let ops = parsed_line_buffer[idx].ops.clone();
+                    let mut scoped = Vec::new();
                     let mut col: usize = 0;
-                    for (s, op) in ScopeRegionIterator::new(replayed_ops, &record.line_text) {
+                    for (s, op) in
+                        ScopeRegionIterator::new(&ops, &parsed_line_buffer[idx].line_text)
+                    {
                         stack.apply(op).unwrap();
-                        if !s.is_empty() && has_non_assertion {
-                            let len = s.chars().count();
-                            new_scoped.push(ScopedText {
-                                char_start: col,
-                                text_len: len,
-                                scope: stack.as_slice().to_vec(),
-                            });
-                            col += len;
+                        if s.is_empty() {
+                            continue;
                         }
+                        let len = s.chars().count();
+                        scoped.push(ScopedText {
+                            char_start: col,
+                            text_len: len,
+                            scope: stack.as_slice().to_vec(),
+                        });
+                        col += len;
                     }
+                    runs.push(scoped);
+                }
 
+                // Pass two: the assertions each corrected line carries, judged
+                // against the runs as they now stand and the line after it.
+                let empty_runs: Vec<ScopedText> = Vec::new();
+                for idx in 0..parsed_line_buffer.len() {
+                    let new_scoped = runs[idx].clone();
+                    let after = runs.get(idx + 1).unwrap_or(&empty_runs).clone();
+                    let record = &mut parsed_line_buffer[idx];
                     if let Some(ref mut data) = record.non_assertion_data {
                         if !data.assertions.is_empty() {
                             // Re-evaluate all assertions against corrected scopes
@@ -573,7 +667,8 @@ fn test_file(
                                     // above, so replays never hit reference lines.
                                     is_reference: false,
                                 };
-                                let result = process_assertions(&temp_assertion, &new_scoped);
+                                let result =
+                                    process_assertions(&temp_assertion, &new_scoped, &after);
                                 for failure in result.iter().filter(|r| !r.success) {
                                     let length = failure.column_end - failure.column_begin;
                                     let text: String = record
@@ -597,9 +692,9 @@ fn test_file(
                                             .find(|s| {
                                                 s.char_start + s.text_len > failure.column_begin
                                             })
-                                            .unwrap_or_else(|| new_scoped.last().unwrap())
-                                            .scope
-                                            .clone(),
+                                            .or_else(|| new_scoped.last())
+                                            .map(|s| s.scope.clone())
+                                            .unwrap_or_default(),
                                     });
                                     new_failures += failure.column_end - failure.column_begin;
                                 }
