@@ -11,10 +11,11 @@
 use syntect::easy::ScopeRegionIterator;
 use syntect::highlighting::ScopeSelectors;
 use syntect::parsing::{
-    ParseLineOutput, ParseState, Scope, ScopeStack, SyntaxSet, SyntaxSetBuilder,
+    ParseLineOutput, ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxSet, SyntaxSetBuilder,
 };
 
 use std::cmp::{max, min};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -474,19 +475,30 @@ fn test_file(
             // Handle cross-line backtracking: when `replayed` is non-empty, the
             // parser has corrected ops for previously-parsed lines. Re-evaluate
             // any assertions that were tested against those lines.
-            if !replayed.is_empty() {
+            if !replayed.is_empty() && replayed.iter().any(|(line, _)| *line >= 1) {
                 if out_opts.debug {
                     println!(
                         "  replayed {} line(s) due to cross-line backtracking",
                         replayed.len()
                     );
                 }
-                let buf_len = parsed_line_buffer.len();
-                let start_idx = buf_len - replayed.len();
+                // Each correction names the line it is for — the parser's
+                // 1-based count of `parse_line` calls, which is this buffer's
+                // index plus one, since one record is pushed per call. A later
+                // correction for a line replaces an earlier one: two cross-line
+                // `fail`s can fire on one `parse_line`, and the parser appends
+                // the second run to the first.
+                let corrections: BTreeMap<usize, &Vec<(usize, ScopeStackOp)>> = replayed
+                    .iter()
+                    .filter_map(|(line, ops)| line.checked_sub(1).map(|idx| (idx, ops)))
+                    .filter(|(idx, _)| *idx < parsed_line_buffer.len())
+                    .collect();
+                let start_idx = corrections.keys().next().copied().unwrap_or(0);
 
                 // Collect replayed line numbers for pruning pending messages
-                let replayed_line_numbers: Vec<usize> = (start_idx..buf_len)
-                    .map(|i| parsed_line_buffer[i].line_number)
+                let replayed_line_numbers: Vec<usize> = corrections
+                    .keys()
+                    .map(|i| parsed_line_buffer[*i].line_number)
                     .collect();
                 // Remove pending messages whose test_against_line_number
                 // matches any replayed line — they will be regenerated below
@@ -496,8 +508,8 @@ fn test_file(
                 // Reset stack to the state before the first replayed line
                 stack = parsed_line_buffer[start_idx].stack_before.clone();
 
-                for (i, replayed_ops) in replayed.iter().enumerate() {
-                    let record = &mut parsed_line_buffer[start_idx + i];
+                for (idx, replayed_ops) in corrections {
+                    let record = &mut parsed_line_buffer[idx];
                     let has_non_assertion = record.non_assertion_data.is_some();
 
                     // Advance the stack through the corrected ops, building

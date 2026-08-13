@@ -68,9 +68,19 @@ pub enum ParsingError {
 pub struct ParseLineOutput {
     /// Ops for the current line.
     pub ops: Vec<(usize, ScopeStackOp)>,
-    /// Ops for previously buffered lines that have now been corrected, in order.
-    /// Non-empty only when a cross-line `fail` just resolved.
-    pub replayed: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// Ops for previously buffered lines that have now been corrected, each
+    /// paired with the line it is for — the parser's own 1-based count of
+    /// `parse_line` calls, so the caller's n-th line is `n`. Non-empty only
+    /// when a cross-line `fail` just resolved.
+    ///
+    /// The line number is part of the contract because two cross-line `fail`s
+    /// can fire on one `parse_line` call, and the second run is *appended* to
+    /// the first — see `handle_fail`. Positionally, the i-th entry is then not
+    /// the i-th buffered line, and one line's ops land on another line's text.
+    /// With the line named, appending is harmless: a later correction for a
+    /// line replaces an earlier one, and no consumer has to reconstruct which
+    /// lines were buffered.
+    pub replayed: Vec<(usize, Vec<(usize, ScopeStackOp)>)>,
     /// Warnings collected during parsing (e.g. branch point expiry).
     pub warnings: Vec<String>,
 }
@@ -92,7 +102,9 @@ pub struct ParseState {
     pending_lines: Vec<String>,
     /// Corrected ops produced by a cross-line `fail` replay, to be returned
     /// as `ParseLineOutput::replayed` at the end of `parse_line`.
-    flushed_ops: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// Corrections produced by a cross-line `fail`, each tagged with the line
+    /// it is for — see [`ParseLineOutput::replayed`], which is where they go.
+    flushed_ops: Vec<(usize, Vec<(usize, ScopeStackOp)>)>,
     /// Warnings accumulated during parsing, drained into `ParseLineOutput`.
     warnings: Vec<String>,
     /// Active escape patterns from embed operations. The escape regex takes
@@ -1223,7 +1235,10 @@ impl ParseState {
                 // buffered lines.
                 let truncated_lines: Vec<String> =
                     self.pending_lines[pending_lines_snapshot_len..].to_vec();
-                let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
+                // See `ParseLineOutput::replayed`.
+                let replay_base = self.line_number.saturating_sub(self.pending_lines.len())
+                    + pending_lines_snapshot_len;
+                let mut replayed_ops: Vec<(usize, Vec<(usize, ScopeStackOp)>)> =
                     Vec::with_capacity(truncated_lines.len());
                 for (i, replay_line) in truncated_lines.iter().enumerate() {
                     let line_ops = if i == 0 {
@@ -1242,7 +1257,7 @@ impl ParseState {
                     } else {
                         self.parse_line_inner(replay_line, syntax_set)?
                     };
-                    replayed_ops.push(line_ops);
+                    replayed_ops.push((replay_base + i, line_ops));
                 }
                 self.flushed_ops.extend(replayed_ops);
 
@@ -1349,7 +1364,13 @@ impl ParseState {
             let truncated_lines: Vec<String> =
                 self.pending_lines[pending_lines_snapshot_len..].to_vec();
 
-            let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
+            // The line each correction is for: the buffered lines run from
+            // `pending_lines_snapshot_len` to the end of the buffer, and the
+            // line being parsed now is not in it yet. See
+            // `ParseLineOutput::replayed`.
+            let replay_base =
+                self.line_number.saturating_sub(self.pending_lines.len()) + pending_lines_snapshot_len;
+            let mut replayed_ops: Vec<(usize, Vec<(usize, ScopeStackOp)>)> =
                 Vec::with_capacity(truncated_lines.len());
             for (i, replay_line) in truncated_lines.iter().enumerate() {
                 let line_ops = if i == 0 {
@@ -1392,7 +1413,7 @@ impl ParseState {
                 } else {
                     self.parse_line_inner(replay_line, syntax_set)?
                 };
-                replayed_ops.push(line_ops);
+                replayed_ops.push((replay_base + i, line_ops));
             }
             // Append (rather than overwrite) in case multiple cross-line fails
             // fire on the same parse_line call.
@@ -4696,7 +4717,7 @@ contexts:
             "expected exactly one replayed line, got {:?}",
             out2.replayed
         );
-        let has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+        let has_fallback = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
@@ -4705,7 +4726,7 @@ contexts:
             out2.replayed[0]
         );
         // The try.word scope must NOT appear in the replayed ops.
-        let has_try_word = out2.replayed[0].iter().any(|(_, op)| {
+        let has_try_word = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
         });
         assert!(
@@ -4787,7 +4808,7 @@ contexts:
         // The replayed ops for line 1 must still push prefix.word at col 0
         // (from prefix_ops, emitted pre-branch), not overwrite with
         // fallback.content.
-        let replayed_has_prefix = out2.replayed[0].iter().any(|(_, op)| {
+        let replayed_has_prefix = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("prefix.word"))
         });
         assert!(
@@ -4796,7 +4817,7 @@ contexts:
             out2.replayed[0]
         );
         // fallback.content should appear for the post-TRY remainder.
-        let replayed_has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+        let replayed_has_fallback = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
@@ -4919,7 +4940,7 @@ contexts:
             "expected no warnings at the 128-line boundary, got: {:?}",
             all_warnings
         );
-        let has_fallback = out_fail.replayed[0].iter().any(|(_, op)| {
+        let has_fallback = out_fail.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
@@ -5526,6 +5547,52 @@ contexts:
         );
     }
 
+    /// A cross-line `fail` says *which* line each correction is for.
+    ///
+    /// `d` opens a branch, `q` is buffered under the first alternative, and `z`
+    /// on the third line fails it — which must correct the first two lines, and
+    /// name them.
+    #[test]
+    fn a_cross_line_fail_names_the_lines_it_corrects() {
+        let syntax_str = r#"
+name: Late
+scope: source.late
+contexts:
+  main:
+    - match: 'd'
+      scope: keyword.d
+      branch_point: bp
+      branch:
+        - alt-a
+        - alt-b
+  alt-a:
+    - meta_scope: meta.a
+    - match: '(?=z)'
+      fail: bp
+    - match: '\S'
+      scope: other.a
+  alt-b:
+    - meta_scope: meta.b
+    - match: '\S'
+      scope: other.b
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let mut corrected: Vec<(usize, Vec<usize>)> = Vec::new();
+        for (n, line) in "d\nq\nz\n".split_inclusive('\n').enumerate() {
+            let out = state.parse_line(line, &ss).expect("parses");
+            if !out.replayed.is_empty() {
+                corrected.push((n, out.replayed.iter().map(|(at, _)| *at).collect()));
+            }
+        }
+        assert_eq!(
+            corrected,
+            vec![(2, vec![1, 2])],
+            "the fail on the third line should correct the first two, and name them"
+        );
+    }
+
     #[test]
     fn branch_fail_nonexistent_name() {
         // `fail: nonexistent` should be a silent no-op — no panic, parsing continues.
@@ -5604,7 +5671,7 @@ contexts:
         // The first replayed line (replay of "TRY\n") should have fallback.content
         // because fallback-ctx matches `.*`. After that pop, lines 2-3 are parsed
         // by main, which matches `.*` → main.other.
-        let has_fallback = out4.replayed[0].iter().any(|(_, op)| {
+        let has_fallback = out4.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
@@ -5614,7 +5681,7 @@ contexts:
         );
 
         // No replayed line should have try.word (all are under fallback path)
-        for (i, line_ops) in out4.replayed.iter().enumerate() {
+        for (i, (_, line_ops)) in out4.replayed.iter().enumerate() {
             let has_try_word = line_ops.iter().any(|(_, op)| {
                 matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
             });
@@ -5683,7 +5750,7 @@ contexts:
         );
 
         // Replayed line should have fallback.content, not try.word
-        let replay_has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+        let replay_has_fallback = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
