@@ -182,7 +182,7 @@ impl ScopeRepository {
         if s.is_empty() {
             return Ok(Scope { a: 0, b: 0 });
         }
-        // TEXT-EDITOR FORK: an empty component is not an atom, wherever it is.
+        // An empty component is not an atom, wherever it is.
         // Upstream drops the trailing ones (`trim_end_matches('.')`) and interns
         // the rest, so `meta.annotation..identifier.java` came out three atoms
         // deep with an atom named "" in the middle and could never match
@@ -190,7 +190,7 @@ impl ScopeRepository {
         //
         // ST ignores them all — asked directly, with a token scoped
         // `keyword.foo.bar` and one assertion per shape
-        // (`tools/sublime-oracle/probes/double_dot_*.probe`): `keyword..foo.bar`,
+        // (four `double_dot_*` probes): `keyword..foo.bar`,
         // `.keyword.foo.bar` and `keyword.foo.bar..` all pass, and
         // `keyword..zzz.bar` fails with "scope does not match", so the selector
         // is being evaluated rather than waved through.

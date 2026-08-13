@@ -72,7 +72,7 @@ pub struct ParseLineOutput {
     /// number of the line it replaces. Non-empty only when a cross-line `fail`
     /// just resolved.
     ///
-    /// TEXT-EDITOR FORK: the line number is ours. Upstream's is positional, and
+    /// The line number is ours. Upstream's is positional, and
     /// a second cross-line fail on one `parse_line` appends another run to it, so
     /// pairing the i-th entry with the i-th buffered line puts one line's ops on
     /// another's text.
@@ -81,7 +81,7 @@ pub struct ParseLineOutput {
     pub warnings: Vec<String>,
 }
 
-/// TEXT-EDITOR FORK: how often one zero-width escape may fire at the same byte
+/// How often one zero-width escape may fire at the same byte
 /// of a line before the parser stops believing it.
 ///
 /// See the field it bounds, [`ParseState::zero_width_escape_fires`]. High
@@ -105,7 +105,7 @@ pub struct ParseState {
     /// cross-line `fail` replay. Only the strings are stored; the ops are
     /// returned to callers immediately (same as before).
     pending_lines: Vec<String>,
-    /// TEXT-EDITOR FORK: how many times a zero-width escape has fired at each
+    /// How many times a zero-width escape has fired at each
     /// byte of the line being parsed.
     ///
     /// Perl's POD declares six embedded language sections gated by
@@ -131,7 +131,7 @@ pub struct ParseState {
     /// against issue #650, taken alone — that PR carries several other changes
     /// on top of unmerged branches. It comes back out when upstream merges it.
     zero_width_escape_fires: HashMap<usize, u32>,
-    /// TEXT-EDITOR FORK: the branch points whose alternatives have all run
+    /// The branch points whose alternatives have all run
     /// out at a byte of the line being parsed, by name.
     ///
     /// When a same-line `branch_point` exhausts at a zero-width lookahead,
@@ -159,7 +159,7 @@ pub struct ParseState {
     /// This is upstream's open PR #664 against issue #631, taken alone; it
     /// comes back out when upstream merges it.
     skipped_branches: Vec<(usize, String)>,
-    /// TEXT-EDITOR FORK: while a cross-line `fail` is replaying a buffered
+    /// While a cross-line `fail` is replaying a buffered
     /// line, the line that line actually *is*.
     ///
     /// `line_number` counts calls to `parse_line`, and a replay does not make
@@ -178,7 +178,7 @@ pub struct ParseState {
     /// `markup.heading.2.markdown` was left on the stack for the rest of the
     /// document.
     replay_line: Option<Replay>,
-    /// TEXT-EDITOR FORK: a replay asked for by a `fail` that fired *inside* a
+    /// A replay asked for by a `fail` that fired *inside* a
     /// replay, for the driver to run once the current one has stopped.
     ///
     /// A cross-line `fail` used to run its own replay wherever it fired,
@@ -203,7 +203,7 @@ pub struct ParseState {
     replay_pending: Option<ReplayRequest>,
     /// Corrected ops produced by a cross-line `fail` replay, to be returned
     /// as `ParseLineOutput::replayed` at the end of `parse_line`.
-    /// TEXT-EDITOR FORK: each correction says which line it is for — the
+    /// each correction says which line it is for — the
     /// parser's own 1-based `line_number` — instead of being positional.
     ///
     /// Upstream appends here, with the comment "in case multiple cross-line
@@ -237,7 +237,7 @@ struct EscapeEntry {
     /// Stack depth at the time of the embed push — when escape fires,
     /// pop down to this depth.
     stack_depth: usize,
-    /// TEXT-EDITOR FORK: change 34. The frame the `embed:` was declared in,
+    /// The frame the `embed:` was declared in,
     /// when a `pop: N` took it off before the embed went on — the escape's own
     /// text still wears its meta scopes. `None` when it is still on the stack,
     /// which is where the escape finds it anyway.
@@ -303,7 +303,7 @@ struct StateLevel {
     context: ContextId,
     prototypes: Vec<ContextId>,
     captures: Option<(Region, String)>,
-    /// TEXT-EDITOR FORK: how many of this frame's `meta_content_scope` atoms
+    /// How many of this frame's `meta_content_scope` atoms
     /// were never pushed, because the context under it is a v2 `embed_scope`
     /// wrapper and the host's `embed_scope` *replaces* the embedded syntax's
     /// own scope.
@@ -323,7 +323,7 @@ struct StateLevel {
     mcs_skipped: usize,
 }
 
-/// TEXT-EDITOR FORK: how many of a context's `meta_content_scope` atoms a v2
+/// How many of a context's `meta_content_scope` atoms a v2
 /// `embed_scope` stands in for.
 ///
 /// Version 2 says `embed_scope` *replaces* the embedded syntax's scope. That
@@ -351,7 +351,7 @@ fn mcs_replaced_by_embed_scope(
     usize::from(context.meta_content_scope.first() == Some(&scope))
 }
 
-/// TEXT-EDITOR FORK: whether a branch point's alternative is still on the stack.
+/// Whether a branch point's alternative is still on the stack.
 ///
 /// `stack_depth` is snapshotted *before* a `pop: N + branch:` does its pop, so
 /// the alternative's own frame sits at `stack_depth - pop_count + 1` and is
@@ -361,7 +361,7 @@ fn mcs_replaced_by_embed_scope(
 /// alternative an embed escape left standing — and a later `fail` naming it
 /// then silently does nothing.
 ///
-/// That is the same failure as change 4 and the same predicate class as
+/// That is the same failure as and the same predicate class as
 /// upstream's #660: three ways of asking one question, one of which quietly
 /// says no. So there is one place to ask it, and both callers ask here.
 fn branch_point_is_live(bp: &BranchPoint, stack_len: usize) -> bool {
@@ -369,7 +369,7 @@ fn branch_point_is_live(bp: &BranchPoint, stack_len: usize) -> bool {
 }
 
 
-/// TEXT-EDITOR FORK: which of a `set:`'s targets may emit its `clear_scopes`
+/// Which of a `set:`'s targets may emit its `clear_scopes`
 /// *before* the trigger token rather than after it, if any.
 ///
 /// A `set:` pushes its targets' `meta_scope`s in the initial phase, so the
@@ -388,7 +388,7 @@ fn branch_point_is_live(bp: &BranchPoint, stack_len: usize) -> bool {
 /// left `string.unquoted.shell` on the `<` itself and cleared it one column
 /// on; ST scopes that column
 /// `meta.string.glob.shell meta.range.shell.zsh punctuation.definition.range.begin.shell.zsh`,
-/// with no `string`, asked directly (`tools/sublime-oracle`, the `shellscript`
+/// with no `string`, asked directly (a `shellscript`
 /// probe).
 ///
 /// Makefile is why the `meta_content_scope` half is a condition and not an
@@ -420,7 +420,7 @@ fn early_set_clear(
     Ok(None)
 }
 
-/// TEXT-EDITOR FORK: which line a cross-line replay is currently re-reading.
+/// Which line a cross-line replay is currently re-reading.
 ///
 /// See [`ParseState::replay_line`]. Both halves are needed and neither can be
 /// derived from the parser's counters, because a replay does not advance them.
@@ -445,7 +445,7 @@ struct Replay {
     prefix: Vec<(usize, ScopeStackOp)>,
 }
 
-/// TEXT-EDITOR FORK: one replay to run — everything a cross-line `fail` needs
+/// One replay to run — everything a cross-line `fail` needs
 /// in order to re-read the buffered lines under the reading it has just chosen.
 ///
 /// Both cross-line paths reduce to this. They differ only in how `prefix` and
@@ -464,7 +464,7 @@ struct ReplayRequest {
     prefix: Vec<(usize, ScopeStackOp)>,
     /// Where the re-parse of that first line picks up.
     resume_at: usize,
-    /// TEXT-EDITOR FORK: a branch point that ran out at `resume_at`, whose
+    /// A branch point that ran out at `resume_at`, whose
     /// `Branch` must not be tried again there. See `skipped_branches`: this is
     /// that fall-through, for the branch that ran out on an *earlier* line.
     skip: Option<(usize, String)>,
@@ -484,7 +484,7 @@ struct RegexMatch<'a> {
 /// Maps the pattern to the start index, which is -1 if not found.
 type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
 
-/// TEXT-EDITOR FORK: change 31. What one `push:` of several contexts clears in
+/// What one `push:` of several contexts clears in
 /// a version 1 syntax: all of their `clear_scopes` added up, applied once,
 /// before any of their meta scopes.
 ///
@@ -495,7 +495,7 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 /// with the file's own `source.lang` cleared away, where version 2 interleaves
 /// them — clear, push, clear, push — and leaves `source.lang meta.ctx3
 /// identifier`. ST 4206 answers exactly that at both versions
-/// (`tools/sublime-oracle/probes/VerMultiClearV1.sublime-syntax`, the
+/// (the `VerMultiClearV1.sublime-syntax` probe, the
 /// `multiclear_v1` and `multiclear_v2` jobs); this emitted version 2's
 /// interleaving whatever the file said.
 ///
@@ -526,14 +526,14 @@ fn build_capture_ops(
     regions: &Region,
     version: u32,
 ) -> Vec<(usize, ScopeStackOp)> {
-    // TEXT-EDITOR FORK: change 30. In a version 1 syntax a capture that goes
+    // In a version 1 syntax a capture that goes
     // *backwards* gets no scope at all, and this applied every one of them.
     //
     // Sublime lists it under Compatibility as "Regex Capture Group Order", and
     // its own example is `(?:(x)|(y))+` over `yx`: group 2 matches the `y` at
     // column 0 and group 1 the `x` at column 1. **The documented result is the
     // wrong way round** — it says `x` loses its scope — and ST 4206 answers the
-    // opposite (`tools/sublime-oracle/probes/VerCaptureOrderV1.sublime-syntax`,
+    // opposite (the `VerCaptureOrderV1.sublime-syntax` probe,
     // the `captures_v1` job): `y` is bare and `x` keeps `identifier.x`. So the
     // rule is not about which group is lower-numbered, it is a *cursor*: the
     // groups are read in capture-index order and one that begins before the
@@ -800,7 +800,7 @@ impl ParseState {
         line: &str,
         syntax_set: &SyntaxSet,
         start_at: usize,
-        // TEXT-EDITOR FORK: a branch that ran out at a byte of *this* string,
+        // A branch that ran out at a byte of *this* string,
         // to suppress there. See `ReplayRequest::skip`.
         skip: Option<(usize, String)>,
     ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
@@ -821,11 +821,11 @@ impl ParseState {
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
         // Used for detecting loops with push/pop, see long comment above.
         let mut non_consuming_push_at = (0, 0, 0);
-        // TEXT-EDITOR FORK: fresh for every call, replays included — a
+        // Fresh for every call, replays included — a
         // cross-line replay re-entering the same offset is not a loop. See
         // `zero_width_escape_fires`.
         self.zero_width_escape_fires.clear();
-        // TEXT-EDITOR FORK: and the exhausted branches belong to *this* call,
+        // And the exhausted branches belong to *this* call,
         // because they are byte offsets into the string it was handed. A
         // cross-line replay re-enters here with another line, so its entries
         // are put aside for the duration and the caller's are given back at
@@ -845,7 +845,7 @@ impl ParseState {
             &mut res,
         )? {}
 
-        // TEXT-EDITOR FORK: see `outer_skipped` above.
+        // See `outer_skipped` above.
         self.skipped_branches = outer_skipped;
 
         Ok(res)
@@ -862,7 +862,7 @@ impl ParseState {
         non_consuming_push_at: &mut (usize, usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
     ) -> Result<bool, ParsingError> {
-        // TEXT-EDITOR FORK: the guard is armed over the *range* a non-consuming
+        // The guard is armed over the *range* a non-consuming
         // push reached, not over one depth of it, and what it watches for is a
         // pop landing back where that push started.
         //
@@ -871,9 +871,8 @@ impl ParseState {
         // never sat at, and a `pop: K` from the top unwound `pre+K → pre`
         // without ever visiting `pre+1`. Nothing flagged it, the position never
         // moved, and the same rule fired again: an unbounded loop with no outer
-        // iteration cap. Reachable by any definition in
-        // `<install>/user/syntaxes/`, which nothing bounds — see
-        // `a_multi_context_push_that_pops_all_the_way_back_does_not_hang`.
+        // iteration cap. Reachable by any definition a user supplies, which
+        // nothing bounds.
         //
         // `armed_pre` is the pre-push depth while the stack is anywhere inside
         // `(pre, post]`; the pop that loops is the one whose landing depth is
@@ -914,7 +913,7 @@ impl ParseState {
             // Check if this is an escape match (sentinel pat_index)
             if reg_match.pat_index == usize::MAX {
                 let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
-                // TEXT-EDITOR FORK: the escape that will not stop firing. See
+                // The escape that will not stop firing. See
                 // `zero_width_escape_fires`.
                 let zero_width = match_start == match_end;
                 if zero_width
@@ -976,7 +975,7 @@ impl ParseState {
             // Check if this is a Fail operation — handle before advancing start
             let context = reg_match.context;
             let match_pattern = context.match_at(reg_match.pat_index)?;
-            // TEXT-EDITOR FORK: only when there is somewhere to rewind *to*.
+            // Only when there is somewhere to rewind *to*.
             //
             // Sublime: "If a `fail` action specifies a `branch_point` that was
             // never pushed on the stack, or has already been popped off of it,
@@ -1012,7 +1011,7 @@ impl ParseState {
                 );
             }
 
-            // TEXT-EDITOR FORK: inside a cross-line replay, a non-consuming
+            // Inside a cross-line replay, a non-consuming
             // `Branch` whose match lands past every character of the replayed
             // line does not get a branch point.
             //
@@ -1043,7 +1042,7 @@ impl ParseState {
                 // "push", remember the position and stack size so that we can
                 // check the next "pop" for loops. Otherwise leave the state,
                 // e.g. non-consuming "set" could also result in a loop.
-                // TEXT-EDITOR FORK: how deep this push actually goes, so the
+                // how deep this push actually goes, so the
                 // guard is armed over all of it. A `branch:` pushes exactly one
                 // alternative whatever the list holds; a `push:`/`embed:`
                 // pushes its whole list. A `pop: M` in front of any of them
@@ -1071,7 +1070,7 @@ impl ParseState {
                     _ => None,
                 };
                 if let Some(reach) = reach {
-                    // TEXT-EDITOR FORK: and never narrower than the one depth
+                    // And never narrower than the one depth
                     // upstream arms. With a `pop: M` in front, the arithmetic
                     // above can put the reach at or below `pre` and leave the
                     // range empty — but the stack can still come back up
@@ -1084,7 +1083,7 @@ impl ParseState {
 
             *start = match_end;
 
-            // TEXT-EDITOR FORK: a branch that ran out at a byte the cursor has
+            // A branch that ran out at a byte the cursor has
             // now passed is no longer anything to suppress. See
             // `skipped_branches`.
             self.skipped_branches.retain(|(at, _)| *at >= *start);
@@ -1112,7 +1111,7 @@ impl ParseState {
 
             Ok(true)
         } else if self.skipped_branches.iter().any(|(at, _)| *at == *start) {
-            // TEXT-EDITOR FORK: nothing matched at a position where a branch
+            // Nothing matched at a position where a branch
             // point ran out, so the parent context has nothing to offer here
             // either. Drop the entry and advance one character — which is what
             // upstream does unconditionally, kept as the last resort. See
@@ -1211,7 +1210,7 @@ impl ParseState {
             for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)?) {
                 let match_pat = pat_context.match_at(pat_index)?;
 
-                // TEXT-EDITOR FORK: the branch that just ran out at this byte
+                // The branch that just ran out at this byte
                 // is the one rule that must not be tried again here — it would
                 // re-enter the alternatives that have already all failed. Every
                 // other rule of the context is searched as usual, which is the
@@ -1249,7 +1248,7 @@ impl ParseState {
                         min_start = match_start;
 
                         let consuming = match_end > start;
-                        // TEXT-EDITOR FORK: a non-consuming `pop: N` loops when
+                        // A non-consuming `pop: N` loops when
                         // it lands back on the depth the push started from — the
                         // pre-push stack restored, so the push rule fires again
                         // at a position that never moved. Landing below it is
@@ -1327,7 +1326,7 @@ impl ParseState {
         // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
         let match_ptr = match_pat as *const MatchPattern;
 
-        // TEXT-EDITOR FORK: the cache is about *this* line, and a truncated
+        // The cache is about *this* line, and a truncated
         // search is about a shorter one — see the haystack below. A `None`
         // cached from a full-line search is "this pattern does not match here",
         // which is exactly what a pattern whose lookahead trips over the escape
@@ -1367,8 +1366,8 @@ impl ParseState {
         // operation legitimately needs them (lookaheads with branch/fail, empty patterns with
         // pop/set, etc.). The regex engine handles this via its `FIND_NOT_EMPTY` option.
         let allow_empty = !matches!(match_pat.operation, MatchOperation::None);
-        // print!("  executing regex: {:?} at pos {} on line {}", regex.regex_str(), start, line);
-        // TEXT-EDITOR FORK: an `escape` does not only bound where an embedded
+        // Print!("  executing regex: {:?} at pos {} on line {}", regex.regex_str(), start, line);
+        // an `escape` does not only bound where an embedded
         // syntax's match may *land* — it ends the text that syntax can see. So
         // the search is over the line cut at the escape, not over the whole
         // line with the range narrowed: Oniguruma's `range` limits where a
@@ -1382,7 +1381,7 @@ impl ParseState {
         // (`variable.function.shell`) rather than the end of the loop. ST scopes
         // it `keyword.control.loop.end.shell`, and does so for `` `done` `` with
         // no loop around it at all — so it is the cut and not the loop
-        // (`tools/sublime-oracle`, the `shellscript` probe, `bash_bare`).
+        // (probed with a `shellscript` definition, `bash_bare`).
         //
         // Only the tail is cut, so lookbehind and `^` are untouched; `$` now
         // holds at the escape, which is where the embedded syntax's line ends
@@ -1402,7 +1401,7 @@ impl ParseState {
                 MatchOperation::Push { .. }
                 | MatchOperation::Branch { .. }
                 | MatchOperation::Embed { .. } => self.stack.len() < 100,
-                // TEXT-EDITOR FORK: change 4's other half. An unresolvable
+                // Other half. An unresolvable
                 // `fail` is let through to `perform_op` as an ordinary rule
                 // rather than stopping the line — and a rule that changes
                 // nothing must not match empty, or the parser sits at the same
@@ -1410,12 +1409,8 @@ impl ParseState {
                 // one line above; this is the same rule for the same reason.
                 //
                 // `- match: '(?=;)' fail: nobody` is the shape, and it hangs
-                // without this: upstream's own `branch_fail_nonexistent_name`
-                // is that definition, and it is one of the tests this fork
-                // cannot run (`cargo test -p syntect` does not compile here),
-                // so it went unnoticed until the changes were ported back onto
-                // an upstream checkout. A user's own `syntaxes/` folder reaches
-                // it with two lines.
+                // without this — `branch_fail_nonexistent_name` is that
+                // definition.
                 MatchOperation::Fail(ref name) => {
                     match_start != match_end || self.can_rewind_to(name)
                 }
@@ -1453,14 +1448,14 @@ impl ParseState {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context;
         let pat = context.match_at(reg_match.pat_index)?;
-        // TEXT-EDITOR FORK: which version's rules the captures of this match
+        // which version's rules the captures of this match
         // follow — the same question `push_meta_ops` asks, and asked the same
         // way, off the context on top of the stack. See `build_capture_ops`.
         let version = self.current_syntax_version(syntax_set);
 
         // Handle Fail: attempt backtracking.
         //
-        // TEXT-EDITOR FORK: and only when there is somewhere to rewind to. The
+        // And only when there is somewhere to rewind to. The
         // other half of the change at the `Fail` check in `parse_next_token`,
         // which is where the reason is written down — a `fail` naming a branch
         // point nobody opened is a rule like any other, scope and all, not an
@@ -1513,7 +1508,7 @@ impl ParseState {
                     match_start: *start, // position before this match's advance
                     trigger_match_start: match_start,
                     pat_scope: pat.scope.clone(),
-                    // TEXT-EDITOR FORK: the line this branch point is really
+                    // the line this branch point is really
                     // on, which is not `line_number` inside a replay. See
                     // `replay_line`.
                     line_number: self.cur_line_number(),
@@ -1522,11 +1517,11 @@ impl ParseState {
                     non_consuming_push_at_snapshot: *non_consuming_push_at,
                     first_line_snapshot: self.first_line,
                     with_prototype: pat.with_prototype.clone(),
-                    // TEXT-EDITOR FORK: see `pending_lines_mark`.
+                    // see `pending_lines_mark`.
                     pending_lines_snapshot_len: self.pending_lines_mark(),
                     escape_stack_snapshot: self.escape_stack.clone(),
                     pop_count,
-                    // TEXT-EDITOR FORK: inside a replay, what this line has
+                    // Inside a replay, what this line has
                     // already been given comes first. See `Replay::prefix`.
                     prefix_ops: match &self.replay_line {
                         Some(replay) => {
@@ -1543,7 +1538,7 @@ impl ParseState {
                         .unwrap_or_default(),
                 };
                 self.branch_points.push(bp);
-                // TEXT-EDITOR FORK: `pop: N + branch:` is a lookahead, like
+                // `pop: N + branch:` is a lookahead, like
                 // `pop: N + push:` and not like `set`. This built a synthetic
                 // `Set`, which gave the trigger token the meta scopes of every
                 // frame it was unwinding. Asked of ST with a three-frame probe,
@@ -1606,7 +1601,7 @@ impl ParseState {
     /// Handle a `fail` operation by rewinding to the named branch point.
     /// Returns Ok(true) if backtracking happened (caller should continue from rewound position).
     /// Returns Ok(false) if the fail had no effect.
-    /// TEXT-EDITOR FORK: whether a `fail` naming this branch point has
+    /// whether a `fail` naming this branch point has
     /// anywhere to rewind to.
     ///
     /// The same test `handle_fail` makes before it does anything, asked before
@@ -1649,7 +1644,7 @@ impl ParseState {
             None => return Ok(false), // No such branch point, fail is no-op
         };
 
-        // TEXT-EDITOR FORK: see `replay_line`.
+        // see `replay_line`.
         let cur_line = self.cur_line_number();
         let bp = &self.branch_points[bp_index];
 
@@ -1664,7 +1659,7 @@ impl ParseState {
         }
 
         // Check validity: the alternative's frame is still on the stack.
-        // TEXT-EDITOR FORK: the fourth place this was asked and the second that
+        // the fourth place this was asked and the second that
         // got it wrong — `stack.len() < stack_depth` ignores the `pop_count`
         // that the `rposition` above had just accounted for, so a `pop: N +
         // branch:` with N >= 2 found its branch point and then threw it away
@@ -1727,9 +1722,9 @@ impl ParseState {
                 // emitted before the branch match) verbatim, then resume where
                 // the branch matched.
                 //
-                // TEXT-EDITOR FORK: *where it matched*, with the branch's name
+                // *where it matched*, with the branch's name
                 // suppressed there — not one character past it, which is what
-                // this did and what change 19's same-line arm stopped doing for
+                // this did and what same-line arm stopped doing for
                 // the reason `skipped_branches` gives: the character stepped
                 // over is one the parent context never gets to match, so the
                 // token the branch was opened on loses its scopes entirely.
@@ -1748,7 +1743,7 @@ impl ParseState {
                     resume_at,
                     skip: Some((resume_at, name.to_string())),
                 };
-                // TEXT-EDITOR FORK: inside a replay this does not replay. It
+                // inside a replay this does not replay. It
                 // leaves the request for the driver and ends the line, so that
                 // two loops cannot walk the same buffered lines and the reading
                 // chosen last is the one that survives. See `replay_pending`.
@@ -1759,7 +1754,7 @@ impl ParseState {
                 self.run_replays(request, syntax_set)?;
 
                 // Restart the current line from the beginning under the
-                // restored state. TEXT-EDITOR FORK: including what ran out on
+                // restored state. including what ran out on
                 // it, which was exhausted under a reading this restart has
                 // just replaced. See `skipped_branches`.
                 self.skipped_branches.clear();
@@ -1770,7 +1765,7 @@ impl ParseState {
                 return Ok(true);
             }
 
-            // Same-line exhaustion. TEXT-EDITOR FORK: rewind to where the
+            // Same-line exhaustion. rewind to where the
             // branch point matched and record its name, so the parent
             // context's next rule is offered the position that the branch
             // took. Upstream advances one character past the lookahead
@@ -1828,7 +1823,7 @@ impl ParseState {
         // (must happen before the pop which may invalidate indices).
         self.branch_points[bp_index].next_alternative = next_alt_index + 1;
 
-        // TEXT-EDITOR FORK: the ops for that unwinding, counted here because
+        // the ops for that unwinding, counted here because
         // this is the last moment the frames it is about are on the stack — the
         // re-emit below happens with the alternative already pushed over them.
         // See `lookahead_unwind_ops`.
@@ -1893,7 +1888,7 @@ impl ParseState {
             // a line already in the list simply wins, which is how the reading
             // chosen last is the one that survives.
             let mut prefix = prefix_ops;
-            // TEXT-EDITOR FORK: the trigger's own unwinding comes first, exactly
+            // the trigger's own unwinding comes first, exactly
             // as `push_meta_ops` emits it. See `lookahead_unwind_ops`.
             prefix.extend(unwind_ops.iter().cloned());
             if let Some(clear_amount) = context.clear_scopes {
@@ -1923,7 +1918,7 @@ impl ParseState {
                 // nothing is being suppressed. See `ReplayRequest::skip`.
                 skip: None,
             };
-            // TEXT-EDITOR FORK: as in the exhaustion arm — a `fail` inside a
+            // as in the exhaustion arm — a `fail` inside a
             // replay hands the request to the driver rather than running a
             // replay of its own. See `replay_pending`.
             if self.replay_line.is_some() {
@@ -1932,8 +1927,8 @@ impl ParseState {
             }
             self.run_replays(request, syntax_set)?;
 
-            // Restart the current line from the beginning. TEXT-EDITOR FORK:
-            // and what ran out on it goes with the reading that ran out. See
+            // Restart the current line from the beginning — and what ran out
+            // on it goes with the reading that ran out. See
             // `skipped_branches`.
             self.skipped_branches.clear();
             ops.clear();
@@ -1956,7 +1951,7 @@ impl ParseState {
         } else {
             // Same-line fail: truncate ops back to the snapshot point and rewind.
             ops.truncate(ops_snapshot_len.min(ops.len()));
-            // TEXT-EDITOR FORK: except at column 0 of an empty line, where the
+            // except at column 0 of an empty line, where the
             // rewind goes to the end of it instead.
             //
             // The alternative being swapped in there is typically a
@@ -1984,7 +1979,7 @@ impl ParseState {
             // panics in `easy.rs` because position goes backwards.
             self.branch_points[bp_index].ops_snapshot_len = ops.len();
 
-            // TEXT-EDITOR FORK: the trigger's own unwinding comes first, exactly
+            // the trigger's own unwinding comes first, exactly
             // as `push_meta_ops` emits it. See `lookahead_unwind_ops`.
             ops.extend(unwind_ops.iter().cloned());
 
@@ -2038,10 +2033,10 @@ impl ParseState {
 
     /// Which line the parser is on, counting from 0.
     ///
-    /// TEXT-EDITOR FORK: `line_number` is a count of `parse_line` calls, which
+    /// `line_number` is a count of `parse_line` calls, which
     /// a cross-line replay does not make. Everything that compares a branch
     /// point's line against "now" has to ask this instead. See `replay_line`.
-    /// TEXT-EDITOR FORK: run cross-line replays until no more are asked for.
+    /// run cross-line replays until no more are asked for.
     ///
     /// One round re-reads `pending_lines[req.from..]` under whatever reading
     /// the caller has just put on the stack, and stops early if a `fail` on one
@@ -2086,7 +2081,7 @@ impl ParseState {
         let lines: Vec<String> = self.pending_lines[req.from..].to_vec();
         let mut out = Vec::with_capacity(lines.len());
         for (i, line) in lines.iter().enumerate() {
-            // TEXT-EDITOR FORK: this buffered line's own number, for as long as
+            // this buffered line's own number, for as long as
             // it is the one being parsed. Saved and put back, because a `fail`
             // on it reads `cur_line_number`. See `replay_line`.
             let outer = self.replay_line.replace(Replay {
@@ -2097,7 +2092,7 @@ impl ParseState {
             });
             let line_ops = if i == 0 {
                 let mut composed = req.prefix.clone();
-                // TEXT-EDITOR FORK: what this line already has, for a branch
+                // what this line already has, for a branch
                 // point created by the re-parse. See `Replay::prefix`.
                 if let Some(replay) = self.replay_line.as_mut() {
                     replay.prefix = composed.clone();
@@ -2133,7 +2128,7 @@ impl ParseState {
 
     /// Where a branch point created right now starts its replay from.
     ///
-    /// TEXT-EDITOR FORK: at the top level that is "everything buffered after
+    /// at the top level that is "everything buffered after
     /// this point", which is `pending_lines.len()` — the line being parsed is
     /// not in the buffer yet. Inside a replay it is the buffer index of the
     /// line being replayed, which *is* in the buffer already: a branch point
@@ -2160,14 +2155,14 @@ impl ParseState {
         }
     }
 
-    /// TEXT-EDITOR FORK: the ops a `pop: N + push:`/`branch:`/`embed:` emits
+    /// the ops a `pop: N + push:`/`branch:`/`embed:` emits
     /// for the frames it unwinds, before its trigger takes its own scope.
     ///
     /// The count is a *lookahead* — "the match will not receive the
     /// `meta_scope` of the contexts that are popped" — so the frames come off
     /// in the initial phase, where a `set` leaves the same work until after.
     /// Each cleared frame's Restore goes out before the totals are counted, for
-    /// change 6's reason: `clear_scopes` "is applied before `meta_scope` and
+    /// reason: `clear_scopes` "is applied before `meta_scope` and
     /// `meta_content_scope`", and what is counted here is what each frame
     /// pushed on the way in.
     ///
@@ -2200,7 +2195,7 @@ impl ParseState {
         Ok(())
     }
 
-    /// TEXT-EDITOR FORK: unwind the frames *under* the top one, a frame at a
+    /// unwind the frames *under* the top one, a frame at a
     /// time, for a `pop: N` (or a `pop: N + set:`) that reaches past its own.
     ///
     /// Each frame's `meta_content_scope` comes off, then its `meta_scope`, then
@@ -2211,8 +2206,8 @@ impl ParseState {
     /// atoms from under them. Summing every frame's meta scopes into one `Pop`
     /// cannot express that.
     ///
-    /// Three callers, one order: change 21 for a plain `pop: N`, change 23 for a
-    /// `pop: N + set:` after its trigger, and change 25 for the same set
+    /// Three callers, one order: for a plain `pop: N`, for a
+    /// `pop: N + set:` after its trigger, and for the same set
     /// *before* its trigger, when the target's `clear_scopes` is emitted early.
     fn unwind_frames_below_top(
         &self,
@@ -2278,7 +2273,7 @@ impl ParseState {
                     // v2: if the context immediately below the top has
                     // embed_scope_replaces, cur_context's meta_content_scope
                     // was never pushed, so don't generate a Pop for it.
-                    // TEXT-EDITOR FORK: from the frame, not from the stack
+                    // from the frame, not from the stack
                     // below it, and only what was actually pushed. See
                     // `StateLevel::mcs_skipped`.
                     let skipped = self
@@ -2310,7 +2305,7 @@ impl ParseState {
                     // interpolation close, where `f-string-replacement-end`
                     // fires `pop: 2` that also pops
                     // `f-string-replacement-meta`.
-                    // TEXT-EDITOR FORK: and cur's own `clear_scopes` is
+                    // and cur's own `clear_scopes` is
                     // restored here, before the frames underneath are unwound —
                     // not after them, which is where upstream puts it.
                     //
@@ -2330,28 +2325,28 @@ impl ParseState {
                     // stack`. The line after an unterminated continuation then
                     // stayed inside `meta.string.haskell`.
                     //
-                    // This is change 6's ordering — "clear_scopes is applied
+                    // This is ordering — "clear_scopes is applied
                     // before meta_scope and meta_content_scope", so it is undone
-                    // after them — for a plain `pop: N`, where change 6 did it
+                    // after them — for a plain `pop: N`, where did it
                     // for `pop: N + set:`. `pop: 1` is unaffected either way:
                     // the loop below is empty, so the two positions coincide.
                     if pop_count > 1 && cur_context.clear_scopes.is_some() {
                         ops.push((index, ScopeStackOp::Restore));
                     }
-                    // TEXT-EDITOR FORK: likewise — see above, and
+                    // likewise — see above, and
                     // `unwind_frames_below_top`, which is this loop's one copy.
                     self.unwind_frames_below_top(pop_count, index, syntax_set, ops)?;
                 }
 
-                // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
-                // TEXT-EDITOR FORK: unless the unwinding above has already put
+                // Cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
+                // unless the unwinding above has already put
                 // them back, which it does whenever there are frames under this
                 // one whose atoms the clear is holding. See there.
                 if !initial && pop_count <= 1 && cur_context.clear_scopes.is_some() {
                     ops.push((index, ScopeStackOp::Restore))
                 }
             }
-            // for some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
+            // For some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
             // - the meta_content_scope of the current context is applied to the matched thing, unlike pop
             // - the clear_scopes are applied after the matched token, unlike push
             // - the interaction with meta scopes means that the token has the meta scopes of both the current scope and the new scope.
@@ -2368,7 +2363,7 @@ impl ParseState {
                     MatchOperation::Set { pop_count, .. } => pop_count.max(1),
                     _ => 1,
                 };
-                // TEXT-EDITOR FORK: `pop: N + push:` is a *lookahead*, so the
+                // `pop: N + push:` is a *lookahead*, so the
                 // frames it unwinds are unwound **before** the matched text takes
                 // its scope — all of it in the initial phase, where a `set` leaves
                 // the same work until after.
@@ -2404,7 +2399,7 @@ impl ParseState {
                 if initial {
                     // v2: pop parent's meta_content_scope so matched text does not see it
                     //
-                    // TEXT-EDITOR FORK: unless the context below is an
+                    // unless the context below is an
                     // `embed_scope` wrapper, in which case this context is an
                     // embedded syntax's `main` and its `meta_content_scope`
                     // was *replaced* by the host's `embed_scope` — the push
@@ -2418,7 +2413,7 @@ impl ParseState {
                     // root scope, and a second fence over-popped an empty
                     // stack. ST keeps `source.shell.bash` on the stack for the
                     // whole fence and `text.html.markdown` after it
-                    // (`tools/sublime-oracle/probes/mdfence.probe`).
+                    // (the `mdfence.probe` probe).
                     let skipped = self
                         .stack
                         .last()
@@ -2429,13 +2424,13 @@ impl ParseState {
                         ops.push((index, ScopeStackOp::Pop(atoms)));
                     }
 
-                    // TEXT-EDITOR FORK: change 25. A `pop: N + set:` whose
+                    // A `pop: N + set:` whose
                     // target clears carries its trigger on the *unwound* stack.
                     //
                     // The frames a `pop: N + set:` unwinds do reach its trigger
                     // token — ST answers `source meta.outer meta.mid meta.tail
                     // keyword.trigger` for three frames and a `pop: 2 + set:`
-                    // (`tools/sublime-oracle/probes/PopPush.sublime-syntax`),
+                    // (the `PopPush.sublime-syntax` probe),
                     // which is why they are unwound after the token and not
                     // before it. But when the *target* carries a `clear_scopes`
                     // that is emitted early (see `early_set_clear`), the clear
@@ -2456,7 +2451,7 @@ impl ParseState {
                     // reaches. Unwinding first puts the clear over the same
                     // atom ST's is over, and the column after the trigger — and
                     // every other column of
-                    // `tools/sublime-oracle/probes/regexp_modes.probe` — is
+                    // the `regexp_modes.probe` probe — is
                     // where it already was.
                     //
                     // `early_set_clear` guarantees `cur_context` has no meta
@@ -2520,7 +2515,7 @@ impl ParseState {
                         // eat-whitespace-then-pop]` relies on Clear eating
                         // the last-pushed mcs atom, which Restore then
                         // replaces when eat-whitespace-then-pop pops.
-                        // TEXT-EDITOR FORK: not when the context being *left*
+                        // not when the context being *left*
                         // carries meta scopes of its own.
                         //
                         // Emitting the target's Clear here is right when the
@@ -2537,18 +2532,18 @@ impl ParseState {
                         // emitted `meta.interpolation.tilde.shell
                         // string.unquoted.shell`, the tilde interpolation's own
                         // scope left behind by that swap. Asked of ST directly,
-                        // `tools/sublime-oracle/probes/bash_tilde.probe`.
+                        // the `bash_tilde.probe` probe.
                         //
                         // Deferring it to the non-initial phase is enough: the two
                         // phases share this predicate, and the one that does not
                         // emit here emits there. Upstream's #669.
                         //
-                        // TEXT-EDITOR FORK: and a multi-context `set:` is the
+                        // and a multi-context `set:` is the
                         // same question one target along — see
                         // `early_set_clear`, which is what decides both phases
                         // now. A single-context `set:` is the case where its
                         // answer is `Some(0)`.
-                        // TEXT-EDITOR FORK: change 31 — a version 1 `push:`
+                        // — a version 1 `push:`
                         // of several contexts clears their sum, once, first.
                         // See `summed_push_clear`.
                         let summed = if version < 2 && !is_set {
@@ -2575,7 +2570,7 @@ impl ParseState {
                             }
                         }
                     } else {
-                        // TEXT-EDITOR FORK: change 31, the other phase of it.
+                        // the other phase of it.
                         let summed = if version < 2 && !is_set {
                             summed_push_clear(context_refs, syntax_set)?
                         } else {
@@ -2599,7 +2594,7 @@ impl ParseState {
                         }
                     }
                 } else {
-                    // TEXT-EDITOR FORK: change 31 — the summed clear belongs to
+                    // — the summed clear belongs to
                     // the trigger token and to nothing after it.
                     //
                     // ST scopes `abc` in the documentation's example
@@ -2692,7 +2687,7 @@ impl ParseState {
                             // there.
                         }
 
-                        // TEXT-EDITOR FORK: for `pop: N + set:` with N > 1, the
+                        // for `pop: N + set:` with N > 1, the
                         // Restore comes *before* the Pop.
                         //
                         // Sublime documents the order: `clear_scopes` "is applied
@@ -2724,7 +2719,7 @@ impl ParseState {
                         // (the Lisp `defun` shape) pins.
                         //
                         // This is upstream's #646, taken alone.
-                        // TEXT-EDITOR FORK: a target's `clear_scopes` emitted
+                        // a target's `clear_scopes` emitted
                         // in the initial phase (see `early_set_clear`) has
                         // already eaten atoms, and when it sits past the first
                         // target those atoms are `meta_scope`s that
@@ -2740,11 +2735,11 @@ impl ParseState {
                         } else {
                             None
                         };
-                        // TEXT-EDITOR FORK: change 25 — what the initial phase
+                        // — what the initial phase
                         // has already done. See there.
                         let early_unwind = set_pop_count > 1 && early_clear.is_some();
                         //
-                        // TEXT-EDITOR FORK: and `Some(0)` needs it too once the
+                        // And `Some(0)` needs it too once the
                         // set is unwinding more than its own frame. The atom
                         // that Clear ate then belongs to one of the frames
                         // below — the one this set is replacing — and that
@@ -2759,9 +2754,9 @@ impl ParseState {
                             ops.push((index, ScopeStackOp::Restore));
                         }
 
-                        // TEXT-EDITOR FORK: unless the initial phase restored
+                        // unless the initial phase restored
                         // it already, on its way to unwinding the frames under
-                        // this one before the trigger — change 25.
+                        // this one before the trigger — .
                         let restore =
                             is_set && cur_context.clear_scopes.is_some() && !early_unwind;
                         let restore_first = restore && set_pop_count > 1;
@@ -2774,12 +2769,12 @@ impl ParseState {
                             ops.push((index, ScopeStackOp::Pop(num_to_pop)));
                         }
 
-                        // TEXT-EDITOR FORK: then the frames a `pop: N + set:`
+                        // then the frames a `pop: N + set:`
                         // unwinds under the one it replaces — one at a time,
                         // and each one's own `clear_scopes` put back before the
                         // frames beneath it are touched.
                         //
-                        // This is change 21's ordering for the `set:` path: the
+                        // This is ordering for the `set:` path: the
                         // atoms a `clear_scopes` took are the ones the frames
                         // below pushed, so while it is in force they sit in the
                         // clear stack and not on the live one, and unwinding
@@ -2790,10 +2785,10 @@ impl ParseState {
                         // syntax's own `source.regexp` off the bottom: the
                         // corpus' last scope-stack divergence and Python's last
                         // failing assertion, both at the close of a `(?ix: … )`.
-                        // TEXT-EDITOR FORK: unless the initial phase already
+                        // unless the initial phase already
                         // did it, which it does when the target's own
                         // `clear_scopes` is emitted before the trigger — see
-                        // `early_unwind` there, and change 25.
+                        // `early_unwind` there, and .
                         if is_set && set_pop_count > 1 && !early_unwind {
                             self.unwind_frames_below_top(
                                 set_pop_count,
@@ -2839,7 +2834,7 @@ impl ParseState {
                                 let id = r.id()?;
                                 let ctx = syntax_set.get_context(&id)?;
 
-                                // TEXT-EDITOR FORK: `Some(0)` is the one the
+                                // `Some(0)` is the one the
                                 // initial phase emitted and left standing; any
                                 // other early Clear was undone by the Restore
                                 // above and is emitted here, in its place.
@@ -2894,7 +2889,7 @@ impl ParseState {
                 pop_count,
                 ..
             } => {
-                // TEXT-EDITOR FORK: `pop: N + embed:` is a lookahead too — the
+                // `pop: N + embed:` is a lookahead too — the
                 // reference names all three, "for `push`, `embed` and `branch`
                 // actions" — so the synthetic is a `Push` carrying the count and
                 // not a `Set`. ST, on `efZVVV` in `PopPush.sublime-syntax`:
@@ -2924,7 +2919,7 @@ impl ParseState {
                 ..
             } => {
                 // Branch acts like Push for meta ops purposes, with the count
-                // when there is one (TEXT-EDITOR FORK: it used to become a `Set`
+                // when there is one (it used to become a `Set`
                 // — see the exec-time site above for what ST says). At exec time
                 // Branch is transformed into a synthetic Push before calling
                 // push_meta_ops, so this arm is a safety fallback.
@@ -2958,14 +2953,14 @@ impl ParseState {
         pat: &MatchPattern,
         syntax_set: &SyntaxSet,
     ) -> Result<bool, ParsingError> {
-        // TEXT-EDITOR FORK: change 34, filled in by the `Embed` arm below.
+        // filled in by the `Embed` arm below.
         let mut embed_holder: Option<(ContextId, usize)> = None;
         let (ctx_refs, old_proto_ids, is_embed) = match pat.operation {
             MatchOperation::Push {
                 ref ctx_refs,
                 pop_count,
             } => {
-                // TEXT-EDITOR FORK: `pop: N + push:`. The stack effect is a
+                // `pop: N + push:`. The stack effect is a
                 // `Set`'s — pop N, then push — and only the scopes the trigger
                 // token sees differ (see `push_meta_ops`). The prototypes are
                 // *not* carried forward the way `Set` carries them: a `push` is
@@ -2975,9 +2970,9 @@ impl ParseState {
                         self.stack.pop();
                     }
                     let final_len = self.stack.len() + ctx_refs.len();
-                    // TEXT-EDITOR FORK: see `branch_point_is_live`. This is
+                    // see `branch_point_is_live`. This is
                     // where a `pop: N + branch:` threw away the branch point it
-                    // had just created — change 7 makes that a synthetic `Push`,
+                    // had just created — makes that a synthetic `Push`,
                     // and `stack_depth <= final_len` reads the pre-pop depth as
                     // if it were the alternative's.
                     self.branch_points
@@ -2992,7 +2987,7 @@ impl ParseState {
                 ..
             } => {
                 if pop_count > 0 {
-                    // TEXT-EDITOR FORK: change 34. Remember the frame this
+                    // Remember the frame this
                     // `embed:` was declared in before unwinding it: its meta
                     // scopes are on the escape, and nothing on the stack will
                     // be able to say so by then.
@@ -3000,7 +2995,7 @@ impl ParseState {
                     for _ in 0..pop_count {
                         self.stack.pop();
                     }
-                    // TEXT-EDITOR FORK: see `branch_point_is_live`. Against the
+                    // see `branch_point_is_live`. Against the
                     // length *before* the contexts go on, as upstream has it —
                     // widening this to the post-push length the way the `push`
                     // and `set` arms count hangs `JavaScript (for PHP
@@ -3032,7 +3027,7 @@ impl ParseState {
                 // captured at the pre-set depth survives a pop-1 + push-1 set
                 // — the depth the bp references is still valid after the push.
                 let final_len = self.stack.len() + ctx_refs.len();
-                // TEXT-EDITOR FORK: see `branch_point_is_live`.
+                // see `branch_point_is_live`.
                 self.branch_points
                     .retain(|bp| branch_point_is_live(bp, final_len));
                 self.escape_stack.retain(|e| e.stack_depth < final_len);
@@ -3043,7 +3038,7 @@ impl ParseState {
                     self.stack.pop();
                 }
                 // Invalidate branch points whose alternative this pop took
-                // away. TEXT-EDITOR FORK: see `branch_point_is_live`.
+                // away. see `branch_point_is_live`.
                 let stack_len = self.stack.len();
                 self.branch_points
                     .retain(|bp| branch_point_is_live(bp, stack_len));
@@ -3061,7 +3056,7 @@ impl ParseState {
         // Record stack depth before pushing (for Embed escape entry)
         let stack_depth_before = self.stack.len();
 
-        // TEXT-EDITOR FORK: mirrors the `prev_embed_scope_replaces` walk in
+        // mirrors the `prev_embed_scope_replaces` walk in
         // `push_meta_ops`, which is what decides whether a frame's
         // `meta_content_scope` is pushed at all. The two loops have to agree,
         // so the flag is set here from the same predicate rather than
@@ -3134,7 +3129,7 @@ impl ParseState {
                     regex: resolved_regex,
                     captures: escape.escape_captures.clone(),
                     stack_depth: stack_depth_before,
-                    // TEXT-EDITOR FORK: change 34.
+                    // .
                     holder: embed_holder,
                 });
             }
@@ -3157,7 +3152,7 @@ impl ParseState {
         let entry = &self.escape_stack[escape_idx];
         let target_depth = entry.stack_depth;
         let escape_captures = entry.captures.clone();
-        // TEXT-EDITOR FORK: change 34. See below.
+        // See below.
         let holder = entry.holder;
 
         // Pop all stack levels down to target_depth, emitting proper meta scope pops
@@ -3176,7 +3171,7 @@ impl ParseState {
             // would otherwise Pop a scope that was never pushed, misaligning
             // every scope below until the escape closes.
             {
-                // TEXT-EDITOR FORK: the frame says how much of its
+                // the frame says how much of its
                 // `meta_content_scope` was pushed; the stack underneath cannot.
                 // See `StateLevel::mcs_skipped`.
                 let atoms = ctx.meta_content_scope.len().saturating_sub(level.mcs_skipped);
@@ -3198,7 +3193,7 @@ impl ParseState {
             self.stack.pop();
         }
 
-        // TEXT-EDITOR FORK: change 34. A `pop: N + embed:`'s escape still wears
+        // A `pop: N + embed:`'s escape still wears
         // the meta scopes of the context the `embed:` was written in.
         //
         // The reference's own example under "Using pop with another action" is
@@ -3234,7 +3229,7 @@ impl ParseState {
             _ => 0,
         };
 
-        // TEXT-EDITOR FORK: change 32. In a version 1 syntax the escape's own
+        // In a version 1 syntax the escape's own
         // text is outside the context that carries the `embed:` — it gets
         // neither that context's `meta_scope` nor its `meta_content_scope` —
         // and this gave it both.
@@ -3243,7 +3238,7 @@ impl ParseState {
         // Scopes": the closing `'` of `'abc'` should come out `meta.group
         // meta.content punctuation.end` and in version 1 comes out
         // `punctuation.end` alone. ST 4206 agrees at both versions
-        // (`tools/sublime-oracle/probes/VerEscapeV1.sublime-syntax`, the
+        // (the `VerEscapeV1.sublime-syntax` probe, the
         // `escape_v1` and `escape_v2` jobs), and it is only the token: the
         // column after it is back inside `meta.group meta.content`.
         //
@@ -3251,7 +3246,7 @@ impl ParseState {
         // it — the shape a `set:`'s meta scopes already have around their
         // trigger — off the frame the `embed:` fired from, which is the one
         // the escape has just popped back to. `mcs_skipped` is what says how
-        // much of its `meta_content_scope` was ever pushed (change 11): a v2
+        // much of its `meta_content_scope` was ever pushed: a v2
         // host embedding through an `embed_scope` never pushed all of it.
         let v1_host_metas = if v1 {
             match self.stack.last() {
@@ -3296,12 +3291,12 @@ impl ParseState {
             }
         }
 
-        // TEXT-EDITOR FORK: change 34 — and off again after the token.
+        // — and off again after the token.
         if holder_metas > 0 {
             ops.push((match_end, ScopeStackOp::Pop(holder_metas)));
         }
 
-        // TEXT-EDITOR FORK: change 32 — and back on, after the escape's own
+        // — and back on, after the escape's own
         // text, in the order they were pushed the first time.
         if let Some((context_id, mcs_skipped)) = v1_host_metas {
             let ctx = syntax_set.get_context(&context_id)?;
@@ -3317,7 +3312,7 @@ impl ParseState {
         self.escape_stack.truncate(escape_idx);
 
         // Invalidate branch points whose alternative this escape has just
-        // popped away. TEXT-EDITOR FORK: asked the one way — see
+        // popped away. asked the one way — see
         // `branch_point_is_live`.
         let stack_len = self.stack.len();
         self.branch_points

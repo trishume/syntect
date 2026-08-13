@@ -393,7 +393,7 @@ impl SyntaxDefinition {
                     pop_count: y as usize,
                 }
             } else if let Ok(s) = get_key(map, "push", Some) {
-                // TEXT-EDITOR FORK: `pop: N + push: X`, which was read as a bare
+                // `pop: N + push: X`, which was read as a bare
                 // `Pop(N)` — the push was **silently dropped**, leaving the parser
                 // on the outer context instead of the one the rule names. Four
                 // rules in the definitions we ship do this: Java's
@@ -624,7 +624,7 @@ impl SyntaxDefinition {
         }
     }
 
-    // TEXT-EDITOR FORK: the captures are kept whole here and narrowed to the
+    // The captures are kept whole here and narrowed to the
     // groups that consume once, at the end of the build, by
     // `filter_captures_to_consuming_groups`. Narrowing them here reads the
     // regex *before* `extends` has merged the parent's variables in, and a
@@ -776,7 +776,7 @@ fn re_resolve_variables(raw_regex: &str, state: &ReResolveState<'_>) -> String {
     result
 }
 
-/// TEXT-EDITOR FORK: drop the captures naming a group that does not consume.
+/// Drop the captures naming a group that does not consume.
 ///
 /// A scope on a group inside a lookaround is never applied, so it is not worth
 /// carrying; that is upstream's reason for narrowing a `captures:` mapping to

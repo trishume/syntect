@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 /// * Makes regexes serializable and deserializable using just the pattern string.
 /// * Lazily compiles regexes on first use to improve initialization time.
 ///
-/// ### TEXT-EDITOR FORK: the prefilter
+/// ### The literal prefilter
 ///
 /// Colouring a line costs one regex search per pattern in the context stack,
 /// and a context has tens of them. Nearly all of those searches fail, and a
@@ -79,7 +79,7 @@ impl Prefilter {
 
         let hir = match regex_syntax::Parser::new().parse(pattern) {
             Ok(hir) => hir,
-            // TEXT-EDITOR FORK: a pattern `regex-syntax` will not read may
+            // A pattern `regex-syntax` will not read may
             // still *start* with one it will. `(?=X)…` says that a match here
             // requires `X` to match here too, so whatever every match of `X`
             // has to begin with, every match of the whole pattern has to begin
@@ -118,7 +118,7 @@ impl Prefilter {
     }
 }
 
-/// TEXT-EDITOR FORK: what is inside a leading `(?=…)`, if the pattern opens
+/// What is inside a leading `(?=…)`, if the pattern opens
 /// with one.
 ///
 /// Text rather than a parse, because the point is to hand a *smaller string*
@@ -206,7 +206,7 @@ impl Regex {
         }
     }
 
-    /// TEXT-EDITOR FORK: the same, for a pattern that will be searched once
+    /// The same, for a pattern that will be searched once
     /// and thrown away.
     ///
     /// Backreference patterns are rebuilt at every token they are tried at —
@@ -261,7 +261,7 @@ impl Regex {
         region: Option<&mut Region>,
         allow_empty: bool,
     ) -> bool {
-        // TEXT-EDITOR FORK: the prefilter, in front of whichever engine is
+        // The prefilter, in front of whichever engine is
         // about to be asked. It is a necessary condition on the *pattern*, so
         // it holds for the not-empty variant too — that one is this pattern
         // with zero-width matches ruled out, which can only ever match less.
@@ -292,7 +292,7 @@ impl Regex {
         }
     }
 
-    /// TEXT-EDITOR FORK: whether this pattern got a prefilter at all.
+    /// Whether this pattern got a prefilter at all.
     ///
     /// The prefilter is invisible when it stops working. If `extract` began
     /// answering `None` for everything — a `regex-syntax` upgrade that parses

@@ -200,7 +200,7 @@ pub enum ContextReference {
 pub enum MatchOperation {
     /// Pushes `ctx_refs`, after first popping `pop_count` contexts.
     ///
-    /// TEXT-EDITOR FORK: `pop_count` is new, and it is not a `Set`. Sublime
+    /// `pop_count` is new, and it is not a `Set`. Sublime
     /// documents the difference — "for `push`, `embed` and `branch` actions, the
     /// pop treats the match as if it were a lookahead, which means the match
     /// will not receive the `meta_scope` of the contexts that are popped",
@@ -288,7 +288,7 @@ impl<'a> Iterator for MatchIter<'a> {
                             _ => return self.next(),
                         };
                         let ctx_ptr = self.syntax_set.get_context(context_id).unwrap();
-                        // TEXT-EDITOR FORK: the included context goes on first,
+                        // The included context goes on first,
                         // and the prototype on top of it. `ctx_stack` is a
                         // stack — `next` reads its *last* entry — so whatever
                         // is pushed last is iterated first, and pushing the
@@ -439,7 +439,7 @@ impl MatchPattern {
             region.pos(i).map(|(start, end)| escape(&text[start..end]))
         });
 
-        // TEXT-EDITOR FORK: no prefilter. This pattern is rebuilt at every
+        // No prefilter. This pattern is rebuilt at every
         // token it is tried at, so working one out costs a `regex-syntax`
         // parse per token to save at most a single search.
         Regex::new_unfiltered(new_regex)

@@ -14,7 +14,7 @@ use std::str::FromStr;
 pub struct ScopeSelector {
     pub path: ScopeStack,
     pub excludes: Vec<ScopeStack>,
-    /// TEXT-EDITOR FORK: the other stacks this selector requires, from `&`.
+    /// The other stacks this selector requires, from `&`.
     ///
     /// A `&` is a *conjunction*: `(source.c | source.c++) & comment.block`
     /// matches a stack that has one of the two source scopes **and**
@@ -60,7 +60,7 @@ impl ScopeSelector {
         } else {
             self.path.does_match(stack)?
         };
-        // TEXT-EDITOR FORK: every conjunct has to match as well, and the score
+        // Every conjunct has to match as well, and the score
         // is the strongest of them rather than their sum.
         //
         // Sublime Text's own numbers say which: on `source.c++ comment.block`,
@@ -84,7 +84,7 @@ impl ScopeSelector {
 
     /// If this selector is really just a single scope, return it
     pub fn extract_single_scope(&self) -> Option<Scope> {
-        // TEXT-EDITOR FORK: a conjunction is not a single scope either.
+        // A conjunction is not a single scope either.
         if self.path.len() > 1
             || !self.excludes.is_empty()
             || !self.conjuncts.is_empty()
@@ -97,7 +97,7 @@ impl ScopeSelector {
 
     /// Extract all selectors for generating CSS
     pub fn extract_scopes(&self) -> Vec<Scope> {
-        // TEXT-EDITOR FORK: including the ones a `&` requires — they are as
+        // Including the ones a `&` requires — they are as
         // much a part of what this selector is about as the path is.
         let mut scopes = self.path.scopes.clone();
         for conjunct in self.conjuncts.iter() {
@@ -112,7 +112,7 @@ impl FromStr for ScopeSelector {
 
     /// Parses a scope stack followed optionally by (one or more) " -" and then a scope stack to exclude
     ///
-    /// TEXT-EDITOR FORK: and `&` and grouping, by way of the same parser
+    /// And `&` and grouping, by way of the same parser
     /// [`ScopeSelectors`] uses. A string that comes out as more than one
     /// selector — `a | b`, or a `-` over a group — keeps only the first, since
     /// this type is one selector by definition; parse it as `ScopeSelectors`
@@ -126,7 +126,7 @@ impl FromStr for ScopeSelector {
     }
 }
 
-/// TEXT-EDITOR FORK: the selector grammar, which is more than a `split`.
+/// The selector grammar, which is more than a `split`.
 ///
 /// Sublime documents four operators and they have a precedence:
 ///
@@ -366,7 +366,7 @@ impl FromStr for ScopeSelectors {
 
     /// Parses a series of selectors separated by commas or pipes
     ///
-    /// TEXT-EDITOR FORK: and `&`, and `( … )`. See [`SelectorExpr`] for the
+    /// And `&`, and `( … )`. See [`SelectorExpr`] for the
     /// grammar and where its precedence comes from.
     fn from_str(s: &str) -> Result<ScopeSelectors, ParseScopeError> {
         Ok(ScopeSelectors {

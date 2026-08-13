@@ -651,7 +651,7 @@ impl SyntaxSetBuilder {
             Self::resolve_extends(syntax_definitions, &path_syntaxes, lines_include_newline);
         warnings.extend(extends_warnings);
 
-        // TEXT-EDITOR FORK: and only now are the regexes final, so only now can
+        // And only now are the regexes final, so only now can
         // a `captures:` mapping be narrowed to the groups that consume. Doing
         // it while reading the YAML measures a child's regex before its
         // parent's variables exist — see `parse_captures`.
@@ -827,7 +827,7 @@ impl SyntaxSetBuilder {
 
         // Track which syntaxes need extends resolution
         let mut unresolved: HashSet<usize> = HashSet::new();
-        // TEXT-EDITOR FORK: change 33 — the syntaxes whose `extends` was
+        // — the syntaxes whose `extends` was
         // refused for a reason other than a missing parent. See the pass at
         // the end that gives them a `main`.
         let mut broken: HashSet<usize> = HashSet::new();
@@ -841,7 +841,7 @@ impl SyntaxSetBuilder {
             return (syntax_definitions, warnings);
         }
 
-        // TEXT-EDITOR FORK: how far away each syntax's variables were declared.
+        // How far away each syntax's variables were declared.
         //
         // A syntax not in here declares everything it has, at depth 0; a
         // resolved child records, per variable, how many `extends` hops from it
@@ -909,7 +909,7 @@ impl SyntaxSetBuilder {
                          extends will not be applied",
                         syntax_definitions[child_idx].name
                     ));
-                    // TEXT-EDITOR FORK: change 33. A refused `extends` leaves a
+                    // A refused `extends` leaves a
                     // syntax that cannot be parsed, and this said so and walked
                     // away. See `broken` below.
                     broken.insert(child_idx);
@@ -931,7 +931,7 @@ impl SyntaxSetBuilder {
                          extends will not be applied",
                         syntax_definitions[child_idx].name
                     ));
-                    // TEXT-EDITOR FORK: change 33, the other refusal.
+                    // The other refusal.
                     broken.insert(child_idx);
                     unresolved.remove(&child_idx);
                     syntax_roots.insert(child_idx, child_idx);
@@ -941,13 +941,13 @@ impl SyntaxSetBuilder {
 
                 // Merge all parents left-to-right: later parent overrides earlier
                 //
-                // TEXT-EDITOR FORK: only among declarations the same distance
+                // Only among declarations the same distance
                 // away. A parent that *declares* a variable or a context beats
                 // one that merely inherited it, whichever order they are listed
                 // in, and "later wins" decides only a tie.
                 //
                 // Asked of Sublime Text rather than argued —
-                // `tools/sublime-oracle/probes/extends_variable_precedence.probe`
+                // the `extends_variable_precedence.probe` probe
                 // and `…_reversed.probe` are a grandchild of two parents, one
                 // declaring the variable and one inheriting the base's, in both
                 // orders; ST takes the declared one both times.
@@ -1110,7 +1110,7 @@ impl SyntaxSetBuilder {
                     let mut scope_repo = crate::parsing::scope::lock_global_scope_repo();
                     let top_level_scope = child.scope;
 
-                    // TEXT-EDITOR FORK: a child that does not declare `main`
+                    // A child that does not declare `main`
                     // inherits the parent's, and the parent's already carries
                     // the parent's file scope at position 0 — put there by the
                     // parent's own `add_initial_contexts`. Regenerating below
@@ -1119,7 +1119,7 @@ impl SyntaxSetBuilder {
                     // source.shell.bash` and `Regular Expressions`
                     // `source.regexp source.regexp.basic`, where Sublime Text
                     // pushes the child's alone — asked directly,
-                    // `tools/sublime-oracle/probes/regexp_modes.probe` and
+                    // the `regexp_modes.probe` probe and
                     // `shellscript.probe`.
                     //
                     // It cost no assertion either way — the atom was being
@@ -1170,7 +1170,7 @@ impl SyntaxSetBuilder {
             }
         }
 
-        // TEXT-EDITOR FORK: change 33. Every syntax whose `extends` was
+        // Every syntax whose `extends` was
         // refused, not only the ones whose parent could not be found.
         //
         // The two version/base refusals above take the child out of
@@ -1181,14 +1181,12 @@ impl SyntaxSetBuilder {
         // the first line of the first file that resolved to it took the
         // process down.
         //
-        // It is a file the user writes: `<install>/user/syntaxes/MyJava.
-        // sublime-syntax` extending Sublime's Java without repeating its
-        // `version: 2` is the whole of it, and Java is one of the 172
-        // definitions that declare 2. The reference says the versions must
-        // match; it does not say the editor may fall over when they do not.
-        // `a_user_definition_whose_parent_is_another_version_still_opens` is
-        // the regression test, from the user's folder rather than from a
-        // builder, because that is the path that reaches it.
+        // It is a file an end user writes: a two-line `.sublime-syntax`
+        // extending Sublime's Java without repeating its `version: 2` is the
+        // whole of it. The reference says the versions must match; it does not
+        // say the library may fall over when they do not.
+        // `extends_refused_for_a_version_mismatch_still_parses` is the
+        // regression test.
         let broken: BTreeSet<usize> = broken.union(&unresolved).copied().collect();
         if !broken.is_empty() {
             for idx in &broken {
@@ -1252,16 +1250,16 @@ impl SyntaxSetBuilder {
 
         // First try matching against path_syntaxes (path ends with extends value)
         //
-        // TEXT-EDITOR FORK: last match, not first.
+        // Last match, not first.
         //
         // Everything else in `syntect` resolves a reference to the *last*
         // definition that answers — `find_id` does, and the `name_to_index`
         // fallback below does, because it is built by inserting every name in
         // order. Only this loop took the first, and the difference shows the
-        // moment one builder holds two copies of a package: the editor layers
-        // the user's `Packages` on top of the compiled set, so `TSX` at
-        // `<user>/Packages/JavaScript/TSX.sublime-syntax` would find the
-        // *compiled* `JSX` for one of its parents and the user's for another.
+        // moment one builder holds two copies of a package — the supported way
+        // to let a user's `Packages` override the one that shipped — so `TSX`
+        // in the second copy would find the *first* copy's `JSX` for one of its
+        // parents and the second's for another.
         // Upstream's own check then sees parents deriving from different base
         // syntaxes and drops the inheritance entirely — "syntax 'TSX' extends
         // parents that derive from different base syntaxes; extends will not
@@ -1321,7 +1319,7 @@ impl SyntaxSetBuilder {
                             alternatives: ref context_refs,
                             ..
                         } => Some(context_refs),
-                        // TEXT-EDITOR FORK: an `embed:` is where the walk
+                        // An `embed:` is where the walk
                         // stops. Sublime was asked, with four probes rather
                         // than one, because two rules explain the same file:
                         // `prototype_in_pushed` says a context *pushed* from

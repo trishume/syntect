@@ -113,12 +113,12 @@ pub fn dump_to_uncompressed_file<T: Serialize, P: AsRef<Path>>(
     serialize_to_writer_impl(o, out, false)
 }
 
-/// TEXT-EDITOR FORK: the same as [`dump_to_uncompressed_file`], to a writer
+/// The same as [`dump_to_uncompressed_file`], to a writer
 /// rather than to a path.
 ///
-/// The editor caches its merged syntax set in one file with a fingerprint in
-/// front of the dump, so that the two cannot be found disagreeing. That needs
-/// somewhere to write the dump that is not the start of a file.
+/// A caller that caches a merged syntax set with a fingerprint in front of the
+/// dump, so that the two cannot be found disagreeing, needs somewhere to write
+/// it that is not the start of a file.
 #[cfg(feature = "dump-create")]
 pub fn dump_uncompressed_to_writer<T: Serialize, W: Write>(
     to_dump: &T,
