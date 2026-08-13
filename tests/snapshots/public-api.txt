@@ -335,6 +335,7 @@ impl<'a, 'b> core::marker::Unpin for syntect::highlighting::RangedHighlightItera
 impl<'a, 'b> core::panic::unwind_safe::RefUnwindSafe for syntect::highlighting::RangedHighlightIterator<'a, 'b>
 impl<'a, 'b> !core::panic::unwind_safe::UnwindSafe for syntect::highlighting::RangedHighlightIterator<'a, 'b>
 pub struct syntect::highlighting::ScopeSelector
+pub syntect::highlighting::ScopeSelector::conjuncts: alloc::vec::Vec<syntect::parsing::ScopeStack>
 pub syntect::highlighting::ScopeSelector::excludes: alloc::vec::Vec<syntect::parsing::ScopeStack>
 pub syntect::highlighting::ScopeSelector::path: syntect::parsing::ScopeStack
 impl syntect::highlighting::ScopeSelector
