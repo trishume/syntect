@@ -2051,7 +2051,7 @@ impl ParseState {
         &mut self,
         escape_idx: usize,
         match_start: usize,
-        _match_end: usize,
+        match_end: usize,
         regions: &Region,
         syntax_set: &SyntaxSet,
         ops: &mut Vec<(usize, ScopeStackOp)>,
@@ -2099,6 +2099,42 @@ impl ParseState {
             self.stack.pop();
         }
 
+        // In a version 1 syntax the escape's own text is outside the context
+        // that carries the `embed:` — it gets neither that context's
+        // `meta_scope` nor its `meta_content_scope` — and this gave it both.
+        //
+        // Compatibility, "Embed Escape Match and Meta Scopes". The
+        // documentation's example is a `'`-delimited embed inside a context
+        // carrying `meta.group` and `meta.content`: the closing quote comes out
+        // `punctuation.end` alone at version 1 and
+        // `meta.group meta.content punctuation.end` at version 2. ST 4206
+        // agrees at both, and adds the part the sentence does not say — it is
+        // *only* the token: the column after the escape is back inside both.
+        //
+        // So they come off before the escape's captures and go back on after
+        // it, which is the shape a `set:`'s meta scopes already have around
+        // their trigger. The version is the *host's*: `self.stack.last()` is
+        // the frame the `embed:` fired from, the pop loop above having just
+        // returned to it.
+        let v1_host_metas = if self.current_syntax_version(syntax_set) < 2 {
+            match self.stack.last() {
+                Some(level) => {
+                    let context_id = level.context;
+                    let ctx = syntax_set.get_context(&context_id)?;
+                    if !ctx.meta_content_scope.is_empty() {
+                        ops.push((match_start, ScopeStackOp::Pop(ctx.meta_content_scope.len())));
+                    }
+                    if !ctx.meta_scope.is_empty() {
+                        ops.push((match_start, ScopeStackOp::Pop(ctx.meta_scope.len())));
+                    }
+                    Some(context_id)
+                }
+                None => None,
+            }
+        } else {
+            None
+        };
+
         // Apply escape_captures scopes
         if let Some(ref capture_map) = escape_captures {
             let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
@@ -2119,6 +2155,18 @@ impl ParseState {
             map.sort_by(|a, b| a.0.cmp(&b.0));
             for ((index, _), op) in map.into_iter() {
                 ops.push((index, op));
+            }
+        }
+
+        // And back on, after the escape's own text, in the order they were
+        // pushed the first time.
+        if let Some(context_id) = v1_host_metas {
+            let ctx = syntax_set.get_context(&context_id)?;
+            for scope in ctx.meta_scope.iter() {
+                ops.push((match_end, ScopeStackOp::Push(*scope)));
+            }
+            for scope in ctx.meta_content_scope.iter() {
+                ops.push((match_end, ScopeStackOp::Push(*scope)));
             }
         }
 
@@ -5255,6 +5303,82 @@ contexts:
         let two = columns(2, "abc 1\n");
         assert_eq!(two[0], "source.lang meta.ctx3 identifier");
         assert_eq!(two[3], "source.lang meta.ctx3");
+    }
+
+    /// A version 1 `embed:`'s escape text is outside the context that holds
+    /// it, and a version 2 one is inside it.
+    ///
+    /// Compatibility, "Embed Escape Match and Meta Scopes", with the
+    /// documentation's own example. ST 4206 agrees at both versions and adds
+    /// the part the sentence does not say: it is *only* the escape's token —
+    /// the column after it is back inside both scopes, which is what makes this
+    /// a pop and a re-push around the token rather than the context ending
+    /// early.
+    #[test]
+    fn version_1_embed_escape_is_outside_the_context_that_holds_it() {
+        fn columns(version: u32, line: &str) -> Vec<String> {
+            let syntax_str = format!(
+                r#"
+name: Ver
+scope: source.lang
+version: {}
+contexts:
+  main:
+    - match: (?=')
+      push: context1
+  context1:
+    - meta_scope: meta.group
+    - meta_content_scope: meta.content
+    - match: \'
+      scope: punctuation.begin
+      embed: embed
+      escape: \'
+      escape_captures:
+        0: punctuation.end
+  embed:
+    - match: '[a-z]+'
+      scope: word
+"#,
+                version
+            );
+            let syntax = SyntaxDefinition::load_from_str(&syntax_str, true, None).unwrap();
+            let ss = link(syntax);
+            let mut state = ParseState::new(&ss.syntaxes()[0]);
+            let line_ops = ops(&mut state, line, &ss);
+            let mut out = Vec::new();
+            let mut stack = ScopeStack::new();
+            let mut iter = line_ops.into_iter().peekable();
+            let text = line.trim_end_matches('\n');
+            for column in 0..=text.len() {
+                while iter.peek().is_some_and(|(at, _)| *at <= column) {
+                    let (_, op) = iter.next().unwrap();
+                    stack.apply(&op).unwrap();
+                }
+                out.push(
+                    stack
+                        .as_slice()
+                        .iter()
+                        .map(|s| s.build_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+            }
+            out
+        }
+
+        let one = columns(1, "'abc'\n");
+        assert_eq!(
+            one[4], "source.lang punctuation.end",
+            "the escape's text kept the scopes of the context holding the embed"
+        );
+        assert_eq!(
+            one[5], "source.lang meta.group meta.content",
+            "the context the embed fired from did not end at its escape"
+        );
+
+        let two = columns(2, "'abc'\n");
+        assert_eq!(two[4], "source.lang meta.group meta.content punctuation.end");
+        assert_eq!(one[0], two[0], "and the opening quote is the same at both");
     }
 
     #[test]
