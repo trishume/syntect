@@ -3171,7 +3171,13 @@ mod tests {
             clear_ops
         );
 
-        // v1: both ctx_a and ctx_b apply their clear_scopes — two Clear ops
+        // v1 is not the same rule, which this test used to assert: a version 1
+        // `push:` of several contexts clears their `clear_scopes` *added up*,
+        // once, before either `meta_scope`. Compatibility, "Multiple Target
+        // Push Actions with `clear_scopes`", and ST 4206 answers that way — the
+        // trigger token sees the sum in force, and the column after it sees
+        // version 2's interleaving, which is why the summed clear is put back
+        // and the per-context ones applied in the non-initial phase.
         let v1_syntax = SyntaxDefinition::load_from_str(
             r#"
             name: V1MultiClear
@@ -3213,11 +3219,24 @@ mod tests {
             .filter(|(_, op)| matches!(op, ScopeStackOp::Clear(_)))
             .collect();
 
-        // v1: both ctx_a's clear_scopes and ctx_b's clear_scopes should produce TWO Clear ops
+        let v1_clears: Vec<_> = ops2
+            .iter()
+            .filter_map(|(_, op)| match op {
+                ScopeStackOp::Clear(a) => Some(*a),
+                _ => None,
+            })
+            .collect();
+
+        // The sum first, for the trigger token, then the interleaved pair the
+        // text after it is under.
         assert_eq!(
-            v1_clear_ops.len(),
-            2,
-            "v1: push [ctx_a, ctx_b] should produce TWO Clear ops (one per context); \
+            v1_clears,
+            vec![
+                ClearAmount::TopN(3),
+                ClearAmount::TopN(1),
+                ClearAmount::TopN(2)
+            ],
+            "v1: push [ctx_a(1), ctx_b(2)] clears the sum for its trigger alone; \
              got: {:?}",
             v1_clear_ops
         );

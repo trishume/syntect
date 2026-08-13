@@ -194,6 +194,48 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 /// before any inner group). Empty captures are skipped because they'd
 /// otherwise sort a Pop before its Push. The returned ops are already
 /// position-ordered and safe to append to a parser ops vec.
+/// What one `push:` of several contexts clears in a version 1 syntax: all of
+/// their `clear_scopes` added up, applied once, before any of their meta
+/// scopes.
+///
+/// Compatibility, "Multiple Target Push Actions with `clear_scopes`". The
+/// documentation's example is a `push: [context2, context3]` where both carry
+/// `clear_scopes: 1`: version 1 takes two atoms off before pushing either
+/// `meta_scope`, so `abc` comes out `meta.ctx2 meta.ctx3 identifier` with the
+/// file's own `source.lang` cleared away, where version 2 interleaves them —
+/// clear, push, clear, push — and leaves `source.lang meta.ctx3 identifier`.
+/// ST 4206 answers exactly that at both versions.
+///
+/// `All` swallows the rest, being already everything there is.
+/// The question both phases of `push_meta_ops` ask: is this the version 1
+/// multi-context `push:` whose clears are summed?
+fn summed_push_clear_for(
+    is_set: bool,
+    version: u32,
+    context_refs: &[ContextReference],
+    syntax_set: &SyntaxSet,
+) -> Result<Option<ClearAmount>, ParsingError> {
+    if is_set || version >= 2 {
+        return Ok(None);
+    }
+    summed_push_clear(context_refs, syntax_set)
+}
+
+fn summed_push_clear(
+    context_refs: &[ContextReference],
+    syntax_set: &SyntaxSet,
+) -> Result<Option<ClearAmount>, ParsingError> {
+    let mut total = 0;
+    for r in context_refs.iter() {
+        match r.resolve(syntax_set)?.clear_scopes {
+            Some(ClearAmount::All) => return Ok(Some(ClearAmount::All)),
+            Some(ClearAmount::TopN(n)) => total += n,
+            None => {}
+        }
+    }
+    Ok((total > 0).then_some(ClearAmount::TopN(total)))
+}
+
 fn build_capture_ops(
     capture_map: &CaptureMapping,
     regions: &Region,
@@ -1621,14 +1663,17 @@ impl ParseState {
                             }
                         }
                     } else {
+                        // A version 1 `push:` of several contexts clears their
+                        // `clear_scopes` added up, once, before any of their
+                        // meta scopes — see `summed_push_clear`. Interleaving
+                        // them is version 2's behaviour.
+                        if let Some(clear_amount) = summed_push_clear_for(
+                            is_set, version, context_refs, syntax_set,
+                        )? {
+                            ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                        }
                         for r in context_refs.iter() {
                             let ctx = r.resolve(syntax_set)?;
-
-                            if !is_set {
-                                if let Some(clear_amount) = ctx.clear_scopes {
-                                    ops.push((index, ScopeStackOp::Clear(clear_amount)));
-                                }
-                            }
 
                             for scope in ctx.meta_scope.iter() {
                                 ops.push((index, ScopeStackOp::Push(*scope)));
@@ -1636,6 +1681,43 @@ impl ParseState {
                         }
                     }
                 } else {
+                    // The summed clear above belongs to the trigger token and to
+                    // nothing after it. ST scopes the documentation's `abc`
+                    // `meta.ctx2 meta.ctx3 identifier`, with the sum in force,
+                    // and the column *after* it `source.lang meta.ctx3` — which
+                    // is where version 2's interleaved clears land. So this
+                    // phase puts the sum back and applies them one context at a
+                    // time, as version 2 does throughout. Getting only the first
+                    // half right leaves every line after the push inside a scope
+                    // the file had cleared.
+                    if summed_push_clear_for(is_set, version, context_refs, syntax_set)?.is_some() {
+                        let pushed: usize = context_refs
+                            .iter()
+                            .map(|r| {
+                                r.resolve(syntax_set)
+                                    .map(|ctx| ctx.meta_scope.len())
+                                    .unwrap_or(0)
+                            })
+                            .sum();
+                        if pushed > 0 {
+                            ops.push((index, ScopeStackOp::Pop(pushed)));
+                        }
+                        ops.push((index, ScopeStackOp::Restore));
+                        for r in context_refs.iter() {
+                            let ctx = r.resolve(syntax_set)?;
+                            if let Some(clear_amount) = ctx.clear_scopes {
+                                ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                            }
+                            for scope in ctx.meta_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
+                            for scope in ctx.meta_content_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
+                        }
+                        return Ok(());
+                    }
+
                     // `pop: N + set:` (set_pop_count > 1) unwinds N-1 deeper
                     // contexts in addition to the usual set-replace semantics;
                     // their meta_scope / meta_content_scope atoms sitting on
@@ -5097,6 +5179,82 @@ contexts:
             v1
         );
         assert_eq!(v1, pushed(2, nested, "ab\n"));
+    }
+
+    /// A version 1 `push:` of several contexts clears their `clear_scopes`
+    /// added up, for the trigger token and for nothing after it.
+    ///
+    /// Compatibility, "Multiple Target Push Actions with `clear_scopes`", with
+    /// the documentation's own example. Both phases are asserted because they
+    /// disagree, and ST 4206 says so: the trigger sees the sum applied before
+    /// either `meta_scope`, and the column after it sees version 2's
+    /// interleaving. Getting only the first half right leaves every line after
+    /// the push inside a scope the file had cleared.
+    #[test]
+    fn version_1_push_clears_the_sum_for_its_trigger_alone() {
+        fn columns(version: u32, line: &str) -> Vec<String> {
+            let syntax_str = format!(
+                r#"
+name: Ver
+scope: source.lang
+version: {}
+contexts:
+  main:
+    - meta_content_scope: meta.main
+    - match: '[a-zA-Z0-9]+\b'
+      scope: identifier
+      push:
+        - context2
+        - context3
+  context2:
+    - meta_scope: meta.ctx2
+    - clear_scopes: 1
+  context3:
+    - meta_scope: meta.ctx3
+    - clear_scopes: 1
+    - match: \n
+      pop: true
+"#,
+                version
+            );
+            let syntax = SyntaxDefinition::load_from_str(&syntax_str, true, None).unwrap();
+            let ss = link(syntax);
+            let mut state = ParseState::new(&ss.syntaxes()[0]);
+            let line_ops = ops(&mut state, line, &ss);
+            let mut out = Vec::new();
+            let mut stack = ScopeStack::new();
+            let mut iter = line_ops.into_iter().peekable();
+            let text = line.trim_end_matches('\n');
+            for column in 0..=text.len() {
+                while iter.peek().is_some_and(|(at, _)| *at <= column) {
+                    let (_, op) = iter.next().unwrap();
+                    stack.apply(&op).unwrap();
+                }
+                out.push(
+                    stack
+                        .as_slice()
+                        .iter()
+                        .map(|s| s.build_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+            }
+            out
+        }
+
+        let one = columns(1, "abc 1\n");
+        assert_eq!(
+            one[0], "meta.ctx2 meta.ctx3 identifier",
+            "the two clears were not added up and applied before either meta scope"
+        );
+        assert_eq!(
+            one[3], "source.lang meta.ctx3",
+            "the summed clear outlived the token it belongs to"
+        );
+
+        let two = columns(2, "abc 1\n");
+        assert_eq!(two[0], "source.lang meta.ctx3 identifier");
+        assert_eq!(two[3], "source.lang meta.ctx3");
     }
 
     #[test]
