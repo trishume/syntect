@@ -194,12 +194,55 @@ type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefau
 /// before any inner group). Empty captures are skipped because they'd
 /// otherwise sort a Pop before its Push. The returned ops are already
 /// position-ordered and safe to append to a parser ops vec.
-fn build_capture_ops(capture_map: &CaptureMapping, regions: &Region) -> Vec<(usize, ScopeStackOp)> {
+fn build_capture_ops(
+    capture_map: &CaptureMapping,
+    regions: &Region,
+    version: u32,
+) -> Vec<(usize, ScopeStackOp)> {
+    // In a version 1 syntax a capture that goes *backwards* gets no scope at
+    // all; this applied every one of them whatever the file declared.
+    //
+    // It is one of the six behaviours listed under Compatibility, "Regex
+    // Capture Group Order". The documentation's own example is `(?:(x)|(y))+`
+    // over `yx`: group 2 matches the `y` at column 0 and group 1 the `x` at
+    // column 1.
+    //
+    // **The documented result is the wrong way round.** The paragraph says the
+    // `x` loses its scope; ST 4206 drops the `y` and keeps `identifier.x` on
+    // the `x`. So the rule is not about which group is lower-numbered — it is a
+    // cursor: the groups are read in capture-index order and one that begins
+    // before the last one that applied is dropped. Implementing the paragraph
+    // would have put it in backwards, which is why it was asked of the
+    // application instead.
+    //
+    // Which cursor took a second question, because two readings survive that
+    // example and they disagree about the commonest case in the format.
+    // Against the last applied group's *end*, `((a)b)` loses its inner group —
+    // group 1 is [0,2) and group 2 begins at 1 — and every nested capture in
+    // every version 1 definition stops being coloured. Against its *start*,
+    // nesting is untouched. ST keeps the inner group, so it is the start. And
+    // `cab` under `(?:(a)|(b)|(c))+` says the cursor is carried from group to
+    // group rather than compared with the group before: the `c` at column 0 is
+    // dropped after groups 1 and 2 have applied.
+    //
+    // The mapping is in the order the YAML hash was read, so the version 1 walk
+    // sorts by capture index rather than trusting it.
+    let mut ordered: Vec<&(usize, Vec<Scope>)> = capture_map.iter().collect();
+    if version < 2 {
+        ordered.sort_by_key(|(cap_index, _)| *cap_index);
+    }
+    let mut last_start = 0;
     let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
-    for &(cap_index, ref scopes) in capture_map.iter() {
+    for &(cap_index, ref scopes) in ordered.into_iter() {
         if let Some((cap_start, cap_end)) = regions.pos(cap_index) {
             if cap_start == cap_end {
                 continue;
+            }
+            if version < 2 {
+                if cap_start < last_start {
+                    continue;
+                }
+                last_start = cap_start;
             }
             for scope in scopes.iter() {
                 map.push((
@@ -884,6 +927,9 @@ impl ParseState {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context;
         let pat = context.match_at(reg_match.pat_index)?;
+        // Which version's rules this match's captures follow — see
+        // `build_capture_ops`.
+        let version = self.current_syntax_version(syntax_set);
 
         // Handle Fail: attempt backtracking, and only when there is somewhere
         // to rewind to. The other half of the check in `parse_next_token`,
@@ -946,7 +992,7 @@ impl ParseState {
                     capture_ops: pat
                         .captures
                         .as_ref()
-                        .map(|m| build_capture_ops(m, &reg_match.regions))
+                        .map(|m| build_capture_ops(m, &reg_match.regions, version))
                         .unwrap_or_default(),
                 };
                 self.branch_points.push(bp);
@@ -980,7 +1026,7 @@ impl ParseState {
         let capture_ops = pat
             .captures
             .as_ref()
-            .map(|m| build_capture_ops(m, &reg_match.regions))
+            .map(|m| build_capture_ops(m, &reg_match.regions, version))
             .unwrap_or_default();
         ops.extend(capture_ops.iter().cloned());
         if !pat.scope.is_empty() {
@@ -4976,6 +5022,81 @@ contexts:
             "the rest of the line after the stray fail was never parsed: {:?}",
             states
         );
+    }
+
+    /// Version 1: a capture that begins before the last one that applied gets
+    /// no scope. Version 2 applies all of them.
+    ///
+    /// Compatibility, "Regex Capture Group Order". The documentation states the
+    /// result the wrong way round — its example is `(?:(x)|(y))+` over `yx` and
+    /// it says the `x` loses its scope, where ST 4206 drops the `y` and keeps
+    /// the `x` — so this is asked of the application, not read. The rule is a
+    /// cursor over the groups in capture-index order, and the cursor is the
+    /// last applied group's *start*: against its end, `((a)b)` would lose its
+    /// inner capture, which is most captures in most definitions, and ST keeps
+    /// it.
+    #[test]
+    fn version_1_capture_that_goes_backwards_gets_no_scope() {
+        fn pushed(version: u32, body: &str, line: &str) -> Vec<String> {
+            let syntax_str = format!(
+                "name: Ver\nscope: source.ver\nversion: {}\ncontexts:\n{}",
+                version, body
+            );
+            let syntax = SyntaxDefinition::load_from_str(&syntax_str, true, None).unwrap();
+            let ss = link(syntax);
+            let mut state = ParseState::new(&ss.syntaxes()[0]);
+            let mut names = Vec::new();
+            for (_, op) in ops(&mut state, line, &ss) {
+                if let ScopeStackOp::Push(scope) = op {
+                    names.push(format!("{:?}", scope));
+                }
+            }
+            names
+        }
+
+        let alternating = "  main:\n    - match: '(?:(x)|(y))+'\n      captures:\n        1: identifier.x\n        2: identifier.y\n";
+        let v1 = pushed(1, alternating, "yx\n");
+        assert!(
+            v1.iter().any(|s| s.contains("identifier.x")),
+            "the group that moved forward lost its scope: {:?}",
+            v1
+        );
+        assert!(
+            !v1.iter().any(|s| s.contains("identifier.y")),
+            "the group that begins behind the cursor was still scoped: {:?}",
+            v1
+        );
+        let v2 = pushed(2, alternating, "yx\n");
+        assert!(
+            v2.iter().any(|s| s.contains("identifier.x")) && v2.iter().any(|s| s.contains("identifier.y")),
+            "version 2 applies both: {:?}",
+            v2
+        );
+
+        // The cursor is carried from group to group: `c` at column 0 is dropped
+        // after groups 1 and 2 have applied at columns 1 and 2.
+        let three = "  main:\n    - match: '(?:(a)|(b)|(c))+'\n      captures:\n        1: identifier.a\n        2: identifier.b\n        3: identifier.c\n";
+        let v1 = pushed(1, three, "cab\n");
+        assert!(
+            v1.iter().any(|s| s.contains("identifier.a")) && v1.iter().any(|s| s.contains("identifier.b")),
+            "{:?}",
+            v1
+        );
+        assert!(
+            !v1.iter().any(|s| s.contains("identifier.c")),
+            "the cursor was not carried past the group before: {:?}",
+            v1
+        );
+
+        // And a nested capture is not a step backwards, at either version.
+        let nested = "  main:\n    - match: '((a)b)'\n      captures:\n        1: outer.one\n        2: inner.two\n";
+        let v1 = pushed(1, nested, "ab\n");
+        assert!(
+            v1.iter().any(|s| s.contains("inner.two")),
+            "nesting is not what the gate is about: {:?}",
+            v1
+        );
+        assert_eq!(v1, pushed(2, nested, "ab\n"));
     }
 
     #[test]
