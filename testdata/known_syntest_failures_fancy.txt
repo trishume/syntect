@@ -1,5 +1,2 @@
 loading syntax definitions from testdata/Packages
-FAILED testdata/Packages/Haskell/tests/syntax_test_haskell.hs: 6
-FAILED testdata/Packages/ShellScript/Bash/tests/syntax_test_scope.bash: 26
-FAILED testdata/Packages/ShellScript/Zsh/tests/syntax_test_scope.zsh: 15
-exiting with code 1
+exiting with code 0

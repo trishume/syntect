@@ -270,12 +270,20 @@ fn get_line_assertion_details<'a>(
             };
             let is_reference = captures.name("reference_label").is_some()
                 || captures.name("reference_assertion").is_some();
+            // An assertion lives on a line that is *nothing but* the testtoken
+            // and the assertion. ST runs zero assertions on a line with
+            // anything else before the token, so markers found after source
+            // text are a coincidence — `${parameter#pattern}` in a Bash comment
+            // otherwise becomes an assertion whose selector is `pattern}`, and
+            // the line stops counting as source for the assertions below it.
+            if !before_token_start.trim().is_empty() {
+                return None;
+            }
             return Some(AssertionRange {
                 begin_char,
                 end_char,
                 scope_selector_text: sst,
-                is_pure_assertion_line: before_token_start.trim_start().is_empty()
-                    && only_whitespace_after_token_end, // if only whitespace surrounds the test tokens on the line, then it is a pure assertion line
+                is_pure_assertion_line: only_whitespace_after_token_end, // if only whitespace follows the test tokens on the line, then it is a pure assertion line
                 is_reference,
             });
         }
