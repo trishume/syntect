@@ -16,7 +16,7 @@ use std::sync::OnceLock;
 /// backtracking engine is an expensive way to establish that a line does not
 /// contain `struct`.
 ///
-/// So each pattern carries a [`Prefilter`]: the literal text every match of it
+/// So each pattern carries a `Prefilter`: the literal text every match of it
 /// must begin with, taken off the pattern by `regex-syntax`. A memchr or
 /// Aho-Corasick pass over the rest of the line says whether any of those
 /// literals is there at all, and a pattern whose literal is absent is not

@@ -366,7 +366,7 @@ impl FromStr for ScopeSelectors {
 
     /// Parses a series of selectors separated by commas or pipes
     ///
-    /// And `&`, and `( … )`. See [`SelectorExpr`] for the
+    /// And `&`, and `( … )`. See `SelectorExpr` for the
     /// grammar and where its precedence comes from.
     fn from_str(s: &str) -> Result<ScopeSelectors, ParseScopeError> {
         Ok(ScopeSelectors {

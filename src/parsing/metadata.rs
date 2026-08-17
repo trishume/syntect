@@ -73,16 +73,20 @@ pub struct MetadataItems {
     // They are the half of the indentation rules that is not a pattern. A
     // pattern says "a line that looks like this opens a block"; a flag says
     // "an unclosed bracket at the end of a line does", which no pattern can
-    // express without counting. In sublimehq/Packages nine files carry
-    // `indentSquareBrackets` and five `indentParens`, and every one of them is
-    // turning the behaviour *off* for a language whose own patterns already
-    // say when a bracket matters.
+    // express without counting. In `testdata/Packages` seven files carry
+    // `indentSquareBrackets` and four `indentParens`; all four of the latter
+    // and five of the former turn the behaviour *off* for a language whose own
+    // patterns already say when a bracket matters, and the two that turn it on
+    // (C++, JSON) are saying a bracket is all there is.
     //
     // `preserveIndent` and `indentOnPaste` are the same shape for text that
     // arrives in a block rather than being typed: whether a reindent may touch
     // the indentation it came with. Sublime's own `Default` package scopes
-    // `preserveIndent: true` to `comment`, and the twelve files that carry it
-    // are heredocs and block comments saying that too.
+    // `preserveIndent: true` to `comment`, and of the twelve files that carry
+    // it the three saying `true` are block comments and a heredoc saying that
+    // too, while the other nine say `false` at the language's own scope.
+    // Nothing in `testdata/Packages` carries `indentOnPaste` at all — the key
+    // is Sublime's, and third-party packages use it.
     pub indent_square_brackets: Option<bool>,
     pub preserve_indent: Option<bool>,
     /// `simple` is the only value Sublime's own packages use.
