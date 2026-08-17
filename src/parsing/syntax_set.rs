@@ -460,7 +460,10 @@ impl SyntaxSet {
         for pattern in context.patterns.iter() {
             let maybe_refs_to_check = match pattern {
                 Pattern::Match(match_pat) => match &match_pat.operation {
-                    MatchOperation::Push(context_refs)
+                    MatchOperation::Push {
+                        ctx_refs: context_refs,
+                        ..
+                    }
                     | MatchOperation::Set {
                         ctx_refs: context_refs,
                         ..
@@ -647,9 +650,17 @@ impl SyntaxSetBuilder {
         } = self;
 
         // Extends resolution phase: merge parent contexts/variables into children
-        let (syntax_definitions, extends_warnings) =
+        let (mut syntax_definitions, extends_warnings) =
             Self::resolve_extends(syntax_definitions, &path_syntaxes, lines_include_newline);
         warnings.extend(extends_warnings);
+
+        // And only now are the regexes final, so only now can
+        // a `captures:` mapping be narrowed to the groups that consume. Doing
+        // it while reading the YAML measures a child's regex before its
+        // parent's variables exist — see `parse_captures`.
+        for syntax in &mut syntax_definitions {
+            crate::parsing::yaml_load::filter_captures_to_consuming_groups(syntax);
+        }
 
         let mut syntaxes = Vec::with_capacity(syntax_definitions.len());
         let mut all_context_ids = Vec::new();
@@ -819,6 +830,10 @@ impl SyntaxSetBuilder {
 
         // Track which syntaxes need extends resolution
         let mut unresolved: HashSet<usize> = HashSet::new();
+        // — the syntaxes whose `extends` was
+        // refused for a reason other than a missing parent. See the pass at
+        // the end that gives them a `main`.
+        let mut broken: HashSet<usize> = HashSet::new();
         for (i, sd) in syntax_definitions.iter().enumerate() {
             if !sd.extends.is_empty() {
                 unresolved.insert(i);
@@ -828,6 +843,18 @@ impl SyntaxSetBuilder {
         if unresolved.is_empty() {
             return (syntax_definitions, warnings);
         }
+
+        // How far away each syntax's variables were declared.
+        //
+        // A syntax not in here declares everything it has, at depth 0; a
+        // resolved child records, per variable, how many `extends` hops from it
+        // the declaration it ended up with was written. That is what decides a
+        // clash between two parents — see the merge below. Kept beside the
+        // definitions rather than on them: it is true only while this function
+        // runs, and a field on `SyntaxDefinition` would be one more thing to
+        // serialise and keep honest.
+        let mut variable_depth: HashMap<usize, HashMap<String, usize>> = HashMap::new();
+        let mut context_depth: HashMap<usize, HashMap<String, usize>> = HashMap::new();
 
         // Track root ancestor for each syntax (syntaxes with no extends are their own root)
         let mut syntax_roots: HashMap<usize, usize> = HashMap::new();
@@ -885,6 +912,10 @@ impl SyntaxSetBuilder {
                          extends will not be applied",
                         syntax_definitions[child_idx].name
                     ));
+                    // A refused `extends` leaves a
+                    // syntax that cannot be parsed, and this said so and walked
+                    // away. See `broken` below.
+                    broken.insert(child_idx);
                     unresolved.remove(&child_idx);
                     syntax_roots.insert(child_idx, child_idx);
                     made_progress = true;
@@ -903,6 +934,8 @@ impl SyntaxSetBuilder {
                          extends will not be applied",
                         syntax_definitions[child_idx].name
                     ));
+                    // The other refusal.
+                    broken.insert(child_idx);
                     unresolved.remove(&child_idx);
                     syntax_roots.insert(child_idx, child_idx);
                     made_progress = true;
@@ -910,35 +943,102 @@ impl SyntaxSetBuilder {
                 }
 
                 // Merge all parents left-to-right: later parent overrides earlier
-                let mut merged_variables: HashMap<String, String> = HashMap::new();
-                let mut merged_contexts: HashMap<String, Context> = HashMap::new();
+                //
+                // Only among declarations the same distance
+                // away. A parent that *declares* a variable or a context beats
+                // one that merely inherited it, whichever order they are listed
+                // in, and "later wins" decides only a tie.
+                //
+                // Asked of Sublime Text rather than argued —
+                // the `extends_variable_precedence.probe` probe
+                // and `…_reversed.probe` are a grandchild of two parents, one
+                // declaring the variable and one inheriting the base's, in both
+                // orders; ST takes the declared one both times.
+                //
+                // `Zsh (for Markdown)` is the real file, and it is both halves
+                // of this. It extends `Bash (for Markdown)`, which sets
+                // `no_indent: ^\s*` so that a shebang inside an *indented*
+                // Markdown code fence is still a shebang and declares a `main`
+                // that recognises a `$ ` interactive prompt, and then `Zsh`,
+                // which extends `Bash` and declares neither. Flat "later wins"
+                // handed both of `Bash`'s back: a fenced `#!/usr/bin/env zsh`
+                // came out `comment.line.number-sign`, and `$ ls` came out as a
+                // command called `$`.
+                //
+                // The context half is probed the same way,
+                // `extends_context_precedence.probe` and `…_reversed.probe`.
+                let mut merged_variables: HashMap<String, (usize, String)> = HashMap::new();
+                let mut merged_contexts: HashMap<String, (usize, Context)> = HashMap::new();
 
                 for &parent_idx in &parent_indices {
                     let parent_variables = syntax_definitions[parent_idx].variables.clone();
                     let parent_contexts = syntax_definitions[parent_idx].contexts.clone();
 
-                    // Merge variables: later parent overrides earlier
+                    // Merge variables: nearest declaration wins, then later parent
                     for (k, v) in parent_variables {
-                        merged_variables.insert(k, v);
+                        let depth = variable_depth
+                            .get(&parent_idx)
+                            .and_then(|known| known.get(&k))
+                            .copied()
+                            .unwrap_or(0)
+                            + 1;
+                        match merged_variables.get(&k) {
+                            Some((nearer, _)) if *nearer < depth => {}
+                            _ => {
+                                merged_variables.insert(k, (depth, v));
+                            }
+                        }
                     }
 
-                    // Merge contexts: later parent overrides earlier
+                    // Merge contexts: nearest declaration wins, then later parent
                     for (ctx_name, parent_ctx) in parent_contexts {
-                        merged_contexts.insert(ctx_name, parent_ctx);
+                        let depth = context_depth
+                            .get(&parent_idx)
+                            .and_then(|known| known.get(&ctx_name))
+                            .copied()
+                            .unwrap_or(0)
+                            + 1;
+                        match merged_contexts.get(&ctx_name) {
+                            Some((nearer, _)) if *nearer < depth => {}
+                            _ => {
+                                merged_contexts.insert(ctx_name, (depth, parent_ctx));
+                            }
+                        }
                     }
                 }
+
+                // The scopes of the parents this child is about to inherit
+                // `main` from — read before the borrow below, and used to
+                // strip the parent's file scope out of it. See the comment at
+                // the regeneration of `__start`/`__main`.
+                let parent_scopes: Vec<Scope> = parent_indices
+                    .iter()
+                    .map(|&pi| syntax_definitions[pi].scope)
+                    .collect();
 
                 let child = &mut syntax_definitions[child_idx];
 
-                // Child variables override merged parent variables
+                // Child variables override merged parent variables: nothing is
+                // nearer than declared here.
                 let child_variables: HashMap<String, String> = child.variables.drain().collect();
                 for (k, v) in child_variables {
-                    merged_variables.insert(k, v);
+                    merged_variables.insert(k, (0, v));
                 }
-                child.variables = merged_variables;
+                variable_depth.insert(
+                    child_idx,
+                    merged_variables
+                        .iter()
+                        .map(|(name, (depth, _))| (name.clone(), *depth))
+                        .collect(),
+                );
+                child.variables = merged_variables
+                    .into_iter()
+                    .map(|(name, (_, value))| (name, value))
+                    .collect();
 
                 // Merge contexts: child applies merge_mode against merged parent result
-                for (ctx_name, parent_ctx) in merged_contexts {
+                let mut inherited_at: HashMap<String, usize> = HashMap::new();
+                for (ctx_name, (depth, parent_ctx)) in merged_contexts {
                     if let Some(child_ctx) = child.contexts.get_mut(&ctx_name) {
                         match child_ctx.merge_mode {
                             ContextMergeMode::Replace => {
@@ -983,11 +1083,24 @@ impl SyntaxSetBuilder {
                                 }
                             }
                         }
+                        // Whatever the merge mode, the child has a say in this
+                        // one: nothing is nearer than declared here.
+                        inherited_at.insert(ctx_name, 0);
                     } else {
-                        // Parent context not in child: inherit it
+                        // Parent context not in child: inherit it, and remember
+                        // how far away it was written.
+                        inherited_at.insert(ctx_name.clone(), depth);
                         child.contexts.insert(ctx_name, parent_ctx);
                     }
                 }
+                context_depth.insert(
+                    child_idx,
+                    child
+                        .contexts
+                        .keys()
+                        .map(|name| (name.clone(), inherited_at.get(name).copied().unwrap_or(0)))
+                        .collect(),
+                );
 
                 // Regenerate __start/__main for the child's own scope.
                 // The parent's __start carries the parent's meta_scope (e.g.
@@ -997,6 +1110,37 @@ impl SyntaxSetBuilder {
                 if child.contexts.contains_key("main") {
                     let mut scope_repo = crate::parsing::scope::lock_global_scope_repo();
                     let top_level_scope = child.scope;
+
+                    // A child that does not declare `main`
+                    // inherits the parent's, and the parent's already carries
+                    // the parent's file scope at position 0 — put there by the
+                    // parent's own `add_initial_contexts`. Regenerating below
+                    // inserts the *child's* in front of it rather than in place
+                    // of it, so `Zsh` came out `source.shell.zsh
+                    // source.shell.bash` and `Regular Expressions`
+                    // `source.regexp source.regexp.basic`, where Sublime Text
+                    // pushes the child's alone — asked directly,
+                    // the `regexp_modes.probe` probe and
+                    // `shellscript.probe`.
+                    //
+                    // It cost no assertion either way — the atom was being
+                    // over-popped a few columns later, at the close of a
+                    // `(?ix: … )` mode group, so it was *absorbing* a pop
+                    // rather than causing one. That over-pop is a separate bug
+                    // and still open: it is the corpus' last scope-stack
+                    // divergence (`syntax_test_regexp.re`, 4 ops) and Python's
+                    // last failing assertion, and taking the spare atom away
+                    // made the divergence one op larger rather than smaller.
+                    if let Some(main) = child.contexts.get_mut("main") {
+                        if main
+                            .meta_content_scope
+                            .first()
+                            .is_some_and(|first| parent_scopes.contains(first))
+                        {
+                            main.meta_content_scope.remove(0);
+                        }
+                    }
+
                     SyntaxDefinition::add_initial_contexts(
                         &mut child.contexts,
                         &mut crate::parsing::yaml_load::ParserState {
@@ -1027,8 +1171,26 @@ impl SyntaxSetBuilder {
             }
         }
 
-        if !unresolved.is_empty() {
-            for idx in &unresolved {
+        // Every syntax whose `extends` was
+        // refused, not only the ones whose parent could not be found.
+        //
+        // The two version/base refusals above take the child out of
+        // `unresolved` and carry on, so it reached the set with whatever
+        // contexts it declared itself — which for a definition that is
+        // *nothing but* an `extends` is none at all, no `main` and no
+        // `__start`. `ParseState::new` indexes `context_ids()["__start"]`, so
+        // the first line of the first file that resolved to it took the
+        // process down.
+        //
+        // It is a file an end user writes: a two-line `.sublime-syntax`
+        // extending Sublime's Java without repeating its `version: 2` is the
+        // whole of it. The reference says the versions must match; it does not
+        // say the library may fall over when they do not.
+        // `extends_refused_for_a_version_mismatch_still_parses` is the
+        // regression test.
+        let broken: BTreeSet<usize> = broken.union(&unresolved).copied().collect();
+        if !broken.is_empty() {
+            for idx in &broken {
                 let syntax = &mut syntax_definitions[*idx];
                 let e = &syntax.extends;
                 let extends_str = if e.is_empty() {
@@ -1036,10 +1198,12 @@ impl SyntaxSetBuilder {
                 } else {
                     e.join(", ")
                 };
-                warnings.push(format!(
-                    "syntax '{}' extends '{}' but parent was not found or has circular dependency",
-                    syntax.name, extends_str,
-                ));
+                if unresolved.contains(idx) {
+                    warnings.push(format!(
+                        "syntax '{}' extends '{}' but parent was not found or has circular dependency",
+                        syntax.name, extends_str,
+                    ));
+                }
                 // Mark broken syntaxes as hidden so they won't be found by
                 // name/extension lookups and won't cause panics when used.
                 syntax.hidden = true;
@@ -1086,8 +1250,24 @@ impl SyntaxSetBuilder {
         let normalized = extends_path.replace('\\', "/");
 
         // First try matching against path_syntaxes (path ends with extends value)
+        //
+        // Last match, not first.
+        //
+        // Everything else in `syntect` resolves a reference to the *last*
+        // definition that answers — `find_id` does, and the `name_to_index`
+        // fallback below does, because it is built by inserting every name in
+        // order. Only this loop took the first, and the difference shows the
+        // moment one builder holds two copies of a package — the supported way
+        // to let a user's `Packages` override the one that shipped — so `TSX`
+        // in the second copy would find the *first* copy's `JSX` for one of its
+        // parents and the second's for another.
+        // Upstream's own check then sees parents deriving from different base
+        // syntaxes and drops the inheritance entirely — "syntax 'TSX' extends
+        // parents that derive from different base syntaxes; extends will not
+        // be applied" — and every `jsx-*` context TSX inherits goes
+        // unresolved.
         let slash_normalized = format!("/{}", normalized);
-        for (path, idx) in path_syntaxes {
+        for (path, idx) in path_syntaxes.iter().rev() {
             let path_normalized = path.replace('\\', "/");
             if path_normalized.ends_with(&slash_normalized) || path_normalized == normalized {
                 return Some(*idx);
@@ -1131,7 +1311,10 @@ impl SyntaxSetBuilder {
                 // This is really weird, but necessary to run the YAML syntax.
                 Pattern::Match(ref match_pat) => {
                     let maybe_context_refs = match match_pat.operation {
-                        MatchOperation::Push(ref context_refs)
+                        MatchOperation::Push {
+                            ctx_refs: ref context_refs,
+                            ..
+                        }
                         | MatchOperation::Set {
                             ctx_refs: ref context_refs,
                             ..
@@ -1139,14 +1322,30 @@ impl SyntaxSetBuilder {
                         | MatchOperation::Branch {
                             alternatives: ref context_refs,
                             ..
-                        }
-                        | MatchOperation::Embed {
-                            contexts: ref context_refs,
-                            ..
                         } => Some(context_refs),
-                        MatchOperation::Pop(_) | MatchOperation::None | MatchOperation::Fail(_) => {
-                            None
-                        }
+                        // An `embed:` is where the walk
+                        // stops. Sublime was asked, with four probes rather
+                        // than one, because two rules explain the same file:
+                        // `prototype_in_pushed` says a context *pushed* from
+                        // within the prototype's reach is prototype-free (ST
+                        // agrees with upstream, and its control says the
+                        // prototype is otherwise applied), while
+                        // `prototype_in_embedded` — push, then embed — says
+                        // that one keeps it, and `…_plain` says the
+                        // `meta_include_prototype: false` in between is not
+                        // what makes the difference.
+                        //
+                        // Haskell is the file. Its prototype includes
+                        // `preprocessor-pragmas`, which pushes
+                        // `preprocessor-pragma-body`, which *embeds*
+                        // `preprocessor-pragma-signature-value`, which includes
+                        // `functions` — so following the embed marked the
+                        // branch every function declaration in the language is
+                        // read by, and `--` stopped being a comment inside one.
+                        MatchOperation::Embed { .. }
+                        | MatchOperation::Pop(_)
+                        | MatchOperation::None
+                        | MatchOperation::Fail(_) => None,
                     };
                     if let Some(context_refs) = maybe_context_refs {
                         for context_ref in context_refs.iter() {
@@ -1317,7 +1516,10 @@ impl SyntaxSetBuilder {
         syntaxes: &[SyntaxReference],
     ) {
         let maybe_context_refs = match match_pat.operation {
-            MatchOperation::Push(ref mut context_refs)
+            MatchOperation::Push {
+                ctx_refs: ref mut context_refs,
+                ..
+            }
             | MatchOperation::Set {
                 ctx_refs: ref mut context_refs,
                 ..
@@ -2275,6 +2477,70 @@ mod tests {
         assert!(ss.find_syntax_by_name("Orphan").is_some());
     }
 
+    /// A refused `extends` leaves a syntax that can still be parsed.
+    ///
+    /// The missing-parent path already ensures `main` and `__start` exist,
+    /// with a comment saying why: `ParseState::new` would panic otherwise. The
+    /// other two refusals — a version mismatch, and parents deriving from
+    /// different base syntaxes — did not go through it, so a definition that is
+    /// *nothing but* an `extends` reached the set with no contexts at all and
+    /// the first line parsed with it took the process down.
+    ///
+    /// It is a file a user writes: two lines extending a shipped `version: 2`
+    /// syntax without repeating the version. Nothing in a curated package set
+    /// can reach it.
+    #[test]
+    fn extends_refused_for_a_version_mismatch_still_parses() {
+        let base = SyntaxDefinition::load_from_str(
+            r#"
+            name: BaseV2
+            scope: source.basev2
+            file_extensions: [basev2]
+            version: 2
+            contexts:
+              main:
+                - match: 'x'
+                  scope: keyword.base
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+        // Version 1 by omission, and nothing of its own — every context it has
+        // would have come from the parent.
+        let child = SyntaxDefinition::load_from_str(
+            r#"
+            name: ChildV1
+            scope: source.childv1
+            file_extensions: [childv1]
+            extends: BaseV2.sublime-syntax
+            "#,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(base);
+        builder.add(child);
+        let ss = builder.build();
+
+        let syntax = ss
+            .syntaxes()
+            .iter()
+            .find(|s| s.name == "ChildV1")
+            .expect("the child is in the set");
+        // Parses rather than panicking in `ParseState::new`, which is the
+        // whole of it.
+        let mut parse_state = ParseState::new(syntax);
+        parse_state.parse_line("x\n", &ss).expect("parse failed");
+        // And hidden, as the missing-parent case already does: it colours
+        // nothing, so it should not be offered by name or by extension.
+        assert!(
+            syntax.hidden,
+            "a syntax whose extends was refused is not hidden"
+        );
+    }
     #[test]
     fn extends_multiple_parents_must_share_common_base() {
         // Per Sublime docs: all parents in `extends` list must derive from the same base syntax.
@@ -3068,7 +3334,13 @@ mod tests {
             clear_ops
         );
 
-        // v1: both ctx_a and ctx_b apply their clear_scopes — two Clear ops
+        // v1 is not the same rule, which this test used to assert: a version 1
+        // `push:` of several contexts clears their `clear_scopes` *added up*,
+        // once, before either `meta_scope`. Compatibility, "Multiple Target
+        // Push Actions with `clear_scopes`", and ST 4206 answers that way — the
+        // trigger token sees the sum in force, and the column after it sees
+        // version 2's interleaving, which is why the summed clear is put back
+        // and the per-context ones applied in the non-initial phase.
         let v1_syntax = SyntaxDefinition::load_from_str(
             r#"
             name: V1MultiClear
@@ -3110,11 +3382,24 @@ mod tests {
             .filter(|(_, op)| matches!(op, ScopeStackOp::Clear(_)))
             .collect();
 
-        // v1: both ctx_a's clear_scopes and ctx_b's clear_scopes should produce TWO Clear ops
+        let v1_clears: Vec<_> = ops2
+            .iter()
+            .filter_map(|(_, op)| match op {
+                ScopeStackOp::Clear(a) => Some(*a),
+                _ => None,
+            })
+            .collect();
+
+        // The sum first, for the trigger token, then the interleaved pair the
+        // text after it is under.
         assert_eq!(
-            v1_clear_ops.len(),
-            2,
-            "v1: push [ctx_a, ctx_b] should produce TWO Clear ops (one per context); \
+            v1_clears,
+            vec![
+                ClearAmount::TopN(3),
+                ClearAmount::TopN(1),
+                ClearAmount::TopN(2)
+            ],
+            "v1: push [ctx_a(1), ctx_b(2)] clears the sum for its trigger alone; \
              got: {:?}",
             v1_clear_ops
         );
@@ -3439,6 +3724,53 @@ mod tests {
     }
 
     #[cfg(feature = "yaml-load")]
+    #[cfg(feature = "yaml-load")]
+    /// A path that two definitions answer for resolves to the last of them,
+    /// which is what every other lookup here does.
+    ///
+    /// One builder holding two copies of a package is the supported way to let
+    /// a user's `Packages` override the one that shipped: `add_from_folder` is
+    /// called twice and the second copy wins everywhere else. Taking the first
+    /// match here made a syntax with two parents resolve one of them out of each
+    /// copy, which the "parents derive from different base syntaxes" check then
+    /// refuses — so the child inherits nothing at all.
+    #[test]
+    fn find_parent_index_takes_the_last_definition_at_a_path() {
+        let syntax = |name: &str, scope: &str| SyntaxDefinition {
+            name: name.to_string(),
+            file_extensions: vec![],
+            scope: Scope::new(scope).unwrap(),
+            first_line_match: None,
+            hidden: false,
+            variables: HashMap::new(),
+            contexts: HashMap::new(),
+            extends: vec![],
+            version: 1,
+        };
+        // The same package twice, as a second `add_from_folder` leaves it.
+        let syntax_definitions = vec![syntax("JSX", "source.jsx"), syntax("JSX", "source.jsx")];
+        let path_syntaxes = vec![
+            ("Packages/JavaScript/JSX.sublime-syntax".to_string(), 0usize),
+            (
+                "User/Packages/JavaScript/JSX.sublime-syntax".to_string(),
+                1usize,
+            ),
+        ];
+        let mut name_to_index = HashMap::new();
+        name_to_index.insert("JSX".to_string(), 1);
+
+        let result = SyntaxSetBuilder::find_parent_index(
+            "JSX.sublime-syntax",
+            &path_syntaxes,
+            &syntax_definitions,
+            &name_to_index,
+        );
+        assert_eq!(
+            result,
+            Some(1),
+            "the path lookup disagreed with the name lookup about which copy answers"
+        );
+    }
     #[test]
     fn find_parent_index_resolves_relative_paths() {
         // Simulates a syntax loaded from "Packages/Test/syntaxes/Child.sublime-syntax"

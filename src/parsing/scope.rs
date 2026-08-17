@@ -182,9 +182,24 @@ impl ScopeRepository {
         if s.is_empty() {
             return Ok(Scope { a: 0, b: 0 });
         }
+        // An empty component is not an atom, wherever it is.
+        // Upstream drops the trailing ones (`trim_end_matches('.')`) and interns
+        // the rest, so `meta.annotation..identifier.java` came out three atoms
+        // deep with an atom named "" in the middle and could never match
+        // `meta.annotation.identifier.java`.
+        //
+        // ST ignores them all — asked directly, with a token scoped
+        // `keyword.foo.bar` and one assertion per shape
+        // (four `double_dot_*` probes): `keyword..foo.bar`,
+        // `.keyword.foo.bar` and `keyword.foo.bar..` all pass, and
+        // `keyword..zzz.bar` fails with "scope does not match", so the selector
+        // is being evaluated rather than waved through.
+        //
+        // `syntax_test_java.java:10197` is the file: nine assertions asking for
+        // `meta.annotation..identifier.java`, which ST passes and this failed.
         let parts: Vec<usize> = s
-            .trim_end_matches('.')
             .split('.')
+            .filter(|a| !a.is_empty())
             .map(|a| self.atom_to_index(a))
             .collect();
         // The internal representation supports at most 8 atoms (packed into
@@ -609,6 +624,40 @@ mod tests {
         // assert_eq!(Scope::new("source.php"), Scope::new("source.php"));
     }
 
+    /// An empty component of a scope name is not an atom, wherever it sits.
+    ///
+    /// Sublime Text ignores them all, which was asked of it rather than argued:
+    /// four syntax-test assertions on one token scoped `keyword.foo.bar`, where
+    /// the doubled dot in the middle, one at the front and one at the end all
+    /// pass, and `keyword..zzz.bar` fails with "scope does not match" — which is
+    /// what says the selector is being evaluated rather than waved through.
+    ///
+    /// `syntax_test_java.java` asks for `meta.annotation..identifier.java` nine
+    /// times, and it looks exactly like a typo in the test file until ST is
+    /// asked.
+    #[test]
+    fn an_empty_component_of_a_scope_name_is_not_an_atom() {
+        let mut repo = ScopeRepository::new();
+        let plain = repo.build("keyword.foo.bar").unwrap();
+        for spelling in [
+            "keyword..foo.bar",
+            ".keyword.foo.bar",
+            "keyword.foo.bar..",
+            ".keyword..foo..bar.",
+        ] {
+            assert_eq!(
+                repo.build(spelling).unwrap(),
+                plain,
+                "{} is a different scope from keyword.foo.bar",
+                spelling
+            );
+        }
+        assert_ne!(
+            repo.build("keyword..zzz.bar").unwrap(),
+            plain,
+            "dropping the empty components dropped the difference too"
+        );
+    }
     #[test]
     fn repo_works() {
         let mut repo = ScopeRepository::new();

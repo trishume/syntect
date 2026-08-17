@@ -392,11 +392,26 @@ impl SyntaxDefinition {
                     ctx_refs: SyntaxDefinition::parse_pushargs(s, state, contexts, namer)?,
                     pop_count: y as usize,
                 }
+            } else if let Ok(s) = get_key(map, "push", Some) {
+                // `pop: N + push: X`, which was read as a bare
+                // `Pop(N)` — the push was **silently dropped**, leaving the parser
+                // on the outer context instead of the one the rule names. Four
+                // rules in the definitions we ship do this: Java's
+                // `pop: 2 + push: annotation-parameters-body` and
+                // `pop: 1 + push: case-label-expression`, and Python's two
+                // `pop: 2 + push:` parameter lists. Upstream's #667.
+                MatchOperation::Push {
+                    ctx_refs: SyntaxDefinition::parse_pushargs(s, state, contexts, namer)?,
+                    pop_count: y as usize,
+                }
             } else {
                 MatchOperation::Pop(y as usize)
             }
         } else if let Ok(y) = get_key(map, "push", Some) {
-            MatchOperation::Push(SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?)
+            MatchOperation::Push {
+                ctx_refs: SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?,
+                pop_count: 0,
+            }
         } else if let Ok(y) = get_key(map, "set", Some) {
             MatchOperation::Set {
                 ctx_refs: SyntaxDefinition::parse_pushargs(y, state, contexts, namer)?,
@@ -609,18 +624,26 @@ impl SyntaxDefinition {
         }
     }
 
+    // The captures are kept whole here and narrowed to the
+    // groups that consume once, at the end of the build, by
+    // `filter_captures_to_consuming_groups`. Narrowing them here reads the
+    // regex *before* `extends` has merged the parent's variables in, and a
+    // variable this syntax has never heard of resolves to the empty string
+    // (`resolve_variables`) — so `escape: '{{script_content_end}}'` in
+    // `HTML (Rails)` was measured against `""`, found no capture groups at
+    // all, and every one of its `escape_captures` was dropped. The regex is
+    // put right afterwards by `re_resolve_all_regexes`; the captures were not,
+    // and could not be, because the mapping they were narrowed from was gone.
+    #[allow(clippy::unnecessary_wraps)]
     fn parse_captures(
         map: &Hash,
-        regex_str: &str,
+        _regex_str: &str,
         state: &mut ParserState<'_>,
     ) -> Result<CaptureMapping, ParseSyntaxError> {
-        let valid_indexes = get_consuming_capture_indexes(regex_str);
         let mut captures = Vec::new();
         for (key, value) in map.iter() {
             if let (Some(key_int), Some(val_str)) = (key.as_i64(), value.as_str()) {
-                if valid_indexes.contains(&(key_int as usize)) {
-                    captures.push((key_int as usize, str_to_scopes(val_str, state.scope_repo)?));
-                }
+                captures.push((key_int as usize, str_to_scopes(val_str, state.scope_repo)?));
             }
         }
         Ok(captures)
@@ -751,6 +774,35 @@ fn re_resolve_variables(raw_regex: &str, state: &ReResolveState<'_>) -> String {
         result.push_str(&raw_regex[index..]);
     }
     result
+}
+
+/// Drop the captures naming a group that does not consume.
+///
+/// A scope on a group inside a lookaround is never applied, so it is not worth
+/// carrying; that is upstream's reason for narrowing a `captures:` mapping to
+/// the consuming groups, and this does the same thing at the one moment it can
+/// be right about — after `resolve_extends` has merged the parent's variables
+/// and `re_resolve_all_regexes` has rebuilt every regex from them. See
+/// `parse_captures` for what doing it earlier costs.
+pub(crate) fn filter_captures_to_consuming_groups(syntax: &mut SyntaxDefinition) {
+    fn narrow(captures: &mut Option<CaptureMapping>, regex_str: &str) {
+        let Some(mapping) = captures else { return };
+        let valid = get_consuming_capture_indexes(regex_str);
+        mapping.retain(|(index, _)| valid.contains(index));
+    }
+    for context in syntax.contexts.values_mut() {
+        for pattern in &mut context.patterns {
+            let Pattern::Match(ref mut match_pat) = pattern else {
+                continue;
+            };
+            let regex_str = match_pat.regex.regex_str().to_owned();
+            narrow(&mut match_pat.captures, &regex_str);
+            if let MatchOperation::Embed { ref mut escape, .. } = match_pat.operation {
+                let escape_str = escape.escape_regex.regex_str().to_owned();
+                narrow(&mut escape.escape_captures, &escape_str);
+            }
+        }
+    }
 }
 
 /// Re-resolve all regexes in a SyntaxDefinition that have a stored raw_regex_str.
@@ -1211,19 +1263,22 @@ mod tests {
                 use crate::parsing::syntax_definition::ContextReference::*;
 
                 // this is sadly necessary because Context is not Eq because of the Regex
-                let expected = MatchOperation::Push(vec![
-                    Named("string".to_owned()),
-                    ByScope {
-                        scope: Scope::new("source.c").unwrap(),
-                        sub_context: Some("main".to_owned()),
-                        with_escape: false,
-                    },
-                    File {
-                        name: "CSS".to_owned(),
-                        sub_context: Some("rule-list-body".to_owned()),
-                        with_escape: false,
-                    },
-                ]);
+                let expected = MatchOperation::Push {
+                    pop_count: 0,
+                    ctx_refs: vec![
+                        Named("string".to_owned()),
+                        ByScope {
+                            scope: Scope::new("source.c").unwrap(),
+                            sub_context: Some("main".to_owned()),
+                            with_escape: false,
+                        },
+                        File {
+                            name: "CSS".to_owned(),
+                            sub_context: Some("rule-list-body".to_owned()),
+                            with_escape: false,
+                        },
+                    ],
+                };
                 assert_eq!(
                     format!("{:?}", match_pat.operation),
                     format!("{:?}", expected)

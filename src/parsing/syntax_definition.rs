@@ -198,7 +198,21 @@ pub enum ContextReference {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MatchOperation {
-    Push(Vec<ContextReference>),
+    /// Pushes `ctx_refs`, after first popping `pop_count` contexts.
+    ///
+    /// `pop_count` is new, and it is not a `Set`. Sublime
+    /// documents the difference — "for `push`, `embed` and `branch` actions, the
+    /// pop treats the match as if it were a lookahead, which means the match
+    /// will not receive the `meta_scope` of the contexts that are popped",
+    /// whereas a `set` gives the match the meta scopes of both. The stack effect
+    /// is identical, so only the trigger token's scopes tell them apart, which
+    /// is why they need to be different variants rather than one with a count.
+    /// `pop_count == 0` is an ordinary `push:`.
+    Push {
+        ctx_refs: Vec<ContextReference>,
+        #[serde(default)]
+        pop_count: usize,
+    },
     /// Pops `pop_count` contexts off the stack, then pushes `ctx_refs`.
     /// A plain `set:` is `pop_count == 1`; `pop: N + set:` is `pop_count == N`.
     Set {
@@ -274,17 +288,32 @@ impl<'a> Iterator for MatchIter<'a> {
                             _ => return self.next(),
                         };
                         let ctx_ptr = self.syntax_set.get_context(context_id).unwrap();
+                        // The included context goes on first,
+                        // and the prototype on top of it. `ctx_stack` is a
+                        // stack — `next` reads its *last* entry — so whatever
+                        // is pushed last is iterated first, and pushing the
+                        // prototype first put its patterns after every one of
+                        // the included context's. A prototype outranks the
+                        // context it is attached to (`find_best_match` chains
+                        // `cur_prototype` before `cur_context` for exactly
+                        // that reason), and at an equal start position the
+                        // earlier pattern wins, so the order was the whole
+                        // difference: HAML's `- include:
+                        // scope:source.ruby.rails.embedded.haml` with
+                        // `apply_prototype: true` never saw that syntax's
+                        // prototype rule for a line-ending `|`, and Ruby's
+                        // bitwise-or rule took it instead.
+                        //
                         // Also include the external syntax's prototype if the context allows it
+                        self.ctx_stack.push(ctx_ptr);
+                        self.index_stack.push(0);
                         if ctx_ptr.meta_include_prototype.unwrap_or(true) {
                             if let Some(ref proto_id) = ctx_ptr.prototype {
                                 let proto_ctx = self.syntax_set.get_context(proto_id).unwrap();
-                                // Push prototype first (it will be iterated first)
                                 self.ctx_stack.push(proto_ctx);
                                 self.index_stack.push(0);
                             }
                         }
-                        self.ctx_stack.push(ctx_ptr);
-                        self.index_stack.push(0);
                     }
                 }
             } else {
@@ -410,7 +439,10 @@ impl MatchPattern {
             region.pos(i).map(|(start, end)| escape(&text[start..end]))
         });
 
-        Regex::new(new_regex)
+        // No prefilter. This pattern is rebuilt at every
+        // token it is tried at, so working one out costs a `regex-syntax`
+        // parse per token to save at most a single search.
+        Regex::new_unfiltered(new_regex)
     }
 
     pub fn regex(&self) -> &Regex {

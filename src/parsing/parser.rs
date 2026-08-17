@@ -68,12 +68,27 @@ pub enum ParsingError {
 pub struct ParseLineOutput {
     /// Ops for the current line.
     pub ops: Vec<(usize, ScopeStackOp)>,
-    /// Ops for previously buffered lines that have now been corrected, in order.
-    /// Non-empty only when a cross-line `fail` just resolved.
-    pub replayed: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// Corrections to lines already handed back, each tagged with the 1-based
+    /// number of the line it replaces. Non-empty only when a cross-line `fail`
+    /// just resolved.
+    ///
+    /// The line number is ours. Upstream's is positional, and
+    /// a second cross-line fail on one `parse_line` appends another run to it, so
+    /// pairing the i-th entry with the i-th buffered line puts one line's ops on
+    /// another's text.
+    pub replayed: Vec<(usize, Vec<(usize, ScopeStackOp)>)>,
     /// Warnings collected during parsing (e.g. branch point expiry).
     pub warnings: Vec<String>,
 }
+
+/// How often one zero-width escape may fire at the same byte
+/// of a line before the parser stops believing it.
+///
+/// See the field it bounds, [`ParseState::zero_width_escape_fires`]. High
+/// enough that a legitimate alt-cycle replay through the same offset — what
+/// Markdown's `$$ … $$` maths blocks do under an embedded-LaTeX branch fail —
+/// never reaches it.
+const ZERO_WIDTH_ESCAPE_FIRE_LIMIT: u32 = 100;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParseState {
@@ -90,9 +105,120 @@ pub struct ParseState {
     /// cross-line `fail` replay. Only the strings are stored; the ops are
     /// returned to callers immediately (same as before).
     pending_lines: Vec<String>,
+    /// How many times a zero-width escape has fired at each
+    /// byte of the line being parsed.
+    ///
+    /// Perl's POD declares six embedded language sections gated by
+    /// `escape: (?=^{{pod}})` — a zero-width lookahead anchored to the start of
+    /// a line. Against the embedded languages' own branch points that is an
+    /// unbounded cycle: an alternative fails, the rewind restores the embed's
+    /// escape, the alternative runs again, the same zero-width escape fires at
+    /// the same byte, the escape pops back without advancing, and round again.
+    /// Upstream's own test corpus hangs on `syntax_test_perl.pl` — their
+    /// harness skips the file — and an editor cannot skip a file: the worker
+    /// would spin on a core forever and the buffer would never colour.
+    ///
+    /// So a fire at a position that has already fired
+    /// [`ZERO_WIDTH_ESCAPE_FIRE_LIMIT`] times is suppressed and the cursor
+    /// advances one character, which is exactly what the `would_loop` guard
+    /// below does for the push/pop version of the same shape. Cleared per
+    /// `parse_line_inner_from`, so a cross-line replay re-entering the same
+    /// offset starts fresh, and deliberately *not* snapshotted into a
+    /// `BranchPoint`: the cycle to detect is the one a fail restores, so the
+    /// count has to survive the fail to converge.
+    ///
+    /// This is upstream's diagnosis and upstream's fix, from the open PR #692
+    /// against issue #650, taken alone — that PR carries several other changes
+    /// on top of unmerged branches. It comes back out when upstream merges it.
+    zero_width_escape_fires: HashMap<usize, u32>,
+    /// The branch points whose alternatives have all run
+    /// out at a byte of the line being parsed, by name.
+    ///
+    /// When a same-line `branch_point` exhausts at a zero-width lookahead,
+    /// upstream advances one character past the lookahead's match so the same
+    /// `(?=…)` cannot fire again. That is not what Sublime does, and the
+    /// character it steps over is a character the parent context never gets to
+    /// match: a stale keyword rule then matches *inside* an identifier —
+    /// `package` in `$package`, `class` in `Foo.class;` — because the cursor
+    /// landed in the middle of one.
+    ///
+    /// What Sublime does is fall through: the cursor stays where the branch
+    /// matched and the parent context's *next* rule is given the position.
+    /// So the cursor is rewound to the branch's own start and the branch's
+    /// name is recorded here, and [`ParseState::find_best_match`] skips a
+    /// `Branch` of that name at that byte — the one thing that would
+    /// immediately re-enter the branch that just ran out. Everything else in
+    /// the context is searched as usual.
+    ///
+    /// Entries are byte offsets into one line and never outlive it. They are
+    /// dropped as the cursor advances past them, and if nothing at all matches
+    /// at the rewound position, `parse_next_token` drops the entry and
+    /// advances one character — upstream's behaviour, kept as the last resort
+    /// it always was rather than the first answer.
+    ///
+    /// This is upstream's open PR #664 against issue #631, taken alone; it
+    /// comes back out when upstream merges it.
+    skipped_branches: Vec<(usize, String)>,
+    /// While a cross-line `fail` is replaying a buffered
+    /// line, the line that line actually *is*.
+    ///
+    /// `line_number` counts calls to `parse_line`, and a replay does not make
+    /// one — so during a replay it still names the line the parser is really
+    /// on, several lines later. A `branch_point` created by the replayed text
+    /// was then stamped with that number, and the next `fail` for it compared
+    /// the two, found them equal, and took the *same-line* path: it rewound
+    /// the cursor to a position belonging to the replayed line and looked for
+    /// the next reading there, instead of replaying that line again under it.
+    ///
+    /// Markdown is the file. An unterminated code span before a setext
+    /// underline — CommonMark's example 91, `` `Foo `` then `----` — resolves
+    /// through two nested branch points; the second one is created during the
+    /// first one's replay, and the `fail` that follows on the *next* line was
+    /// read as same-line. The underline came out with no scopes at all, and
+    /// `markup.heading.2.markdown` was left on the stack for the rest of the
+    /// document.
+    replay_line: Option<Replay>,
+    /// A replay asked for by a `fail` that fired *inside* a
+    /// replay, for the driver to run once the current one has stopped.
+    ///
+    /// A cross-line `fail` used to run its own replay wherever it fired,
+    /// including in the middle of one. Two loops were then walking the same
+    /// buffered lines: the inner finished, the outer carried on from where it
+    /// was and re-emitted its own reading over the lines the inner had just
+    /// corrected. Corrections are keyed by line and the last one wins, so the
+    /// *abandoned* alternative won — `syntax_test_scope_C#7.cs:620`, a tuple
+    /// type spread over four lines, came out `meta.cast.cs meta.group.cs`
+    /// where Sublime Text has `meta.sequence.tuple.cs` (probe
+    /// `csharp_tuple_type`). Alternatives 3 and 4 of the `parens` branch both
+    /// replayed inside alternative 2's replay; 4 was the right reading and 2's
+    /// remaining iterations wrote over it.
+    ///
+    /// So a nested `fail` does the state work — restore the snapshot, advance
+    /// the branch point — and then stops its line and leaves this behind. One
+    /// driver runs the rounds in order, and because each round advances a
+    /// branch point's `next_alternative` or removes it, the rounds are bounded
+    /// by the alternatives that exist. Breaking out of the nested loops and
+    /// keeping the recursion was tried instead and took C# from seconds to past
+    /// the corpus budget.
+    replay_pending: Option<ReplayRequest>,
     /// Corrected ops produced by a cross-line `fail` replay, to be returned
     /// as `ParseLineOutput::replayed` at the end of `parse_line`.
-    flushed_ops: Vec<Vec<(usize, ScopeStackOp)>>,
+    /// each correction says which line it is for — the
+    /// parser's own 1-based `line_number` — instead of being positional.
+    ///
+    /// Upstream appends here, with the comment "in case multiple cross-line
+    /// fails fire on the same parse_line call", and hands the result out as a
+    /// bare `Vec<Vec<_>>` whose i-th entry the consumer is expected to pair with
+    /// the i-th buffered line. Those two cannot both be right: a second fail on
+    /// the same line appends a second run, so the positional mapping slides ops
+    /// from one line onto another's text. Upstream's #655 is that bug, reported
+    /// as a panic; measured here it turned ShellScript from 893 failing
+    /// assertions into 2,691, off 41 corrections.
+    ///
+    /// Naming the line removes the whole class: a later correction for a line
+    /// simply replaces an earlier one, and no consumer has to reconstruct which
+    /// lines were buffered.
+    flushed_ops: Vec<(usize, Vec<(usize, ScopeStackOp)>)>,
     /// Warnings accumulated during parsing, drained into `ParseLineOutput`.
     warnings: Vec<String>,
     /// Active escape patterns from embed operations. The escape regex takes
@@ -111,6 +237,11 @@ struct EscapeEntry {
     /// Stack depth at the time of the embed push — when escape fires,
     /// pop down to this depth.
     stack_depth: usize,
+    /// The frame the `embed:` was declared in,
+    /// when a `pop: N` took it off before the embed went on — the escape's own
+    /// text still wears its meta scopes. `None` when it is still on the stack,
+    /// which is where the escape finds it anyway.
+    holder: Option<(ContextId, usize)>,
 }
 
 /// Snapshot of parser state at a branch point, used for backtracking.
@@ -141,7 +272,7 @@ struct BranchPoint {
     ops_snapshot_len: usize,
     /// Stack depth at creation — if stack shrinks below this, branch is invalid.
     stack_depth: usize,
-    non_consuming_push_at_snapshot: (usize, usize),
+    non_consuming_push_at_snapshot: (usize, usize, usize),
     first_line_snapshot: bool,
     with_prototype: Option<ContextReference>,
     /// `pending_lines.len()` at snapshot time, for cross-line replay truncation.
@@ -172,6 +303,167 @@ struct StateLevel {
     context: ContextId,
     prototypes: Vec<ContextId>,
     captures: Option<(Region, String)>,
+    /// How many of this frame's `meta_content_scope` atoms
+    /// were never pushed, because the context under it is a v2 `embed_scope`
+    /// wrapper and the host's `embed_scope` *replaces* the embedded syntax's
+    /// own scope.
+    ///
+    /// It has to be remembered rather than worked out later. "The frame below
+    /// me has `embed_scope_replaces`" is only the same question at the moment
+    /// of the push: a context that arrives on top of a wrapper later — pushed
+    /// by a rule of the guest's, not by the embed — did push its own scope,
+    /// and asking the stack cannot tell the two apart. Guessing it cost Python
+    /// 46 → 98 failing assertions.
+    ///
+    /// A *count*, and almost always 0 or 1, because what `embed_scope`
+    /// replaces is the embedded syntax's own `scope:` — the file scope
+    /// `add_initial_contexts` puts at the front of `main`'s
+    /// `meta_content_scope` — and nothing else that context happens to carry.
+    /// See `mcs_replaced_by_embed_scope`.
+    mcs_skipped: usize,
+}
+
+/// How many of a context's `meta_content_scope` atoms a v2
+/// `embed_scope` stands in for.
+///
+/// Version 2 says `embed_scope` *replaces* the embedded syntax's scope. That
+/// scope is one atom, and it is on the stack because `add_initial_contexts`
+/// inserts it at the front of `main`'s `meta_content_scope`. So an embed that
+/// enters `main` replaces exactly that atom — and an embed that names a
+/// *context* of the guest instead (`embed: scope:source.toml…#toml`) replaces
+/// nothing, because that context's `meta_content_scope` is the guest's own
+/// (`meta.mapping.toml`) and has nothing to do with the file scope.
+///
+/// Skipping the whole `meta_content_scope` on `embed_scope_replaces` alone was
+/// Python's PEP 723 block: TOML's `toml` context lost `meta.mapping.toml`, and
+/// then `table-key-accessor`'s `clear_scopes: 1` took `source.toml.embedded.python`
+/// off instead — the atom every assertion in the block is about.
+fn mcs_replaced_by_embed_scope(
+    replaces: bool,
+    context_id: &ContextId,
+    context: &Context,
+    syntax_set: &SyntaxSet,
+) -> usize {
+    if !replaces {
+        return 0;
+    }
+    let scope = syntax_set.syntaxes()[context_id.syntax_index].scope;
+    usize::from(context.meta_content_scope.first() == Some(&scope))
+}
+
+/// Whether a branch point's alternative is still on the stack.
+///
+/// `stack_depth` is snapshotted *before* a `pop: N + branch:` does its pop, so
+/// the alternative's own frame sits at `stack_depth - pop_count + 1` and is
+/// present exactly while `stack_len > stack_depth - pop_count`. `handle_fail`
+/// has always asked it that way; `exec_escape` asked
+/// `stack_depth <= stack_len`, which for `N >= 2` prunes a branch point whose
+/// alternative an embed escape left standing — and a later `fail` naming it
+/// then silently does nothing.
+///
+/// That is the same failure as and the same predicate class as
+/// upstream's #660: three ways of asking one question, one of which quietly
+/// says no. So there is one place to ask it, and both callers ask here.
+fn branch_point_is_live(bp: &BranchPoint, stack_len: usize) -> bool {
+    stack_len > bp.stack_depth.saturating_sub(bp.pop_count)
+}
+
+/// Which of a `set:`'s targets may emit its `clear_scopes`
+/// *before* the trigger token rather than after it, if any.
+///
+/// A `set:` pushes its targets' `meta_scope`s in the initial phase, so the
+/// trigger text sees them, and their `meta_content_scope`s only in the
+/// non-initial phase, after it. A `clear_scopes` on one of those targets is
+/// therefore emittable early exactly when everything it can eat is already on
+/// the stack by then: nothing of the *leaving* context sitting on top
+/// (`cur_context`'s own meta scopes come off in the non-initial phase), and no
+/// target *before* it in the list contributing a `meta_content_scope` that has
+/// not been pushed yet.
+///
+/// Zsh is what this is for. `redirection-input` fires `(\d*)(<)` with
+/// `set: [string-path-pattern-body, zsh-redirection-glob-range-end, …]`, and
+/// the second of those carries `clear_scopes: 1  # clear string.unquoted` —
+/// the atom the *first* one's `meta_scope` just pushed. Deferring that Clear
+/// left `string.unquoted.shell` on the `<` itself and cleared it one column
+/// on; ST scopes that column
+/// `meta.string.glob.shell meta.range.shell.zsh punctuation.definition.range.begin.shell.zsh`,
+/// with no `string`, asked directly (a `shellscript`
+/// probe).
+///
+/// Makefile is why the `meta_content_scope` half is a condition and not an
+/// assumption: `set: [value-to-be-defined, eat-whitespace-then-pop]` puts the
+/// `clear_scopes: 1` on the *last* target, and what it is meant to eat is
+/// `value-to-be-defined`'s `meta_content_scope`, which does not exist yet in
+/// the initial phase. That one still belongs after the token.
+fn early_set_clear(
+    is_set: bool,
+    cur_context: &Context,
+    context_refs: &[ContextReference],
+    syntax_set: &SyntaxSet,
+) -> Result<Option<usize>, ParsingError> {
+    if !is_set || !cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty() {
+        return Ok(None);
+    }
+    for (i, r) in context_refs.iter().enumerate() {
+        let ctx = r.resolve(syntax_set)?;
+        if ctx.clear_scopes.is_some() {
+            return Ok(Some(i));
+        }
+        if !ctx.meta_content_scope.is_empty() {
+            return Ok(None);
+        }
+    }
+    Ok(None)
+}
+
+/// Which line a cross-line replay is currently re-reading.
+///
+/// See [`ParseState::replay_line`]. Both halves are needed and neither can be
+/// derived from the parser's counters, because a replay does not advance them.
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct Replay {
+    /// The line's own number, counting from 0, as `line_number - 1` would give
+    /// at the top level.
+    line_number: usize,
+    /// Its index in `pending_lines`, so a branch point created on it can
+    /// replay it rather than the lines after it.
+    pending_index: usize,
+    /// What the enclosing replay has already composed for this line, before
+    /// the point the re-parse resumes from.
+    ///
+    /// A branch point created inside a replay sees an `ops` that starts empty
+    /// at the resume position, so its own `prefix_ops` would describe only the
+    /// tail of the line. Its correction then *replaces* the enclosing one —
+    /// corrections are keyed by line — and everything before the resume point
+    /// is lost. In Markdown that came out as an empty correction for the line
+    /// the heading was on, and the next line's ops popped a stack nothing had
+    /// pushed.
+    prefix: Vec<(usize, ScopeStackOp)>,
+}
+
+/// One replay to run — everything a cross-line `fail` needs
+/// in order to re-read the buffered lines under the reading it has just chosen.
+///
+/// Both cross-line paths reduce to this. They differ only in how `prefix` and
+/// `resume_at` are worked out: an exhausted branch point re-emits the ops the
+/// creation line already had and resumes one character past the branch match,
+/// so the same branch cannot fire again; a next alternative re-emits those ops
+/// plus the trigger's own scopes and the alternative's meta scopes, and resumes
+/// at the end of the trigger match. Past that point the work is the same, which
+/// is why it is one function — see `ParseState::run_replay`.
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ReplayRequest {
+    /// Where in `pending_lines` the replay starts. Its first entry is the line
+    /// the branch point was created on.
+    from: usize,
+    /// What that first line already has, verbatim, before `resume_at`.
+    prefix: Vec<(usize, ScopeStackOp)>,
+    /// Where the re-parse of that first line picks up.
+    resume_at: usize,
+    /// A branch point that ran out at `resume_at`, whose
+    /// `Branch` must not be tried again there. See `skipped_branches`: this is
+    /// that fall-through, for the branch that ran out on an *earlier* line.
+    skip: Option<(usize, String)>,
 }
 
 #[derive(Debug)]
@@ -188,18 +480,91 @@ struct RegexMatch<'a> {
 /// Maps the pattern to the start index, which is -1 if not found.
 type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
 
+/// What one `push:` of several contexts clears in
+/// a version 1 syntax: all of their `clear_scopes` added up, applied once,
+/// before any of their meta scopes.
+///
+/// Sublime lists it under Compatibility as "Multiple Target Push Actions with
+/// `clear_scopes`", and its example is a `push: [context2, context3]` where
+/// both carry `clear_scopes: 1`: version 1 takes two atoms off before pushing
+/// either `meta_scope`, so `abc` comes out `meta.ctx2 meta.ctx3 identifier`
+/// with the file's own `source.lang` cleared away, where version 2 interleaves
+/// them — clear, push, clear, push — and leaves `source.lang meta.ctx3
+/// identifier`. ST 4206 answers exactly that at both versions
+/// (the `VerMultiClearV1.sublime-syntax` probe, the
+/// `multiclear_v1` and `multiclear_v2` jobs); this emitted version 2's
+/// interleaving whatever the file said.
+///
+/// `All` swallows the rest, being already everything there is.
+fn summed_push_clear(
+    context_refs: &[ContextReference],
+    syntax_set: &SyntaxSet,
+) -> Result<Option<ClearAmount>, ParsingError> {
+    let mut total = 0;
+    for r in context_refs.iter() {
+        match r.resolve(syntax_set)?.clear_scopes {
+            Some(ClearAmount::All) => return Ok(Some(ClearAmount::All)),
+            Some(ClearAmount::TopN(n)) => total += n,
+            None => {}
+        }
+    }
+    Ok((total > 0).then_some(ClearAmount::TopN(total)))
+}
+
 /// Build the ordered Push/Pop ops for a match's `captures:` mapping over
 /// its regex `regions`. Captures can appear in arbitrary source order
 /// (e.g. `((bob)|(hi))*` matching `hibob` — the outer group must Push
 /// before any inner group). Empty captures are skipped because they'd
 /// otherwise sort a Pop before its Push. The returned ops are already
 /// position-ordered and safe to append to a parser ops vec.
-fn build_capture_ops(capture_map: &CaptureMapping, regions: &Region) -> Vec<(usize, ScopeStackOp)> {
+fn build_capture_ops(
+    capture_map: &CaptureMapping,
+    regions: &Region,
+    version: u32,
+) -> Vec<(usize, ScopeStackOp)> {
+    // In a version 1 syntax a capture that goes
+    // *backwards* gets no scope at all, and this applied every one of them.
+    //
+    // Sublime lists it under Compatibility as "Regex Capture Group Order", and
+    // its own example is `(?:(x)|(y))+` over `yx`: group 2 matches the `y` at
+    // column 0 and group 1 the `x` at column 1. **The documented result is the
+    // wrong way round** — it says `x` loses its scope — and ST 4206 answers the
+    // opposite (the `VerCaptureOrderV1.sublime-syntax` probe,
+    // the `captures_v1` job): `y` is bare and `x` keeps `identifier.x`. So the
+    // rule is not about which group is lower-numbered, it is a *cursor*: the
+    // groups are read in capture-index order and one that begins before the
+    // last one it applied is dropped.
+    //
+    // Which cursor took a second probe, because the two readings that survive
+    // that example disagree about the commonest case of all. Against the last
+    // applied group's *end*, `((a)b)` would lose its inner group — group 1 is
+    // [0,2) and group 2 begins at 1 — and half the version 1 definitions in
+    // the set would quietly stop colouring their inner captures. Against its
+    // *start*, nesting is untouched and only a genuine step backwards is
+    // dropped. ST keeps the inner group (`VerCaptureNestV1`, the `nest_v1` and
+    // `nest_siblings_v1` jobs), so it is the start.
+    //
+    // Version 2 applies all of them, which is what this did unconditionally.
+    // The mapping is in the order the YAML hash was read, so the walk sorts by
+    // capture index rather than trusting it, and only the groups that carry
+    // scopes take part — an unscoped group is not something ST could report a
+    // position for either.
+    let mut ordered: Vec<&(usize, Vec<Scope>)> = capture_map.iter().collect();
+    if version < 2 {
+        ordered.sort_by_key(|(cap_index, _)| *cap_index);
+    }
+    let mut last_start = 0;
     let mut map: Vec<((usize, i32), ScopeStackOp)> = Vec::new();
-    for &(cap_index, ref scopes) in capture_map.iter() {
+    for &(cap_index, ref scopes) in ordered.into_iter() {
         if let Some((cap_start, cap_end)) = regions.pos(cap_index) {
             if cap_start == cap_end {
                 continue;
+            }
+            if version < 2 {
+                if cap_start < last_start {
+                    continue;
+                }
+                last_start = cap_start;
             }
             for scope in scopes.iter() {
                 map.push((
@@ -311,6 +676,7 @@ impl ParseState {
     /// main context of the syntax
     pub fn new(syntax: &SyntaxReference) -> ParseState {
         let start_state = StateLevel {
+            mcs_skipped: 0,
             context: syntax.context_ids()["__start"],
             prototypes: Vec::new(),
             captures: None,
@@ -322,6 +688,10 @@ impl ParseState {
             branch_points: Vec::new(),
             line_number: 0,
             pending_lines: Vec::new(),
+            zero_width_escape_fires: HashMap::new(),
+            skipped_branches: Vec::new(),
+            replay_line: None,
+            replay_pending: None,
             flushed_ops: Vec::new(),
             warnings: Vec::new(),
             escape_stack: Vec::new(),
@@ -411,7 +781,7 @@ impl ParseState {
         line: &str,
         syntax_set: &SyntaxSet,
     ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
-        self.parse_line_inner_from(line, syntax_set, 0)
+        self.parse_line_inner_from(line, syntax_set, 0, None)
     }
 
     /// Parse `line` starting at `start_at` rather than column 0. Used by
@@ -426,6 +796,9 @@ impl ParseState {
         line: &str,
         syntax_set: &SyntaxSet,
         start_at: usize,
+        // A branch that ran out at a byte of *this* string,
+        // to suppress there. See `ReplayRequest::skip`.
+        skip: Option<(usize, String)>,
     ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
         let mut match_start = start_at;
         let mut res = Vec::new();
@@ -443,7 +816,20 @@ impl ParseState {
         let fnv = BuildHasherDefault::<FnvHasher>::default();
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
         // Used for detecting loops with push/pop, see long comment above.
-        let mut non_consuming_push_at = (0, 0);
+        let mut non_consuming_push_at = (0, 0, 0);
+        // Fresh for every call, replays included — a
+        // cross-line replay re-entering the same offset is not a loop. See
+        // `zero_width_escape_fires`.
+        self.zero_width_escape_fires.clear();
+        // And the exhausted branches belong to *this* call,
+        // because they are byte offsets into the string it was handed. A
+        // cross-line replay re-enters here with another line, so its entries
+        // are put aside for the duration and the caller's are given back at
+        // the end — carried either way, they would suppress a branch at an
+        // offset that means nothing in the other string, or index past the end
+        // of a shorter one. See `skipped_branches`.
+        let outer_skipped = std::mem::take(&mut self.skipped_branches);
+        self.skipped_branches.extend(skip);
 
         while self.parse_next_token(
             line,
@@ -454,6 +840,9 @@ impl ParseState {
             &mut non_consuming_push_at,
             &mut res,
         )? {}
+
+        // See `outer_skipped` above.
+        self.skipped_branches = outer_skipped;
 
         Ok(res)
     }
@@ -466,12 +855,35 @@ impl ParseState {
         start: &mut usize,
         search_cache: &mut SearchCache,
         regions: &mut Region,
-        non_consuming_push_at: &mut (usize, usize),
+        non_consuming_push_at: &mut (usize, usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
     ) -> Result<bool, ParsingError> {
-        let check_pop_loop = {
-            let (pos, stack_depth) = *non_consuming_push_at;
-            pos == *start && stack_depth == self.stack.len()
+        // The guard is armed over the *range* a non-consuming
+        // push reached, not over one depth of it, and what it watches for is a
+        // pop landing back where that push started.
+        //
+        // Upstream records `stack.len() + 1` — the depth a push of *one*
+        // context reaches — so a `push:` of K contexts armed a depth the stack
+        // never sat at, and a `pop: K` from the top unwound `pre+K → pre`
+        // without ever visiting `pre+1`. Nothing flagged it, the position never
+        // moved, and the same rule fired again: an unbounded loop with no outer
+        // iteration cap. Reachable by any definition a user supplies, which
+        // nothing bounds.
+        //
+        // `armed_pre` is the pre-push depth while the stack is anywhere inside
+        // `(pre, post]`; the pop that loops is the one whose landing depth is
+        // `pre` exactly. A pop that lands *below* `pre` is not a loop — the
+        // context that owned the trigger is gone with it, which is what
+        // upstream's `Pop(1)`-only test was standing in for (Haskell's
+        // `immediately-pop2`), and this says directly.
+        let armed_pre = {
+            let (pos, pre, post) = *non_consuming_push_at;
+            let depth = self.stack.len();
+            if pos == *start && depth > pre && depth <= post {
+                Some(pre)
+            } else {
+                None
+            }
         };
 
         // Trim proto_starts that are no longer valid
@@ -484,19 +896,34 @@ impl ParseState {
             self.proto_starts.pop();
         }
 
-        let best_match = self.find_best_match(
-            line,
-            *start,
-            syntax_set,
-            search_cache,
-            regions,
-            check_pop_loop,
-        )?;
+        let best_match =
+            self.find_best_match(line, *start, syntax_set, search_cache, regions, armed_pre)?;
 
         if let Some(reg_match) = best_match {
             // Check if this is an escape match (sentinel pat_index)
             if reg_match.pat_index == usize::MAX {
                 let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
+                // The escape that will not stop firing. See
+                // `zero_width_escape_fires`.
+                let zero_width = match_start == match_end;
+                if zero_width
+                    && self
+                        .zero_width_escape_fires
+                        .get(&match_start)
+                        .copied()
+                        .unwrap_or(0)
+                        >= ZERO_WIDTH_ESCAPE_FIRE_LIMIT
+                {
+                    return match line[*start..].char_indices().nth(1) {
+                        Some((i, _)) => {
+                            *start += i;
+                            Ok(true)
+                        }
+                        // End of line: no character to advance onto, and no
+                        // point trying any more patterns.
+                        None => Ok(false),
+                    };
+                }
                 *start = match_end;
                 self.exec_escape(
                     reg_match.escape_index,
@@ -506,6 +933,9 @@ impl ParseState {
                     syntax_set,
                     ops,
                 )?;
+                if zero_width {
+                    *self.zero_width_escape_fires.entry(match_start).or_insert(0) += 1;
+                }
                 search_cache.clear();
                 return Ok(true);
             }
@@ -539,7 +969,26 @@ impl ParseState {
             // Check if this is a Fail operation — handle before advancing start
             let context = reg_match.context;
             let match_pattern = context.match_at(reg_match.pat_index)?;
-            if let MatchOperation::Fail(_) = match_pattern.operation {
+            // Only when there is somewhere to rewind *to*.
+            //
+            // Sublime: "If a `fail` action specifies a `branch_point` that was
+            // never pushed on the stack, or has already been popped off of it,
+            // it will have no effect." It is the *action* that has no effect —
+            // the rule is a rule like any other, so its text is consumed and
+            // its `scope` applies, and the line carries on.
+            //
+            // `handle_fail` answers an unresolvable name with `Ok(false)`,
+            // which is not "no effect": it is what `parse_next_token` returns
+            // to say *stop parsing this line*. So a stray `fail` — CSS has one,
+            // `- match: ';' fail: property-or-selector`, reachable outside any
+            // branch — silently threw away the colouring of everything after it
+            // on that line. Falling through instead sends it down the ordinary
+            // path, where `MatchOperation::Fail` is already a no-op.
+            let fail_that_resolves = match match_pattern.operation {
+                MatchOperation::Fail(ref name) => self.can_rewind_to(name),
+                _ => false,
+            };
+            if fail_that_resolves {
                 let level_context = {
                     let id = &self.stack[self.stack.len() - 1].context;
                     syntax_set.get_context(id)?
@@ -556,23 +1005,85 @@ impl ParseState {
                 );
             }
 
+            // Inside a cross-line replay, a non-consuming
+            // `Branch` whose match lands past every character of the replayed
+            // line does not get a branch point.
+            //
+            // The one it would create is chained — opened by the replay that an
+            // earlier branch's exhaustion started — and the *outer* parse
+            // exhausts it on the next line, often an empty one. Its pop ops
+            // then attach to this replayed line, which is the next line's
+            // baseline, and the parent context collapses one boundary too
+            // early. Skipping it is not losing the reading: the parent rule
+            // fires again at the start of the outer line and the branch point
+            // is anchored there instead.
+            //
+            // Markdown's link reference definition is the file:
+            // `link-def-attr`'s `- match: $` created a branch point inside
+            // `link-title-continuation`'s exhaustion replay, and
+            // `meta.link.reference.def.markdown` came off on the blank line
+            // where ST keeps it. Upstream's #677, whose diagnosis this is.
+            if matches!(match_pattern.operation, MatchOperation::Branch { .. })
+                && self.replay_line.is_some()
+                && match_end >= line.len()
+            {
+                return Ok(false);
+            }
+
             let consuming = match_end > *start;
             if !consuming {
                 // The match doesn't consume any characters. If this is a
                 // "push", remember the position and stack size so that we can
                 // check the next "pop" for loops. Otherwise leave the state,
                 // e.g. non-consuming "set" could also result in a loop.
-                if matches!(
-                    match_pattern.operation,
-                    MatchOperation::Push(_)
-                        | MatchOperation::Branch { .. }
-                        | MatchOperation::Embed { .. }
-                ) {
-                    *non_consuming_push_at = (match_end, self.stack.len() + 1);
+                // how deep this push actually goes, so the
+                // guard is armed over all of it. A `branch:` pushes exactly one
+                // alternative whatever the list holds; a `push:`/`embed:`
+                // pushes its whole list. A `pop: M` in front of any of them
+                // takes the stack below where the trigger's own context sits,
+                // so nothing can pop *back* to it and the range comes out empty
+                // — disarmed, which is the right answer. See `armed_pre`.
+                let pre = self.stack.len();
+                let reach = match match_pattern.operation {
+                    MatchOperation::Push {
+                        ref ctx_refs,
+                        pop_count,
+                    } => Some(pre.saturating_sub(pop_count) + ctx_refs.len()),
+                    MatchOperation::Branch { pop_count, .. } => {
+                        Some(pre.saturating_sub(pop_count) + 1)
+                    }
+                    MatchOperation::Embed {
+                        ref contexts,
+                        pop_count,
+                        ..
+                    } => Some(pre.saturating_sub(pop_count) + contexts.len()),
+                    // Anything else leaves the arming where it is, which is
+                    // upstream's "otherwise leave the state, e.g. non-consuming
+                    // `set` could also result in a loop". Overwriting it here
+                    // *narrows* the guard — a non-consuming `set:` between the
+                    // push and the pop hid the push it was armed on — and hung
+                    // `CFML Script (Tags)` and `JavaScript (for PHP
+                    // double-quoted)`.
+                    _ => None,
+                };
+                if let Some(reach) = reach {
+                    // And never narrower than the one depth
+                    // upstream arms. With a `pop: M` in front, the arithmetic
+                    // above can put the reach at or below `pre` and leave the
+                    // range empty — but the stack can still come back up
+                    // through `pre + 1` under later pushes at this same byte,
+                    // and a `Pop(1)` there lands on `pre` and loops. This guard
+                    // may be widened and may not be narrowed.
+                    *non_consuming_push_at = (match_end, pre, reach.max(pre + 1));
                 }
             }
 
             *start = match_end;
+
+            // A branch that ran out at a byte the cursor has
+            // now passed is no longer anything to suppress. See
+            // `skipped_branches`.
+            self.skipped_branches.retain(|(at, _)| *at >= *start);
 
             // ignore `with_prototype`s below this if a context is pushed
             if reg_match.from_with_prototype {
@@ -596,6 +1107,22 @@ impl ParseState {
             )?;
 
             Ok(true)
+        } else if self.skipped_branches.iter().any(|(at, _)| *at == *start) {
+            // Nothing matched at a position where a branch
+            // point ran out, so the parent context has nothing to offer here
+            // either. Drop the entry and advance one character — which is what
+            // upstream does unconditionally, kept as the last resort. See
+            // `skipped_branches`.
+            self.skipped_branches.retain(|(at, _)| *at != *start);
+            match line[*start..].char_indices().nth(1) {
+                Some((i, _)) => {
+                    *start += i;
+                    search_cache.clear();
+                    Ok(true)
+                }
+                // End of line: no character to advance onto.
+                None => Ok(false),
+            }
         } else {
             Ok(false)
         }
@@ -608,7 +1135,7 @@ impl ParseState {
         syntax_set: &'a SyntaxSet,
         search_cache: &mut SearchCache,
         regions: &mut Region,
-        check_pop_loop: bool,
+        armed_pre: Option<usize>,
     ) -> Result<Option<RegexMatch<'a>>, ParsingError> {
         let cur_level = &self.stack[self.stack.len() - 1];
         let context = syntax_set.get_context(&cur_level.context)?;
@@ -680,6 +1207,21 @@ impl ParseState {
             for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)?) {
                 let match_pat = pat_context.match_at(pat_index)?;
 
+                // The branch that just ran out at this byte
+                // is the one rule that must not be tried again here — it would
+                // re-enter the alternatives that have already all failed. Every
+                // other rule of the context is searched as usual, which is the
+                // fall-through. See `skipped_branches`.
+                if let MatchOperation::Branch { name, .. } = &match_pat.operation {
+                    if self
+                        .skipped_branches
+                        .iter()
+                        .any(|(at, exhausted)| *at == start && exhausted == name)
+                    {
+                        continue;
+                    }
+                }
+
                 if let Some(match_region) = self.search_with_end(
                     line,
                     start,
@@ -703,21 +1245,25 @@ impl ParseState {
                         min_start = match_start;
 
                         let consuming = match_end > start;
-                        // A non-consuming `pop: N` after a non-consuming push
-                        // only loops when N == 1 — that restores the exact
-                        // pre-push stack, so the push rule fires again. With
-                        // N >= 2 the stack drops strictly below the pre-push
-                        // depth, so the outer context no longer has the same
-                        // trigger in scope (e.g. Haskell's `immediately-pop2`
-                        // as the fallback branch alternative for
-                        // `declaration-type-end`).
-                        pop_would_loop = check_pop_loop
-                            && !consuming
-                            && matches!(match_pat.operation, MatchOperation::Pop(1));
+                        // A non-consuming `pop: N` loops when
+                        // it lands back on the depth the push started from — the
+                        // pre-push stack restored, so the push rule fires again
+                        // at a position that never moved. Landing below it is
+                        // not a loop: the context that owned the trigger has
+                        // gone with the frames (Haskell's `immediately-pop2`, the
+                        // fallback alternative for `declaration-type-end`).
+                        // See `armed_pre`.
+                        pop_would_loop = !consuming
+                            && match (armed_pre, &match_pat.operation) {
+                                (Some(pre), MatchOperation::Pop(n)) => {
+                                    self.stack.len().saturating_sub(*n) == pre
+                                }
+                                _ => false,
+                            };
 
                         let push_too_deep = matches!(
                             match_pat.operation,
-                            MatchOperation::Push(_)
+                            MatchOperation::Push { .. }
                                 | MatchOperation::Branch { .. }
                                 | MatchOperation::Embed { .. }
                         ) && self.stack.len() >= 100;
@@ -777,7 +1323,16 @@ impl ParseState {
         // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
         let match_ptr = match_pat as *const MatchPattern;
 
-        if let Some(maybe_region) = search_cache.get(&match_ptr) {
+        // The cache is about *this* line, and a truncated
+        // search is about a shorter one — see the haystack below. A `None`
+        // cached from a full-line search is "this pattern does not match here",
+        // which is exactly what a pattern whose lookahead trips over the escape
+        // says, and reusing it is how `done` before a closing backtick stayed a
+        // command name with the cut in place. Neither read nor written while
+        // the line is cut.
+        let cut = search_end < line.len();
+
+        if let Some(maybe_region) = search_cache.get(&match_ptr).filter(|_| !cut) {
             if let Some(ref region) = *maybe_region {
                 let (cached_start, cached_end) = region.pos(0).unwrap();
                 if cached_start >= start && cached_end <= search_end {
@@ -808,20 +1363,57 @@ impl ParseState {
         // operation legitimately needs them (lookaheads with branch/fail, empty patterns with
         // pop/set, etc.). The regex engine handles this via its `FIND_NOT_EMPTY` option.
         let allow_empty = !matches!(match_pat.operation, MatchOperation::None);
-        // print!("  executing regex: {:?} at pos {} on line {}", regex.regex_str(), start, line);
-        let matched = regex.search(line, start, search_end, Some(regions), allow_empty);
+        // Print!("  executing regex: {:?} at pos {} on line {}", regex.regex_str(), start, line);
+        // an `escape` does not only bound where an embedded
+        // syntax's match may *land* — it ends the text that syntax can see. So
+        // the search is over the line cut at the escape, not over the whole
+        // line with the range narrowed: Oniguruma's `range` limits where a
+        // match may start and end, and a lookahead still reads past it.
+        //
+        // Bash is the file. Inside `` ` … ` `` the whole shell is embedded with
+        // `escape: '\`'`, and `done` is `done{{cmd_break}}` where `cmd_break`
+        // is `(?!{{cmd_char}})` — a backtick is not one of Bash's
+        // metacharacters, so with the backtick visible that lookahead fails and
+        // `` `…; done` `` read `done` as a command name
+        // (`variable.function.shell`) rather than the end of the loop. ST scopes
+        // it `keyword.control.loop.end.shell`, and does so for `` `done` `` with
+        // no loop around it at all — so it is the cut and not the loop
+        // (probed with a `shellscript` definition, `bash_bare`).
+        //
+        // Only the tail is cut, so lookbehind and `^` are untouched; `$` now
+        // holds at the escape, which is where the embedded syntax's line ends
+        // as far as it is concerned.
+        let haystack = if search_end < line.len() {
+            &line[..search_end]
+        } else {
+            line
+        };
+        let matched = regex.search(haystack, start, search_end, Some(regions), allow_empty);
 
         if matched {
             let (match_start, match_end) = regions.pos(0).unwrap();
             // this is necessary to avoid infinite looping on dumb patterns
             let does_something = match match_pat.operation {
                 MatchOperation::None => match_start != match_end,
-                MatchOperation::Push(_)
+                MatchOperation::Push { .. }
                 | MatchOperation::Branch { .. }
                 | MatchOperation::Embed { .. } => self.stack.len() < 100,
+                // Other half. An unresolvable
+                // `fail` is let through to `perform_op` as an ordinary rule
+                // rather than stopping the line — and a rule that changes
+                // nothing must not match empty, or the parser sits at the same
+                // position forever. `MatchOperation::None` says exactly that
+                // one line above; this is the same rule for the same reason.
+                //
+                // `- match: '(?=;)' fail: nobody` is the shape, and it hangs
+                // without this — `branch_fail_nonexistent_name` is that
+                // definition.
+                MatchOperation::Fail(ref name) => {
+                    match_start != match_end || self.can_rewind_to(name)
+                }
                 _ => true,
             };
-            if can_cache && does_something && search_end == line.len() {
+            if can_cache && does_something && !cut {
                 // Only cache when searching the full line — truncated searches
                 // could give different results for later positions.
                 search_cache.insert(match_pat, Some(regions.clone()));
@@ -830,7 +1422,7 @@ impl ParseState {
                 // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
                 return Some(regions.clone());
             }
-        } else if can_cache && search_end == line.len() {
+        } else if can_cache && !cut {
             search_cache.insert(match_pat, None);
         }
         None
@@ -846,25 +1438,41 @@ impl ParseState {
         level_context: &'a Context,
         syntax_set: &'a SyntaxSet,
         start: &mut usize,
-        non_consuming_push_at: &mut (usize, usize),
+        non_consuming_push_at: &mut (usize, usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
         search_cache: &mut SearchCache,
     ) -> Result<bool, ParsingError> {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context;
         let pat = context.match_at(reg_match.pat_index)?;
+        // which version's rules the captures of this match
+        // follow — the same question `push_meta_ops` asks, and asked the same
+        // way, off the context on top of the stack. See `build_capture_ops`.
+        let version = self.current_syntax_version(syntax_set);
 
-        // Handle Fail: attempt backtracking
+        // Handle Fail: attempt backtracking.
+        //
+        // And only when there is somewhere to rewind to. The
+        // other half of the change at the `Fail` check in `parse_next_token`,
+        // which is where the reason is written down — a `fail` naming a branch
+        // point nobody opened is a rule like any other, scope and all, not an
+        // instruction to abandon the rest of the line.
+        let unresolvable = match pat.operation {
+            MatchOperation::Fail(ref name) => !self.can_rewind_to(name),
+            _ => false,
+        };
         if let MatchOperation::Fail(ref name) = pat.operation {
-            return self.handle_fail(
-                name,
-                line,
-                start,
-                non_consuming_push_at,
-                ops,
-                search_cache,
-                syntax_set,
-            );
+            if !unresolvable {
+                return self.handle_fail(
+                    name,
+                    line,
+                    start,
+                    non_consuming_push_at,
+                    ops,
+                    search_cache,
+                    syntax_set,
+                );
+            }
         }
 
         // For Branch, we need to snapshot state before executing, then synthesize a Push.
@@ -897,32 +1505,54 @@ impl ParseState {
                     match_start: *start, // position before this match's advance
                     trigger_match_start: match_start,
                     pat_scope: pat.scope.clone(),
-                    line_number: self.line_number.saturating_sub(1), // current line (already incremented)
+                    // the line this branch point is really
+                    // on, which is not `line_number` inside a replay. See
+                    // `replay_line`.
+                    line_number: self.cur_line_number(),
                     ops_snapshot_len: ops.len(),
                     stack_depth: self.stack.len(),
                     non_consuming_push_at_snapshot: *non_consuming_push_at,
                     first_line_snapshot: self.first_line,
                     with_prototype: pat.with_prototype.clone(),
-                    pending_lines_snapshot_len: self.pending_lines.len(),
+                    // see `pending_lines_mark`.
+                    pending_lines_snapshot_len: self.pending_lines_mark(),
                     escape_stack_snapshot: self.escape_stack.clone(),
                     pop_count,
-                    prefix_ops: ops.clone(),
+                    // Inside a replay, what this line has
+                    // already been given comes first. See `Replay::prefix`.
+                    prefix_ops: match &self.replay_line {
+                        Some(replay) => {
+                            let mut prefix = replay.prefix.clone();
+                            prefix.extend(ops.iter().cloned());
+                            prefix
+                        }
+                        None => ops.clone(),
+                    },
                     capture_ops: pat
                         .captures
                         .as_ref()
-                        .map(|m| build_capture_ops(m, &reg_match.regions))
+                        .map(|m| build_capture_ops(m, &reg_match.regions, version))
                         .unwrap_or_default(),
                 };
                 self.branch_points.push(bp);
-                // When pop_count > 0 (pop + branch), use Set semantics to
-                // pop the current context before pushing the first alternative.
+                // `pop: N + branch:` is a lookahead, like
+                // `pop: N + push:` and not like `set`. This built a synthetic
+                // `Set`, which gave the trigger token the meta scopes of every
+                // frame it was unwinding. Asked of ST with a three-frame probe,
+                // `bgWQQQ` in `PopPush.sublime-syntax`, the trigger comes out
+                // `source meta.tail.branch keyword.trigger.branch` — the target's
+                // `meta_scope` alone. So the synthetic is a `Push` carrying the
+                // count, which is where the lookahead unwinding lives.
                 synthetic_op = if pop_count > 0 {
-                    MatchOperation::Set {
+                    MatchOperation::Push {
                         ctx_refs: vec![alternatives[0].clone()],
                         pop_count,
                     }
                 } else {
-                    MatchOperation::Push(vec![alternatives[0].clone()])
+                    MatchOperation::Push {
+                        ctx_refs: vec![alternatives[0].clone()],
+                        pop_count: 0,
+                    }
                 };
             } else {
                 unreachable!()
@@ -944,7 +1574,7 @@ impl ParseState {
         let capture_ops = pat
             .captures
             .as_ref()
-            .map(|m| build_capture_ops(m, &reg_match.regions))
+            .map(|m| build_capture_ops(m, &reg_match.regions, version))
             .unwrap_or_default();
         ops.extend(capture_ops.iter().cloned());
         if !pat.scope.is_empty() {
@@ -971,12 +1601,25 @@ impl ParseState {
     /// Handle a `fail` operation by rewinding to the named branch point.
     /// Returns Ok(true) if backtracking happened (caller should continue from rewound position).
     /// Returns Ok(false) if the fail had no effect.
+    /// whether a `fail` naming this branch point has
+    /// anywhere to rewind to.
+    ///
+    /// The same test `handle_fail` makes before it does anything, asked before
+    /// the rule is routed there at all — see the site in `parse_next_token`
+    /// that calls it, which is where the reason lives.
+    fn can_rewind_to(&self, name: &str) -> bool {
+        let stack_len = self.stack.len();
+        self.branch_points
+            .iter()
+            .any(|bp| bp.name == name && branch_point_is_live(bp, stack_len))
+    }
+
     fn handle_fail(
         &mut self,
         name: &str,
         line: &str,
         start: &mut usize,
-        non_consuming_push_at: &mut (usize, usize),
+        non_consuming_push_at: &mut (usize, usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
         search_cache: &mut SearchCache,
         syntax_set: &SyntaxSet,
@@ -992,15 +1635,17 @@ impl ParseState {
         // the inner branch position instead of the outer one
         // (Haskell's raw-string QQ `[r|[a-zA-Z]|]`).
         let stack_len = self.stack.len();
-        let bp_index = self.branch_points.iter().rposition(|bp| {
-            bp.name == name && stack_len > bp.stack_depth.saturating_sub(bp.pop_count)
-        });
+        let bp_index = self
+            .branch_points
+            .iter()
+            .rposition(|bp| bp.name == name && branch_point_is_live(bp, stack_len));
         let bp_index = match bp_index {
             Some(i) => i,
             None => return Ok(false), // No such branch point, fail is no-op
         };
 
-        let cur_line = self.line_number.saturating_sub(1);
+        // see `replay_line`.
+        let cur_line = self.cur_line_number();
         let bp = &self.branch_points[bp_index];
 
         // Check validity: not >128 lines old
@@ -1013,8 +1658,13 @@ impl ParseState {
             return Ok(false);
         }
 
-        // Check validity: stack depth still >= branch's stack_depth
-        if self.stack.len() < bp.stack_depth {
+        // Check validity: the alternative's frame is still on the stack.
+        // the fourth place this was asked and the second that
+        // got it wrong — `stack.len() < stack_depth` ignores the `pop_count`
+        // that the `rposition` above had just accounted for, so a `pop: N +
+        // branch:` with N >= 2 found its branch point and then threw it away
+        // one line later. Asked the one way now; see `branch_point_is_live`.
+        if !branch_point_is_live(bp, self.stack.len()) {
             self.branch_points.remove(bp_index);
             return Ok(false);
         }
@@ -1069,55 +1719,71 @@ impl ParseState {
                 // state so `parse_line` can surface the corrected ops via
                 // `ParseLineOutput::replayed`. The first buffered line is the
                 // branch-creation line: emit its saved `prefix_ops` (the ops
-                // emitted before the branch match) verbatim, then advance past
-                // the branch match by one character before resuming — otherwise
-                // the same branch_point would fire again at the original match
-                // position and we'd loop.
+                // emitted before the branch match) verbatim, then resume where
+                // the branch matched.
                 //
-                // Keep `pending_lines` intact (don't drain): if an outer
-                // branch_point on this same line also fails after this
-                // exhaustion replay, its own replay needs access to the same
-                // buffered lines.
-                let truncated_lines: Vec<String> =
-                    self.pending_lines[pending_lines_snapshot_len..].to_vec();
-                let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
-                    Vec::with_capacity(truncated_lines.len());
-                for (i, replay_line) in truncated_lines.iter().enumerate() {
-                    let line_ops = if i == 0 {
-                        let mut first_line_ops = prefix_ops.clone();
-                        let resume_at = if let Some((j, _)) =
-                            replay_line[match_start_pos..].char_indices().nth(1)
-                        {
-                            match_start_pos + j
-                        } else {
-                            replay_line.len()
-                        };
-                        let tail_ops =
-                            self.parse_line_inner_from(replay_line, syntax_set, resume_at)?;
-                        first_line_ops.extend(tail_ops);
-                        first_line_ops
-                    } else {
-                        self.parse_line_inner(replay_line, syntax_set)?
-                    };
-                    replayed_ops.push(line_ops);
+                // *where it matched*, with the branch's name
+                // suppressed there — not one character past it, which is what
+                // this did and what same-line arm stopped doing for
+                // the reason `skipped_branches` gives: the character stepped
+                // over is one the parent context never gets to match, so the
+                // token the branch was opened on loses its scopes entirely.
+                //
+                // `package apple dot` in Java's corpus is the line: `dot` opens
+                // a declaration whose branch runs out several lines later, and
+                // the replay resumed at `ot`, which nothing matches. ST gives
+                // the whole word `variable.other.java` — the parent's next
+                // rule, which is exactly the fall-through the same-line arm
+                // already does.
+                let first = &self.pending_lines[pending_lines_snapshot_len];
+                let resume_at = match_start_pos.min(first.len());
+                let request = ReplayRequest {
+                    from: pending_lines_snapshot_len,
+                    prefix: prefix_ops,
+                    resume_at,
+                    skip: Some((resume_at, name.to_string())),
+                };
+                // inside a replay this does not replay. It
+                // leaves the request for the driver and ends the line, so that
+                // two loops cannot walk the same buffered lines and the reading
+                // chosen last is the one that survives. See `replay_pending`.
+                if self.replay_line.is_some() {
+                    self.replay_pending = Some(request);
+                    return Ok(false);
                 }
-                self.flushed_ops.extend(replayed_ops);
+                self.run_replays(request, syntax_set)?;
 
                 // Restart the current line from the beginning under the
-                // restored state.
+                // restored state. including what ran out on
+                // it, which was exhausted under a reading this restart has
+                // just replaced. See `skipped_branches`.
+                self.skipped_branches.clear();
                 ops.clear();
                 *start = 0;
-                *non_consuming_push_at = (0, 0);
+                *non_consuming_push_at = (0, 0, 0);
                 search_cache.clear();
                 return Ok(true);
             }
 
-            // Same-line exhaustion: advance one char past the branch_point match
-            // to avoid immediately re-matching the same `(?=...)` lookahead.
-            if let Some((i, _)) = line[match_start_pos..].char_indices().nth(1) {
-                *start = match_start_pos + i;
+            // Same-line exhaustion. rewind to where the
+            // branch point matched and record its name, so the parent
+            // context's next rule is offered the position that the branch
+            // took. Upstream advances one character past the lookahead
+            // instead, which steps the cursor into the middle of the token the
+            // parent was about to match. See `skipped_branches`.
+            //
+            // Unless the position is not a position in *this* string: a
+            // cross-line replay parses an earlier line while `line_number`
+            // still names the current one, so a branch point that really is
+            // from another line reads as same-line here and its `match_start`
+            // can be past the end of the line being replayed. There is nothing
+            // on this line to rewind to then, so the line ends — which is what
+            // the end-of-line arm did before.
+            if match_start_pos <= line.len() {
+                self.skipped_branches
+                    .push((match_start_pos, name.to_string()));
+                *start = match_start_pos;
             } else {
-                // End of line — no character to advance past.
                 *start = line.len();
             }
             search_cache.clear();
@@ -1157,6 +1823,15 @@ impl ParseState {
         // (must happen before the pop which may invalidate indices).
         self.branch_points[bp_index].next_alternative = next_alt_index + 1;
 
+        // the ops for that unwinding, counted here because
+        // this is the last moment the frames it is about are on the stack — the
+        // re-emit below happens with the alternative already pushed over them.
+        // See `lookahead_unwind_ops`.
+        let mut unwind_ops = Vec::new();
+        if pop_count > 0 {
+            self.lookahead_unwind_ops(pop_count, trigger_match_start, syntax_set, &mut unwind_ops)?;
+        }
+
         // For pop + branch: re-pop the contexts (snapshot was taken pre-pop).
         if pop_count > 0 {
             for _ in 0..pop_count {
@@ -1179,6 +1854,9 @@ impl ParseState {
             context: context_id,
             prototypes: proto_ids,
             captures,
+            // A branch alternative is pushed on its own, never as the guest of
+            // an embed, and `handle_fail` pushes its `meta_content_scope`.
+            mcs_skipped: 0,
         });
 
         if is_cross_line {
@@ -1199,66 +1877,63 @@ impl ParseState {
             // branch trigger's pat.scope and the new alternative's meta
             // scope ops, then resume parsing from match_end with the new
             // alternative on the stack via `parse_line_inner_from`.
-            // Keep `pending_lines` intact (don't drain): if a second branch_point
-            // on the current line also fails after this retry, its own replay
-            // needs access to the same buffered lines. Nested branches from the
-            // same earlier line share the buffer.
-            let truncated_lines: Vec<String> =
-                self.pending_lines[pending_lines_snapshot_len..].to_vec();
-
-            let mut replayed_ops: Vec<Vec<(usize, ScopeStackOp)>> =
-                Vec::with_capacity(truncated_lines.len());
-            for (i, replay_line) in truncated_lines.iter().enumerate() {
-                let line_ops = if i == 0 {
-                    // First buffered line: compose prefix + branch ops + resume.
-                    let mut first_line_ops = prefix_ops.clone();
-                    // Re-emit the trigger's pat.scope and the new
-                    // alternative's meta scope ops in the same order
-                    // the non-fail push path uses: clear_scopes and
-                    // meta_scope at `trigger_match_start` (so the
-                    // matched text sees them), then pat.scope at the
-                    // same position, popped at `match_start_pos`.
-                    // meta_content_scope only applies after the
-                    // matched text, so it lands at `match_start_pos`.
-                    if let Some(clear_amount) = context.clear_scopes {
-                        first_line_ops
-                            .push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
-                    }
-                    for scope in context.meta_scope.iter() {
-                        first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-                    }
-                    for scope in &trigger_pat_scope {
-                        first_line_ops.push((trigger_match_start, ScopeStackOp::Push(*scope)));
-                    }
-                    // See matching comment in the same-line branch below —
-                    // re-emit the trigger match's captures inside the
-                    // pat_scope brackets so they survive the branch swap.
-                    first_line_ops.extend(trigger_capture_ops.iter().cloned());
-                    if !trigger_pat_scope.is_empty() {
-                        first_line_ops
-                            .push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
-                    }
-                    for scope in context.meta_content_scope.iter() {
-                        first_line_ops.push((match_start_pos, ScopeStackOp::Push(*scope)));
-                    }
-                    // Resume parsing from the branch match's end position.
-                    let tail_ops =
-                        self.parse_line_inner_from(replay_line, syntax_set, match_start_pos)?;
-                    first_line_ops.extend(tail_ops);
-                    first_line_ops
-                } else {
-                    self.parse_line_inner(replay_line, syntax_set)?
-                };
-                replayed_ops.push(line_ops);
+            // Keep `pending_lines` intact (don't drain): if a second
+            // branch_point on the current line also fails after this retry, its
+            // own replay needs access to the same buffered lines. Nested
+            // branches from the same earlier line share the buffer.
+            //
+            // Compose the first buffered line's prefix here, then hand the
+            // whole thing to the driver. Appending each round's corrections is
+            // safe because every one of them names its line: a later round for
+            // a line already in the list simply wins, which is how the reading
+            // chosen last is the one that survives.
+            let mut prefix = prefix_ops;
+            // the trigger's own unwinding comes first, exactly
+            // as `push_meta_ops` emits it. See `lookahead_unwind_ops`.
+            prefix.extend(unwind_ops.iter().cloned());
+            if let Some(clear_amount) = context.clear_scopes {
+                prefix.push((trigger_match_start, ScopeStackOp::Clear(clear_amount)));
             }
-            // Append (rather than overwrite) in case multiple cross-line fails
-            // fire on the same parse_line call.
-            self.flushed_ops.extend(replayed_ops);
+            for scope in context.meta_scope.iter() {
+                prefix.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+            }
+            for scope in &trigger_pat_scope {
+                prefix.push((trigger_match_start, ScopeStackOp::Push(*scope)));
+            }
+            // See the matching comment in the same-line branch below — re-emit
+            // the trigger match's captures inside the pat_scope brackets so
+            // they survive the branch swap.
+            prefix.extend(trigger_capture_ops.iter().cloned());
+            if !trigger_pat_scope.is_empty() {
+                prefix.push((match_start_pos, ScopeStackOp::Pop(trigger_pat_scope.len())));
+            }
+            for scope in context.meta_content_scope.iter() {
+                prefix.push((match_start_pos, ScopeStackOp::Push(*scope)));
+            }
+            let request = ReplayRequest {
+                from: pending_lines_snapshot_len,
+                prefix,
+                resume_at: match_start_pos,
+                // The alternative that was just pushed is what resumes here;
+                // nothing is being suppressed. See `ReplayRequest::skip`.
+                skip: None,
+            };
+            // as in the exhaustion arm — a `fail` inside a
+            // replay hands the request to the driver rather than running a
+            // replay of its own. See `replay_pending`.
+            if self.replay_line.is_some() {
+                self.replay_pending = Some(request);
+                return Ok(false);
+            }
+            self.run_replays(request, syntax_set)?;
 
-            // Restart the current line from the beginning.
+            // Restart the current line from the beginning — and what ran out
+            // on it goes with the reading that ran out. See
+            // `skipped_branches`.
+            self.skipped_branches.clear();
             ops.clear();
             *start = 0;
-            *non_consuming_push_at = (0, 0);
+            *non_consuming_push_at = (0, 0, 0);
 
             // Guard: the replayed `parse_line_inner` calls above can
             // mutate `self.branch_points` (adding new branches,
@@ -1276,7 +1951,22 @@ impl ParseState {
         } else {
             // Same-line fail: truncate ops back to the snapshot point and rewind.
             ops.truncate(ops_snapshot_len.min(ops.len()));
-            *start = match_start_pos;
+            // except at column 0 of an empty line, where the
+            // rewind goes to the end of it instead.
+            //
+            // The alternative being swapped in there is typically a
+            // `- match: '' pop: N` — Markdown's `link-def-attr-continuation`
+            // failing into `immediately-pop2` — and running that pop at column
+            // 0 emits the Pops on the empty line's only character, taking the
+            // parent's `meta_scope` off before that line has been scoped at
+            // all. Past the end they land on the next line's baseline instead,
+            // which is where ST has them: the definition's pop straddles the
+            // blank line and the paragraph after it, not the title's line and
+            // the blank one. Upstream's #677.
+            *start = match match_start_pos == 0 && line.len() <= 1 && line.trim().is_empty() {
+                true => line.len(),
+                false => match_start_pos,
+            };
 
             // Keep `ops_snapshot_len` pointing at the pre-branch state.
             // Subsequent fails on the same branch_point must truncate
@@ -1288,6 +1978,10 @@ impl ParseState {
             // Push), (match_end, Pop). `ScopeRegionIterator` then
             // panics in `easy.rs` because position goes backwards.
             self.branch_points[bp_index].ops_snapshot_len = ops.len();
+
+            // the trigger's own unwinding comes first, exactly
+            // as `push_meta_ops` emits it. See `lookahead_unwind_ops`.
+            ops.extend(unwind_ops.iter().cloned());
 
             // Re-emit the branch_point match's own scopes over their
             // original span. Without this, keywords that trigger a
@@ -1337,6 +2031,117 @@ impl ParseState {
         Ok(true)
     }
 
+    /// Which line the parser is on, counting from 0.
+    ///
+    /// `line_number` is a count of `parse_line` calls, which
+    /// a cross-line replay does not make. Everything that compares a branch
+    /// point's line against "now" has to ask this instead. See `replay_line`.
+    /// run cross-line replays until no more are asked for.
+    ///
+    /// One round re-reads `pending_lines[req.from..]` under whatever reading
+    /// the caller has just put on the stack, and stops early if a `fail` on one
+    /// of those lines asks for another round (`replay_pending`). The rounds are
+    /// appended in order, so a later one wins the lines it covers — which is
+    /// the point: the reading that survives is the last one chosen, not the
+    /// last loop left running.
+    ///
+    /// An interrupted round keeps what it produced. The lines before the new
+    /// round's `from` were read under a branch point that had not been created
+    /// yet when they were parsed, so they are still right; the ones from there
+    /// on are re-done by the round that follows.
+    ///
+    /// It terminates because every round is a branch point advancing to its
+    /// next alternative or being removed, and neither can go backwards.
+    fn run_replays(
+        &mut self,
+        mut req: ReplayRequest,
+        syntax_set: &SyntaxSet,
+    ) -> Result<(), ParsingError> {
+        loop {
+            let corrections = self.run_replay(&req, syntax_set)?;
+            self.flushed_ops.extend(corrections);
+            match self.replay_pending.take() {
+                Some(next) => req = next,
+                None => return Ok(()),
+            }
+        }
+    }
+
+    /// One round of the above: each buffered line from `req.from` on, under the
+    /// state the caller has restored.
+    ///
+    /// `pending_lines` is not drained. A second branch point on the current
+    /// line that fails after this one needs the same buffered lines, and so
+    /// does the next round.
+    fn run_replay(
+        &mut self,
+        req: &ReplayRequest,
+        syntax_set: &SyntaxSet,
+    ) -> Result<Vec<(usize, Vec<(usize, ScopeStackOp)>)>, ParsingError> {
+        let lines: Vec<String> = self.pending_lines[req.from..].to_vec();
+        let mut out = Vec::with_capacity(lines.len());
+        for (i, line) in lines.iter().enumerate() {
+            // this buffered line's own number, for as long as
+            // it is the one being parsed. Saved and put back, because a `fail`
+            // on it reads `cur_line_number`. See `replay_line`.
+            let outer = self.replay_line.replace(Replay {
+                line_number: (self.line_number - self.pending_lines.len() + req.from + i)
+                    .saturating_sub(1),
+                pending_index: req.from + i,
+                prefix: Vec::new(),
+            });
+            let line_ops = if i == 0 {
+                let mut composed = req.prefix.clone();
+                // what this line already has, for a branch
+                // point created by the re-parse. See `Replay::prefix`.
+                if let Some(replay) = self.replay_line.as_mut() {
+                    replay.prefix = composed.clone();
+                }
+                let resume_at = req.resume_at.min(line.len());
+                let tail =
+                    self.parse_line_inner_from(line, syntax_set, resume_at, req.skip.clone())?;
+                composed.extend(tail);
+                composed
+            } else {
+                self.parse_line_inner(line, syntax_set)?
+            };
+            self.replay_line = outer;
+            // The line `pending_lines[from + i]` is: the current line, less the
+            // buffered ones before it, plus the offset into that buffer.
+            out.push((
+                self.line_number - self.pending_lines.len() + req.from + i,
+                line_ops,
+            ));
+            if self.replay_pending.is_some() {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
+    fn cur_line_number(&self) -> usize {
+        match &self.replay_line {
+            Some(replay) => replay.line_number,
+            None => self.line_number.saturating_sub(1),
+        }
+    }
+
+    /// Where a branch point created right now starts its replay from.
+    ///
+    /// at the top level that is "everything buffered after
+    /// this point", which is `pending_lines.len()` — the line being parsed is
+    /// not in the buffer yet. Inside a replay it is the buffer index of the
+    /// line being replayed, which *is* in the buffer already: a branch point
+    /// on it has to be able to replay it. Recording `len()` there said "there
+    /// is nothing to replay", so the next `fail` restored the stack into the
+    /// middle of a line it never re-read. See `replay_line`.
+    fn pending_lines_mark(&self) -> usize {
+        match &self.replay_line {
+            Some(replay) => replay.pending_index,
+            None => self.pending_lines.len(),
+        }
+    }
+
     /// Get the syntax version for the current parse state
     fn current_syntax_version(&self, syntax_set: &SyntaxSet) -> u32 {
         if let Some(level) = self.stack.last() {
@@ -1348,6 +2153,86 @@ impl ParseState {
         } else {
             1
         }
+    }
+
+    /// the ops a `pop: N + push:`/`branch:`/`embed:` emits
+    /// for the frames it unwinds, before its trigger takes its own scope.
+    ///
+    /// The count is a *lookahead* — "the match will not receive the
+    /// `meta_scope` of the contexts that are popped" — so the frames come off
+    /// in the initial phase, where a `set` leaves the same work until after.
+    /// Each cleared frame's Restore goes out before the totals are counted, for
+    /// reason: `clear_scopes` "is applied before `meta_scope` and
+    /// `meta_content_scope`", and what is counted here is what each frame
+    /// pushed on the way in.
+    ///
+    /// Two callers, and the second is why this is a function: `push_meta_ops`
+    /// emits it when the branch first fires, and `handle_fail` re-emits it when
+    /// an alternative is swapped in, because the rewind truncates `ops` back to
+    /// *before* the trigger and re-emits the trigger by hand. The unwind is the
+    /// trigger's, not the alternative's — `handle_fail` re-pops the same
+    /// `pop_count` off the restored stack — so leaving it out of the re-emit
+    /// left the ops one reading and the parser's own stack another.
+    fn lookahead_unwind_ops(
+        &self,
+        pop_count: usize,
+        index: usize,
+        syntax_set: &SyntaxSet,
+        ops: &mut Vec<(usize, ScopeStackOp)>,
+    ) -> Result<(), ParsingError> {
+        let stack_len = self.stack.len();
+        let mut atoms = 0usize;
+        for depth in 0..pop_count.min(stack_len) {
+            let ctx = syntax_set.get_context(&self.stack[stack_len - 1 - depth].context)?;
+            if ctx.clear_scopes.is_some() {
+                ops.push((index, ScopeStackOp::Restore));
+            }
+            atoms += ctx.meta_content_scope.len() + ctx.meta_scope.len();
+        }
+        if atoms > 0 {
+            ops.push((index, ScopeStackOp::Pop(atoms)));
+        }
+        Ok(())
+    }
+
+    /// unwind the frames *under* the top one, a frame at a
+    /// time, for a `pop: N` (or a `pop: N + set:`) that reaches past its own.
+    ///
+    /// Each frame's `meta_content_scope` comes off, then its `meta_scope`, then
+    /// a Restore for its own `clear_scopes` — before the frames beneath it are
+    /// touched. The atoms a `clear_scopes` took are the ones the frames below it
+    /// pushed, so while it is in force they sit in the clear stack and not on
+    /// the live one, and unwinding those frames first Pops that many *live*
+    /// atoms from under them. Summing every frame's meta scopes into one `Pop`
+    /// cannot express that.
+    ///
+    /// Three callers, one order: for a plain `pop: N`, for a
+    /// `pop: N + set:` after its trigger, and for the same set
+    /// *before* its trigger, when the target's `clear_scopes` is emitted early.
+    fn unwind_frames_below_top(
+        &self,
+        count: usize,
+        index: usize,
+        syntax_set: &SyntaxSet,
+        ops: &mut Vec<(usize, ScopeStackOp)>,
+    ) -> Result<(), ParsingError> {
+        let stack_len = self.stack.len();
+        for depth in 1..count.min(stack_len) {
+            let level_idx = stack_len - 1 - depth;
+            let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
+            let skipped = self.stack[level_idx].mcs_skipped;
+            let atoms = ctx.meta_content_scope.len().saturating_sub(skipped);
+            if atoms > 0 {
+                ops.push((index, ScopeStackOp::Pop(atoms)));
+            }
+            if !ctx.meta_scope.is_empty() {
+                ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
+            }
+            if ctx.clear_scopes.is_some() {
+                ops.push((index, ScopeStackOp::Restore));
+            }
+        }
+        Ok(())
     }
 
     fn push_meta_ops(
@@ -1388,17 +2273,17 @@ impl ParseState {
                     // v2: if the context immediately below the top has
                     // embed_scope_replaces, cur_context's meta_content_scope
                     // was never pushed, so don't generate a Pop for it.
-                    let skip = version >= 2
-                        && stack_len >= 2
-                        && syntax_set
-                            .get_context(&self.stack[stack_len - 2].context)
-                            .map(|c| c.embed_scope_replaces)
-                            .unwrap_or(false);
-                    if !skip && !cur_context.meta_content_scope.is_empty() {
-                        ops.push((
-                            index,
-                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
-                        ));
+                    // from the frame, not from the stack
+                    // below it, and only what was actually pushed. See
+                    // `StateLevel::mcs_skipped`.
+                    let skipped = self
+                        .stack
+                        .last()
+                        .map(|level| level.mcs_skipped)
+                        .unwrap_or(0);
+                    let atoms = cur_context.meta_content_scope.len().saturating_sub(skipped);
+                    if atoms > 0 {
+                        ops.push((index, ScopeStackOp::Pop(atoms)));
                     }
                 } else {
                     // Top context's meta_scope comes off first (it sat
@@ -1420,37 +2305,55 @@ impl ParseState {
                     // interpolation close, where `f-string-replacement-end`
                     // fires `pop: 2` that also pops
                     // `f-string-replacement-meta`.
-                    for depth in 1..pop_count {
-                        let level_idx = stack_len - 1 - depth;
-                        let ctx = syntax_set.get_context(&self.stack[level_idx].context)?;
-                        let skip_content = version >= 2
-                            && level_idx >= 1
-                            && syntax_set
-                                .get_context(&self.stack[level_idx - 1].context)
-                                .map(|c| c.embed_scope_replaces)
-                                .unwrap_or(false);
-                        if !skip_content && !ctx.meta_content_scope.is_empty() {
-                            ops.push((index, ScopeStackOp::Pop(ctx.meta_content_scope.len())));
-                        }
-                        if !ctx.meta_scope.is_empty() {
-                            ops.push((index, ScopeStackOp::Pop(ctx.meta_scope.len())));
-                        }
-                        if ctx.clear_scopes.is_some() {
-                            ops.push((index, ScopeStackOp::Restore));
-                        }
+                    // and cur's own `clear_scopes` is
+                    // restored here, before the frames underneath are unwound —
+                    // not after them, which is where upstream puts it.
+                    //
+                    // The atoms a `clear_scopes` took are the ones the frames
+                    // below pushed, so while it is in force they are in the
+                    // clear stack and not on the live one. Unwinding those
+                    // frames first therefore Pops that many *live* atoms from
+                    // under them, and the Restore then puts the cleared ones
+                    // back on top of the damage.
+                    //
+                    // Haskell's string continuation is the file:
+                    // `literal-string-continuation` has `clear_scopes: 2` over
+                    // `literal-string-body`'s two-atom `meta_scope`, and its
+                    // `- match: \" … pop: 2` emitted `Pop(1) Pop(2) Restore`
+                    // where the live stack had one atom to give — the corpus's
+                    // last scope-stack divergence, `pop of 2 with 1 on the
+                    // stack`. The line after an unterminated continuation then
+                    // stayed inside `meta.string.haskell`.
+                    //
+                    // This is ordering — "clear_scopes is applied
+                    // before meta_scope and meta_content_scope", so it is undone
+                    // after them — for a plain `pop: N`, where did it
+                    // for `pop: N + set:`. `pop: 1` is unaffected either way:
+                    // the loop below is empty, so the two positions coincide.
+                    if pop_count > 1 && cur_context.clear_scopes.is_some() {
+                        ops.push((index, ScopeStackOp::Restore));
                     }
+                    // likewise — see above, and
+                    // `unwind_frames_below_top`, which is this loop's one copy.
+                    self.unwind_frames_below_top(pop_count, index, syntax_set, ops)?;
                 }
 
-                // cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
-                if !initial && cur_context.clear_scopes.is_some() {
+                // Cleared scopes are restored after the scopes from match pattern that invoked the pop are applied
+                // unless the unwinding above has already put
+                // them back, which it does whenever there are frames under this
+                // one whose atoms the clear is holding. See there.
+                if !initial && pop_count <= 1 && cur_context.clear_scopes.is_some() {
                     ops.push((index, ScopeStackOp::Restore))
                 }
             }
-            // for some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
+            // For some reason the ST3 behaviour of set is convoluted and is inconsistent with the docs and other ops
             // - the meta_content_scope of the current context is applied to the matched thing, unlike pop
             // - the clear_scopes are applied after the matched token, unlike push
             // - the interaction with meta scopes means that the token has the meta scopes of both the current scope and the new scope.
-            MatchOperation::Push(ref context_refs)
+            MatchOperation::Push {
+                ctx_refs: ref context_refs,
+                ..
+            }
             | MatchOperation::Set {
                 ctx_refs: ref context_refs,
                 ..
@@ -1460,14 +2363,115 @@ impl ParseState {
                     MatchOperation::Set { pop_count, .. } => pop_count.max(1),
                     _ => 1,
                 };
+                // `pop: N + push:` is a *lookahead*, so the
+                // frames it unwinds are unwound **before** the matched text takes
+                // its scope — all of it in the initial phase, where a `set` leaves
+                // the same work until after.
+                //
+                // Sublime: "for `push`, `embed` and `branch` actions, the pop
+                // treats the match as if it were a lookahead, which means the
+                // match will not receive the `meta_scope` of the contexts that are
+                // popped." Asked of ST directly, with three frames and a
+                // `pop: 2 + push:` on the innermost, the trigger token comes out
+                //
+                //     source meta.tail keyword.trigger
+                //
+                // — the target's `meta_scope` and not one atom of the two frames
+                // being popped. The same shape with `set:` comes out
+                //
+                //     source meta.outer meta.mid meta.tail keyword.trigger
+                //
+                // which is every frame plus the target, and is what this parser
+                // already did for `set` — so the second sentence of that
+                // paragraph ("any match will receive the `meta_scope` of the
+                // context being popped *and* the context being pushed") is about
+                // `set`, and upstream's #683, which would take the deeper frames
+                // off a `pop: N + set:` trigger, is contradicted by the
+                // application.
+                let push_pop_count = match *match_op {
+                    MatchOperation::Push { pop_count, .. } => pop_count,
+                    _ => 0,
+                };
+                if initial && push_pop_count > 0 {
+                    self.lookahead_unwind_ops(push_pop_count, index, syntax_set, ops)?;
+                }
                 // a match pattern that "set"s keeps the meta_content_scope and meta_scope from the previous context
                 if initial {
                     // v2: pop parent's meta_content_scope so matched text does not see it
-                    if is_set && version >= 2 && !cur_context.meta_content_scope.is_empty() {
-                        ops.push((
-                            index,
-                            ScopeStackOp::Pop(cur_context.meta_content_scope.len()),
-                        ));
+                    //
+                    // unless the context below is an
+                    // `embed_scope` wrapper, in which case this context is an
+                    // embedded syntax's `main` and its `meta_content_scope`
+                    // was *replaced* by the host's `embed_scope` — the push
+                    // path skips it on `embed_scope_replaces` alone, so
+                    // popping it here takes an atom off that nothing put on.
+                    //
+                    // Markdown embedding Bash is the file: the first `set:`
+                    // inside a ```bash fence took `source.shell.bash` off, and
+                    // from there every frame was one out — the fence's escape
+                    // then popped `text.html.markdown`, the document's own
+                    // root scope, and a second fence over-popped an empty
+                    // stack. ST keeps `source.shell.bash` on the stack for the
+                    // whole fence and `text.html.markdown` after it
+                    // (the `mdfence.probe` probe).
+                    let skipped = self
+                        .stack
+                        .last()
+                        .map(|level| level.mcs_skipped)
+                        .unwrap_or(0);
+                    let atoms = cur_context.meta_content_scope.len().saturating_sub(skipped);
+                    if is_set && version >= 2 && atoms > 0 {
+                        ops.push((index, ScopeStackOp::Pop(atoms)));
+                    }
+
+                    // A `pop: N + set:` whose
+                    // target clears carries its trigger on the *unwound* stack.
+                    //
+                    // The frames a `pop: N + set:` unwinds do reach its trigger
+                    // token — ST answers `source meta.outer meta.mid meta.tail
+                    // keyword.trigger` for three frames and a `pop: 2 + set:`
+                    // (the `PopPush.sublime-syntax` probe),
+                    // which is why they are unwound after the token and not
+                    // before it. But when the *target* carries a `clear_scopes`
+                    // that is emitted early (see `early_set_clear`), the clear
+                    // and the frames it is counted against are on the same
+                    // stack, and ST has unwound them first.
+                    //
+                    // `(?ix:` in `RegExp (Basic)` is the file, asked directly:
+                    // `group-start` fires `pop: 3, set: [group-body-extended,
+                    // maybe-unexpected-quantifiers]` and ST scopes the trigger
+                    //
+                    //     source.regexp meta.group.regexp meta.mode.extended.regexp
+                    //         storage.modifier.mode.regexp
+                    //
+                    // — one `meta.group.regexp`, the target's. Ours had two:
+                    // the target's `meta_scope` pushed over the leaving
+                    // `group-body`'s, whose second atom the target's
+                    // `clear_scopes: 1` ate instead of the one ST's clear
+                    // reaches. Unwinding first puts the clear over the same
+                    // atom ST's is over, and the column after the trigger — and
+                    // every other column of
+                    // the `regexp_modes.probe` probe — is
+                    // where it already was.
+                    //
+                    // `early_set_clear` guarantees `cur_context` has no meta
+                    // scopes of its own here, so nothing of the leaving context
+                    // is being taken off the trigger; its `clear_scopes` is put
+                    // back first, for the reason the unwinding is a frame at a
+                    // time at all.
+                    // Version 1 never emits a Clear before the trigger, so
+                    // there is nothing early about it there.
+                    let early_clear = if version >= 2 {
+                        early_set_clear(is_set, cur_context, context_refs, syntax_set)?
+                    } else {
+                        None
+                    };
+                    let early_unwind = set_pop_count > 1 && early_clear.is_some();
+                    if early_unwind {
+                        if cur_context.clear_scopes.is_some() {
+                            ops.push((index, ScopeStackOp::Restore));
+                        }
+                        self.unwind_frames_below_top(set_pop_count, index, syntax_set, ops)?;
                     }
                     // NOTE: cur_context.clear_scopes Restore is emitted in the
                     // non-initial phase below, AFTER Pop(cur.meta_scope + target.meta_scope)
@@ -1511,11 +2515,50 @@ impl ParseState {
                         // eat-whitespace-then-pop]` relies on Clear eating
                         // the last-pushed mcs atom, which Restore then
                         // replaces when eat-whitespace-then-pop pops.
-                        let single_context_set_clear = is_set && context_refs.len() == 1;
-                        for r in context_refs.iter() {
+                        // not when the context being *left*
+                        // carries meta scopes of its own.
+                        //
+                        // Emitting the target's Clear here is right when the
+                        // visible top of the stack is the parent atom the Clear is
+                        // meant to strip. When `cur_context` has a `meta_scope` or
+                        // `meta_content_scope`, that is what sits on top instead,
+                        // so the Clear hides *those*; the non-initial `Pop` below
+                        // then takes its count from the atoms underneath them, and
+                        // the trailing `Restore` puts cur's own meta scope back —
+                        // exactly where the parent's atom should have been.
+                        //
+                        // Bash `: ~/` is the case. ST scopes the `/` as
+                        // `meta.string.glob.shell string.unquoted.shell`; this
+                        // emitted `meta.interpolation.tilde.shell
+                        // string.unquoted.shell`, the tilde interpolation's own
+                        // scope left behind by that swap. Asked of ST directly,
+                        // the `bash_tilde.probe` probe.
+                        //
+                        // Deferring it to the non-initial phase is enough: the two
+                        // phases share this predicate, and the one that does not
+                        // emit here emits there. Upstream's #669.
+                        //
+                        // and a multi-context `set:` is the
+                        // same question one target along — see
+                        // `early_set_clear`, which is what decides both phases
+                        // now. A single-context `set:` is the case where its
+                        // answer is `Some(0)`.
+                        // — a version 1 `push:`
+                        // of several contexts clears their sum, once, first.
+                        // See `summed_push_clear`.
+                        let summed = if version < 2 && !is_set {
+                            summed_push_clear(context_refs, syntax_set)?
+                        } else {
+                            None
+                        };
+                        if let Some(clear_amount) = summed {
+                            ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                        }
+                        for (i, r) in context_refs.iter().enumerate() {
                             let ctx = r.resolve(syntax_set)?;
 
-                            let emit_clear_here = !is_set || single_context_set_clear;
+                            let emit_clear_here =
+                                (!is_set && version >= 2) || early_clear == Some(i);
                             if emit_clear_here {
                                 if let Some(clear_amount) = ctx.clear_scopes {
                                     ops.push((index, ScopeStackOp::Clear(clear_amount)));
@@ -1527,10 +2570,19 @@ impl ParseState {
                             }
                         }
                     } else {
+                        // the other phase of it.
+                        let summed = if version < 2 && !is_set {
+                            summed_push_clear(context_refs, syntax_set)?
+                        } else {
+                            None
+                        };
+                        if let Some(clear_amount) = summed {
+                            ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                        }
                         for r in context_refs.iter() {
                             let ctx = r.resolve(syntax_set)?;
 
-                            if !is_set {
+                            if !is_set && version >= 2 {
                                 if let Some(clear_amount) = ctx.clear_scopes {
                                     ops.push((index, ScopeStackOp::Clear(clear_amount)));
                                 }
@@ -1542,6 +2594,52 @@ impl ParseState {
                         }
                     }
                 } else {
+                    // — the summed clear belongs to
+                    // the trigger token and to nothing after it.
+                    //
+                    // ST scopes `abc` in the documentation's example
+                    // `meta.ctx2 meta.ctx3 identifier`, with the summed clear
+                    // in force, and the column *after* it
+                    // `source.lang meta.ctx3` — which is where version 2's
+                    // interleaved clears land. So the two phases answer
+                    // differently at version 1: the initial one clears the sum
+                    // and pushes the meta scopes over it, and this one puts
+                    // that back and applies them one context at a time, as
+                    // version 2 does throughout. `multiclear_v1`'s last three
+                    // columns are the record.
+                    let summed = if version < 2 && !is_set {
+                        summed_push_clear(context_refs, syntax_set)?
+                    } else {
+                        None
+                    };
+                    if summed.is_some() {
+                        let pushed: usize = context_refs
+                            .iter()
+                            .map(|r| {
+                                r.resolve(syntax_set)
+                                    .map(|ctx| ctx.meta_scope.len())
+                                    .unwrap_or(0)
+                            })
+                            .sum();
+                        if pushed > 0 {
+                            ops.push((index, ScopeStackOp::Pop(pushed)));
+                        }
+                        ops.push((index, ScopeStackOp::Restore));
+                        for r in context_refs.iter() {
+                            let ctx = r.resolve(syntax_set)?;
+                            if let Some(clear_amount) = ctx.clear_scopes {
+                                ops.push((index, ScopeStackOp::Clear(clear_amount)));
+                            }
+                            for scope in ctx.meta_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
+                            for scope in ctx.meta_content_scope.iter() {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
+                        }
+                        return Ok(());
+                    }
+
                     // `pop: N + set:` (set_pop_count > 1) unwinds N-1 deeper
                     // contexts in addition to the usual set-replace semantics;
                     // their meta_scope / meta_content_scope atoms sitting on
@@ -1581,21 +2679,88 @@ impl ParseState {
                                 num_to_pop += cur_context.meta_content_scope.len()
                                     + cur_context.meta_scope.len();
                             }
-                            // For `pop: N + set:` (set_pop_count > 1), also
-                            // unwind the N-1 deeper contexts' scope atoms. They
-                            // were pushed when those contexts entered; without
-                            // this they'd linger on the stack under the new
-                            // target's meta_scope.
-                            if set_pop_count > 1 {
-                                let stack_len = self.stack.len();
-                                for depth in 1..set_pop_count.min(stack_len) {
-                                    let level_idx = stack_len - 1 - depth;
-                                    let ctx =
-                                        syntax_set.get_context(&self.stack[level_idx].context)?;
-                                    num_to_pop +=
-                                        ctx.meta_content_scope.len() + ctx.meta_scope.len();
-                                }
-                            }
+                            // For `pop: N + set:` (set_pop_count > 1) the N-1
+                            // deeper contexts are unwound too — one frame at a
+                            // time, below, rather than counted in here, because
+                            // a frame with `clear_scopes` has to put its atoms
+                            // back before the frames under it are touched. See
+                            // there.
+                        }
+
+                        // for `pop: N + set:` with N > 1, the
+                        // Restore comes *before* the Pop.
+                        //
+                        // Sublime documents the order: `clear_scopes` "is applied
+                        // before `meta_scope` and `meta_content_scope`". So by the
+                        // time the meta scopes of the frames being unwound are
+                        // accounted for, the atoms `clear_scopes` took must be
+                        // back where they were. With a `clear_scopes:` on the
+                        // leaving context, part of what is about to be popped is
+                        // sitting in `clear_stack` rather than on the live
+                        // stack, so a Pop that counted it eats that many *live*
+                        // atoms and takes them from frames below the ones being
+                        // popped. (The frames *under* the replaced one are
+                        // unwound one at a time further down, for the same
+                        // reason taken one step further.)
+                        //
+                        // Batch File is where it shows: `cmd-set-quoted-value-
+                        // inner-end` has `clear_scopes: 1` and fires
+                        // `pop: 2, set: ignored-tail-outer`, and every
+                        // `set "var"=...` line lost `meta.command.set.dosbatch`
+                        // over its trailing content — 231 failing assertions in
+                        // one file, the whole of that language's failures.
+                        //
+                        // Plain `set:` keeps Pop-then-Restore. There is nothing
+                        // below its single frame for an over-Pop to reach, and the
+                        // order there is load-bearing the other way: the restored
+                        // atoms are meant to land *below* the target's upcoming
+                        // meta_scope push, which is what
+                        // `v2_set_to_target_with_clear_scopes_clears_parent_meta_content_scope`
+                        // (the Lisp `defun` shape) pins.
+                        //
+                        // This is upstream's #646, taken alone.
+                        // a target's `clear_scopes` emitted
+                        // in the initial phase (see `early_set_clear`) has
+                        // already eaten atoms, and when it sits past the first
+                        // target those atoms are `meta_scope`s that
+                        // `num_to_pop` above counts — so a Pop of the full
+                        // count would take that many *live* atoms from frames
+                        // below. Undo it first and let the re-push below emit
+                        // it again in its place: one Clear is live either way,
+                        // and the clear stack balances. `Some(0)` needs none of
+                        // this, because a Clear before any of this set's own
+                        // pushes ate nothing that `num_to_pop` is about.
+                        let early_clear = if version >= 2 {
+                            early_set_clear(is_set, cur_context, context_refs, syntax_set)?
+                        } else {
+                            None
+                        };
+                        // — what the initial phase
+                        // has already done. See there.
+                        let early_unwind = set_pop_count > 1 && early_clear.is_some();
+                        //
+                        // And `Some(0)` needs it too once the
+                        // set is unwinding more than its own frame. The atom
+                        // that Clear ate then belongs to one of the frames
+                        // below — the one this set is replacing — and that
+                        // frame's `meta_scope` is popped here, so the atom has
+                        // to be back on the stack to be popped. `(?ix:` in a
+                        // regex is the file: `group-start` fires
+                        // `pop: 3, set: [group-body-extended, …]` into a target
+                        // whose `clear_scopes: 1` had already taken the group
+                        // body's `meta.mode.extended.regexp`.
+                        let undo_early_clear = early_clear.is_some_and(|i| i > 0);
+                        if undo_early_clear {
+                            ops.push((index, ScopeStackOp::Restore));
+                        }
+
+                        // unless the initial phase restored
+                        // it already, on its way to unwinding the frames under
+                        // this one before the trigger — .
+                        let restore = is_set && cur_context.clear_scopes.is_some() && !early_unwind;
+                        let restore_first = restore && set_pop_count > 1;
+                        if restore_first {
+                            ops.push((index, ScopeStackOp::Restore));
                         }
 
                         // do all the popping as one operation
@@ -1603,11 +2768,35 @@ impl ParseState {
                             ops.push((index, ScopeStackOp::Pop(num_to_pop)));
                         }
 
+                        // then the frames a `pop: N + set:`
+                        // unwinds under the one it replaces — one at a time,
+                        // and each one's own `clear_scopes` put back before the
+                        // frames beneath it are touched.
+                        //
+                        // This is ordering for the `set:` path: the
+                        // atoms a `clear_scopes` took are the ones the frames
+                        // below pushed, so while it is in force they sit in the
+                        // clear stack and not on the live one, and unwinding
+                        // those frames first Pops that many *live* atoms from
+                        // under them. Counting every frame's `meta_scope` into
+                        // one `Pop` — which is what this did — cannot express
+                        // that, and in `RegExp (Basic)` it ate the embedded
+                        // syntax's own `source.regexp` off the bottom: the
+                        // corpus' last scope-stack divergence and Python's last
+                        // failing assertion, both at the close of a `(?ix: … )`.
+                        // unless the initial phase already
+                        // did it, which it does when the target's own
+                        // `clear_scopes` is emitted before the trigger — see
+                        // `early_unwind` there, and .
+                        if is_set && set_pop_count > 1 && !early_unwind {
+                            self.unwind_frames_below_top(set_pop_count, index, syntax_set, ops)?;
+                        }
+
                         // Restore scopes cleared by the leaving context, now that
                         // cur.meta_scope and the initial phase's target.meta_scope
                         // push have been popped off. The restored atoms land below
                         // the target's upcoming meta_scope / meta_content_scope push.
-                        if is_set && cur_context.clear_scopes.is_some() {
+                        if restore && !restore_first {
                             ops.push((index, ScopeStackOp::Restore));
                         }
 
@@ -1631,12 +2820,19 @@ impl ParseState {
                             // placed just before that context's own mcs/ms
                             // pushes so it strips the previous iteration's
                             // last-pushed atom, matching Sublime's semantics.
-                            let single_context_set_clear = is_set && context_refs.len() == 1;
+                            // The same predicate as the initial phase, so
+                            // whichever phase does not emit the Clear, the other
+                            // one does — see the reasoning there.
                             let mut prev_embed_scope_replaces = false;
                             for r in context_refs.iter() {
-                                let ctx = r.resolve(syntax_set)?;
+                                let id = r.id()?;
+                                let ctx = syntax_set.get_context(&id)?;
 
-                                if is_set && !single_context_set_clear {
+                                // `Some(0)` is the one the
+                                // initial phase emitted and left standing; any
+                                // other early Clear was undone by the Restore
+                                // above and is emitted here, in its place.
+                                if is_set && (early_clear != Some(0) || undo_early_clear) {
                                     if let Some(clear_amount) = ctx.clear_scopes {
                                         ops.push((index, ScopeStackOp::Clear(clear_amount)));
                                     }
@@ -1645,13 +2841,18 @@ impl ParseState {
                                 for scope in ctx.meta_scope.iter() {
                                     ops.push((index, ScopeStackOp::Push(*scope)));
                                 }
-                                // v2: if the previous context has embed_scope_replaces,
-                                // skip this context's meta_content_scope (the embedded
-                                // syntax's top-level scope is replaced by embed_scope)
-                                if !prev_embed_scope_replaces {
-                                    for scope in ctx.meta_content_scope.iter() {
-                                        ops.push((index, ScopeStackOp::Push(*scope)));
-                                    }
+                                // v2: what the previous context's `embed_scope`
+                                // replaces is not pushed — the embedded
+                                // syntax's own scope, and only that. See
+                                // `mcs_replaced_by_embed_scope`.
+                                let skipped = mcs_replaced_by_embed_scope(
+                                    prev_embed_scope_replaces,
+                                    &id,
+                                    ctx,
+                                    syntax_set,
+                                );
+                                for scope in ctx.meta_content_scope.iter().skip(skipped) {
+                                    ops.push((index, ScopeStackOp::Push(*scope)));
                                 }
                                 prev_embed_scope_replaces = ctx.embed_scope_replaces;
                             }
@@ -1682,16 +2883,22 @@ impl ParseState {
                 pop_count,
                 ..
             } => {
-                // When pop_count > 0 (pop + embed), use Set semantics to handle
-                // popping the current context's meta scopes before pushing the
-                // embedded contexts' meta scopes.
+                // `pop: N + embed:` is a lookahead too — the
+                // reference names all three, "for `push`, `embed` and `branch`
+                // actions" — so the synthetic is a `Push` carrying the count and
+                // not a `Set`. ST, on `efZVVV` in `PopPush.sublime-syntax`:
+                // `source meta.tail.embed keyword.trigger.embed`, with neither
+                // unwound frame's `meta_scope` on the trigger.
                 let synthetic = if pop_count > 0 {
-                    MatchOperation::Set {
+                    MatchOperation::Push {
                         ctx_refs: contexts.clone(),
                         pop_count,
                     }
                 } else {
-                    MatchOperation::Push(contexts.clone())
+                    MatchOperation::Push {
+                        ctx_refs: contexts.clone(),
+                        pop_count: 0,
+                    }
                 };
                 return self.push_meta_ops(
                     initial,
@@ -1708,16 +2915,21 @@ impl ParseState {
                 pop_count,
                 ..
             } => {
-                // Branch acts like Push for meta ops purposes (or Set when pop_count > 0).
-                // At exec time, Branch is transformed into a synthetic Push/Set before
-                // calling push_meta_ops, so this arm is a safety fallback.
+                // Branch acts like Push for meta ops purposes, with the count
+                // when there is one (it used to become a `Set`
+                // — see the exec-time site above for what ST says). At exec time
+                // Branch is transformed into a synthetic Push before calling
+                // push_meta_ops, so this arm is a safety fallback.
                 let synthetic = if pop_count > 0 {
-                    MatchOperation::Set {
+                    MatchOperation::Push {
                         ctx_refs: alternatives.clone(),
                         pop_count,
                     }
                 } else {
-                    MatchOperation::Push(alternatives.clone())
+                    MatchOperation::Push {
+                        ctx_refs: alternatives.clone(),
+                        pop_count: 0,
+                    }
                 };
                 return self.push_meta_ops(
                     initial,
@@ -1741,21 +2953,58 @@ impl ParseState {
         pat: &MatchPattern,
         syntax_set: &SyntaxSet,
     ) -> Result<bool, ParsingError> {
+        // filled in by the `Embed` arm below.
+        let mut embed_holder: Option<(ContextId, usize)> = None;
         let (ctx_refs, old_proto_ids, is_embed) = match pat.operation {
-            MatchOperation::Push(ref ctx_refs) => (ctx_refs, None, false),
+            MatchOperation::Push {
+                ref ctx_refs,
+                pop_count,
+            } => {
+                // `pop: N + push:`. The stack effect is a
+                // `Set`'s — pop N, then push — and only the scopes the trigger
+                // token sees differ (see `push_meta_ops`). The prototypes are
+                // *not* carried forward the way `Set` carries them: a `push` is
+                // entering a new context, not replacing the one being left.
+                if pop_count > 0 {
+                    for _ in 0..pop_count {
+                        self.stack.pop();
+                    }
+                    let final_len = self.stack.len() + ctx_refs.len();
+                    // see `branch_point_is_live`. This is
+                    // where a `pop: N + branch:` threw away the branch point it
+                    // had just created — makes that a synthetic `Push`,
+                    // and `stack_depth <= final_len` reads the pre-pop depth as
+                    // if it were the alternative's.
+                    self.branch_points
+                        .retain(|bp| branch_point_is_live(bp, final_len));
+                    self.escape_stack.retain(|e| e.stack_depth < final_len);
+                }
+                (ctx_refs, None, false)
+            }
             MatchOperation::Embed {
                 ref contexts,
                 pop_count,
                 ..
             } => {
                 if pop_count > 0 {
+                    // Remember the frame this
+                    // `embed:` was declared in before unwinding it: its meta
+                    // scopes are on the escape, and nothing on the stack will
+                    // be able to say so by then.
+                    embed_holder = self.stack.last().map(|l| (l.context, l.mcs_skipped));
                     for _ in 0..pop_count {
                         self.stack.pop();
                     }
+                    // see `branch_point_is_live`. Against the
+                    // length *before* the contexts go on, as upstream has it —
+                    // widening this to the post-push length the way the `push`
+                    // and `set` arms count hangs `JavaScript (for PHP
+                    // double-quoted)` outright, so what those two do is not
+                    // simply right and this is not simply an inconsistency.
+                    let stack_len = self.stack.len();
                     self.branch_points
-                        .retain(|bp| bp.stack_depth <= self.stack.len());
-                    self.escape_stack
-                        .retain(|e| e.stack_depth < self.stack.len());
+                        .retain(|bp| branch_point_is_live(bp, stack_len));
+                    self.escape_stack.retain(|e| e.stack_depth < stack_len);
                 }
                 (contexts, None, true)
             }
@@ -1778,7 +3027,9 @@ impl ParseState {
                 // captured at the pre-set depth survives a pop-1 + push-1 set
                 // — the depth the bp references is still valid after the push.
                 let final_len = self.stack.len() + ctx_refs.len();
-                self.branch_points.retain(|bp| bp.stack_depth <= final_len);
+                // see `branch_point_is_live`.
+                self.branch_points
+                    .retain(|bp| branch_point_is_live(bp, final_len));
                 self.escape_stack.retain(|e| e.stack_depth < final_len);
                 (ctx_refs, old_proto_ids, false)
             }
@@ -1786,12 +3037,13 @@ impl ParseState {
                 for _ in 0..n {
                     self.stack.pop();
                 }
-                // Invalidate branch points whose stack depth is now above current stack
+                // Invalidate branch points whose alternative this pop took
+                // away. see `branch_point_is_live`.
+                let stack_len = self.stack.len();
                 self.branch_points
-                    .retain(|bp| bp.stack_depth <= self.stack.len());
+                    .retain(|bp| branch_point_is_live(bp, stack_len));
                 // Remove escape entries whose stack_depth >= current stack
-                self.escape_stack
-                    .retain(|e| e.stack_depth < self.stack.len());
+                self.escape_stack.retain(|e| e.stack_depth < stack_len);
                 return Ok(true);
             }
             MatchOperation::None => return Ok(false),
@@ -1803,6 +3055,13 @@ impl ParseState {
 
         // Record stack depth before pushing (for Embed escape entry)
         let stack_depth_before = self.stack.len();
+
+        // mirrors the `prev_embed_scope_replaces` walk in
+        // `push_meta_ops`, which is what decides whether a frame's
+        // `meta_content_scope` is pushed at all. The two loops have to agree,
+        // so the flag is set here from the same predicate rather than
+        // reconstructed from the stack afterwards. See `StateLevel`.
+        let mut prev_embed_scope_replaces = false;
 
         for (i, r) in ctx_refs.iter().enumerate() {
             let mut proto_ids = if i == 0 {
@@ -1838,10 +3097,18 @@ impl ParseState {
                     None
                 }
             };
+            let mcs_skipped = mcs_replaced_by_embed_scope(
+                prev_embed_scope_replaces,
+                &context_id,
+                context,
+                syntax_set,
+            );
+            prev_embed_scope_replaces = context.embed_scope_replaces;
             self.stack.push(StateLevel {
                 context: context_id,
                 prototypes: proto_ids,
                 captures,
+                mcs_skipped,
             });
         }
 
@@ -1862,6 +3129,8 @@ impl ParseState {
                     regex: resolved_regex,
                     captures: escape.escape_captures.clone(),
                     stack_depth: stack_depth_before,
+                    // .
+                    holder: embed_holder,
                 });
             }
         }
@@ -1875,7 +3144,7 @@ impl ParseState {
         &mut self,
         escape_idx: usize,
         match_start: usize,
-        _match_end: usize,
+        match_end: usize,
         regions: &Region,
         syntax_set: &SyntaxSet,
         ops: &mut Vec<(usize, ScopeStackOp)>,
@@ -1883,6 +3152,8 @@ impl ParseState {
         let entry = &self.escape_stack[escape_idx];
         let target_depth = entry.stack_depth;
         let escape_captures = entry.captures.clone();
+        // See below.
+        let holder = entry.holder;
 
         // Pop all stack levels down to target_depth, emitting proper meta scope pops
         while self.stack.len() > target_depth {
@@ -1899,14 +3170,16 @@ impl ParseState {
             // host embedding a v1 grammar (e.g. Rails HTML embedding Ruby)
             // would otherwise Pop a scope that was never pushed, misaligning
             // every scope below until the escape closes.
-            if !ctx.meta_content_scope.is_empty() {
-                let skip = self.stack.len() >= 2
-                    && syntax_set
-                        .get_context(&self.stack[self.stack.len() - 2].context)
-                        .map(|c| c.embed_scope_replaces)
-                        .unwrap_or(false);
-                if !skip {
-                    ops.push((match_start, ScopeStackOp::Pop(ctx.meta_content_scope.len())));
+            {
+                // the frame says how much of its
+                // `meta_content_scope` was pushed; the stack underneath cannot.
+                // See `StateLevel::mcs_skipped`.
+                let atoms = ctx
+                    .meta_content_scope
+                    .len()
+                    .saturating_sub(level.mcs_skipped);
+                if atoms > 0 {
+                    ops.push((match_start, ScopeStackOp::Pop(atoms)));
                 }
             }
 
@@ -1922,6 +3195,84 @@ impl ParseState {
 
             self.stack.pop();
         }
+
+        // A `pop: N + embed:`'s escape still wears
+        // the meta scopes of the context the `embed:` was written in.
+        //
+        // The reference's own example under "Using pop with another action" is
+        // the case: a `paragraph` context carrying `meta_scope`, whose ```py
+        // fence fires `pop: 1` and embeds Python. ST scopes the closing fence
+        // `source.lang meta.para` and this had it bare
+        // (`probes/reference/action_pop_embed.sublime-syntax`, and the columns
+        // either side of it agree — the opening fence is a lookahead and wears
+        // none of it, the embedded text is outside it, and the character after
+        // the escape is back in `main`).
+        //
+        // So the frame is *gone* for everything except this one token. It is
+        // not deferred: the embedded text is scoped `source.lang m.embedded`
+        // with no `m.para` in it, which is what says the `pop:` really did
+        // happen at the trigger. `holder` is the frame it took off, remembered
+        // at the pop for exactly this, and version 1 wants none of it — change
+        // 32 is that half, and there the holder is off the stack already.
+        let v1 = self.current_syntax_version(syntax_set) < 2;
+        let holder_metas = match (v1, holder) {
+            (false, Some((context_id, mcs_skipped))) => {
+                let ctx = syntax_set.get_context(&context_id)?;
+                let mut pushed = 0;
+                for scope in ctx.meta_scope.iter() {
+                    ops.push((match_start, ScopeStackOp::Push(*scope)));
+                    pushed += 1;
+                }
+                for scope in ctx.meta_content_scope.iter().skip(mcs_skipped) {
+                    ops.push((match_start, ScopeStackOp::Push(*scope)));
+                    pushed += 1;
+                }
+                pushed
+            }
+            _ => 0,
+        };
+
+        // In a version 1 syntax the escape's own
+        // text is outside the context that carries the `embed:` — it gets
+        // neither that context's `meta_scope` nor its `meta_content_scope` —
+        // and this gave it both.
+        //
+        // Sublime lists it under Compatibility as "Embed Escape Match and Meta
+        // Scopes": the closing `'` of `'abc'` should come out `meta.group
+        // meta.content punctuation.end` and in version 1 comes out
+        // `punctuation.end` alone. ST 4206 agrees at both versions
+        // (the `VerEscapeV1.sublime-syntax` probe, the
+        // `escape_v1` and `escape_v2` jobs), and it is only the token: the
+        // column after it is back inside `meta.group meta.content`.
+        //
+        // So they come off before the escape's captures and go back on after
+        // it — the shape a `set:`'s meta scopes already have around their
+        // trigger — off the frame the `embed:` fired from, which is the one
+        // the escape has just popped back to. `mcs_skipped` is what says how
+        // much of its `meta_content_scope` was ever pushed: a v2
+        // host embedding through an `embed_scope` never pushed all of it.
+        let v1_host_metas = if v1 {
+            match self.stack.last() {
+                Some(level) => {
+                    let ctx = syntax_set.get_context(&level.context)?;
+                    let mcs = ctx
+                        .meta_content_scope
+                        .len()
+                        .saturating_sub(level.mcs_skipped);
+                    let ms = ctx.meta_scope.len();
+                    if mcs > 0 {
+                        ops.push((match_start, ScopeStackOp::Pop(mcs)));
+                    }
+                    if ms > 0 {
+                        ops.push((match_start, ScopeStackOp::Pop(ms)));
+                    }
+                    Some((level.context, level.mcs_skipped))
+                }
+                None => None,
+            }
+        } else {
+            None
+        };
 
         // Apply escape_captures scopes
         if let Some(ref capture_map) = escape_captures {
@@ -1946,12 +3297,32 @@ impl ParseState {
             }
         }
 
+        // — and off again after the token.
+        if holder_metas > 0 {
+            ops.push((match_end, ScopeStackOp::Pop(holder_metas)));
+        }
+
+        // — and back on, after the escape's own
+        // text, in the order they were pushed the first time.
+        if let Some((context_id, mcs_skipped)) = v1_host_metas {
+            let ctx = syntax_set.get_context(&context_id)?;
+            for scope in ctx.meta_scope.iter() {
+                ops.push((match_end, ScopeStackOp::Push(*scope)));
+            }
+            for scope in ctx.meta_content_scope.iter().skip(mcs_skipped) {
+                ops.push((match_end, ScopeStackOp::Push(*scope)));
+            }
+        }
+
         // Remove this escape entry and any inner (later) escape entries
         self.escape_stack.truncate(escape_idx);
 
-        // Invalidate branch points whose stack depth is now above current stack
+        // Invalidate branch points whose alternative this escape has just
+        // popped away. asked the one way — see
+        // `branch_point_is_live`.
+        let stack_len = self.stack.len();
         self.branch_points
-            .retain(|bp| bp.stack_depth <= self.stack.len());
+            .retain(|bp| branch_point_is_live(bp, stack_len));
 
         Ok(())
     }
@@ -2118,14 +3489,21 @@ mod tests {
             ]
         );
 
+        // The embedded SQL arrives with *one* scope of its own, not the chain of
+        // its ancestors': `SQL (Basic)` extends `SQL (MySQL)` extends `SQL`, and
+        // a child that inherits `main` used to keep every parent's file scope in
+        // front of its own — `source.sql source.sql.mysql source.sql.basic`,
+        // where Sublime Text pushes the child's alone. See the
+        // `add_initial_contexts` regeneration in `resolve_extends`.
+        //
+        // Here that is also why nothing of the guest's is left: this is a
+        // version 2 `embed_scope`, which *replaces* the embedded syntax's own
+        // scope. Replacing one atom of three left two behind.
         assert_eq!(
             ops(&mut state, "wow", ss),
             vec![
                 (0, Push(Scope::new("meta.string.heredoc.ruby").unwrap())),
                 (0, Push(Scope::new("source.sql.embedded.ruby").unwrap()),),
-                (0, Push(Scope::new("source.sql").unwrap())),
-                (0, Push(Scope::new("source.sql.mysql").unwrap())),
-                (0, Push(Scope::new("source.sql.basic").unwrap())),
                 (0, Push(Scope::new("meta.column-name.sql").unwrap())),
                 (3, Pop(1)),
             ]
@@ -2134,7 +3512,7 @@ mod tests {
         assert_eq!(
             ops(&mut state, "SQL", ss),
             vec![
-                (0, Pop(4)),
+                (0, Pop(1)),
                 (0, Pop(1)),
                 (0, Push(Scope::new("meta.string.heredoc.ruby").unwrap())),
                 (0, Push(Scope::new("meta.tag.heredoc.ruby").unwrap())),
@@ -2147,6 +3525,9 @@ mod tests {
 
     #[test]
     fn can_parse_preprocessor_rules() {
+        // The scopes here are `keyword.control.directive.conditional.*` since
+        // Packages v4206; they were `keyword.control.import.c` at v4050, which
+        // is what this asserted before the submodule bump.
         let ss = &*testdata::PACKAGES_SYN_SET;
         let mut state = {
             let syntax = ss.find_syntax_by_name("C").unwrap();
@@ -2158,7 +3539,10 @@ mod tests {
             vec![
                 (0, Push(Scope::new("source.c").unwrap())),
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
-                (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+                (
+                    0,
+                    Push(Scope::new("keyword.control.directive.conditional.if.c").unwrap())
+                ),
                 (6, Pop(1)),
                 (10, Pop(1)),
             ]
@@ -2178,7 +3562,10 @@ mod tests {
             ops(&mut state, "#else", ss),
             vec![
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
-                (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+                (
+                    0,
+                    Push(Scope::new("keyword.control.directive.conditional.elseif.c").unwrap())
+                ),
                 (5, Pop(1)),
                 (5, Pop(1)),
             ]
@@ -2200,7 +3587,10 @@ mod tests {
                 (0, Pop(1)),
                 (0, Push(Scope::new("meta.block.c").unwrap())),
                 (0, Push(Scope::new("meta.preprocessor.c").unwrap())),
-                (0, Push(Scope::new("keyword.control.import.c").unwrap())),
+                (
+                    0,
+                    Push(Scope::new("keyword.control.directive.conditional.endif.c").unwrap())
+                ),
                 (6, Pop(2)),
                 (6, Pop(2)),
                 (6, Push(Scope::new("meta.block.c").unwrap())),
@@ -4411,7 +5801,7 @@ contexts:
             "expected exactly one replayed line, got {:?}",
             out2.replayed
         );
-        let has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+        let has_fallback = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
@@ -4420,7 +5810,7 @@ contexts:
             out2.replayed[0]
         );
         // The try.word scope must NOT appear in the replayed ops.
-        let has_try_word = out2.replayed[0].iter().any(|(_, op)| {
+        let has_try_word = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
         });
         assert!(
@@ -4502,7 +5892,7 @@ contexts:
         // The replayed ops for line 1 must still push prefix.word at col 0
         // (from prefix_ops, emitted pre-branch), not overwrite with
         // fallback.content.
-        let replayed_has_prefix = out2.replayed[0].iter().any(|(_, op)| {
+        let replayed_has_prefix = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("prefix.word"))
         });
         assert!(
@@ -4511,7 +5901,7 @@ contexts:
             out2.replayed[0]
         );
         // fallback.content should appear for the post-TRY remainder.
-        let replayed_has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+        let replayed_has_fallback = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
@@ -4634,7 +6024,7 @@ contexts:
             "expected no warnings at the 128-line boundary, got: {:?}",
             all_warnings
         );
-        let has_fallback = out_fail.replayed[0].iter().any(|(_, op)| {
+        let has_fallback = out_fail.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
@@ -4888,6 +6278,404 @@ contexts:
         );
     }
 
+    /// A `fail` naming a branch point nobody opened is an ordinary rule: its
+    /// text is consumed, its `scope` applies, and the line carries on.
+    ///
+    /// The reference: "If a `fail` action specifies a `branch_point` that was
+    /// never pushed on the stack, or has already been popped off of it, it will
+    /// have no effect." It is the *action* that has no effect.
+    ///
+    /// `handle_fail` answered an unresolvable name with `Ok(false)`, which is
+    /// what `parse_next_token` returns to mean *stop parsing this line*, so
+    /// everything after the match came out unscoped. CSS has such a rule —
+    /// `- match: ';' fail: property-or-selector` — reachable outside any branch.
+    #[test]
+    fn fail_for_a_branch_point_nobody_opened_has_no_effect() {
+        let syntax_str = r#"
+name: StrayFail
+scope: source.stray-fail
+contexts:
+  main:
+    - match: 'a'
+      scope: keyword.a
+    - match: ';'
+      scope: punctuation.semi
+      fail: nobody
+    - match: 'b'
+      scope: keyword.b
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let states = stack_states(ops(&mut state, "a;b\n", &ss));
+        assert!(
+            states.iter().any(|s| s.contains("punctuation.semi")),
+            "the rule's own scope was dropped: {:?}",
+            states
+        );
+        assert!(
+            states.iter().any(|s| s.contains("keyword.b")),
+            "the rest of the line after the stray fail was never parsed: {:?}",
+            states
+        );
+    }
+    /// Version 1: a capture that begins before the last one that applied gets
+    /// no scope. Version 2 applies all of them.
+    ///
+    /// Compatibility, "Regex Capture Group Order". The documentation states the
+    /// result the wrong way round — its example is `(?:(x)|(y))+` over `yx` and
+    /// it says the `x` loses its scope, where ST 4206 drops the `y` and keeps
+    /// the `x` — so this is asked of the application, not read. The rule is a
+    /// cursor over the groups in capture-index order, and the cursor is the
+    /// last applied group's *start*: against its end, `((a)b)` would lose its
+    /// inner capture, which is most captures in most definitions, and ST keeps
+    /// it.
+    #[test]
+    fn version_1_capture_that_goes_backwards_gets_no_scope() {
+        fn pushed(version: u32, body: &str, line: &str) -> Vec<String> {
+            let syntax_str = format!(
+                "name: Ver\nscope: source.ver\nversion: {}\ncontexts:\n{}",
+                version, body
+            );
+            let syntax = SyntaxDefinition::load_from_str(&syntax_str, true, None).unwrap();
+            let ss = link(syntax);
+            let mut state = ParseState::new(&ss.syntaxes()[0]);
+            let mut names = Vec::new();
+            for (_, op) in ops(&mut state, line, &ss) {
+                if let ScopeStackOp::Push(scope) = op {
+                    names.push(format!("{:?}", scope));
+                }
+            }
+            names
+        }
+
+        let alternating = "  main:\n    - match: '(?:(x)|(y))+'\n      captures:\n        1: identifier.x\n        2: identifier.y\n";
+        let v1 = pushed(1, alternating, "yx\n");
+        assert!(
+            v1.iter().any(|s| s.contains("identifier.x")),
+            "the group that moved forward lost its scope: {:?}",
+            v1
+        );
+        assert!(
+            !v1.iter().any(|s| s.contains("identifier.y")),
+            "the group that begins behind the cursor was still scoped: {:?}",
+            v1
+        );
+        let v2 = pushed(2, alternating, "yx\n");
+        assert!(
+            v2.iter().any(|s| s.contains("identifier.x"))
+                && v2.iter().any(|s| s.contains("identifier.y")),
+            "version 2 applies both: {:?}",
+            v2
+        );
+
+        // The cursor is carried from group to group: `c` at column 0 is dropped
+        // after groups 1 and 2 have applied at columns 1 and 2.
+        let three = "  main:\n    - match: '(?:(a)|(b)|(c))+'\n      captures:\n        1: identifier.a\n        2: identifier.b\n        3: identifier.c\n";
+        let v1 = pushed(1, three, "cab\n");
+        assert!(
+            v1.iter().any(|s| s.contains("identifier.a"))
+                && v1.iter().any(|s| s.contains("identifier.b")),
+            "{:?}",
+            v1
+        );
+        assert!(
+            !v1.iter().any(|s| s.contains("identifier.c")),
+            "the cursor was not carried past the group before: {:?}",
+            v1
+        );
+
+        // And a nested capture is not a step backwards, at either version.
+        let nested = "  main:\n    - match: '((a)b)'\n      captures:\n        1: outer.one\n        2: inner.two\n";
+        let v1 = pushed(1, nested, "ab\n");
+        assert!(
+            v1.iter().any(|s| s.contains("inner.two")),
+            "nesting is not what the gate is about: {:?}",
+            v1
+        );
+        assert_eq!(v1, pushed(2, nested, "ab\n"));
+    }
+    /// A version 1 `push:` of several contexts clears their `clear_scopes`
+    /// added up, for the trigger token and for nothing after it.
+    ///
+    /// Compatibility, "Multiple Target Push Actions with `clear_scopes`", with
+    /// the documentation's own example. Both phases are asserted because they
+    /// disagree, and ST 4206 says so: the trigger sees the sum applied before
+    /// either `meta_scope`, and the column after it sees version 2's
+    /// interleaving. Getting only the first half right leaves every line after
+    /// the push inside a scope the file had cleared.
+    #[test]
+    fn version_1_push_clears_the_sum_for_its_trigger_alone() {
+        fn columns(version: u32, line: &str) -> Vec<String> {
+            let syntax_str = format!(
+                r#"
+name: Ver
+scope: source.lang
+version: {}
+contexts:
+  main:
+    - meta_content_scope: meta.main
+    - match: '[a-zA-Z0-9]+\b'
+      scope: identifier
+      push:
+        - context2
+        - context3
+  context2:
+    - meta_scope: meta.ctx2
+    - clear_scopes: 1
+  context3:
+    - meta_scope: meta.ctx3
+    - clear_scopes: 1
+    - match: \n
+      pop: true
+"#,
+                version
+            );
+            let syntax = SyntaxDefinition::load_from_str(&syntax_str, true, None).unwrap();
+            let ss = link(syntax);
+            let mut state = ParseState::new(&ss.syntaxes()[0]);
+            let line_ops = ops(&mut state, line, &ss);
+            let mut out = Vec::new();
+            let mut stack = ScopeStack::new();
+            let mut iter = line_ops.into_iter().peekable();
+            let text = line.trim_end_matches('\n');
+            for column in 0..=text.len() {
+                while iter.peek().is_some_and(|(at, _)| *at <= column) {
+                    let (_, op) = iter.next().unwrap();
+                    stack.apply(&op).unwrap();
+                }
+                out.push(
+                    stack
+                        .as_slice()
+                        .iter()
+                        .map(|s| s.build_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+            }
+            out
+        }
+
+        let one = columns(1, "abc 1\n");
+        assert_eq!(
+            one[0], "meta.ctx2 meta.ctx3 identifier",
+            "the two clears were not added up and applied before either meta scope"
+        );
+        assert_eq!(
+            one[3], "source.lang meta.ctx3",
+            "the summed clear outlived the token it belongs to"
+        );
+
+        let two = columns(2, "abc 1\n");
+        assert_eq!(two[0], "source.lang meta.ctx3 identifier");
+        assert_eq!(two[3], "source.lang meta.ctx3");
+    }
+    /// A version 1 `embed:`'s escape text is outside the context that holds
+    /// it, and a version 2 one is inside it.
+    ///
+    /// Compatibility, "Embed Escape Match and Meta Scopes", with the
+    /// documentation's own example. ST 4206 agrees at both versions and adds
+    /// the part the sentence does not say: it is *only* the escape's token —
+    /// the column after it is back inside both scopes, which is what makes this
+    /// a pop and a re-push around the token rather than the context ending
+    /// early.
+    #[test]
+    fn version_1_embed_escape_is_outside_the_context_that_holds_it() {
+        fn columns(version: u32, line: &str) -> Vec<String> {
+            let syntax_str = format!(
+                r#"
+name: Ver
+scope: source.lang
+version: {}
+contexts:
+  main:
+    - match: (?=')
+      push: context1
+  context1:
+    - meta_scope: meta.group
+    - meta_content_scope: meta.content
+    - match: \'
+      scope: punctuation.begin
+      embed: embed
+      escape: \'
+      escape_captures:
+        0: punctuation.end
+  embed:
+    - match: '[a-z]+'
+      scope: word
+"#,
+                version
+            );
+            let syntax = SyntaxDefinition::load_from_str(&syntax_str, true, None).unwrap();
+            let ss = link(syntax);
+            let mut state = ParseState::new(&ss.syntaxes()[0]);
+            let line_ops = ops(&mut state, line, &ss);
+            let mut out = Vec::new();
+            let mut stack = ScopeStack::new();
+            let mut iter = line_ops.into_iter().peekable();
+            let text = line.trim_end_matches('\n');
+            for column in 0..=text.len() {
+                while iter.peek().is_some_and(|(at, _)| *at <= column) {
+                    let (_, op) = iter.next().unwrap();
+                    stack.apply(&op).unwrap();
+                }
+                out.push(
+                    stack
+                        .as_slice()
+                        .iter()
+                        .map(|s| s.build_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+            }
+            out
+        }
+
+        let one = columns(1, "'abc'\n");
+        assert_eq!(
+            one[4], "source.lang punctuation.end",
+            "the escape's text kept the scopes of the context holding the embed"
+        );
+        assert_eq!(
+            one[5], "source.lang meta.group meta.content",
+            "the context the embed fired from did not end at its escape"
+        );
+
+        let two = columns(2, "'abc'\n");
+        assert_eq!(
+            two[4],
+            "source.lang meta.group meta.content punctuation.end"
+        );
+        assert_eq!(one[0], two[0], "and the opening quote is the same at both");
+    }
+    /// A `pop: N + embed:`'s escape still wears the meta scopes of the context
+    /// the `embed:` was declared in.
+    ///
+    /// The reference's own example under "Using pop with another action" is a
+    /// `paragraph` context with a `meta_scope` whose ```` ```py ```` fence
+    /// fires `pop: 1` and embeds Python; nothing in it says what the closing
+    /// fence gets, so ST 4206 was asked. Its columns for `p<a>t` are what make
+    /// this a retarget rather than a deferral — the frame is off the stack for
+    /// everything except its own escape:
+    ///
+    /// | column | ST |
+    /// |---|---|
+    /// | `p`, the push trigger | `m.para` |
+    /// | `<`, firing `pop: 1 + embed:` | no `m.para` — the pop is a lookahead |
+    /// | `a`, the embedded text | `m.embedded`, no `m.para` |
+    /// | `>`, the escape | **`m.para`** |
+    /// | `t`, after it | none |
+    #[test]
+    fn pop_n_embed_escape_wears_the_context_it_left() {
+        let syntax_str = r#"
+name: PopEmbed
+scope: source.pop-embed
+version: 2
+contexts:
+  main:
+    - match: 'p'
+      push: para
+  para:
+    - meta_scope: m.para
+    - match: '<'
+      scope: k.open
+      pop: 1
+      embed: inner
+      embed_scope: m.embedded
+      escape: '>'
+  inner:
+    - match: 'a'
+      scope: k.a
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let line_ops = ops(&mut state, "p<a>t\n", &ss);
+
+        let mut columns = Vec::new();
+        let mut stack = ScopeStack::new();
+        let mut iter = line_ops.into_iter().peekable();
+        for column in 0..5 {
+            while iter.peek().is_some_and(|(at, _)| *at <= column) {
+                let (_, op) = iter.next().unwrap();
+                stack.apply(&op).unwrap();
+            }
+            columns.push(
+                stack
+                    .as_slice()
+                    .iter()
+                    .map(|s| s.build_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+        }
+
+        // Column 1, the trigger, is left out on purpose: ST has no `m.para` on
+        // it, because the pop of a `pop: N + embed:` is a lookahead and unwinds
+        // before the match takes its scopes. That is a different rule, and a
+        // different change — see #687, which is about exactly that phase.
+        assert_eq!(
+            columns[0], "source.pop-embed m.para",
+            "the push trigger is inside the context it pushes"
+        );
+        assert_eq!(
+            columns[2], "source.pop-embed m.embedded k.a",
+            "the pop really did happen at the trigger"
+        );
+        assert_eq!(
+            columns[3], "source.pop-embed m.para",
+            "the escape did not wear the frame the pop took off"
+        );
+        assert_eq!(
+            columns[4], "source.pop-embed",
+            "and it kept it past its own token"
+        );
+    }
+    /// A cross-line `fail` says *which* line each correction is for.
+    ///
+    /// `d` opens a branch, `q` is buffered under the first alternative, and `z`
+    /// on the third line fails it — which must correct the first two lines, and
+    /// name them.
+    #[test]
+    fn a_cross_line_fail_names_the_lines_it_corrects() {
+        let syntax_str = r#"
+name: Late
+scope: source.late
+contexts:
+  main:
+    - match: 'd'
+      scope: keyword.d
+      branch_point: bp
+      branch:
+        - alt-a
+        - alt-b
+  alt-a:
+    - meta_scope: meta.a
+    - match: '(?=z)'
+      fail: bp
+    - match: '\S'
+      scope: other.a
+  alt-b:
+    - meta_scope: meta.b
+    - match: '\S'
+      scope: other.b
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let mut corrected: Vec<(usize, Vec<usize>)> = Vec::new();
+        for (n, line) in "d\nq\nz\n".split_inclusive('\n').enumerate() {
+            let out = state.parse_line(line, &ss).expect("parses");
+            if !out.replayed.is_empty() {
+                corrected.push((n, out.replayed.iter().map(|(at, _)| *at).collect()));
+            }
+        }
+        assert_eq!(
+            corrected,
+            vec![(2, vec![1, 2])],
+            "the fail on the third line should correct the first two, and name them"
+        );
+    }
     #[test]
     fn branch_fail_nonexistent_name() {
         // `fail: nonexistent` should be a silent no-op — no panic, parsing continues.
@@ -4966,7 +6754,7 @@ contexts:
         // The first replayed line (replay of "TRY\n") should have fallback.content
         // because fallback-ctx matches `.*`. After that pop, lines 2-3 are parsed
         // by main, which matches `.*` → main.other.
-        let has_fallback = out4.replayed[0].iter().any(|(_, op)| {
+        let has_fallback = out4.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
@@ -4976,7 +6764,7 @@ contexts:
         );
 
         // No replayed line should have try.word (all are under fallback path)
-        for (i, line_ops) in out4.replayed.iter().enumerate() {
+        for (i, (_, line_ops)) in out4.replayed.iter().enumerate() {
             let has_try_word = line_ops.iter().any(|(_, op)| {
                 matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("try.word"))
             });
@@ -5045,7 +6833,7 @@ contexts:
         );
 
         // Replayed line should have fallback.content, not try.word
-        let replay_has_fallback = out2.replayed[0].iter().any(|(_, op)| {
+        let replay_has_fallback = out2.replayed[0].1.iter().any(|(_, op)| {
             matches!(op, ScopeStackOp::Push(s) if format!("{:?}", s).contains("fallback.content"))
         });
         assert!(
