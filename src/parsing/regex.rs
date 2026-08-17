@@ -111,7 +111,9 @@ impl Prefilter {
         }
         if let [only] = literals {
             let owned: Vec<u8> = only.as_bytes().to_vec();
-            return Some(Prefilter::One(memchr::memmem::Finder::new(&owned).into_owned()));
+            return Some(Prefilter::One(
+                memchr::memmem::Finder::new(&owned).into_owned(),
+            ));
         }
         let set = aho_corasick::AhoCorasick::new(literals.iter().map(|l| l.as_bytes())).ok()?;
         Some(Prefilter::Any(Box::new(set)))

@@ -368,7 +368,6 @@ fn branch_point_is_live(bp: &BranchPoint, stack_len: usize) -> bool {
     stack_len > bp.stack_depth.saturating_sub(bp.pop_count)
 }
 
-
 /// Which of a `set:`'s targets may emit its `clear_scopes`
 /// *before* the trigger token rather than after it, if any.
 ///
@@ -402,10 +401,7 @@ fn early_set_clear(
     context_refs: &[ContextReference],
     syntax_set: &SyntaxSet,
 ) -> Result<Option<usize>, ParsingError> {
-    if !is_set
-        || !cur_context.meta_scope.is_empty()
-        || !cur_context.meta_content_scope.is_empty()
-    {
+    if !is_set || !cur_context.meta_scope.is_empty() || !cur_context.meta_content_scope.is_empty() {
         return Ok(None);
     }
     for (i, r) in context_refs.iter().enumerate() {
@@ -900,14 +896,8 @@ impl ParseState {
             self.proto_starts.pop();
         }
 
-        let best_match = self.find_best_match(
-            line,
-            *start,
-            syntax_set,
-            search_cache,
-            regions,
-            armed_pre,
-        )?;
+        let best_match =
+            self.find_best_match(line, *start, syntax_set, search_cache, regions, armed_pre)?;
 
         if let Some(reg_match) = best_match {
             // Check if this is an escape match (sentinel pat_index)
@@ -917,7 +907,11 @@ impl ParseState {
                 // `zero_width_escape_fires`.
                 let zero_width = match_start == match_end;
                 if zero_width
-                    && self.zero_width_escape_fires.get(&match_start).copied().unwrap_or(0)
+                    && self
+                        .zero_width_escape_fires
+                        .get(&match_start)
+                        .copied()
+                        .unwrap_or(0)
                         >= ZERO_WIDTH_ESCAPE_FIRE_LIMIT
                 {
                     return match line[*start..].char_indices().nth(1) {
@@ -1051,15 +1045,18 @@ impl ParseState {
                 // — disarmed, which is the right answer. See `armed_pre`.
                 let pre = self.stack.len();
                 let reach = match match_pattern.operation {
-                    MatchOperation::Push { ref ctx_refs, pop_count } => {
-                        Some(pre.saturating_sub(pop_count) + ctx_refs.len())
-                    }
+                    MatchOperation::Push {
+                        ref ctx_refs,
+                        pop_count,
+                    } => Some(pre.saturating_sub(pop_count) + ctx_refs.len()),
                     MatchOperation::Branch { pop_count, .. } => {
                         Some(pre.saturating_sub(pop_count) + 1)
                     }
-                    MatchOperation::Embed { ref contexts, pop_count, .. } => {
-                        Some(pre.saturating_sub(pop_count) + contexts.len())
-                    }
+                    MatchOperation::Embed {
+                        ref contexts,
+                        pop_count,
+                        ..
+                    } => Some(pre.saturating_sub(pop_count) + contexts.len()),
                     // Anything else leaves the arming where it is, which is
                     // upstream's "otherwise leave the state, e.g. non-consuming
                     // `set` could also result in a loop". Overwriting it here
@@ -1552,7 +1549,10 @@ impl ParseState {
                         pop_count,
                     }
                 } else {
-                    MatchOperation::Push { ctx_refs: vec![alternatives[0].clone()], pop_count: 0 }
+                    MatchOperation::Push {
+                        ctx_refs: vec![alternatives[0].clone()],
+                        pop_count: 0,
+                    }
                 };
             } else {
                 unreachable!()
@@ -2757,8 +2757,7 @@ impl ParseState {
                         // unless the initial phase restored
                         // it already, on its way to unwinding the frames under
                         // this one before the trigger — .
-                        let restore =
-                            is_set && cur_context.clear_scopes.is_some() && !early_unwind;
+                        let restore = is_set && cur_context.clear_scopes.is_some() && !early_unwind;
                         let restore_first = restore && set_pop_count > 1;
                         if restore_first {
                             ops.push((index, ScopeStackOp::Restore));
@@ -2790,12 +2789,7 @@ impl ParseState {
                         // `clear_scopes` is emitted before the trigger — see
                         // `early_unwind` there, and .
                         if is_set && set_pop_count > 1 && !early_unwind {
-                            self.unwind_frames_below_top(
-                                set_pop_count,
-                                index,
-                                syntax_set,
-                                ops,
-                            )?;
+                            self.unwind_frames_below_top(set_pop_count, index, syntax_set, ops)?;
                         }
 
                         // Restore scopes cleared by the leaving context, now that
@@ -2901,7 +2895,10 @@ impl ParseState {
                         pop_count,
                     }
                 } else {
-                    MatchOperation::Push { ctx_refs: contexts.clone(), pop_count: 0 }
+                    MatchOperation::Push {
+                        ctx_refs: contexts.clone(),
+                        pop_count: 0,
+                    }
                 };
                 return self.push_meta_ops(
                     initial,
@@ -2929,7 +2926,10 @@ impl ParseState {
                         pop_count,
                     }
                 } else {
-                    MatchOperation::Push { ctx_refs: alternatives.clone(), pop_count: 0 }
+                    MatchOperation::Push {
+                        ctx_refs: alternatives.clone(),
+                        pop_count: 0,
+                    }
                 };
                 return self.push_meta_ops(
                     initial,
@@ -3174,7 +3174,10 @@ impl ParseState {
                 // the frame says how much of its
                 // `meta_content_scope` was pushed; the stack underneath cannot.
                 // See `StateLevel::mcs_skipped`.
-                let atoms = ctx.meta_content_scope.len().saturating_sub(level.mcs_skipped);
+                let atoms = ctx
+                    .meta_content_scope
+                    .len()
+                    .saturating_sub(level.mcs_skipped);
                 if atoms > 0 {
                     ops.push((match_start, ScopeStackOp::Pop(atoms)));
                 }
@@ -3252,7 +3255,10 @@ impl ParseState {
             match self.stack.last() {
                 Some(level) => {
                     let ctx = syntax_set.get_context(&level.context)?;
-                    let mcs = ctx.meta_content_scope.len().saturating_sub(level.mcs_skipped);
+                    let mcs = ctx
+                        .meta_content_scope
+                        .len()
+                        .saturating_sub(level.mcs_skipped);
                     let ms = ctx.meta_scope.len();
                     if mcs > 0 {
                         ops.push((match_start, ScopeStackOp::Pop(mcs)));
@@ -6357,7 +6363,8 @@ contexts:
         );
         let v2 = pushed(2, alternating, "yx\n");
         assert!(
-            v2.iter().any(|s| s.contains("identifier.x")) && v2.iter().any(|s| s.contains("identifier.y")),
+            v2.iter().any(|s| s.contains("identifier.x"))
+                && v2.iter().any(|s| s.contains("identifier.y")),
             "version 2 applies both: {:?}",
             v2
         );
@@ -6367,7 +6374,8 @@ contexts:
         let three = "  main:\n    - match: '(?:(a)|(b)|(c))+'\n      captures:\n        1: identifier.a\n        2: identifier.b\n        3: identifier.c\n";
         let v1 = pushed(1, three, "cab\n");
         assert!(
-            v1.iter().any(|s| s.contains("identifier.a")) && v1.iter().any(|s| s.contains("identifier.b")),
+            v1.iter().any(|s| s.contains("identifier.a"))
+                && v1.iter().any(|s| s.contains("identifier.b")),
             "{:?}",
             v1
         );
@@ -6534,7 +6542,10 @@ contexts:
         );
 
         let two = columns(2, "'abc'\n");
-        assert_eq!(two[4], "source.lang meta.group meta.content punctuation.end");
+        assert_eq!(
+            two[4],
+            "source.lang meta.group meta.content punctuation.end"
+        );
         assert_eq!(one[0], two[0], "and the opening quote is the same at both");
     }
     /// A `pop: N + embed:`'s escape still wears the meta scopes of the context

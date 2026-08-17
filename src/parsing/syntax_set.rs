@@ -460,7 +460,10 @@ impl SyntaxSet {
         for pattern in context.patterns.iter() {
             let maybe_refs_to_check = match pattern {
                 Pattern::Match(match_pat) => match &match_pat.operation {
-                    MatchOperation::Push { ctx_refs: context_refs, .. }
+                    MatchOperation::Push {
+                        ctx_refs: context_refs,
+                        ..
+                    }
                     | MatchOperation::Set {
                         ctx_refs: context_refs,
                         ..
@@ -1095,9 +1098,7 @@ impl SyntaxSetBuilder {
                     child
                         .contexts
                         .keys()
-                        .map(|name| {
-                            (name.clone(), inherited_at.get(name).copied().unwrap_or(0))
-                        })
+                        .map(|name| (name.clone(), inherited_at.get(name).copied().unwrap_or(0)))
                         .collect(),
                 );
 
@@ -1310,7 +1311,10 @@ impl SyntaxSetBuilder {
                 // This is really weird, but necessary to run the YAML syntax.
                 Pattern::Match(ref match_pat) => {
                     let maybe_context_refs = match match_pat.operation {
-                        MatchOperation::Push { ctx_refs: ref context_refs, .. }
+                        MatchOperation::Push {
+                            ctx_refs: ref context_refs,
+                            ..
+                        }
                         | MatchOperation::Set {
                             ctx_refs: ref context_refs,
                             ..
@@ -1512,7 +1516,10 @@ impl SyntaxSetBuilder {
         syntaxes: &[SyntaxReference],
     ) {
         let maybe_context_refs = match match_pat.operation {
-            MatchOperation::Push { ctx_refs: ref mut context_refs, .. }
+            MatchOperation::Push {
+                ctx_refs: ref mut context_refs,
+                ..
+            }
             | MatchOperation::Set {
                 ctx_refs: ref mut context_refs,
                 ..
@@ -2529,7 +2536,10 @@ mod tests {
         parse_state.parse_line("x\n", &ss).expect("parse failed");
         // And hidden, as the missing-parent case already does: it colours
         // nothing, so it should not be offered by name or by extension.
-        assert!(syntax.hidden, "a syntax whose extends was refused is not hidden");
+        assert!(
+            syntax.hidden,
+            "a syntax whose extends was refused is not hidden"
+        );
     }
     #[test]
     fn extends_multiple_parents_must_share_common_base() {
@@ -3741,7 +3751,10 @@ mod tests {
         let syntax_definitions = vec![syntax("JSX", "source.jsx"), syntax("JSX", "source.jsx")];
         let path_syntaxes = vec![
             ("Packages/JavaScript/JSX.sublime-syntax".to_string(), 0usize),
-            ("User/Packages/JavaScript/JSX.sublime-syntax".to_string(), 1usize),
+            (
+                "User/Packages/JavaScript/JSX.sublime-syntax".to_string(),
+                1usize,
+            ),
         ];
         let mut name_to_index = HashMap::new();
         name_to_index.insert("JSX".to_string(), 1);

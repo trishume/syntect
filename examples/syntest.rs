@@ -628,8 +628,7 @@ fn test_file(
                 // lines included, because a column past the end of one line is
                 // measured against the line after it, and that is nearly always
                 // an assertion line.
-                let mut runs: Vec<Vec<ScopedText>> =
-                    Vec::with_capacity(parsed_line_buffer.len());
+                let mut runs: Vec<Vec<ScopedText>> = Vec::with_capacity(parsed_line_buffer.len());
                 for idx in 0..parsed_line_buffer.len() {
                     parsed_line_buffer[idx].stack_before = stack.clone();
                     let ops = parsed_line_buffer[idx].ops.clone();

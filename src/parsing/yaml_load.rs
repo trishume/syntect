@@ -1263,19 +1263,22 @@ mod tests {
                 use crate::parsing::syntax_definition::ContextReference::*;
 
                 // this is sadly necessary because Context is not Eq because of the Regex
-                let expected = MatchOperation::Push { pop_count: 0, ctx_refs: vec![
-                    Named("string".to_owned()),
-                    ByScope {
-                        scope: Scope::new("source.c").unwrap(),
-                        sub_context: Some("main".to_owned()),
-                        with_escape: false,
-                    },
-                    File {
-                        name: "CSS".to_owned(),
-                        sub_context: Some("rule-list-body".to_owned()),
-                        with_escape: false,
-                    },
-                ] };
+                let expected = MatchOperation::Push {
+                    pop_count: 0,
+                    ctx_refs: vec![
+                        Named("string".to_owned()),
+                        ByScope {
+                            scope: Scope::new("source.c").unwrap(),
+                            sub_context: Some("main".to_owned()),
+                            with_escape: false,
+                        },
+                        File {
+                            name: "CSS".to_owned(),
+                            sub_context: Some("rule-list-body".to_owned()),
+                            with_escape: false,
+                        },
+                    ],
+                };
                 assert_eq!(
                     format!("{:?}", match_pat.operation),
                     format!("{:?}", expected)

@@ -267,10 +267,7 @@ fn parse_exclusion(s: &str) -> Result<SelectorExpr, ParseScopeError> {
         match c {
             '(' => depth += 1,
             ')' => depth = depth.saturating_sub(1),
-            '-' if depth == 0
-                && i > 0
-                && bytes[i - 1].is_ascii_whitespace() =>
-            {
+            '-' if depth == 0 && i > 0 && bytes[i - 1].is_ascii_whitespace() => {
                 terms.push(&s[last..i]);
                 last = i + 1;
             }
@@ -526,8 +523,14 @@ mod tests {
 
         // Without the grouping, and in both orders.
         assert!(!matches("source.c++", "source.c++ & comment.block"));
-        assert!(matches("source.c++ comment.block", "source.c++ & comment.block"));
-        assert!(matches("source.c++ comment.block", "comment.block & source.c++"));
+        assert!(matches(
+            "source.c++ comment.block",
+            "source.c++ & comment.block"
+        ));
+        assert!(matches(
+            "source.c++ comment.block",
+            "comment.block & source.c++"
+        ));
 
         // `|` binds looser than `&`: this is `a | (b & c)`, so `a` alone
         // matches. ST scores it 4.
@@ -538,18 +541,33 @@ mod tests {
         // Exclusion applies to the conjunction as a whole.
         let minus = "source.c++ & comment.block - string.quoted";
         assert!(matches("source.c++ comment.block", minus), "ST: 32");
-        assert!(!matches("source.c++ comment.block string.quoted", minus), "ST: 0");
+        assert!(
+            !matches("source.c++ comment.block string.quoted", minus),
+            "ST: 0"
+        );
 
         // A descendant path is ordered; a conjunction is not.
-        assert!(matches("source.c++ comment.block", "source.c++ comment.block"));
-        assert!(!matches("source.c++ comment.block", "comment.block source.c++"));
+        assert!(matches(
+            "source.c++ comment.block",
+            "source.c++ comment.block"
+        ));
+        assert!(!matches(
+            "source.c++ comment.block",
+            "comment.block source.c++"
+        ));
 
         // Three conjuncts and a group on the right, which is upstream's own
         // `Symbol List` selector shape.
         let three =
             "(source.c++ | source.objc++) & (meta.class | meta.struct) & meta.block entity.name";
-        assert!(matches("source.c++ meta.class meta.block entity.name", three), "ST: 2304");
-        assert!(!matches("source.c++ meta.enum meta.block entity.name", three), "ST: 0");
+        assert!(
+            matches("source.c++ meta.class meta.block entity.name", three),
+            "ST: 2304"
+        );
+        assert!(
+            !matches("source.c++ meta.enum meta.block entity.name", three),
+            "ST: 0"
+        );
 
         // The score of a conjunction is the strongest of its operands, not
         // their sum: ST scores `source.c++` 4 and `comment.block` 32 on this
