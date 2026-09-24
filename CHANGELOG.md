@@ -20,6 +20,7 @@
 - Implement native `embed`/`escape` support, fixing cases where embedded context patterns could consume escape characters first [#615]
 - Gracefully skip syntax files that fail to load and hide syntaxes with unresolved `extends` parents [#610]
 - Add `warnings()` API on `SyntaxSetBuilder` and `SyntaxSet` to replace `eprintln!` warnings with programmatic access [#619]
+- Add `ParseState::parse_line_with_limit` and `ParseState::parse_line_with_timeout`, which return an error instead of continuing once a line has taken more than the given number of tokens or time [#202]
 
 ### Dependencies
 
