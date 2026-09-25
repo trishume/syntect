@@ -265,8 +265,7 @@ impl<'a> Iterator for MatchIter<'a> {
                             }
                             _ => return self.next(), // skip this and move onto the next one
                         };
-                        self.ctx_stack.push(ctx_ptr);
-                        self.index_stack.push(0);
+                        self.push_include(ctx_ptr);
                     }
                     Pattern::IncludeWithPrototype(ref ctx_ref) => {
                         let context_id = match *ctx_ref {
@@ -279,12 +278,10 @@ impl<'a> Iterator for MatchIter<'a> {
                             if let Some(ref proto_id) = ctx_ptr.prototype {
                                 let proto_ctx = self.syntax_set.get_context(proto_id).unwrap();
                                 // Push prototype first (it will be iterated first)
-                                self.ctx_stack.push(proto_ctx);
-                                self.index_stack.push(0);
+                                self.push_include(proto_ctx);
                             }
                         }
-                        self.ctx_stack.push(ctx_ptr);
-                        self.index_stack.push(0);
+                        self.push_include(ctx_ptr);
                     }
                 }
             } else {
@@ -292,6 +289,23 @@ impl<'a> Iterator for MatchIter<'a> {
                 self.index_stack.pop();
             }
         }
+    }
+}
+
+impl<'a> MatchIter<'a> {
+    /// Push `ctx` onto the include stack. A context already on the stack is a cycle
+    /// (Svelte's grammar does this); pushing it again never returns, so skip it.
+    /// The same context can still be included again after it is popped.
+    fn push_include(&mut self, ctx: &'a Context) {
+        if self
+            .ctx_stack
+            .iter()
+            .any(|existing| std::ptr::eq(*existing, ctx))
+        {
+            return;
+        }
+        self.ctx_stack.push(ctx);
+        self.index_stack.push(0);
     }
 }
 

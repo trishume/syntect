@@ -444,16 +444,38 @@ impl ParseState {
         let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
         // Used for detecting loops with push/pop, see long comment above.
         let mut non_consuming_push_at = (0, 0);
+        // `would_loop` only catches a non-consuming Pop at the same stack depth as
+        // an earlier Push. A non-consuming Set (or a push/pop whose depth does not
+        // match) otherwise matches forever at one byte and the ops vec grows
+        // without bound. That hung highlighting on a `/**` line inside a Svelte diff.
+        let mut non_consuming_streak = 0usize;
 
-        while self.parse_next_token(
-            line,
-            syntax_set,
-            &mut match_start,
-            &mut search_cache,
-            &mut regions,
-            &mut non_consuming_push_at,
-            &mut res,
-        )? {}
+        loop {
+            let before = match_start;
+            if !self.parse_next_token(
+                line,
+                syntax_set,
+                &mut match_start,
+                &mut search_cache,
+                &mut regions,
+                &mut non_consuming_push_at,
+                &mut res,
+            )? {
+                break;
+            }
+            if match_start == before {
+                non_consuming_streak += 1;
+                if non_consuming_streak >= 32 {
+                    match line[match_start..].char_indices().nth(1) {
+                        Some((i, _)) => match_start += i,
+                        None => break,
+                    }
+                    non_consuming_streak = 0;
+                }
+            } else {
+                non_consuming_streak = 0;
+            }
+        }
 
         Ok(res)
     }
