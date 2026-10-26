@@ -21,6 +21,10 @@
 - Gracefully skip syntax files that fail to load and hide syntaxes with unresolved `extends` parents [#610]
 - Add `warnings()` API on `SyntaxSetBuilder` and `SyntaxSet` to replace `eprintln!` warnings with programmatic access [#619]
 
+### Dependencies
+
+- Update `fancy-regex` to `0.20.0`, which compiles regexes faster
+
 ## [Version 5.3.0](https://github.com/trishume/syntect/compare/v5.2.0...v5.3.0)
 
 ### Improvements
