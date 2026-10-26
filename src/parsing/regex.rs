@@ -307,7 +307,7 @@ mod regex_impl {
     }
 
     impl Region {
-        fn init_from_captures(&mut self, captures: &fancy_regex::Captures) {
+        fn init_from_captures(&mut self, captures: &fancy_regex::Captures<str>) {
             self.positions.clear();
             for i in 0..captures.len() {
                 let pos = captures.get(i).map(|m| (m.start(), m.end()));
