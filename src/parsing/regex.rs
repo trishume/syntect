@@ -260,6 +260,7 @@ mod regex_impl {
         pub fn new(regex_str: &str) -> Result<Regex, Box<dyn Error + Send + Sync + 'static>> {
             let result = fancy_regex::RegexBuilder::new(regex_str)
                 .oniguruma_mode(true)
+                .seek(true)
                 .build();
             match result {
                 Ok(regex) => Ok(Regex { regex }),
@@ -273,6 +274,7 @@ mod regex_impl {
             let result = fancy_regex::RegexBuilder::new(regex_str)
                 .oniguruma_mode(true)
                 .find_not_empty(true)
+                .seek(true)
                 .build();
             match result {
                 Ok(regex) => Ok(Regex { regex }),
