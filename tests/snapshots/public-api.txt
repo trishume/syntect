@@ -965,6 +965,10 @@ impl !core::panic::unwind_safe::UnwindSafe for syntect::parsing::ParseSyntaxErro
 pub syntect::parsing::ParsingError::BadMatchIndex(usize)
 pub syntect::parsing::ParsingError::MissingContext(syntect::parsing::syntax_definition::ContextId)
 pub syntect::parsing::ParsingError::MissingMainContext
+pub syntect::parsing::ParsingError::TimeLimitExceeded
+pub syntect::parsing::ParsingError::TimeLimitExceeded::timeout: core::time::Duration
+pub syntect::parsing::ParsingError::TokenLimitExceeded
+pub syntect::parsing::ParsingError::TokenLimitExceeded::limit: usize
 pub syntect::parsing::ParsingError::UnresolvedContextReference(syntect::parsing::syntax_definition::ContextReference)
 impl core::convert::From<syntect::parsing::ParsingError> for syntect::Error
 pub fn syntect::Error::from(source: syntect::parsing::ParsingError) -> Self
@@ -1055,6 +1059,8 @@ impl syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::is_speculative(&self) -> bool
 pub fn syntect::parsing::ParseState::new(syntax: &syntect::parsing::SyntaxReference) -> syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::parse_line(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet) -> core::result::Result<syntect::parsing::ParseLineOutput, syntect::parsing::ParsingError>
+pub fn syntect::parsing::ParseState::parse_line_with_limit(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet, limit: core::option::Option<core::num::nonzero::NonZeroUsize>) -> core::result::Result<syntect::parsing::ParseLineOutput, syntect::parsing::ParsingError>
+pub fn syntect::parsing::ParseState::parse_line_with_timeout(&mut self, line: &str, syntax_set: &syntect::parsing::SyntaxSet, timeout: core::time::Duration) -> core::result::Result<syntect::parsing::ParseLineOutput, syntect::parsing::ParsingError>
 impl core::clone::Clone for syntect::parsing::ParseState
 pub fn syntect::parsing::ParseState::clone(&self) -> syntect::parsing::ParseState
 impl core::cmp::Eq for syntect::parsing::ParseState
