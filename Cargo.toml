@@ -28,7 +28,7 @@ fancy-regex = { version = "0.20.0", optional = true }
 walkdir = "2.5"
 regex-syntax = { version = "0.8", optional = true }
 plist = { version = "1.8", optional = true }
-bincode = { version = "1.3", optional = true }
+serde-wincode = { version = "0.1", optional = true }
 flate2 = { version = "1.1", optional = true }
 fnv = { version = "1.0", optional = true }
 serde = "1.0"
@@ -50,9 +50,9 @@ serde_json = "1.0"
 [features]
 
 # Dump loading using flate2
-dump-load = ["dep:flate2", "dep:bincode"]
+dump-load = ["dep:flate2", "dep:serde-wincode"]
 # Dump creation using flate2
-dump-create = ["dep:flate2", "dep:bincode"]
+dump-create = ["dep:flate2", "dep:serde-wincode"]
 
 regex-fancy = ["dep:fancy-regex"]
 regex-onig = ["dep:onig"]
