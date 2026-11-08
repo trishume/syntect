@@ -196,7 +196,26 @@ struct RegexMatch<'a> {
 }
 
 /// Maps the pattern to the start index, which is -1 if not found.
-type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
+type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<PtrHasher>>;
+
+#[derive(Default)]
+struct PtrHasher(u64);
+
+impl Hasher for PtrHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = (self.0.rotate_left(8) ^ b as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        }
+    }
+
+    fn write_usize(&mut self, n: usize) {
+        self.0 = (n as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+
+    fn finish(&self) -> u64 {
+        self.0 ^ (self.0 >> 32)
+    }
+}
 
 /// The `(byte, stack hash)` states a non-consuming `set` was already taken
 /// from, used to break `set` cycles. See [`ParseState::parse_next_token`].
@@ -612,8 +631,8 @@ impl ParseState {
         }
 
         let mut regions = Region::new();
-        let fnv = BuildHasherDefault::<FnvHasher>::default();
-        let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
+        let mut search_cache: SearchCache =
+            HashMap::with_capacity_and_hasher(128, Default::default());
         // Used for detecting loops with push/pop, see long comment above.
         let mut non_consuming_push_at = (0, 0);
         // Used for detecting loops between non-consuming `set`s, see
