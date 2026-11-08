@@ -1462,6 +1462,45 @@ mod tests {
     }
 
     #[test]
+    fn context_iter_follows_deeply_nested_includes() {
+        let depth = 20;
+        let mut yaml = String::from("name: Deep\nscope: source.deep\ncontexts:\n");
+        for i in 0..depth {
+            let name = if i == 0 {
+                "main".to_string()
+            } else {
+                format!("c{}", i)
+            };
+            yaml.push_str(&format!("  {}:\n    - match: a{}\n", name, i));
+            if i + 1 < depth {
+                yaml.push_str(&format!("    - include: c{}\n", i + 1));
+            }
+            yaml.push_str(&format!("    - match: b{}\n", i));
+        }
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(SyntaxDefinition::load_from_str(&yaml, true, None).unwrap());
+        let ps = builder.build();
+        let syntax = ps.find_syntax_by_name("Deep").unwrap();
+        let main_context = ps.get_context(&syntax.context_ids()["main"]).unwrap();
+
+        let regexes: Vec<String> = syntax_definition::context_iter(&ps, main_context)
+            .map(|(context, index)| {
+                context
+                    .match_at(index)
+                    .unwrap()
+                    .regex
+                    .regex_str()
+                    .to_owned()
+            })
+            .collect();
+        let expected: Vec<String> = (0..depth)
+            .map(|i| format!("a{}", i))
+            .chain((0..depth).rev().map(|i| format!("b{}", i)))
+            .collect();
+        assert_eq!(regexes, expected);
+    }
+
+    #[test]
     fn can_clone() {
         let cloned_syntax_set = {
             let mut builder = SyntaxSetBuilder::new();
