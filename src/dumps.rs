@@ -120,7 +120,7 @@ pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(
     path: P,
 ) -> Result<T, DumpError> {
     let contents = std::fs::read(path)?;
-    deserialize_from_reader_impl(&contents[..], false)
+    from_uncompressed_data(&contents)
 }
 
 /// To be used when deserializing a [`SyntaxSet`] from raw data, for example
@@ -128,7 +128,7 @@ pub fn from_uncompressed_dump_file<T: DeserializeOwned, P: AsRef<Path>>(
 /// macro.
 #[cfg(feature = "dump-load")]
 pub fn from_uncompressed_data<T: DeserializeOwned>(v: &[u8]) -> Result<T, DumpError> {
-    deserialize_from_reader_impl(v, false)
+    bincode::deserialize(v).map_err(|e| DumpError::Serialize(Box::new(e)))
 }
 
 /// Private low level helper function used to implement the public API.
