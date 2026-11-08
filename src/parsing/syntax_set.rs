@@ -67,7 +67,48 @@ pub struct SyntaxReference {
     pub version: u32,
     #[serde(skip)]
     pub(crate) lazy_contexts: OnceLock<LazyContexts>,
+    #[serde(with = "bytes")]
     pub(crate) serialized_lazy_contexts: Vec<u8>,
+}
+
+mod bytes {
+    use serde::de::{Deserializer, SeqAccess, Visitor};
+    use serde::Serializer;
+    use std::fmt;
+
+    pub fn serialize<S: Serializer>(v: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(v)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
+        struct BytesVisitor;
+
+        impl<'de> Visitor<'de> for BytesVisitor {
+            type Value = Vec<u8>;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a byte buffer")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Vec<u8>, E> {
+                Ok(v.to_vec())
+            }
+
+            fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Vec<u8>, E> {
+                Ok(v)
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<u8>, A::Error> {
+                let mut v = Vec::with_capacity(seq.size_hint().unwrap_or(0).min(1 << 20));
+                while let Some(b) = seq.next_element()? {
+                    v.push(b);
+                }
+                Ok(v)
+            }
+        }
+
+        deserializer.deserialize_byte_buf(BytesVisitor)
+    }
 }
 
 fn default_syntax_version() -> u32 {
