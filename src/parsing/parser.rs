@@ -195,8 +195,70 @@ struct RegexMatch<'a> {
     escape_index: usize,
 }
 
+enum SearchHit {
+    Cached(usize, usize),
+    Fresh(Region),
+}
+
+impl SearchHit {
+    fn pos(&self) -> (usize, usize) {
+        match self {
+            SearchHit::Cached(start, end) => (*start, *end),
+            SearchHit::Fresh(region) => region.pos(0).unwrap(),
+        }
+    }
+}
+
+struct BestMatch<'a> {
+    hit: SearchHit,
+    pattern: *const MatchPattern,
+    context: &'a Context,
+    pat_index: usize,
+    from_with_prototype: bool,
+    would_loop: bool,
+}
+
+impl<'a> BestMatch<'a> {
+    fn into_regex_match(self, search_cache: &mut SearchCache) -> RegexMatch<'a> {
+        let regions = match self.hit {
+            SearchHit::Cached(start, end) if start < end => {
+                search_cache.remove(&self.pattern).flatten().unwrap()
+            }
+            SearchHit::Cached(..) => search_cache[&self.pattern].clone().unwrap(),
+            SearchHit::Fresh(region) => region,
+        };
+        RegexMatch {
+            regions,
+            context: self.context,
+            pat_index: self.pat_index,
+            from_with_prototype: self.from_with_prototype,
+            would_loop: self.would_loop,
+            escape_index: 0,
+        }
+    }
+}
+
 /// Maps the pattern to the start index, which is -1 if not found.
-type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<FnvHasher>>;
+type SearchCache = HashMap<*const MatchPattern, Option<Region>, BuildHasherDefault<PtrHasher>>;
+
+#[derive(Default)]
+struct PtrHasher(u64);
+
+impl Hasher for PtrHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = (self.0.rotate_left(8) ^ b as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        }
+    }
+
+    fn write_usize(&mut self, n: usize) {
+        self.0 = (n as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+
+    fn finish(&self) -> u64 {
+        self.0 ^ (self.0 >> 32)
+    }
+}
 
 /// The `(byte, stack hash)` states a non-consuming `set` was already taken
 /// from, used to break `set` cycles. See [`ParseState::parse_next_token`].
@@ -612,8 +674,8 @@ impl ParseState {
         }
 
         let mut regions = Region::new();
-        let fnv = BuildHasherDefault::<FnvHasher>::default();
-        let mut search_cache: SearchCache = HashMap::with_capacity_and_hasher(128, fnv);
+        let mut search_cache: SearchCache =
+            HashMap::with_capacity_and_hasher(128, Default::default());
         // Used for detecting loops with push/pop, see long comment above.
         let mut non_consuming_push_at = (0, 0);
         // Used for detecting loops between non-consuming `set`s, see
@@ -860,14 +922,13 @@ impl ParseState {
         }
 
         let mut min_start = usize::MAX;
-        let mut best_match: Option<RegexMatch<'_>> = None;
+        let mut best_match: Option<BestMatch<'_>> = None;
         let mut pop_would_loop = false;
 
         for (from_with_proto, ctx, captures) in context_chain {
             for (pat_context, pat_index) in context_iter(syntax_set, syntax_set.get_context(ctx)?) {
                 let match_pat = pat_context.match_at(pat_index)?;
-
-                if let Some(match_region) = self.search_with_end(
+                if let Some(hit) = self.search_with_end(
                     line,
                     start,
                     search_end,
@@ -876,7 +937,7 @@ impl ParseState {
                     search_cache,
                     regions,
                 ) {
-                    let (match_start, match_end) = match_region.pos(0).unwrap();
+                    let (match_start, match_end) = hit.pos();
 
                     // println!("matched pattern {:?} at start {} end {} (pop would loop: {}, min start: {}, initial start: {}, check_pop_loop: {}, stack_len: {})", match_pat, match_start, match_end, pop_would_loop, min_start, start, check_pop_loop, self.stack.len());
 
@@ -913,19 +974,19 @@ impl ParseState {
                             return Ok(None);
                         }
 
-                        best_match = Some(RegexMatch {
-                            regions: match_region,
+                        best_match = Some(BestMatch {
+                            hit,
+                            pattern: match_pat,
                             context: pat_context,
                             pat_index,
                             from_with_prototype: from_with_proto,
                             would_loop: pop_would_loop,
-                            escape_index: 0, // not an escape match
                         });
 
                         if match_start == start && !pop_would_loop {
                             // We're not gonna find a better match after this,
                             // so as an optimization we can stop matching now.
-                            return Ok(best_match);
+                            return Ok(best_match.map(|m| m.into_regex_match(search_cache)));
                         }
                     }
                 }
@@ -948,7 +1009,7 @@ impl ParseState {
             }
         }
 
-        Ok(best_match)
+        Ok(best_match.map(|m| m.into_regex_match(search_cache)))
     }
 
     fn search_with_end(
@@ -960,7 +1021,7 @@ impl ParseState {
         captures: Option<&(Region, String)>,
         search_cache: &mut SearchCache,
         regions: &mut Region,
-    ) -> Option<Region> {
+    ) -> Option<SearchHit> {
         // println!("{} - {:?} - {:?}", match_pat.regex_str, match_pat.has_captures, cur_level.captures.is_some());
         let match_ptr = match_pat as *const MatchPattern;
 
@@ -969,7 +1030,7 @@ impl ParseState {
                 let (cached_start, cached_end) = region.pos(0).unwrap();
                 if cached_start >= start && cached_end <= search_end {
                     // Cached match is valid within the truncated region.
-                    return Some(region.clone());
+                    return Some(SearchHit::Cached(cached_start, cached_end));
                 } else if cached_start >= start && cached_start < search_end {
                     // Match starts within range but extends past search_end.
                     // Can't use cache — need to re-search. Fall through below.
@@ -1012,10 +1073,11 @@ impl ParseState {
                 // Only cache when searching the full line — truncated searches
                 // could give different results for later positions.
                 search_cache.insert(match_pat, Some(regions.clone()));
+                return Some(SearchHit::Cached(match_start, match_end));
             }
             if does_something {
                 // print!("catch {} at {} on {}", match_pat.regex_str, match_start, line);
-                return Some(regions.clone());
+                return Some(SearchHit::Fresh(regions.clone()));
             }
         } else if can_cache && search_end == line.len() {
             search_cache.insert(match_pat, None);

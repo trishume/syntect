@@ -150,8 +150,37 @@ pub enum Pattern {
 #[derive(Debug)]
 pub struct MatchIter<'a> {
     syntax_set: &'a SyntaxSet,
-    ctx_stack: Vec<&'a Context>,
-    index_stack: Vec<usize>,
+    stack: [(&'a Context, usize); MATCH_ITER_INLINE_DEPTH],
+    depth: usize,
+    overflow: Vec<(&'a Context, usize)>,
+}
+
+const MATCH_ITER_INLINE_DEPTH: usize = 8;
+
+impl<'a> MatchIter<'a> {
+    fn push(&mut self, context: &'a Context) {
+        if self.depth < MATCH_ITER_INLINE_DEPTH {
+            self.stack[self.depth] = (context, 0);
+        } else {
+            self.overflow.push((context, 0));
+        }
+        self.depth += 1;
+    }
+
+    fn pop(&mut self) {
+        self.depth -= 1;
+        if self.depth >= MATCH_ITER_INLINE_DEPTH {
+            self.overflow.pop();
+        }
+    }
+
+    fn top(&mut self) -> &mut (&'a Context, usize) {
+        if self.depth > MATCH_ITER_INLINE_DEPTH {
+            self.overflow.last_mut().unwrap()
+        } else {
+            &mut self.stack[self.depth - 1]
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -242,17 +271,12 @@ impl<'a> Iterator for MatchIter<'a> {
 
     fn next(&mut self) -> Option<(&'a Context, usize)> {
         loop {
-            if self.ctx_stack.is_empty() {
+            if self.depth == 0 {
                 return None;
             }
-            // uncomment for debugging infinite recursion
-            // println!("{:?}", self.index_stack);
-            // use std::thread::sleep_ms;
-            // sleep_ms(500);
-            let last_index = self.ctx_stack.len() - 1;
-            let context = self.ctx_stack[last_index];
-            let index = self.index_stack[last_index];
-            self.index_stack[last_index] = index + 1;
+            let top = self.top();
+            let (context, index) = *top;
+            top.1 = index + 1;
             if index < context.patterns.len() {
                 match context.patterns[index] {
                     Pattern::Match(_) => {
@@ -263,15 +287,14 @@ impl<'a> Iterator for MatchIter<'a> {
                             ContextReference::Direct(ref context_id) => {
                                 self.syntax_set.get_context(context_id).unwrap()
                             }
-                            _ => return self.next(), // skip this and move onto the next one
+                            _ => continue,
                         };
-                        self.ctx_stack.push(ctx_ptr);
-                        self.index_stack.push(0);
+                        self.push(ctx_ptr);
                     }
                     Pattern::IncludeWithPrototype(ref ctx_ref) => {
                         let context_id = match *ctx_ref {
                             ContextReference::Direct(ref id) => id,
-                            _ => return self.next(),
+                            _ => continue,
                         };
                         let ctx_ptr = self.syntax_set.get_context(context_id).unwrap();
                         // Also include the external syntax's prototype if the context allows it
@@ -279,17 +302,14 @@ impl<'a> Iterator for MatchIter<'a> {
                             if let Some(ref proto_id) = ctx_ptr.prototype {
                                 let proto_ctx = self.syntax_set.get_context(proto_id).unwrap();
                                 // Push prototype first (it will be iterated first)
-                                self.ctx_stack.push(proto_ctx);
-                                self.index_stack.push(0);
+                                self.push(proto_ctx);
                             }
                         }
-                        self.ctx_stack.push(ctx_ptr);
-                        self.index_stack.push(0);
+                        self.push(ctx_ptr);
                     }
                 }
             } else {
-                self.ctx_stack.pop();
-                self.index_stack.pop();
+                self.pop();
             }
         }
     }
@@ -302,8 +322,9 @@ impl<'a> Iterator for MatchIter<'a> {
 pub fn context_iter<'a>(syntax_set: &'a SyntaxSet, context: &'a Context) -> MatchIter<'a> {
     MatchIter {
         syntax_set,
-        ctx_stack: vec![context],
-        index_stack: vec![0],
+        stack: [(context, 0); MATCH_ITER_INLINE_DEPTH],
+        depth: 1,
+        overflow: Vec::new(),
     }
 }
 
