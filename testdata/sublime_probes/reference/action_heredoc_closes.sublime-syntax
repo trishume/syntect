@@ -1,0 +1,15 @@
+%YAML 1.2
+---
+name: action_heredoc_closes
+scope: source.action-heredoc-closes
+file_extensions: [action_heredoc_closes]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '<<<(\w+)'
+      push: heredoc
+  heredoc:
+    - meta_scope: m.heredoc
+    - match: '^\1;'
+      pop: true

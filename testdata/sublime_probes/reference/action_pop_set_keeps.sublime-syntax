@@ -1,0 +1,21 @@
+%YAML 1.2
+---
+name: action_pop_set_keeps
+scope: source.action-pop-set-keeps
+file_extensions: [action_pop_set_keeps]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      push: [one, two]
+  one:
+    - meta_scope: m.one
+  two:
+    - meta_scope: m.two
+    - match: 'b'
+      scope: k.trigger
+      pop: 2
+      set: three
+  three:
+    - meta_scope: m.three

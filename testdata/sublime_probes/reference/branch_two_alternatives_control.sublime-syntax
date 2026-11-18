@@ -1,0 +1,20 @@
+%YAML 1.2
+---
+name: branch_two_alternatives_control
+scope: source.branch-two-alternatives-control
+file_extensions: [branch_two_alternatives_control]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [only, other]
+  only:
+    - match: 'a'
+      scope: k.a
+      pop: true
+  other:
+    - match: 'a'
+      scope: k.other
+      pop: true

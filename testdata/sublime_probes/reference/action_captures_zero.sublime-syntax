@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+name: action_captures_zero
+scope: source.action-captures-zero
+file_extensions: [action_captures_zero]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(a)b'
+      scope: k.whole
+      captures:
+        0: k.zero
+        1: k.one

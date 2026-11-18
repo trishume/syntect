@@ -1,0 +1,19 @@
+%YAML 1.2
+---
+name: action_fail_popped
+scope: source.action-fail-popped
+file_extensions: [action_fail_popped]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [only]
+    - match: 'b'
+      scope: k.b
+      fail: bp
+  only:
+    - match: 'a'
+      scope: k.a
+      pop: true

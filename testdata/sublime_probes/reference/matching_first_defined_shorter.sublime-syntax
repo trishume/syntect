@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+name: matching_first_defined_shorter
+scope: source.matching-first-defined-shorter
+file_extensions: [matching_first_defined_shorter]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      scope: k.short
+    - match: 'ab'
+      scope: k.long

@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+name: action_fail_unopened
+scope: source.action-fail-unopened
+file_extensions: [action_fail_unopened]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      scope: k.a
+      fail: nobody
+    - match: 'b'
+      scope: k.b

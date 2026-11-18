@@ -1,0 +1,8 @@
+%YAML 1.2
+---
+name: inherit_version_child
+scope: source.inherit-version-child
+file_extensions: [inherit_version_child]
+hidden: true
+version: 1
+extends: Packages/sublime_probes/reference/inherit_base.sublime-syntax

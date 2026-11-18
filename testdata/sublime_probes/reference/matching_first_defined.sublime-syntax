@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+name: matching_first_defined
+scope: source.matching-first-defined
+file_extensions: [matching_first_defined]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'ab'
+      scope: k.long
+    - match: 'a'
+      scope: k.short

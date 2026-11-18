@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+name: inherit_multi
+scope: source.inherit-multi
+file_extensions: [inherit_multi]
+hidden: true
+version: 2
+extends:
+  - Packages/sublime_probes/reference/inherit_loose.sublime-syntax
+  - Packages/sublime_probes/reference/inherit_sibling.sublime-syntax

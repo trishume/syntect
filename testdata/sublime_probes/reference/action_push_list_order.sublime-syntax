@@ -1,0 +1,19 @@
+%YAML 1.2
+---
+name: action_push_list_order
+scope: source.action-push-list-order
+file_extensions: [action_push_list_order]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      push: [one, two]
+  one:
+    - meta_scope: m.one
+    - match: 'c'
+      scope: k.one
+  two:
+    - meta_scope: m.two
+    - match: 'b'
+      pop: true

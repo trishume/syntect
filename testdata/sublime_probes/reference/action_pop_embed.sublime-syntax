@@ -1,0 +1,22 @@
+%YAML 1.2
+---
+name: action_pop_embed
+scope: source.action-pop-embed
+file_extensions: [action_pop_embed]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'p'
+      push: para
+  para:
+    - meta_scope: m.para
+    - match: '<'
+      scope: k.open
+      pop: 1
+      embed: inner
+      embed_scope: m.embedded
+      escape: '>'
+  inner:
+    - match: 'a'
+      scope: k.a

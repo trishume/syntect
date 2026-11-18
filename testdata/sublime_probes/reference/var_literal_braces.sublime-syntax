@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+name: var_literal_braces
+scope: source.var-literal-braces
+file_extensions: [var_literal_braces]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a{2}'
+      scope: k.quant
+    - match: '\{\{-'
+      scope: k.braces

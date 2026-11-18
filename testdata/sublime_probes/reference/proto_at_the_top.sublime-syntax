@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+name: proto_at_the_top
+scope: source.proto-at-the-top
+file_extensions: [proto_at_the_top]
+hidden: true
+version: 2
+contexts:
+  prototype:
+    - match: 'a'
+      scope: k.proto
+  main:
+    - match: 'a'
+      scope: k.own

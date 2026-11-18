@@ -1,0 +1,15 @@
+%YAML 1.2
+---
+name: matching_include_before
+scope: source.matching-include-before
+file_extensions: [matching_include_before]
+hidden: true
+version: 2
+contexts:
+  main:
+    - include: other
+    - match: 'ab'
+      scope: k.long
+  other:
+    - match: 'a'
+      scope: k.short

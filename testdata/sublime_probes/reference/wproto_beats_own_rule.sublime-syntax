@@ -1,0 +1,18 @@
+%YAML 1.2
+---
+name: wproto_beats_own_rule
+scope: source.wproto-beats-own-rule
+file_extensions: [wproto_beats_own_rule]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'x'
+      push: sub
+      with_prototype:
+        - match: 'a'
+          scope: k.wproto
+  sub:
+    - meta_scope: m.sub
+    - match: 'a'
+      scope: k.own

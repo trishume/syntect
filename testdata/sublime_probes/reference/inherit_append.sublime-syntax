@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+name: inherit_append
+scope: source.inherit-append
+file_extensions: [inherit_append]
+hidden: true
+version: 2
+extends: Packages/sublime_probes/reference/inherit_base.sublime-syntax
+contexts:
+  main:
+    - meta_append: true
+    - match: 'a'
+      scope: k.own

@@ -1,0 +1,16 @@
+%YAML 1.2
+---
+name: matching_empty_match
+scope: source.matching-empty-match
+file_extensions: [matching_empty_match]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      push: sub
+  sub:
+    - meta_scope: m.sub
+    - match: 'a'
+      scope: k.a
+      pop: true

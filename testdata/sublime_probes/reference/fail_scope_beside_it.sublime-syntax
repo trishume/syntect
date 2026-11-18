@@ -1,0 +1,23 @@
+%YAML 1.2
+---
+name: fail_scope_beside_it
+scope: source.fail-scope-beside-it
+file_extensions: [fail_scope_beside_it]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [only, other]
+    - match: 'b'
+      scope: k.b
+      fail: bp
+  only:
+    - match: 'a'
+      scope: k.a
+      pop: true
+  other:
+    - match: 'a'
+      scope: k.other
+      pop: true

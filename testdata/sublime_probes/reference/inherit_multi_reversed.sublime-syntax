@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+name: inherit_multi_reversed
+scope: source.inherit-multi-reversed
+file_extensions: [inherit_multi_reversed]
+hidden: true
+version: 2
+extends:
+  - Packages/sublime_probes/reference/inherit_sibling.sublime-syntax
+  - Packages/sublime_probes/reference/inherit_loose.sublime-syntax

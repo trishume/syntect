@@ -1,0 +1,18 @@
+%YAML 1.2
+---
+name: var_in_escape
+scope: source.var-in-escape
+file_extensions: [var_in_escape]
+hidden: true
+version: 2
+variables:
+  close: '>'
+contexts:
+  main:
+    - match: '<'
+      embed: inner
+      escape: '{{close}}'
+  inner:
+    - meta_scope: m.in
+    - match: 'a'
+      scope: k.a

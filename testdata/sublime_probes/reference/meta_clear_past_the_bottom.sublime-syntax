@@ -1,0 +1,17 @@
+%YAML 1.2
+---
+name: meta_clear_past_the_bottom
+scope: source.meta-clear-past-the-bottom
+file_extensions: [meta_clear_past_the_bottom]
+hidden: true
+version: 2
+contexts:
+  main:
+    - meta_content_scope: m.main
+    - match: 'x'
+      push: inner
+  inner:
+    - clear_scopes: 9
+    - meta_scope: m.inner
+    - match: 'y'
+      pop: true

@@ -1,0 +1,21 @@
+%YAML 1.2
+---
+name: wproto_transitive
+scope: source.wproto-transitive
+file_extensions: [wproto_transitive]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'x'
+      push: sub
+      with_prototype:
+        - match: 'q'
+          scope: k.wproto
+  sub:
+    - match: 'y'
+      push: deeper
+  deeper:
+    - meta_scope: m.deep
+    - match: 'a'
+      scope: k.a

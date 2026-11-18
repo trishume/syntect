@@ -1,0 +1,24 @@
+%YAML 1.2
+---
+name: action_branch_first
+scope: source.action-branch-first
+file_extensions: [action_branch_first]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [first, second]
+  first:
+    - match: 'a'
+      scope: k.first
+    - match: '(?=z)'
+      pop: true
+    - match: '(?=b)'
+      fail: bp
+  second:
+    - match: 'a'
+      scope: k.second
+    - match: '(?=\S)'
+      pop: true

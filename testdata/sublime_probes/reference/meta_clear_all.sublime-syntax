@@ -1,0 +1,17 @@
+%YAML 1.2
+---
+name: meta_clear_all
+scope: source.meta-clear-all
+file_extensions: [meta_clear_all]
+hidden: true
+version: 2
+contexts:
+  main:
+    - meta_content_scope: m.main
+    - match: 'x'
+      push: inner
+  inner:
+    - clear_scopes: true
+    - meta_scope: m.inner
+    - match: 'y'
+      pop: true

@@ -1,0 +1,15 @@
+%YAML 1.2
+---
+name: meta_scope_both_triggers
+scope: source.meta-scope-both-triggers
+file_extensions: [meta_scope_both_triggers]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '"'
+      push: string
+  string:
+    - meta_scope: str
+    - match: '"'
+      pop: true

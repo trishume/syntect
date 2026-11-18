@@ -1,0 +1,17 @@
+%YAML 1.2
+---
+name: action_pop_two
+scope: source.action-pop-two
+file_extensions: [action_pop_two]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      push: [one, two]
+  one:
+    - meta_scope: m.one
+  two:
+    - meta_scope: m.two
+    - match: 'b'
+      pop: 2

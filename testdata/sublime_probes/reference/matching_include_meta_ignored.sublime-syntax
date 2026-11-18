@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+name: matching_include_meta_ignored
+scope: source.matching-include-meta-ignored
+file_extensions: [matching_include_meta_ignored]
+hidden: true
+version: 2
+contexts:
+  main:
+    - include: other
+  other:
+    - meta_scope: m.other
+    - match: 'a'
+      scope: k.a

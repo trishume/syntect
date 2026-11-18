@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+name: inherit_loose
+scope: source.inherit-loose
+file_extensions: [inherit_loose]
+hidden: true
+version: 2
+extends: Packages/sublime_probes/reference/inherit_base.sublime-syntax
+contexts:
+  main:
+    - meta_prepend: true
+    - match: 'Y'
+      scope: k.loose

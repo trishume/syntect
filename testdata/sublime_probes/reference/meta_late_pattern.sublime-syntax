@@ -1,0 +1,17 @@
+%YAML 1.2
+---
+name: meta_late_pattern
+scope: source.meta-late-pattern
+file_extensions: [meta_late_pattern]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'x'
+      push: sub
+  sub:
+    - match: 'a'
+      scope: k.a
+    - meta_scope: m.late
+    - match: 'z'
+      pop: true

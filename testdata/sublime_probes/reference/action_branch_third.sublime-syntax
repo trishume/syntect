@@ -1,0 +1,27 @@
+%YAML 1.2
+---
+name: action_branch_third
+scope: source.action-branch-third
+file_extensions: [action_branch_third]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [first, second, third]
+  first:
+    - match: 'a'
+      scope: k.first
+    - match: '(?=b)'
+      fail: bp
+  second:
+    - match: 'a'
+      scope: k.second
+    - match: '(?=b)'
+      fail: bp
+  third:
+    - match: 'a'
+      scope: k.third
+    - match: '(?=\S)'
+      pop: true

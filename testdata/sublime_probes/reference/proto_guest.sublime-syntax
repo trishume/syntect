@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+name: proto_guest
+scope: source.proto-guest
+file_extensions: [proto_guest]
+hidden: true
+version: 2
+contexts:
+  prototype:
+    - match: 'p'
+      scope: k.guestproto
+  main:
+    - match: 'a'
+      scope: k.guest

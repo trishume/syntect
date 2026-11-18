@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+name: inherit_variable
+scope: source.inherit-variable
+file_extensions: [inherit_variable]
+hidden: true
+version: 2
+extends: Packages/sublime_probes/reference/inherit_base.sublime-syntax
+variables:
+  ident: '[0-9]+'
