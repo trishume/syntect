@@ -17,8 +17,10 @@ use crate::parsing::syntax_definition::ContextId;
 use crate::parsing::syntax_set::{SyntaxReference, SyntaxSet};
 use fnv::FnvHasher;
 use regex_syntax::escape;
-use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
+use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hash, Hasher};
+use std::num::NonZeroUsize;
+use std::time::{Duration, Instant};
 
 /// Errors that can occur while parsing.
 #[derive(Debug, thiserror::Error)]
@@ -34,6 +36,14 @@ pub enum ParsingError {
     BadMatchIndex(usize),
     #[error("Tried to use a ContextReference that has not bee resolved yet: {0:?}")]
     UnresolvedContextReference(ContextReference),
+    /// A line needed more tokens than the caller allowed. See
+    /// [`ParseState::parse_line_with_limit`].
+    #[error("Line exceeded its limit of {limit} tokens")]
+    TokenLimitExceeded { limit: usize },
+    /// A line took longer than the caller allowed. See
+    /// [`ParseState::parse_line_with_timeout`].
+    #[error("Line exceeded its time limit of {timeout:?}")]
+    TimeLimitExceeded { timeout: Duration },
 }
 
 /// Keeps the current parser state (the internal syntax interpreter stack) between lines of parsing.
@@ -511,6 +521,97 @@ fn summed_push_clear(
     Ok((total > 0).then_some(ClearAmount::TopN(total)))
 }
 
+/// The `(byte, stack hash)` states a non-consuming `set` was already taken
+/// from, used to break `set` cycles. See [`ParseState::parse_next_token`].
+type SetStates = HashSet<(usize, u64), BuildHasherDefault<FnvHasher>>;
+
+/// Hashes the stack a non-consuming `set` is taken from, for [`SetStates`].
+///
+/// A hash instead of a copy of the stack, so the guard never allocates. A
+/// collision can only make the guard skip a `set` it should have taken and
+/// advance a character instead, it can never make the parser hang.
+///
+/// Each level hashes its context and its prototypes, because two levels with
+/// the same context but different `with_prototype`s match differently. A
+/// prototype is hashed only once per level: a `set` keeps the prototypes of
+/// the level it replaces and appends its own `with_prototype`, so a cycle of
+/// `set`s with a `with_prototype` grows the list on every lap. A repeated
+/// prototype can never win over its first occurrence, so the state really is
+/// the same, and hashing it once keeps the number of states finite. Hashing
+/// every copy would make each lap look new and the cycle would never break.
+///
+/// `captures` are left out because `Region` isn't `Hash`. Two states that only
+/// differ in them are treated as one, which again can only skip a `set`.
+fn set_state_hash(stack: &[StateLevel]) -> u64 {
+    let mut hasher = FnvHasher::default();
+    for level in stack {
+        level.context.hash(&mut hasher);
+        let mut unique_prototypes = 0;
+        for (i, prototype) in level.prototypes.iter().enumerate() {
+            if !level.prototypes[..i].contains(prototype) {
+                prototype.hash(&mut hasher);
+                unique_prototypes += 1;
+            }
+        }
+        hasher.write_usize(unique_prototypes);
+    }
+    hasher.finish()
+}
+
+/// Moves `start` past one character, the way Sublime Text breaks a match loop.
+/// Byte indices, so `+= 1` would split a multi-byte character. Returns false at
+/// the end of the line, where there is nothing left to advance over and no
+/// point trying more patterns.
+fn advance_one_char(line: &str, start: &mut usize) -> bool {
+    match line[*start..].char_indices().nth(1) {
+        Some((i, _)) => {
+            *start += i;
+            true
+        }
+        None => false,
+    }
+}
+
+/// How many tokens [`ParseState::parse_line_with_timeout`] parses between two reads of
+/// the clock.
+const TOKENS_PER_CLOCK_CHECK: usize = 256;
+
+/// The work one `parse_line*` call may still do, counted in tokens.
+///
+/// Shared by the current line and by any buffered lines a cross-line `fail` replays
+/// during the same call, so a replay cannot escape the limit.
+struct TokenBudget {
+    tokens: usize,
+    limit: Option<NonZeroUsize>,
+    deadline: Option<(Instant, Duration)>,
+}
+
+impl TokenBudget {
+    fn unlimited() -> Self {
+        TokenBudget {
+            tokens: 0,
+            limit: None,
+            deadline: None,
+        }
+    }
+
+    /// Counts one token and fails once the limit or the deadline is exceeded.
+    fn spend(&mut self) -> Result<(), ParsingError> {
+        self.tokens += 1;
+        if let Some(limit) = self.limit {
+            if self.tokens > limit.get() {
+                return Err(ParsingError::TokenLimitExceeded { limit: limit.get() });
+            }
+        }
+        if let Some((deadline, timeout)) = self.deadline {
+            if self.tokens.is_multiple_of(TOKENS_PER_CLOCK_CHECK) && Instant::now() >= deadline {
+                return Err(ParsingError::TimeLimitExceeded { timeout });
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Build the ordered Push/Pop ops for a match's `captures:` mapping over
 /// its regex `regions`. Captures can appear in arbitrary source order
 /// (e.g. `((bob)|(hi))*` matching `hibob` — the outer group must Push
@@ -722,6 +823,75 @@ impl ParseState {
         line: &str,
         syntax_set: &SyntaxSet,
     ) -> Result<ParseLineOutput, ParsingError> {
+        self.parse_line_budgeted(line, syntax_set, &mut TokenBudget::unlimited())
+    }
+
+    /// Like [`Self::parse_line`], but gives up once the line would need more than `limit`
+    /// tokens.
+    ///
+    /// `Some(n)` permits exactly `n` tokens: a line costing `n` tokens or fewer parses
+    /// normally, and a line costing more returns [`ParsingError::TokenLimitExceeded`].
+    /// `None` is unlimited and behaves exactly as [`Self::parse_line`]. Tokens spent
+    /// re-parsing earlier lines after a cross-line `fail` count against the same limit.
+    ///
+    /// A token is one iteration of the parse loop: a pattern match, an escape match, the
+    /// one-character advance of the loop guard, or a restart after an exhausted branch.
+    /// Zero-width matches count. On the first line of a new `ParseState`, entering the
+    /// syntax's `main` context costs one more token, so with a syntax that matches one
+    /// token per character, `"abcd\n"` costs 5 tokens.
+    ///
+    /// A syntax definition can make the parser loop on one line without consuming input in
+    /// ways the built-in loop guards do not detect. The limit turns such a parse into an
+    /// error the caller can handle, for example by showing the line unhighlighted.
+    ///
+    /// After an error the state is not meaningful to continue from. Keep a clone from
+    /// before the call if you need to resume.
+    pub fn parse_line_with_limit(
+        &mut self,
+        line: &str,
+        syntax_set: &SyntaxSet,
+        limit: Option<NonZeroUsize>,
+    ) -> Result<ParseLineOutput, ParsingError> {
+        let mut budget = TokenBudget {
+            limit,
+            ..TokenBudget::unlimited()
+        };
+        self.parse_line_budgeted(line, syntax_set, &mut budget)
+    }
+
+    /// Like [`Self::parse_line`], but gives up once parsing the line has taken longer than
+    /// `timeout`, and returns [`ParsingError::TimeLimitExceeded`].
+    ///
+    /// Tokens are counted as in [`Self::parse_line_with_limit`], and the clock is read once
+    /// every 256 tokens rather than on every token. A parse can therefore run up to 255
+    /// tokens past `timeout` before it stops, and a line that needs fewer than 256 tokens
+    /// is never stopped. Because the result depends on the speed of the machine,
+    /// prefer [`Self::parse_line_with_limit`] where a reproducible result matters, such as
+    /// in tests.
+    ///
+    /// After an error the state is not meaningful to continue from. Keep a clone from
+    /// before the call if you need to resume.
+    pub fn parse_line_with_timeout(
+        &mut self,
+        line: &str,
+        syntax_set: &SyntaxSet,
+        timeout: Duration,
+    ) -> Result<ParseLineOutput, ParsingError> {
+        let mut budget = TokenBudget {
+            deadline: Instant::now()
+                .checked_add(timeout)
+                .map(|deadline| (deadline, timeout)),
+            ..TokenBudget::unlimited()
+        };
+        self.parse_line_budgeted(line, syntax_set, &mut budget)
+    }
+
+    fn parse_line_budgeted(
+        &mut self,
+        line: &str,
+        syntax_set: &SyntaxSet,
+        budget: &mut TokenBudget,
+    ) -> Result<ParseLineOutput, ParsingError> {
         if self.stack.is_empty() {
             return Err(ParsingError::MissingMainContext);
         }
@@ -741,7 +911,7 @@ impl ParseState {
         });
         self.line_number += 1;
 
-        let ops = self.parse_line_inner(line, syntax_set)?;
+        let ops = self.parse_line_inner(line, syntax_set, budget)?;
 
         // Collect any corrected ops produced by a cross-line `fail` during the
         // parse above.  These are stored by `handle_fail` in `self.flushed_ops`.
@@ -780,8 +950,9 @@ impl ParseState {
         &mut self,
         line: &str,
         syntax_set: &SyntaxSet,
+        budget: &mut TokenBudget,
     ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
-        self.parse_line_inner_from(line, syntax_set, 0, None)
+        self.parse_line_inner_from(line, syntax_set, 0, None, budget)
     }
 
     /// Parse `line` starting at `start_at` rather than column 0. Used by
@@ -799,6 +970,7 @@ impl ParseState {
         // A branch that ran out at a byte of *this* string,
         // to suppress there. See `ReplayRequest::skip`.
         skip: Option<(usize, String)>,
+        budget: &mut TokenBudget,
     ) -> Result<Vec<(usize, ScopeStackOp)>, ParsingError> {
         let mut match_start = start_at;
         let mut res = Vec::new();
@@ -830,6 +1002,9 @@ impl ParseState {
         // of a shorter one. See `skipped_branches`.
         let outer_skipped = std::mem::take(&mut self.skipped_branches);
         self.skipped_branches.extend(skip);
+        // Used for detecting loops between non-consuming `set`s, see
+        // `parse_next_token`.
+        let mut set_states = SetStates::default();
 
         while self.parse_next_token(
             line,
@@ -838,8 +1013,12 @@ impl ParseState {
             &mut search_cache,
             &mut regions,
             &mut non_consuming_push_at,
+            &mut set_states,
             &mut res,
-        )? {}
+            budget,
+        )? {
+            budget.spend()?;
+        }
 
         // See `outer_skipped` above.
         self.skipped_branches = outer_skipped;
@@ -856,7 +1035,9 @@ impl ParseState {
         search_cache: &mut SearchCache,
         regions: &mut Region,
         non_consuming_push_at: &mut (usize, usize, usize),
+        set_states: &mut SetStates,
         ops: &mut Vec<(usize, ScopeStackOp)>,
+        budget: &mut TokenBudget,
     ) -> Result<bool, ParsingError> {
         // The guard is armed over the *range* a non-consuming
         // push reached, not over one depth of it, and what it watches for is a
@@ -951,17 +1132,7 @@ impl ParseState {
 
                 // println!("pop_would_loop for match {:?}, start {}", reg_match, *start);
 
-                // nth(1) gets the next character if there is one. Need to do
-                // this instead of just += 1 because we have byte indices and
-                // unicode characters can be more than 1 byte.
-                if let Some((i, _)) = line[*start..].char_indices().nth(1) {
-                    *start += i;
-                    return Ok(true);
-                } else {
-                    // End of line, no character to advance and no point trying
-                    // any more patterns.
-                    return Ok(false);
-                }
+                return Ok(advance_one_char(line, start));
             }
 
             let match_end = reg_match.regions.pos(0).unwrap().1;
@@ -1002,6 +1173,7 @@ impl ParseState {
                     non_consuming_push_at,
                     ops,
                     search_cache,
+                    budget,
                 );
             }
 
@@ -1034,10 +1206,8 @@ impl ParseState {
             if !consuming {
                 // The match doesn't consume any characters. If this is a
                 // "push", remember the position and stack size so that we can
-                // check the next "pop" for loops. Otherwise leave the state,
-                // e.g. non-consuming "set" could also result in a loop.
-                // how deep this push actually goes, so the
-                // guard is armed over all of it. A `branch:` pushes exactly one
+                // check the next "pop" for loops, and how deep this push
+                // actually goes, so the guard is armed over all of it. A `branch:` pushes exactly one
                 // alternative whatever the list holds; a `push:`/`embed:`
                 // pushes its whole list. A `pop: M` in front of any of them
                 // takes the stack below where the trigger's own context sits,
@@ -1076,6 +1246,21 @@ impl ParseState {
                     // may be widened and may not be narrowed.
                     *non_consuming_push_at = (match_end, pre, reach.max(pre + 1));
                 }
+                // A non-consuming "set" loops too, and the guard above cannot
+                // see it: a "set" is neither the push that arms it nor the pop
+                // that trips it, and a "set" of one context leaves the stack
+                // depth alone, so two contexts that "set" each other spin here
+                // forever. Taking a "set" from a byte and stack we already took
+                // one from can only repeat the same work, so do what Sublime
+                // Text does with the push/pop loop and move on by a character.
+                // The stack has to be part of the key: an included context is
+                // shared, so the same rule legitimately fires at one byte from
+                // many states.
+                if matches!(match_pattern.operation, MatchOperation::Set { .. })
+                    && !set_states.insert((*start, set_state_hash(&self.stack)))
+                {
+                    return Ok(advance_one_char(line, start));
+                }
             }
 
             *start = match_end;
@@ -1104,6 +1289,7 @@ impl ParseState {
                 non_consuming_push_at,
                 ops,
                 search_cache,
+                budget,
             )?;
 
             Ok(true)
@@ -1441,6 +1627,7 @@ impl ParseState {
         non_consuming_push_at: &mut (usize, usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
         search_cache: &mut SearchCache,
+        budget: &mut TokenBudget,
     ) -> Result<bool, ParsingError> {
         let (match_start, match_end) = reg_match.regions.pos(0).unwrap();
         let context = reg_match.context;
@@ -1471,6 +1658,7 @@ impl ParseState {
                     ops,
                     search_cache,
                     syntax_set,
+                    budget,
                 );
             }
         }
@@ -1623,6 +1811,7 @@ impl ParseState {
         ops: &mut Vec<(usize, ScopeStackOp)>,
         search_cache: &mut SearchCache,
         syntax_set: &SyntaxSet,
+        budget: &mut TokenBudget,
     ) -> Result<bool, ParsingError> {
         // Find the branch point by name (most recent first), skipping
         // records whose alternative's pushed frame is no longer on
@@ -1751,7 +1940,7 @@ impl ParseState {
                     self.replay_pending = Some(request);
                     return Ok(false);
                 }
-                self.run_replays(request, syntax_set)?;
+                self.run_replays(request, syntax_set, budget)?;
 
                 // Restart the current line from the beginning under the
                 // restored state. including what ran out on
@@ -1925,7 +2114,7 @@ impl ParseState {
                 self.replay_pending = Some(request);
                 return Ok(false);
             }
-            self.run_replays(request, syntax_set)?;
+            self.run_replays(request, syntax_set, budget)?;
 
             // Restart the current line from the beginning — and what ran out
             // on it goes with the reading that ran out. See
@@ -2056,9 +2245,10 @@ impl ParseState {
         &mut self,
         mut req: ReplayRequest,
         syntax_set: &SyntaxSet,
+        budget: &mut TokenBudget,
     ) -> Result<(), ParsingError> {
         loop {
-            let corrections = self.run_replay(&req, syntax_set)?;
+            let corrections = self.run_replay(&req, syntax_set, budget)?;
             self.flushed_ops.extend(corrections);
             match self.replay_pending.take() {
                 Some(next) => req = next,
@@ -2077,6 +2267,7 @@ impl ParseState {
         &mut self,
         req: &ReplayRequest,
         syntax_set: &SyntaxSet,
+        budget: &mut TokenBudget,
     ) -> Result<Vec<(usize, Vec<(usize, ScopeStackOp)>)>, ParsingError> {
         let lines: Vec<String> = self.pending_lines[req.from..].to_vec();
         let mut out = Vec::with_capacity(lines.len());
@@ -2098,12 +2289,17 @@ impl ParseState {
                     replay.prefix = composed.clone();
                 }
                 let resume_at = req.resume_at.min(line.len());
-                let tail =
-                    self.parse_line_inner_from(line, syntax_set, resume_at, req.skip.clone())?;
+                let tail = self.parse_line_inner_from(
+                    line,
+                    syntax_set,
+                    resume_at,
+                    req.skip.clone(),
+                    budget,
+                )?;
                 composed.extend(tail);
                 composed
             } else {
-                self.parse_line_inner(line, syntax_set)?
+                self.parse_line_inner(line, syntax_set, budget)?
             };
             self.replay_line = outer;
             // The line `pending_lines[from + i]` is: the current line, less the
@@ -3867,6 +4063,74 @@ contexts:
 
         let line = "test";
         let expect = ["<source.test>, <test.matched>"];
+        expect_scope_stacks(line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_sets_that_would_loop() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    # This makes us go into "a" without consuming any characters
+    - match: (?=test)
+      set: a
+  a:
+    # And this one into "b", still without consuming anything
+    - match: (?=t)
+      set: b
+    - match: \w+
+      scope: test.matched
+  b:
+    # Which sends us straight back to "a". Neither of the two is a push or a
+    # pop, so the stack depth never moves and the push/pop loop check above
+    # never sees a thing. ST stops taking a "set" that already fired at this
+    # position and advances instead.
+    - match: (?=t)
+      set: a
+    - match: \w+
+      scope: test.matched
+"#;
+
+        let line = "test";
+        let expect = ["<source.test>, <test.matched>"];
+        expect_scope_stacks(line, &expect, syntax);
+    }
+
+    #[test]
+    fn can_parse_non_consuming_sets_that_would_loop_with_prototype() {
+        let syntax = r#"
+name: test
+scope: source.test
+contexts:
+  main:
+    - match: (?=x)
+      set: a
+  a:
+    # Sets "b" without consuming anything. A "set" keeps the prototypes of
+    # the context it replaces and adds its own, so every lap through here
+    # adds another copy of this prototype.
+    - match: (?=x)
+      set: b
+      with_prototype:
+        - match: z
+          scope: test.prototype
+    - match: y
+      scope: test.a
+  b:
+    # And straight back to "a", which now has the prototype. That is not the
+    # state the first "set" was taken from, so it is taken again. The loop is
+    # caught one lap later, on "b" with the prototype twice, which matches
+    # exactly like "b" with it once.
+    - match: (?=x)
+      set: a
+    - match: y
+      scope: test.b
+"#;
+
+        let line = "xyz";
+        let expect = ["<source.test>, <test.b>", "<source.test>, <test.prototype>"];
         expect_scope_stacks(line, &expect, syntax);
     }
 
@@ -7829,5 +8093,127 @@ contexts:
                 stack_str
             );
         }
+    }
+
+    /// A syntax whose `main` produces one token per character. On the first line of a
+    /// fresh `ParseState`, entering `main` from `__start` costs one more token, so
+    /// "abcd\n" costs 5 tokens.
+    fn one_token_per_char() -> (SyntaxSet, ParseState) {
+        let syntax = r#"
+name: counter
+scope: source.counter
+contexts:
+  main:
+    - match: .
+      scope: counter.char
+"#;
+        let mut builder = SyntaxSetBuilder::new();
+        builder.add(SyntaxDefinition::load_from_str(syntax, true, None).unwrap());
+        let ss = builder.build();
+        let state = ParseState::new(ss.find_syntax_by_name("counter").unwrap());
+        (ss, state)
+    }
+
+    #[test]
+    fn token_limit_at_the_line_cost_parses() {
+        let (ss, mut state) = one_token_per_char();
+        let output = state
+            .parse_line_with_limit("abcd\n", &ss, NonZeroUsize::new(5))
+            .unwrap();
+        assert!(!output.ops.is_empty());
+    }
+
+    #[test]
+    fn token_limit_below_the_line_cost_is_an_error() {
+        let (ss, mut state) = one_token_per_char();
+        let err = state
+            .parse_line_with_limit("abcd\n", &ss, NonZeroUsize::new(4))
+            .unwrap_err();
+        assert!(
+            matches!(err, ParsingError::TokenLimitExceeded { limit: 4 }),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn no_token_limit_is_parse_line() {
+        let (ss, mut limited) = one_token_per_char();
+        let mut plain = limited.clone();
+        let line = "abcdefghij\n";
+        assert_eq!(
+            limited.parse_line_with_limit(line, &ss, None).unwrap().ops,
+            plain.parse_line(line, &ss).unwrap().ops,
+        );
+    }
+
+    #[test]
+    fn time_limit_is_checked_every_few_hundred_tokens() {
+        let line = format!("{}\n", "a".repeat(2 * TOKENS_PER_CLOCK_CHECK));
+
+        let (ss, mut state) = one_token_per_char();
+        let err = state
+            .parse_line_with_timeout(&line, &ss, Duration::ZERO)
+            .unwrap_err();
+        assert!(
+            matches!(err, ParsingError::TimeLimitExceeded { timeout } if timeout.is_zero()),
+            "got {err:?}"
+        );
+
+        let (ss, mut state) = one_token_per_char();
+        state
+            .parse_line_with_timeout(&line, &ss, Duration::from_secs(3600))
+            .unwrap();
+
+        let (ss, mut limited) = one_token_per_char();
+        let mut plain = limited.clone();
+        assert_eq!(
+            limited
+                .parse_line_with_timeout(&line, &ss, Duration::MAX)
+                .unwrap()
+                .ops,
+            plain.parse_line(&line, &ss).unwrap().ops,
+        );
+    }
+
+    #[test]
+    fn token_limit_covers_cross_line_replay() {
+        // "FAIL" on line 2 rewinds to the branch point on line 1 and re-parses the rest of
+        // line 1 under fallback-ctx, one token per character.
+        let syntax_str = r#"
+name: CrossLineLimit
+scope: source.cll
+contexts:
+  main:
+    - match: 'TRY'
+      branch_point: bp
+      branch: [try-ctx, fallback-ctx]
+  try-ctx:
+    - match: 'FAIL'
+      fail: bp
+    - match: '.|\n'
+  fallback-ctx:
+    - match: '.|\n'
+      scope: fallback.char
+"#;
+        let syntax = SyntaxDefinition::load_from_str(syntax_str, true, None).unwrap();
+        let ss = link(syntax);
+        let mut state = ParseState::new(&ss.syntaxes()[0]);
+        let line1 = format!("TRY{}\n", "a".repeat(100));
+        state.parse_line(&line1, &ss).unwrap();
+
+        // Line 2 alone costs far fewer than 20 tokens; with the replay it costs over 100.
+        let err = state
+            .clone()
+            .parse_line_with_limit("FAIL\n", &ss, NonZeroUsize::new(20))
+            .unwrap_err();
+        assert!(
+            matches!(err, ParsingError::TokenLimitExceeded { limit: 20 }),
+            "got {err:?}"
+        );
+
+        let output = state
+            .parse_line_with_limit("FAIL\n", &ss, NonZeroUsize::new(1000))
+            .unwrap();
+        assert_eq!(output.replayed.len(), 1);
     }
 }

@@ -54,7 +54,26 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
     s
 }
 
-const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\\}")];
+/// Appends `text` to `s`, escaping the characters that are special inside a
+/// `commandchars=\\\{\}` Verbatim environment.
+///
+/// The text is copied in chunks between the special characters, so text that
+/// contains none of them is appended with a single copy.
+fn write_latex_escaped(s: &mut String, text: &str) {
+    let mut copied_up_to = 0;
+    for (i, matched) in text.match_indices(['\\', '{', '}']) {
+        s.push_str(&text[copied_up_to..i]);
+        s.push_str(match matched {
+            // A literal `\` can't be written as `\\`, which is a line break
+            // in a Verbatim environment.
+            "\\" => "\\textbackslash{}",
+            "{" => "\\{",
+            _ => "\\}",
+        });
+        copied_up_to = i + matched.len();
+    }
+    s.push_str(&text[copied_up_to..]);
+}
 
 /// Formats the styled fragments using LaTeX textcolor directive.
 ///
@@ -102,14 +121,13 @@ const LATEX_REPLACE: [(&str, &str); 3] = [("\\", "\\\\"), ("{", "\\{"), ("}", "\
 pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
     let mut s: String = String::new();
     let mut prev_style: Option<Style> = None;
-    let mut content: String;
     fn textcolor(style: &Style, first: bool) -> String {
         format!(
             "{}\\textcolor[RGB]{{{},{},{}}}{{",
             if first { "" } else { "}" },
             style.foreground.r,
-            style.foreground.b,
-            style.foreground.g
+            style.foreground.g,
+            style.foreground.b
         )
     }
     for &(style, text) in v.iter() {
@@ -128,11 +146,7 @@ pub fn as_latex_escaped(v: &[(Style, &str)]) -> String {
         } else {
             write!(s, "{}", textcolor(&style, true)).unwrap();
         }
-        content = text.to_string();
-        for &(old, new) in LATEX_REPLACE.iter() {
-            content = content.replace(old, new);
-        }
-        write!(s, "{}", &content).unwrap();
+        write_latex_escaped(&mut s, text);
         prev_style = Some(style);
     }
     s.push('}');
@@ -412,5 +426,47 @@ mod tests {
         };
         let s = as_24_bit_terminal_escaped(&[(style, "hello")], true);
         assert_eq!(s, "\x1b[48;2;0;0;0m\x1b[38;2;128;128;128mhello");
+    }
+
+    #[test]
+    fn test_as_latex_escaped() {
+        let style = Style {
+            foreground: Color {
+                r: 10,
+                g: 20,
+                b: 30,
+                a: 255,
+            },
+            background: Color::BLACK,
+            font_style: FontStyle::default(),
+        };
+
+        // Foreground channels are emitted in R, G, B order, a literal backslash
+        // becomes `\textbackslash{}` (a bare `\\` is a line break in a Verbatim
+        // environment) and braces are escaped.
+        let s = as_latex_escaped(&[(style, "a\\b{c}")]);
+        assert_eq!(s, "\\textcolor[RGB]{10,20,30}{a\\textbackslash{}b\\{c\\}}");
+
+        // Text without any special characters is passed through unchanged.
+        let s = as_latex_escaped(&[(style, "hello")]);
+        assert_eq!(s, "\\textcolor[RGB]{10,20,30}{hello}");
+
+        // Escaping doesn't split multi-byte characters.
+        let s = as_latex_escaped(&[(style, "{こんにちは}")]);
+        assert_eq!(s, "\\textcolor[RGB]{10,20,30}{\\{こんにちは\\}}");
+
+        // A style change starts a new textcolor group.
+        let mut other = style;
+        other.foreground = Color {
+            r: 40,
+            g: 50,
+            b: 60,
+            a: 255,
+        };
+        let s = as_latex_escaped(&[(style, "a"), (other, "\\")]);
+        assert_eq!(
+            s,
+            "\\textcolor[RGB]{10,20,30}{a}\\textcolor[RGB]{40,50,60}{\\textbackslash{}}"
+        );
     }
 }
