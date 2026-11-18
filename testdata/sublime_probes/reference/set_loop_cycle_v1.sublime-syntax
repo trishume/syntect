@@ -1,0 +1,22 @@
+%YAML 1.2
+---
+name: set_loop_cycle_v1
+scope: source.set-loop-cycle-v1
+file_extensions: [set_loop_cycle_v1]
+hidden: true
+contexts:
+  main:
+    - match: (?=t)
+      set: first
+    - match: '[a-z]'
+      scope: in.main
+  first:
+    - match: (?=t)
+      set: second
+    - match: '[a-z]'
+      scope: in.first
+  second:
+    - match: (?=t)
+      set: first
+    - match: '[a-z]'
+      scope: in.second

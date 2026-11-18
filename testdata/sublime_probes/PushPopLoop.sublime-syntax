@@ -1,0 +1,18 @@
+%YAML 1.2
+---
+name: PushPopLoop
+scope: source.pushpoploop
+version: 2
+file_extensions: [ppl]
+contexts:
+  main:
+    - match: (?=q)
+      push: [outer, middle, inner]
+  outer:
+    - meta_scope: meta.outer.ppl
+  middle:
+    - meta_scope: meta.middle.ppl
+  inner:
+    - meta_scope: meta.inner.ppl
+    - match: (?=q)
+      pop: 3

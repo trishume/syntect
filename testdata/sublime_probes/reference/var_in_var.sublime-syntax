@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+name: var_in_var
+scope: source.var-in-var
+file_extensions: [var_in_var]
+hidden: true
+version: 2
+variables:
+  ident: '[a-z]+'
+  call: '{{ident}}\('
+contexts:
+  main:
+    - match: '{{call}}'
+      scope: k.call

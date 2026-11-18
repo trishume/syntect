@@ -1,0 +1,1533 @@
+{
+ "action_branch_first": {
+  "coloured": true,
+  "columns": [
+   "source.action-branch-first k.first",
+   "source.action-branch-first",
+   "source.action-branch-first"
+  ],
+  "line": "az",
+  "loaded": true
+ },
+ "action_branch_second": {
+  "coloured": true,
+  "columns": [
+   "source.action-branch-second k.second",
+   "source.action-branch-second",
+   "source.action-branch-second"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "action_branch_third": {
+  "coloured": true,
+  "columns": [
+   "source.action-branch-third k.third",
+   "source.action-branch-third",
+   "source.action-branch-third"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "action_captures_empty_group": {
+  "coloured": true,
+  "columns": [
+   "source.action-captures-empty-group",
+   "source.action-captures-empty-group",
+   "source.action-captures-empty-group"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "action_captures_nested": {
+  "coloured": true,
+  "columns": [
+   "source.action-captures-nested k.outer k.first",
+   "source.action-captures-nested k.outer k.second",
+   "source.action-captures-nested"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "action_captures_zero": {
+  "coloured": true,
+  "columns": [
+   "source.action-captures-zero k.whole k.zero k.one",
+   "source.action-captures-zero k.whole k.zero",
+   "source.action-captures-zero"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "action_embed_nested": {
+  "coloured": true,
+  "columns": [
+   "source.action-embed-nested m.outer",
+   "source.action-embed-nested m.outer m.inner",
+   "source.action-embed-nested m.outer m.inner k.a",
+   "source.action-embed-nested m.outer",
+   "source.action-embed-nested m.outer",
+   "source.action-embed-nested",
+   "source.action-embed-nested",
+   "source.action-embed-nested"
+  ],
+  "line": "<[a]b>t",
+  "loaded": true
+ },
+ "action_embed_scope": {
+  "coloured": true,
+  "columns": [
+   "source.action-embed-scope k.open",
+   "source.action-embed-scope m.embedded k.a",
+   "source.action-embed-scope k.close",
+   "source.action-embed-scope",
+   "source.action-embed-scope"
+  ],
+  "line": "<a>t",
+  "loaded": true
+ },
+ "action_embed_unwinds": {
+  "coloured": true,
+  "columns": [
+   "source.action-embed-unwinds",
+   "source.action-embed-unwinds m.deep",
+   "source.action-embed-unwinds m.deep k.z",
+   "source.action-embed-unwinds",
+   "source.action-embed-unwinds",
+   "source.action-embed-unwinds"
+  ],
+  "line": "<az>t",
+  "loaded": true
+ },
+ "action_escape_backref": {
+  "coloured": true,
+  "columns": [
+   "source.action-escape-backref m.in",
+   "source.action-escape-backref m.in",
+   "source.action-escape-backref m.in k.w",
+   "source.action-escape-backref m.in k.w",
+   "source.action-escape-backref",
+   "source.action-escape-backref",
+   "source.action-escape-backref",
+   "source.action-escape-backref"
+  ],
+  "line": "<qazq>t",
+  "loaded": true
+ },
+ "action_escape_captures_group": {
+  "coloured": true,
+  "columns": [
+   "source.action-escape-captures-group",
+   "source.action-escape-captures-group k.a",
+   "source.action-escape-captures-group k.dash",
+   "source.action-escape-captures-group k.gt",
+   "source.action-escape-captures-group",
+   "source.action-escape-captures-group"
+  ],
+  "line": "<a->t",
+  "loaded": true
+ },
+ "action_fail_popped": {
+  "loaded": false
+ },
+ "action_fail_unopened": {
+  "loaded": false
+ },
+ "action_heredoc_closes": {
+  "coloured": true,
+  "columns": [
+   "source.action-heredoc-closes",
+   "source.action-heredoc-closes",
+   "source.action-heredoc-closes",
+   "source.action-heredoc-closes",
+   "source.action-heredoc-closes",
+   "source.action-heredoc-closes"
+  ],
+  "line": "after",
+  "loaded": true
+ },
+ "action_heredoc_wrong_word": {
+  "coloured": true,
+  "columns": [
+   "source.action-heredoc-wrong-word m.heredoc",
+   "source.action-heredoc-wrong-word m.heredoc",
+   "source.action-heredoc-wrong-word m.heredoc",
+   "source.action-heredoc-wrong-word m.heredoc",
+   "source.action-heredoc-wrong-word m.heredoc",
+   "source.action-heredoc-wrong-word m.heredoc"
+  ],
+  "line": "after",
+  "loaded": true
+ },
+ "action_inline_context": {
+  "coloured": true,
+  "columns": [
+   "source.action-inline-context m.inline",
+   "source.action-inline-context m.inline",
+   "source.action-inline-context",
+   "source.action-inline-context"
+  ],
+  "line": "abc",
+  "loaded": true
+ },
+ "action_pop_branch_lookahead": {
+  "coloured": true,
+  "columns": [
+   "source.action-pop-branch-lookahead m.one m.two",
+   "source.action-pop-branch-lookahead m.three k.trigger",
+   "source.action-pop-branch-lookahead m.three",
+   "source.action-pop-branch-lookahead m.three"
+  ],
+  "line": "abc",
+  "loaded": true
+ },
+ "action_pop_embed": {
+  "coloured": true,
+  "columns": [
+   "source.action-pop-embed m.para",
+   "source.action-pop-embed k.open",
+   "source.action-pop-embed m.embedded k.a",
+   "source.action-pop-embed m.para",
+   "source.action-pop-embed",
+   "source.action-pop-embed"
+  ],
+  "line": "p<a>t",
+  "loaded": true
+ },
+ "action_pop_push_lookahead": {
+  "coloured": true,
+  "columns": [
+   "source.action-pop-push-lookahead m.one m.two",
+   "source.action-pop-push-lookahead m.three k.trigger",
+   "source.action-pop-push-lookahead m.three",
+   "source.action-pop-push-lookahead m.three"
+  ],
+  "line": "abc",
+  "loaded": true
+ },
+ "action_pop_set_keeps": {
+  "coloured": true,
+  "columns": [
+   "source.action-pop-set-keeps m.one m.two",
+   "source.action-pop-set-keeps m.one m.two m.three k.trigger",
+   "source.action-pop-set-keeps m.three",
+   "source.action-pop-set-keeps m.three"
+  ],
+  "line": "abc",
+  "loaded": true
+ },
+ "action_pop_two": {
+  "coloured": true,
+  "columns": [
+   "source.action-pop-two m.one m.two",
+   "source.action-pop-two m.one m.two",
+   "source.action-pop-two",
+   "source.action-pop-two"
+  ],
+  "line": "abc",
+  "loaded": true
+ },
+ "action_push_list_order": {
+  "coloured": true,
+  "columns": [
+   "source.action-push-list-order m.one m.two",
+   "source.action-push-list-order m.one m.two",
+   "source.action-push-list-order m.one k.one",
+   "source.action-push-list-order m.one"
+  ],
+  "line": "abc",
+  "loaded": true
+ },
+ "action_set_both_metas": {
+  "coloured": true,
+  "columns": [
+   "source.action-set-both-metas m.one",
+   "source.action-set-both-metas m.one m.two k.trigger",
+   "source.action-set-both-metas m.two",
+   "source.action-set-both-metas"
+  ],
+  "line": "abc",
+  "loaded": true
+ },
+ "action_set_list": {
+  "coloured": true,
+  "columns": [
+   "source.action-set-list m.one",
+   "source.action-set-list m.one m.two m.three k.trigger",
+   "source.action-set-list m.two m.three",
+   "source.action-set-list m.two"
+  ],
+  "line": "abc",
+  "loaded": true
+ },
+ "branch_one_alternative": {
+  "coloured": false,
+  "loaded": true
+ },
+ "branch_two_alternatives_control": {
+  "coloured": true,
+  "columns": [
+   "source.branch-two-alternatives-control k.a",
+   "source.branch-two-alternatives-control",
+   "source.branch-two-alternatives-control"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "fail_bare_known": {
+  "coloured": false,
+  "loaded": true
+ },
+ "fail_bare_unknown": {
+  "coloured": true,
+  "columns": [
+   "source.fail-bare-unknown",
+   "source.fail-bare-unknown k.b",
+   "source.fail-bare-unknown"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "fail_inside_alternative": {
+  "loaded": false
+ },
+ "fail_popped_bare": {
+  "coloured": true,
+  "columns": [
+   "source.fail-popped-bare k.a",
+   "source.fail-popped-bare",
+   "source.fail-popped-bare"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "fail_scope_beside_it": {
+  "loaded": false
+ },
+ "fail_scoped_known": {
+  "loaded": false
+ },
+ "inherit_added_context": {
+  "coloured": true,
+  "columns": [
+   "source.inherit-added-context m.mine",
+   "source.inherit-added-context m.mine",
+   "source.inherit-added-context m.mine",
+   "source.inherit-added-context"
+  ],
+  "line": "Qaz",
+  "loaded": true
+ },
+ "inherit_append": {
+  "coloured": true,
+  "columns": [
+   "source.inherit-append k.base",
+   "source.inherit-append k.base",
+   "source.inherit-append"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "inherit_multi": {
+  "coloured": true,
+  "columns": [
+   "source.inherit-multi k.loose",
+   "source.inherit-multi k.base",
+   "source.inherit-multi k.base",
+   "source.inherit-multi"
+  ],
+  "line": "Yab",
+  "loaded": true
+ },
+ "inherit_multi_reversed": {
+  "coloured": true,
+  "columns": [
+   "source.inherit-multi-reversed k.loose",
+   "source.inherit-multi-reversed k.base",
+   "source.inherit-multi-reversed k.base",
+   "source.inherit-multi-reversed"
+  ],
+  "line": "Yab",
+  "loaded": true
+ },
+ "inherit_override": {
+  "coloured": true,
+  "columns": [
+   "source.inherit-override k.own",
+   "source.inherit-override",
+   "source.inherit-override"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "inherit_plain": {
+  "coloured": true,
+  "columns": [
+   "source.inherit-plain k.base",
+   "source.inherit-plain k.base",
+   "source.inherit-plain"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "inherit_prepend": {
+  "coloured": true,
+  "columns": [
+   "source.inherit-prepend k.own",
+   "source.inherit-prepend k.base",
+   "source.inherit-prepend"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "inherit_variable": {
+  "coloured": true,
+  "columns": [
+   "source.inherit-variable",
+   "source.inherit-variable",
+   "source.inherit-variable k.base",
+   "source.inherit-variable k.base",
+   "source.inherit-variable"
+  ],
+  "line": "ab12",
+  "loaded": true
+ },
+ "inherit_version_child": {
+  "loaded": false
+ },
+ "matching_empty_match": {
+  "coloured": true,
+  "columns": [
+   "source.matching-empty-match m.sub k.a",
+   "source.matching-empty-match",
+   "source.matching-empty-match"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "matching_first_defined": {
+  "coloured": true,
+  "columns": [
+   "source.matching-first-defined k.long",
+   "source.matching-first-defined k.long",
+   "source.matching-first-defined"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "matching_first_defined_shorter": {
+  "coloured": true,
+  "columns": [
+   "source.matching-first-defined-shorter k.short",
+   "source.matching-first-defined-shorter",
+   "source.matching-first-defined-shorter"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "matching_include_after": {
+  "coloured": true,
+  "columns": [
+   "source.matching-include-after k.long",
+   "source.matching-include-after k.long",
+   "source.matching-include-after"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "matching_include_before": {
+  "coloured": true,
+  "columns": [
+   "source.matching-include-before k.short",
+   "source.matching-include-before",
+   "source.matching-include-before"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "matching_include_meta_ignored": {
+  "coloured": true,
+  "columns": [
+   "source.matching-include-meta-ignored k.a",
+   "source.matching-include-meta-ignored"
+  ],
+  "line": "a",
+  "loaded": true
+ },
+ "matching_leftmost": {
+  "coloured": true,
+  "columns": [
+   "source.matching-leftmost k.a",
+   "source.matching-leftmost k.b",
+   "source.matching-leftmost"
+  ],
+  "line": "ab",
+  "loaded": true
+ },
+ "meta_both_together": {
+  "coloured": true,
+  "columns": [
+   "source.meta-both-together m.ms",
+   "source.meta-both-together m.ms m.mcs",
+   "source.meta-both-together m.ms",
+   "source.meta-both-together"
+  ],
+  "line": "\"a\"",
+  "loaded": true
+ },
+ "meta_clear_all": {
+  "coloured": true,
+  "columns": [
+   "m.inner",
+   "m.inner",
+   "source.meta-clear-all m.main"
+  ],
+  "line": "xy",
+  "loaded": true
+ },
+ "meta_clear_one": {
+  "coloured": true,
+  "columns": [
+   "source.meta-clear-one m.inner",
+   "source.meta-clear-one m.inner",
+   "source.meta-clear-one m.main"
+  ],
+  "line": "xy",
+  "loaded": true
+ },
+ "meta_clear_past_the_bottom": {
+  "coloured": true,
+  "columns": [
+   "m.inner",
+   "m.inner",
+   "source.meta-clear-past-the-bottom m.main"
+  ],
+  "line": "xy",
+  "loaded": true
+ },
+ "meta_clear_restored_on_pop": {
+  "coloured": true,
+  "columns": [
+   "source.meta-clear-restored-on-pop m.inner",
+   "source.meta-clear-restored-on-pop m.inner k.z",
+   "source.meta-clear-restored-on-pop m.inner",
+   "source.meta-clear-restored-on-pop m.main",
+   "source.meta-clear-restored-on-pop m.main"
+  ],
+  "line": "xzyz",
+  "loaded": true
+ },
+ "meta_content_scope_neither": {
+  "coloured": true,
+  "columns": [
+   "source.meta-content-scope-neither",
+   "source.meta-content-scope-neither str",
+   "source.meta-content-scope-neither",
+   "source.meta-content-scope-neither"
+  ],
+  "line": "\"a\"",
+  "loaded": true
+ },
+ "meta_late_pattern": {
+  "coloured": true,
+  "columns": [
+   "source.meta-late-pattern m.late",
+   "source.meta-late-pattern m.late k.a",
+   "source.meta-late-pattern m.late"
+  ],
+  "line": "xa",
+  "loaded": true
+ },
+ "meta_scope_both_triggers": {
+  "coloured": true,
+  "columns": [
+   "source.meta-scope-both-triggers str",
+   "source.meta-scope-both-triggers str",
+   "source.meta-scope-both-triggers str",
+   "source.meta-scope-both-triggers"
+  ],
+  "line": "\"a\"",
+  "loaded": true
+ },
+ "proto_at_the_top": {
+  "coloured": true,
+  "columns": [
+   "source.proto-at-the-top k.proto",
+   "source.proto-at-the-top"
+  ],
+  "line": "a",
+  "loaded": true
+ },
+ "proto_everywhere": {
+  "coloured": true,
+  "columns": [
+   "source.proto-everywhere m.sub",
+   "source.proto-everywhere m.sub k.proto",
+   "source.proto-everywhere m.sub"
+  ],
+  "line": "xp",
+  "loaded": true
+ },
+ "proto_host_applied": {
+  "coloured": true,
+  "columns": [
+   "source.proto-host-applied k.guest",
+   "source.proto-host-applied k.guestproto",
+   "source.proto-host-applied"
+  ],
+  "line": "ap",
+  "loaded": true
+ },
+ "proto_host_plain": {
+  "coloured": true,
+  "columns": [
+   "source.proto-host-plain k.guest",
+   "source.proto-host-plain",
+   "source.proto-host-plain"
+  ],
+  "line": "ap",
+  "loaded": true
+ },
+ "proto_in_itself": {
+  "coloured": true,
+  "columns": [
+   "source.proto-in-itself m.sub",
+   "source.proto-in-itself m.sub",
+   "source.proto-in-itself m.sub",
+   "source.proto-in-itself m.sub"
+  ],
+  "line": "qpz",
+  "loaded": true
+ },
+ "proto_turned_off": {
+  "coloured": true,
+  "columns": [
+   "source.proto-turned-off m.sub",
+   "source.proto-turned-off m.sub",
+   "source.proto-turned-off m.sub"
+  ],
+  "line": "xp",
+  "loaded": true
+ },
+ "self_main_by_scope": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-by-scope in.main",
+   "source.self-main-by-scope k.p",
+   "source.self-main-by-scope source.self-main-by-scope in.main",
+   "source.self-main-by-scope k.q",
+   "source.self-main-by-scope in.main",
+   "source.self-main-by-scope"
+  ],
+  "line": "apbqc",
+  "loaded": true
+ },
+ "self_main_meta": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta meta.main k.p",
+   "source.self-main-meta meta.main meta.main in.main",
+   "source.self-main-meta meta.main k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta meta.main"
+  ],
+  "line": "apbqc",
+  "loaded": true
+ },
+ "self_main_meta_again": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.m",
+   "source.self-main-meta meta.main k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.m",
+   "source.self-main-meta meta.main meta.main in.main",
+   "source.self-main-meta meta.main meta.main"
+  ],
+  "line": "asbmsbmc",
+  "loaded": true
+ },
+ "self_main_meta_pop": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta meta.main"
+  ],
+  "line": "aqbqc",
+  "loaded": true
+ },
+ "self_main_meta_set": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.m",
+   "source.self-main-meta meta.main meta.main in.main",
+   "source.self-main-meta meta.main meta.main"
+  ],
+  "line": "asbmc",
+  "loaded": true
+ },
+ "self_main_meta_set_pop": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta meta.main"
+  ],
+  "line": "asbqcqd",
+  "loaded": true
+ },
+ "self_main_meta_set_push": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.r",
+   "source.self-main-meta meta.main meta.main in.main",
+   "source.self-main-meta meta.main k.q",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main"
+  ],
+  "line": "asbrcqd",
+  "loaded": true
+ },
+ "self_main_plain": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.p",
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.q",
+   "source.self-main-plain in.main",
+   "source.self-main-plain"
+  ],
+  "line": "apbqc",
+  "loaded": true
+ },
+ "self_main_plain_pop": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.q",
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.q",
+   "source.self-main-plain in.main",
+   "source.self-main-plain"
+  ],
+  "line": "aqbqc",
+  "loaded": true
+ },
+ "self_main_plain_set": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.s",
+   "source.self-main-plain in.other",
+   "source.self-main-plain k.m",
+   "source.self-main-plain in.main",
+   "source.self-main-plain"
+  ],
+  "line": "asbmc",
+  "loaded": true
+ },
+ "self_main_plain_set_push": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.s",
+   "source.self-main-plain in.other",
+   "source.self-main-plain k.r",
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.q",
+   "source.self-main-plain in.other",
+   "source.self-main-plain"
+  ],
+  "line": "asbrcqd",
+  "loaded": true
+ },
+ "self_main_plain_v1": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain-v1 in.main",
+   "source.self-main-plain-v1 k.p",
+   "source.self-main-plain-v1 in.main",
+   "source.self-main-plain-v1 k.q",
+   "source.self-main-plain-v1 in.main",
+   "source.self-main-plain-v1"
+  ],
+  "line": "apbqc",
+  "loaded": true
+ },
+ "set_loop_branch_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch",
+   "source.set-loop-branch",
+   "source.set-loop-branch",
+   "source.set-loop-branch"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_branch_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_branch_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-branch",
+   "source.set-loop-branch",
+   "source.set-loop-branch"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_branch_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_chain_32_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-32 in.main",
+   "source.set-loop-chain-32 in.main",
+   "source.set-loop-chain-32 in.end.t",
+   "source.set-loop-chain-32 in.c32",
+   "source.set-loop-chain-32 in.c32",
+   "source.set-loop-chain-32"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_chain_32_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-32 in.c32",
+   "source.set-loop-chain-32 in.c32",
+   "source.set-loop-chain-32"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_chain_33_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-33 in.main",
+   "source.set-loop-chain-33 in.main",
+   "source.set-loop-chain-33 in.end.t",
+   "source.set-loop-chain-33 in.c33",
+   "source.set-loop-chain-33 in.c33",
+   "source.set-loop-chain-33"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_chain_33_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-33 in.c33",
+   "source.set-loop-chain-33 in.c33",
+   "source.set-loop-chain-33"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_chain_34_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-34 in.main",
+   "source.set-loop-chain-34 in.main",
+   "source.set-loop-chain-34",
+   "source.set-loop-chain-34",
+   "source.set-loop-chain-34",
+   "source.set-loop-chain-34"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_chain_34_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-34 in.c33",
+   "source.set-loop-chain-34 in.c33",
+   "source.set-loop-chain-34"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_chain_control_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-control in.main",
+   "source.set-loop-chain-control in.main",
+   "source.set-loop-chain-control in.b.t",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_chain_control_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_chain_control_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-control in.b.t",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_chain_control_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_cycle_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle in.main",
+   "source.set-loop-cycle in.main",
+   "source.set-loop-cycle",
+   "source.set-loop-cycle",
+   "source.set-loop-cycle",
+   "source.set-loop-cycle"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_cycle_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle in.first",
+   "source.set-loop-cycle in.first",
+   "source.set-loop-cycle"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_cycle_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle",
+   "source.set-loop-cycle",
+   "source.set-loop-cycle"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_cycle_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle in.second",
+   "source.set-loop-cycle in.second",
+   "source.set-loop-cycle"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_cycle_v1_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle-v1 in.main",
+   "source.set-loop-cycle-v1 in.main",
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_cycle_v1_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle-v1 in.first",
+   "source.set-loop-cycle-v1 in.first",
+   "source.set-loop-cycle-v1"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_cycle_v1_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_cycle_v1_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle-v1 in.second",
+   "source.set-loop-cycle-v1 in.second",
+   "source.set-loop-cycle-v1"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_kind_branch_0": {
+  "coloured": false,
+  "columns": [
+   "text.plain",
+   "text.plain",
+   "text.plain",
+   "text.plain",
+   "text.plain",
+   "text.plain"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_kind_branch_1": {
+  "coloured": false,
+  "columns": [
+   "text.plain",
+   "text.plain",
+   "text.plain"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_consuming_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming"
+  ],
+  "line": "tttttttttttttttttttttttttttttt",
+  "loaded": true
+ },
+ "set_loop_kind_consuming_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-consuming in.c40",
+   "source.set-loop-kind-consuming in.c40",
+   "source.set-loop-kind-consuming"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_embed_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-embed in.main",
+   "source.set-loop-kind-embed in.main",
+   "source.set-loop-kind-embed",
+   "source.set-loop-kind-embed",
+   "source.set-loop-kind-embed",
+   "source.set-loop-kind-embed"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_kind_embed_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-embed in.c33",
+   "source.set-loop-kind-embed in.c33",
+   "source.set-loop-kind-embed"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_mixed_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-mixed in.main",
+   "source.set-loop-kind-mixed in.main",
+   "source.set-loop-kind-mixed",
+   "source.set-loop-kind-mixed",
+   "source.set-loop-kind-mixed",
+   "source.set-loop-kind-mixed"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_kind_mixed_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-mixed in.c33",
+   "source.set-loop-kind-mixed in.c33",
+   "source.set-loop-kind-mixed"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_pop_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop in.end.t",
+   "source.set-loop-kind-pop in.main",
+   "source.set-loop-kind-pop in.main",
+   "source.set-loop-kind-pop"
+  ],
+  "line": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd",
+  "loaded": true
+ },
+ "set_loop_kind_pop_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-pop in.main",
+   "source.set-loop-kind-pop in.main",
+   "source.set-loop-kind-pop"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_push_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-push in.main",
+   "source.set-loop-kind-push in.main",
+   "source.set-loop-kind-push",
+   "source.set-loop-kind-push",
+   "source.set-loop-kind-push",
+   "source.set-loop-kind-push"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_kind_push_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-push in.c33",
+   "source.set-loop-kind-push in.c33",
+   "source.set-loop-kind-push"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_set_pop_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop"
+  ],
+  "line": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd",
+  "loaded": true
+ },
+ "set_loop_kind_set_pop_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-set-pop in.c7",
+   "source.set-loop-kind-set-pop in.c7",
+   "source.set-loop-kind-set-pop"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_prototype_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_prototype_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-prototype in.first",
+   "source.set-loop-prototype in.first",
+   "source.set-loop-prototype"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_prototype_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_prototype_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-prototype in.second",
+   "source.set-loop-prototype in.second",
+   "source.set-loop-prototype"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_pushed_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-pushed in.main",
+   "source.set-loop-pushed in.main",
+   "source.set-loop-pushed",
+   "source.set-loop-pushed",
+   "source.set-loop-pushed",
+   "source.set-loop-pushed"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_pushed_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-pushed in.first",
+   "source.set-loop-pushed in.first",
+   "source.set-loop-pushed"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_pushed_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-pushed",
+   "source.set-loop-pushed",
+   "source.set-loop-pushed"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_pushed_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-pushed in.second",
+   "source.set-loop-pushed in.second",
+   "source.set-loop-pushed"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_self_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-self in.main",
+   "source.set-loop-self in.main",
+   "source.set-loop-self",
+   "source.set-loop-self",
+   "source.set-loop-self",
+   "source.set-loop-self"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_self_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-self in.main",
+   "source.set-loop-self in.main",
+   "source.set-loop-self"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_self_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-self",
+   "source.set-loop-self",
+   "source.set-loop-self"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_self_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-self in.main",
+   "source.set-loop-self in.main",
+   "source.set-loop-self"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_tail_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-tail in.main",
+   "source.set-loop-tail in.main",
+   "source.set-loop-tail",
+   "source.set-loop-tail",
+   "source.set-loop-tail",
+   "source.set-loop-tail"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_tail_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-tail in.c",
+   "source.set-loop-tail in.c",
+   "source.set-loop-tail"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_tail_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-tail",
+   "source.set-loop-tail",
+   "source.set-loop-tail"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_tail_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-tail in.b",
+   "source.set-loop-tail in.b",
+   "source.set-loop-tail"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "var_in_escape": {
+  "coloured": true,
+  "columns": [
+   "source.var-in-escape m.in",
+   "source.var-in-escape m.in k.a",
+   "source.var-in-escape",
+   "source.var-in-escape",
+   "source.var-in-escape"
+  ],
+  "line": "<a>t",
+  "loaded": true
+ },
+ "var_in_var": {
+  "coloured": true,
+  "columns": [
+   "source.var-in-var k.call",
+   "source.var-in-var k.call",
+   "source.var-in-var k.call",
+   "source.var-in-var"
+  ],
+  "line": "ab(",
+  "loaded": true
+ },
+ "var_literal_braces": {
+  "coloured": true,
+  "columns": [
+   "source.var-literal-braces k.quant",
+   "source.var-literal-braces k.quant",
+   "source.var-literal-braces k.braces",
+   "source.var-literal-braces k.braces",
+   "source.var-literal-braces k.braces",
+   "source.var-literal-braces"
+  ],
+  "line": "aa{{-",
+  "loaded": true
+ },
+ "wproto_beats_own_rule": {
+  "coloured": true,
+  "columns": [
+   "source.wproto-beats-own-rule m.sub",
+   "source.wproto-beats-own-rule m.sub k.wproto",
+   "source.wproto-beats-own-rule m.sub"
+  ],
+  "line": "xa",
+  "loaded": true
+ },
+ "wproto_ends_with_the_push": {
+  "coloured": true,
+  "columns": [
+   "source.wproto-ends-with-the-push m.sub",
+   "source.wproto-ends-with-the-push m.sub k.wproto",
+   "source.wproto-ends-with-the-push m.sub",
+   "source.wproto-ends-with-the-push k.mainq",
+   "source.wproto-ends-with-the-push"
+  ],
+  "line": "xqzq",
+  "loaded": true
+ },
+ "wproto_ignores_flag": {
+  "coloured": true,
+  "columns": [
+   "source.wproto-ignores-flag m.sub",
+   "source.wproto-ignores-flag m.sub k.wproto",
+   "source.wproto-ignores-flag m.sub k.a",
+   "source.wproto-ignores-flag m.sub"
+  ],
+  "line": "xqa",
+  "loaded": true
+ },
+ "wproto_transitive": {
+  "coloured": true,
+  "columns": [
+   "source.wproto-transitive",
+   "source.wproto-transitive m.deep",
+   "source.wproto-transitive m.deep k.wproto",
+   "source.wproto-transitive m.deep k.a",
+   "source.wproto-transitive m.deep"
+  ],
+  "line": "xyqa",
+  "loaded": true
+ }
+}

@@ -1,0 +1,16 @@
+%YAML 1.2
+---
+name: meta_both_together
+scope: source.meta-both-together
+file_extensions: [meta_both_together]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '"'
+      push: string
+  string:
+    - meta_scope: m.ms
+    - meta_content_scope: m.mcs
+    - match: '"'
+      pop: true

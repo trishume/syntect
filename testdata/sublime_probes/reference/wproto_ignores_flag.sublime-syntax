@@ -1,0 +1,19 @@
+%YAML 1.2
+---
+name: wproto_ignores_flag
+scope: source.wproto-ignores-flag
+file_extensions: [wproto_ignores_flag]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'x'
+      push: sub
+      with_prototype:
+        - match: 'q'
+          scope: k.wproto
+  sub:
+    - meta_include_prototype: false
+    - meta_scope: m.sub
+    - match: 'a'
+      scope: k.a

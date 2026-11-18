@@ -1,0 +1,16 @@
+%YAML 1.2
+---
+name: branch_one_alternative
+scope: source.branch-one-alternative
+file_extensions: [branch_one_alternative]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [only]
+  only:
+    - match: 'a'
+      scope: k.a
+      pop: true

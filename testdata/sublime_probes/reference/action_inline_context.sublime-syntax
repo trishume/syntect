@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+name: action_inline_context
+scope: source.action-inline-context
+file_extensions: [action_inline_context]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      push:
+        - meta_scope: m.inline
+        - match: 'b'
+          pop: true

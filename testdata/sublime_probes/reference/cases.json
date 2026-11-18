@@ -1,0 +1,1349 @@
+[
+ {
+  "key": "matching_leftmost",
+  "rule": "When a context has multiple patterns, the leftmost one will be found.",
+  "syntax": "matching_leftmost",
+  "files": [
+   "matching_leftmost"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "matching_first_defined",
+  "rule": "When multiple patterns match at the same position, the first defined pattern will be selected.",
+  "syntax": "matching_first_defined",
+  "files": [
+   "matching_first_defined"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "matching_first_defined_shorter",
+  "rule": "The same, where the first defined pattern is the shorter one.",
+  "syntax": "matching_first_defined_shorter",
+  "files": [
+   "matching_first_defined_shorter"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "matching_include_meta_ignored",
+  "rule": "Any meta patterns defined in the [included] context will be ignored.",
+  "syntax": "matching_include_meta_ignored",
+  "files": [
+   "matching_include_meta_ignored"
+  ],
+  "text": "a\n",
+  "row": 0
+ },
+ {
+  "key": "matching_include_after",
+  "rule": "They'll be inserted at the position of the include pattern, so you can still control the pattern order.",
+  "syntax": "matching_include_after",
+  "files": [
+   "matching_include_after"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "matching_include_before",
+  "rule": "The same, with the include written first.",
+  "syntax": "matching_include_before",
+  "files": [
+   "matching_include_before"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "matching_empty_match",
+  "rule": "A variation: a zero-width match that pushes, and the character it did not consume.",
+  "syntax": "matching_empty_match",
+  "files": [
+   "matching_empty_match"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "meta_scope_both_triggers",
+  "rule": "meta_scope: This assigns the given scope to all text within this context, including the patterns that push the context onto the stack and pop it off.",
+  "syntax": "meta_scope_both_triggers",
+  "files": [
+   "meta_scope_both_triggers"
+  ],
+  "text": "\"a\"\n",
+  "row": 0
+ },
+ {
+  "key": "meta_content_scope_neither",
+  "rule": "meta_content_scope: As above, but does not apply to the text that triggers the context.",
+  "syntax": "meta_content_scope_neither",
+  "files": [
+   "meta_content_scope_neither"
+  ],
+  "text": "\"a\"\n",
+  "row": 0
+ },
+ {
+  "key": "meta_both_together",
+  "rule": "A variation: a context carrying both, so the order they stack in is visible.",
+  "syntax": "meta_both_together",
+  "files": [
+   "meta_both_together"
+  ],
+  "text": "\"a\"\n",
+  "row": 0
+ },
+ {
+  "key": "meta_clear_all",
+  "rule": "clear_scopes: \u2026 the value true to remove all scope names. It is applied before meta_scope and meta_content_scope.",
+  "syntax": "meta_clear_all",
+  "files": [
+   "meta_clear_all"
+  ],
+  "text": "xy\n",
+  "row": 0
+ },
+ {
+  "key": "meta_clear_one",
+  "rule": "clear_scopes: \u2026 It can be an integer.",
+  "syntax": "meta_clear_one",
+  "files": [
+   "meta_clear_one"
+  ],
+  "text": "xy\n",
+  "row": 0
+ },
+ {
+  "key": "meta_clear_past_the_bottom",
+  "rule": "A variation: a clear_scopes larger than the stack it is counted against.",
+  "syntax": "meta_clear_past_the_bottom",
+  "files": [
+   "meta_clear_past_the_bottom"
+  ],
+  "text": "xy\n",
+  "row": 0
+ },
+ {
+  "key": "meta_clear_restored_on_pop",
+  "rule": "A variation: what a clear_scopes puts back when its context is popped, and where.",
+  "syntax": "meta_clear_restored_on_pop",
+  "files": [
+   "meta_clear_restored_on_pop"
+  ],
+  "text": "xzyz\n",
+  "row": 0
+ },
+ {
+  "key": "meta_late_pattern",
+  "rule": "Meta patterns must be listed first in the context, before any match or include patterns \u2014 with no stated consequence when they are not.",
+  "syntax": "meta_late_pattern",
+  "files": [
+   "meta_late_pattern"
+  ],
+  "text": "xa\n",
+  "row": 0
+ },
+ {
+  "key": "action_inline_context",
+  "rule": "push: \u2026 an inline, anonymous context.",
+  "syntax": "action_inline_context",
+  "files": [
+   "action_inline_context"
+  ],
+  "text": "abc\n",
+  "row": 0
+ },
+ {
+  "key": "action_push_list_order",
+  "rule": "The main context uses a match pattern that pushes two contexts on the stack, with the rightmost context in the list becoming the topmost context on the stack.",
+  "syntax": "action_push_list_order",
+  "files": [
+   "action_push_list_order"
+  ],
+  "text": "abc\n",
+  "row": 0
+ },
+ {
+  "key": "action_pop_two",
+  "rule": "pop: \u2026 An integer greater than zero will pop the corresponding number of contexts.",
+  "syntax": "action_pop_two",
+  "files": [
+   "action_pop_two"
+  ],
+  "text": "abc\n",
+  "row": 0
+ },
+ {
+  "key": "action_set_both_metas",
+  "rule": "set: \u2026 Any match will receive the meta_scope of the context being popped and the context being pushed.",
+  "syntax": "action_set_both_metas",
+  "files": [
+   "action_set_both_metas"
+  ],
+  "text": "abc\n",
+  "row": 0
+ },
+ {
+  "key": "action_set_list",
+  "rule": "A variation: a set of several contexts at once.",
+  "syntax": "action_set_list",
+  "files": [
+   "action_set_list"
+  ],
+  "text": "abc\n",
+  "row": 0
+ },
+ {
+  "key": "action_pop_push_lookahead",
+  "rule": "For push, embed and branch actions, the pop treats the match as if it were a lookahead, which means the match will not receive the meta_scope of the contexts that are popped.",
+  "syntax": "action_pop_push_lookahead",
+  "files": [
+   "action_pop_push_lookahead"
+  ],
+  "text": "abc\n",
+  "row": 0
+ },
+ {
+  "key": "action_pop_set_keeps",
+  "rule": "The lookahead sentence names push, embed and branch and not set, whose own entry says the trigger receives the popped context's meta_scope.",
+  "syntax": "action_pop_set_keeps",
+  "files": [
+   "action_pop_set_keeps"
+  ],
+  "text": "abc\n",
+  "row": 0
+ },
+ {
+  "key": "action_pop_branch_lookahead",
+  "rule": "A variation: the same for a pop: N + branch:, which the lookahead sentence does name.",
+  "syntax": "action_pop_branch_lookahead",
+  "files": [
+   "action_pop_branch_lookahead"
+  ],
+  "text": "abc\n",
+  "row": 0
+ },
+ {
+  "key": "action_embed_unwinds",
+  "rule": "embed: \u2026 it pops out of any number of nested contexts as soon as the escape pattern is found.",
+  "syntax": "action_embed_unwinds",
+  "files": [
+   "action_embed_unwinds"
+  ],
+  "text": "<az>t\n",
+  "row": 0
+ },
+ {
+  "key": "action_escape_backref",
+  "rule": "escape: \u2026 Any backreferences in this pattern will refer to capture groups in the match regex.",
+  "syntax": "action_escape_backref",
+  "files": [
+   "action_escape_backref"
+  ],
+  "text": "<qazq>t\n",
+  "row": 0
+ },
+ {
+  "key": "action_embed_scope",
+  "rule": "embed_scope: A scope assigned to all text matched after the match and before the escape. escape_captures: \u2026 Use capture group 0 to apply a scope to the entire escape match.",
+  "syntax": "action_embed_scope",
+  "files": [
+   "action_embed_scope"
+  ],
+  "text": "<a>t\n",
+  "row": 0
+ },
+ {
+  "key": "action_escape_captures_group",
+  "rule": "A variation: escape_captures on a group other than 0.",
+  "syntax": "action_escape_captures_group",
+  "files": [
+   "action_escape_captures_group"
+  ],
+  "text": "<a->t\n",
+  "row": 0
+ },
+ {
+  "key": "action_pop_embed",
+  "rule": "Using pop with another action: the reference's own pop: 1 + embed: example.",
+  "syntax": "action_pop_embed",
+  "files": [
+   "action_pop_embed"
+  ],
+  "text": "p<a>t\n",
+  "row": 0
+ },
+ {
+  "key": "action_embed_nested",
+  "rule": "A variation: an embed inside an embed, and which escape closes which.",
+  "syntax": "action_embed_nested",
+  "files": [
+   "action_embed_nested"
+  ],
+  "text": "<[a]b>t\n",
+  "row": 0
+ },
+ {
+  "key": "action_branch_first",
+  "rule": "branch: Accepts the names of two or more contexts, which are attempted in order.",
+  "syntax": "action_branch_first",
+  "files": [
+   "action_branch_first"
+  ],
+  "text": "az\n",
+  "row": 0
+ },
+ {
+  "key": "action_branch_second",
+  "rule": "If a fail action is encountered, the highlighting of the file will be restarted at the character where the branch occurred, and the next context will be attempted.",
+  "syntax": "action_branch_second",
+  "files": [
+   "action_branch_second"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "action_branch_third",
+  "rule": "A variation: three alternatives, the first two of which fail.",
+  "syntax": "action_branch_third",
+  "files": [
+   "action_branch_third"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "action_fail_unopened",
+  "rule": "fail: \u2026 If a fail action specifies a branch_point that was never pushed on the stack \u2026 it will have no effect.",
+  "syntax": "action_fail_unopened",
+  "files": [
+   "action_fail_unopened"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "action_fail_popped",
+  "rule": "\u2026 or has already been popped off of the stack, it will have no effect.",
+  "syntax": "action_fail_popped",
+  "files": [
+   "action_fail_popped"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "action_heredoc_closes",
+  "rule": "the corresponding pop pattern in the heredoc context refers to this captured text with the \\1 symbol",
+  "syntax": "action_heredoc_closes",
+  "files": [
+   "action_heredoc_closes"
+  ],
+  "text": "<<<EOT\nbody\nEOT;\nafter\n",
+  "row": 3
+ },
+ {
+  "key": "action_heredoc_wrong_word",
+  "rule": "The same, where the closing word is somebody else's.",
+  "syntax": "action_heredoc_wrong_word",
+  "files": [
+   "action_heredoc_wrong_word"
+  ],
+  "text": "<<<EOT\nEOF;\nafter\n",
+  "row": 2
+ },
+ {
+  "key": "action_captures_nested",
+  "rule": "captures: A mapping of numbers to scope, assigning scopes to captured portions of the match regex \u2014 here nested groups.",
+  "syntax": "action_captures_nested",
+  "files": [
+   "action_captures_nested"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "action_captures_zero",
+  "rule": "A variation: capture group 0, which is the whole match, beside a scope.",
+  "syntax": "action_captures_zero",
+  "files": [
+   "action_captures_zero"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "action_captures_empty_group",
+  "rule": "A variation: a capture group that matched nothing.",
+  "syntax": "action_captures_empty_group",
+  "files": [
+   "action_captures_empty_group"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "proto_everywhere",
+  "rule": "You can do this by creating a context named prototype, it will be included automatically at the top of every other context.",
+  "syntax": "proto_everywhere",
+  "files": [
+   "proto_everywhere"
+  ],
+  "text": "xp\n",
+  "row": 0
+ },
+ {
+  "key": "proto_turned_off",
+  "rule": "\u2026 unless the context contains the meta_include_prototype key.",
+  "syntax": "proto_turned_off",
+  "files": [
+   "proto_turned_off"
+  ],
+  "text": "xp\n",
+  "row": 0
+ },
+ {
+  "key": "proto_at_the_top",
+  "rule": "\u2026 at the top of every other context \u2014 so it wins a tie with the context's own first rule.",
+  "syntax": "proto_at_the_top",
+  "files": [
+   "proto_at_the_top"
+  ],
+  "text": "a\n",
+  "row": 0
+ },
+ {
+  "key": "proto_in_itself",
+  "rule": "A variation: whether the prototype is included in the prototype, which the reference does not say.",
+  "syntax": "proto_in_itself",
+  "files": [
+   "proto_in_itself"
+  ],
+  "text": "qpz\n",
+  "row": 0
+ },
+ {
+  "key": "wproto_ignores_flag",
+  "rule": "with_prototype \u2026 will be always be inserted into every referenced context irrespective of their meta_include_prototype key.",
+  "syntax": "wproto_ignores_flag",
+  "files": [
+   "wproto_ignores_flag"
+  ],
+  "text": "xqa\n",
+  "row": 0
+ },
+ {
+  "key": "wproto_transitive",
+  "rule": "\u2026 inserted into every context defined within JavaScript.sublime-syntax (and JavaScript, by transitivity).",
+  "syntax": "wproto_transitive",
+  "files": [
+   "wproto_transitive"
+  ],
+  "text": "xyqa\n",
+  "row": 0
+ },
+ {
+  "key": "wproto_beats_own_rule",
+  "rule": "A variation: where a with_prototype pattern sits relative to the context's own rules.",
+  "syntax": "wproto_beats_own_rule",
+  "files": [
+   "wproto_beats_own_rule"
+  ],
+  "text": "xa\n",
+  "row": 0
+ },
+ {
+  "key": "wproto_ends_with_the_push",
+  "rule": "A variation: a with_prototype is the pushing rule's, so it stops where that context is popped.",
+  "syntax": "wproto_ends_with_the_push",
+  "files": [
+   "wproto_ends_with_the_push"
+  ],
+  "text": "xqzq\n",
+  "row": 0
+ },
+ {
+  "key": "var_in_var",
+  "rule": "Variables may themselves include other variables.",
+  "syntax": "var_in_var",
+  "files": [
+   "var_in_var"
+  ],
+  "text": "ab(\n",
+  "row": 0
+ },
+ {
+  "key": "var_literal_braces",
+  "rule": "Note that any text that doesn't match {{[A-Za-z0-9_]+}} won't be considered as a variable, so regexes can still include literal {{ characters.",
+  "syntax": "var_literal_braces",
+  "files": [
+   "var_literal_braces"
+  ],
+  "text": "aa{{-\n",
+  "row": 0
+ },
+ {
+  "key": "var_in_escape",
+  "rule": "A variation: a variable inside an escape regex.",
+  "syntax": "var_in_escape",
+  "files": [
+   "var_in_escape"
+  ],
+  "text": "<a>t\n",
+  "row": 0
+ },
+ {
+  "key": "inherit_plain",
+  "rule": "A syntax using inheritance will inherit the variables and contexts values from its parent syntax.",
+  "syntax": "inherit_plain",
+  "files": [
+   "inherit_base",
+   "inherit_plain"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "inherit_override",
+  "rule": "Contexts with the same name will override contexts from the parent syntax.",
+  "syntax": "inherit_override",
+  "files": [
+   "inherit_base",
+   "inherit_override"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "inherit_prepend",
+  "rule": "meta_prepend: true \u2014 all of the patterns in the extending syntax will be inserted before those in the parent syntax.",
+  "syntax": "inherit_prepend",
+  "files": [
+   "inherit_base",
+   "inherit_prepend"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "inherit_append",
+  "rule": "meta_append: true \u2014 \u2026 inserted after to any existing rules from a context with the same name in an ancestor syntax definition.",
+  "syntax": "inherit_append",
+  "files": [
+   "inherit_base",
+   "inherit_append"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "inherit_variable",
+  "rule": "Thus, an extending syntax may change a variable from a parent syntax, and all usage of the variable in the parent contexts will use the overridden value.",
+  "syntax": "inherit_variable",
+  "files": [
+   "inherit_base",
+   "inherit_variable"
+  ],
+  "text": "ab12\n",
+  "row": 0
+ },
+ {
+  "key": "inherit_added_context",
+  "rule": "A variation: a context the child adds beside the ones it inherits.",
+  "syntax": "inherit_added_context",
+  "files": [
+   "inherit_base",
+   "inherit_added_context"
+  ],
+  "text": "Qaz\n",
+  "row": 0
+ },
+ {
+  "key": "inherit_multi",
+  "rule": "The parent syntaxes will be processed in order, from top to bottom, and must be derived from the same base.",
+  "syntax": "inherit_multi",
+  "files": [
+   "inherit_base",
+   "inherit_loose",
+   "inherit_sibling",
+   "inherit_multi"
+  ],
+  "text": "Yab\n",
+  "row": 0
+ },
+ {
+  "key": "inherit_multi_reversed",
+  "rule": "The parent syntaxes will be processed in order, from top to bottom, and must be derived from the same base.",
+  "syntax": "inherit_multi_reversed",
+  "files": [
+   "inherit_base",
+   "inherit_loose",
+   "inherit_sibling",
+   "inherit_multi_reversed"
+  ],
+  "text": "Yab\n",
+  "row": 0
+ },
+ {
+  "key": "inherit_version_child",
+  "rule": "There are no enforced limits on extending, other than that all syntaxes must share the same version.",
+  "syntax": "inherit_version_child",
+  "files": [
+   "inherit_base",
+   "inherit_version_child"
+  ],
+  "text": "ab\n",
+  "row": 0,
+  "note": "ST may refuse the definition outright, in which case it has no columns to report; what matters here is that this parser does not fall over \u2014 change 33."
+ },
+ {
+  "key": "proto_host_applied",
+  "rule": "If the key/value pair apply_prototype: true is added to the include pattern \u2026 then those patterns will also be included.",
+  "syntax": "proto_host_applied",
+  "files": [
+   "proto_guest",
+   "proto_host_applied"
+  ],
+  "text": "ap\n",
+  "row": 0
+ },
+ {
+  "key": "proto_host_plain",
+  "rule": "By default, an include pattern does not include such a prototype.",
+  "syntax": "proto_host_plain",
+  "files": [
+   "proto_guest",
+   "proto_host_plain"
+  ],
+  "text": "ap\n",
+  "row": 0
+ },
+ {
+  "key": "fail_bare_unknown",
+  "rule": "A variation: a fail naming a branch point that appears nowhere in the file, with no scope of its own.",
+  "syntax": "fail_bare_unknown",
+  "files": [
+   "fail_bare_unknown"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "fail_scoped_known",
+  "rule": "A variation: a fail beside a scope, naming a branch point the file does declare.",
+  "syntax": "fail_scoped_known",
+  "files": [
+   "fail_scoped_known"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "fail_bare_known",
+  "rule": "A variation: the same with no scope beside the fail.",
+  "syntax": "fail_bare_known",
+  "files": [
+   "fail_bare_known"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "fail_inside_alternative",
+  "rule": "A variation: a fail in the alternative itself, which is where the reference's own example puts it.",
+  "syntax": "fail_inside_alternative",
+  "files": [
+   "fail_inside_alternative"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "branch_one_alternative",
+  "rule": "A variation: branch: accepts the names of two or more contexts \u2014 this one names one.",
+  "syntax": "branch_one_alternative",
+  "files": [
+   "branch_one_alternative"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "branch_two_alternatives_control",
+  "rule": "A control for the one above: the same shape with two.",
+  "syntax": "branch_two_alternatives_control",
+  "files": [
+   "branch_two_alternatives_control"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "fail_popped_bare",
+  "rule": "fail: \u2026 or has already been popped off of the stack, it will have no effect \u2014 written the way ST accepts, with no scope beside the fail.",
+  "syntax": "fail_popped_bare",
+  "files": [
+   "fail_popped_bare"
+  ],
+  "text": "ab\n",
+  "row": 0
+ },
+ {
+  "key": "fail_scope_beside_it",
+  "rule": "A variation, and a finding: a scope: beside a fail: is a definition ST will not load at all.",
+  "syntax": "fail_scope_beside_it",
+  "files": [
+   "fail_scope_beside_it"
+  ],
+  "text": "ab\n",
+  "row": 0,
+  "note": "ST refuses it; this parser accepts it and applies the scope. Being the lenient one is not a colouring difference, but a definition written this way has no ST answer to be measured against."
+ },
+ {
+  "key": "set_loop_cycle_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle",
+  "files": [
+   "set_loop_cycle"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_cycle_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle",
+  "files": [
+   "set_loop_cycle"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_cycle_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle",
+  "files": [
+   "set_loop_cycle"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_cycle_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle",
+  "files": [
+   "set_loop_cycle"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_cycle_v1_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle_v1",
+  "files": [
+   "set_loop_cycle_v1"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_cycle_v1_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle_v1",
+  "files": [
+   "set_loop_cycle_v1"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_cycle_v1_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle_v1",
+  "files": [
+   "set_loop_cycle_v1"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_cycle_v1_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle_v1",
+  "files": [
+   "set_loop_cycle_v1"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_tail_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_tail",
+  "files": [
+   "set_loop_tail"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_tail_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_tail",
+  "files": [
+   "set_loop_tail"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_tail_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_tail",
+  "files": [
+   "set_loop_tail"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_tail_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_tail",
+  "files": [
+   "set_loop_tail"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_self_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_self",
+  "files": [
+   "set_loop_self"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_self_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_self",
+  "files": [
+   "set_loop_self"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_self_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_self",
+  "files": [
+   "set_loop_self"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_self_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_self",
+  "files": [
+   "set_loop_self"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_pushed_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_pushed",
+  "files": [
+   "set_loop_pushed"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_pushed_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_pushed",
+  "files": [
+   "set_loop_pushed"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_pushed_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_pushed",
+  "files": [
+   "set_loop_pushed"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_pushed_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_pushed",
+  "files": [
+   "set_loop_pushed"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_chain_control_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_control",
+  "files": [
+   "set_loop_chain_control"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_chain_control_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_control",
+  "files": [
+   "set_loop_chain_control"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_chain_control_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_control",
+  "files": [
+   "set_loop_chain_control"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_chain_control_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_control",
+  "files": [
+   "set_loop_chain_control"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_prototype_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_prototype",
+  "files": [
+   "set_loop_prototype"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_prototype_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_prototype",
+  "files": [
+   "set_loop_prototype"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_prototype_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_prototype",
+  "files": [
+   "set_loop_prototype"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_prototype_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_prototype",
+  "files": [
+   "set_loop_prototype"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_branch_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_branch",
+  "files": [
+   "set_loop_branch"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_branch_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_branch",
+  "files": [
+   "set_loop_branch"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_branch_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_branch",
+  "files": [
+   "set_loop_branch"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_branch_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_branch",
+  "files": [
+   "set_loop_branch"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_chain_32_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_32",
+  "files": [
+   "set_loop_chain_32"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_chain_32_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_32",
+  "files": [
+   "set_loop_chain_32"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_chain_33_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_33",
+  "files": [
+   "set_loop_chain_33"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_chain_33_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_33",
+  "files": [
+   "set_loop_chain_33"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_chain_34_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_34",
+  "files": [
+   "set_loop_chain_34"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_chain_34_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_34",
+  "files": [
+   "set_loop_chain_34"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_branch_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_branch",
+  "files": [
+   "set_loop_kind_branch"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_branch_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_branch",
+  "files": [
+   "set_loop_kind_branch"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_embed_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_embed",
+  "files": [
+   "set_loop_kind_embed"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_embed_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_embed",
+  "files": [
+   "set_loop_kind_embed"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_set_pop_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_set_pop",
+  "files": [
+   "set_loop_kind_set_pop"
+  ],
+  "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_set_pop_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_set_pop",
+  "files": [
+   "set_loop_kind_set_pop"
+  ],
+  "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_push_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_push",
+  "files": [
+   "set_loop_kind_push"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_push_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_push",
+  "files": [
+   "set_loop_kind_push"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_mixed_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_mixed",
+  "files": [
+   "set_loop_kind_mixed"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_mixed_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_mixed",
+  "files": [
+   "set_loop_kind_mixed"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_consuming_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_consuming",
+  "files": [
+   "set_loop_kind_consuming"
+  ],
+  "text": "tttttttttttttttttttttttttttttt\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_consuming_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_consuming",
+  "files": [
+   "set_loop_kind_consuming"
+  ],
+  "text": "tttttttttttttttttttttttttttttt\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_pop_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_pop",
+  "files": [
+   "set_loop_kind_pop"
+  ],
+  "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_pop_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_pop",
+  "files": [
+   "set_loop_kind_pop"
+  ],
+  "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "self_main_plain",
+  "rule": "A context stack that holds main again does not repeat the file's own scope.",
+  "syntax": "self_main_plain",
+  "files": [
+   "self_main_plain"
+  ],
+  "text": "apbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_plain_v1",
+  "rule": "A context stack that holds main again does not repeat the file's own scope.",
+  "syntax": "self_main_plain_v1",
+  "files": [
+   "self_main_plain_v1"
+  ],
+  "text": "apbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta",
+  "rule": "A context stack that holds main again does not repeat the file's own scope.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "apbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_by_scope",
+  "rule": "A context stack that holds main again does not repeat the file's own scope.",
+  "syntax": "self_main_by_scope",
+  "files": [
+   "self_main_by_scope"
+  ],
+  "text": "apbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_again",
+  "rule": "The first main frame keeps its meta_content_scope when it is left.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "asbmsbmc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_pop",
+  "rule": "The first main frame keeps its meta_content_scope when it is left.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "aqbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_set_pop",
+  "rule": "The first main frame keeps its meta_content_scope when it is left.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "asbqcqd\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_plain_pop",
+  "rule": "The first main frame keeps its meta_content_scope when it is left.",
+  "syntax": "self_main_plain",
+  "files": [
+   "self_main_plain"
+  ],
+  "text": "aqbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_plain_set",
+  "rule": "A set back to main does not repeat the file's own scope.",
+  "syntax": "self_main_plain",
+  "files": [
+   "self_main_plain"
+  ],
+  "text": "asbmc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_plain_set_push",
+  "rule": "A push of main from another context does not repeat the file's own scope.",
+  "syntax": "self_main_plain",
+  "files": [
+   "self_main_plain"
+  ],
+  "text": "asbrcqd\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_set",
+  "rule": "A set back to main does not repeat the file's own scope.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "asbmc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_set_push",
+  "rule": "A push of main from another context does not repeat the file's own scope.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "asbrcqd\n",
+  "row": 0
+ }
+]

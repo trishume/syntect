@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+name: matching_leftmost
+scope: source.matching-leftmost
+file_extensions: [matching_leftmost]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'b'
+      scope: k.b
+    - match: 'a'
+      scope: k.a

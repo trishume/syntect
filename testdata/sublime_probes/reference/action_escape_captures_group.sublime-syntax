@@ -1,0 +1,18 @@
+%YAML 1.2
+---
+name: action_escape_captures_group
+scope: source.action-escape-captures-group
+file_extensions: [action_escape_captures_group]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '<'
+      embed: inner
+      escape: '(-)(>)'
+      escape_captures:
+        1: k.dash
+        2: k.gt
+  inner:
+    - match: 'a'
+      scope: k.a

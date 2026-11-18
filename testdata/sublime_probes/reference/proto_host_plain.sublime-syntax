@@ -1,0 +1,10 @@
+%YAML 1.2
+---
+name: proto_host_plain
+scope: source.proto-host-plain
+file_extensions: [proto_host_plain]
+hidden: true
+version: 2
+contexts:
+  main:
+    - include: scope:source.proto-guest

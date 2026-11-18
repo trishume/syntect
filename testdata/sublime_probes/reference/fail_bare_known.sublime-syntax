@@ -1,0 +1,20 @@
+%YAML 1.2
+---
+name: fail_bare_known
+scope: source.fail-bare-known
+file_extensions: [fail_bare_known]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [only]
+    - match: 'b'
+      fail: bp
+    - match: 'b'
+      scope: k.b
+  only:
+    - match: 'a'
+      scope: k.a
+      pop: true

@@ -1,0 +1,14 @@
+%YAML 1.2
+---
+name: action_captures_nested
+scope: source.action-captures-nested
+file_extensions: [action_captures_nested]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '((a)(b))'
+      captures:
+        1: k.outer
+        2: k.first
+        3: k.second

@@ -1,0 +1,19 @@
+%YAML 1.2
+---
+name: meta_clear_restored_on_pop
+scope: source.meta-clear-restored-on-pop
+file_extensions: [meta_clear_restored_on_pop]
+hidden: true
+version: 2
+contexts:
+  main:
+    - meta_content_scope: m.main
+    - match: 'x'
+      push: inner
+  inner:
+    - clear_scopes: 1
+    - meta_scope: m.inner
+    - match: 'y'
+      pop: true
+    - match: 'z'
+      scope: k.z

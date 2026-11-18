@@ -885,12 +885,14 @@ dependencies = [
 name = "syntect"
 version = "5.3.0"
 dependencies = [
+ "aho-corasick",
  "bincode",
  "criterion",
  "fancy-regex",
  "flate2",
  "fnv",
  "getopts",
+ "memchr",
  "onig",
  "plist",
  "pretty_assertions",

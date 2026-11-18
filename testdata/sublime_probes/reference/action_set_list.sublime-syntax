@@ -1,0 +1,22 @@
+%YAML 1.2
+---
+name: action_set_list
+scope: source.action-set-list
+file_extensions: [action_set_list]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      push: one
+  one:
+    - meta_scope: m.one
+    - match: 'b'
+      scope: k.trigger
+      set: [two, three]
+  two:
+    - meta_scope: m.two
+  three:
+    - meta_scope: m.three
+    - match: 'c'
+      pop: true

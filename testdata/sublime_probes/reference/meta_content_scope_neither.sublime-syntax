@@ -1,0 +1,15 @@
+%YAML 1.2
+---
+name: meta_content_scope_neither
+scope: source.meta-content-scope-neither
+file_extensions: [meta_content_scope_neither]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '"'
+      push: string
+  string:
+    - meta_content_scope: str
+    - match: '"'
+      pop: true

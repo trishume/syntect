@@ -1,0 +1,24 @@
+%YAML 1.2
+---
+name: set_loop_prototype
+scope: source.set-loop-prototype
+file_extensions: [set_loop_prototype]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: (?=t)
+      set: first
+  first:
+    - match: (?=t)
+      set: second
+      with_prototype:
+        - match: z
+          scope: in.prototype
+    - match: '[a-y]'
+      scope: in.first
+  second:
+    - match: (?=t)
+      set: first
+    - match: '[a-y]'
+      scope: in.second

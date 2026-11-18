@@ -1,0 +1,11 @@
+%YAML 1.2
+---
+name: proto_host_applied
+scope: source.proto-host-applied
+file_extensions: [proto_host_applied]
+hidden: true
+version: 2
+contexts:
+  main:
+    - include: scope:source.proto-guest
+      apply_prototype: true

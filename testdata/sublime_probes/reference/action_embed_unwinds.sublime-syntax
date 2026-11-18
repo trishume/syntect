@@ -1,0 +1,19 @@
+%YAML 1.2
+---
+name: action_embed_unwinds
+scope: source.action-embed-unwinds
+file_extensions: [action_embed_unwinds]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '<'
+      embed: inner
+      escape: '>'
+  inner:
+    - match: 'a'
+      push: deeper
+  deeper:
+    - meta_scope: m.deep
+    - match: 'z'
+      scope: k.z

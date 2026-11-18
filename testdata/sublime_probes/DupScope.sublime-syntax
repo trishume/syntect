@@ -1,0 +1,96 @@
+%YAML 1.2
+---
+name: DupScope
+scope: source.dupscope
+version: 2
+file_extensions: [dupscope]
+contexts:
+  main:
+    - match: '#'
+      scope: punctuation.definition.comment.dupscope
+      push: comment
+    - match: 'a'
+      scope: keyword.begin.a
+      push: a-outer
+    - match: 'b'
+      scope: keyword.begin.b
+      push: b-outer
+    - match: 'd'
+      scope: keyword.begin.d
+      push: d-outer
+    - match: 'c'
+      scope: keyword.begin.c
+      push: c-lead
+
+  comment:
+    - meta_scope: comment.line.dupscope
+    - match: $
+      pop: true
+
+  a-outer:
+    - meta_scope: meta.outer.dup
+    - match: 'm'
+      scope: keyword.mid.a
+      push: a-mid
+  a-mid:
+    - meta_scope: meta.mid.dup
+    - match: 'X'
+      scope: meta.outer.dup meta.mid.dup keyword.trigger.a
+      pop: 2
+      set: a-tail
+  a-tail:
+    - match: 'T+'
+      scope: variable.tail.a
+    - match: $
+      pop: true
+
+  b-outer:
+    - meta_scope: meta.outer.dup
+    - match: 'n'
+      scope: keyword.mid.b
+      push: b-mid
+  b-mid:
+    - meta_scope: meta.mid.dup
+    - match: 'Y'
+      scope: meta.outer.dup meta.mid.dup keyword.trigger.b
+      pop: 2
+      set: b-tail
+  b-tail:
+    - meta_scope: meta.tail.dup
+    - match: 'U+'
+      scope: variable.tail.b
+    - match: $
+      pop: true
+
+  d-outer:
+    - meta_scope: meta.outer.dup
+    - match: 'p'
+      scope: keyword.mid.d
+      push: d-mid
+  d-mid:
+    - meta_scope: meta.mid.dup
+    - match: 'Z'
+      scope: meta.mid.dup keyword.trigger.d
+      pop: 2
+      set: d-tail
+  d-tail:
+    - match: 'W+'
+      scope: variable.tail.d
+    - match: $
+      pop: true
+
+  c-lead:
+    - match: 't'
+      scope: keyword.mid.c
+      push: c-outer
+  c-outer:
+    - meta_scope: meta.nest.dup
+    - match: 'W'
+      scope: meta.nest.dup keyword.trigger.c
+      push: c-inner
+  c-inner:
+    - meta_scope: meta.nest.dup
+    - match: 'Q+'
+      scope: variable.tail.c
+    - match: $
+      pop: true

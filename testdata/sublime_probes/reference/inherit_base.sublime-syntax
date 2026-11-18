@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+name: inherit_base
+scope: source.inherit-base
+file_extensions: [inherit_base]
+hidden: true
+version: 2
+variables:
+  ident: '[a-z]+'
+contexts:
+  main:
+    - match: '{{ident}}'
+      scope: k.base

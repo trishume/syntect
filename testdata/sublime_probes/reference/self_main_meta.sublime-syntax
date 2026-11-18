@@ -1,0 +1,33 @@
+%YAML 1.2
+---
+name: self_main_meta
+scope: source.self-main-meta
+file_extensions: [self_main_meta]
+hidden: true
+version: 2
+contexts:
+  main:
+    - meta_content_scope: meta.main
+    - match: p
+      scope: k.p
+      push: main
+    - match: q
+      scope: k.q
+      pop: 1
+    - match: s
+      scope: k.s
+      set: other
+    - match: '[a-z]'
+      scope: in.main
+  other:
+    - match: m
+      scope: k.m
+      set: main
+    - match: r
+      scope: k.r
+      push: main
+    - match: q
+      scope: k.q
+      pop: 1
+    - match: '[a-z]'
+      scope: in.other

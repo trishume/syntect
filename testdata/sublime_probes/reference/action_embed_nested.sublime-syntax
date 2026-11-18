@@ -1,0 +1,21 @@
+%YAML 1.2
+---
+name: action_embed_nested
+scope: source.action-embed-nested
+file_extensions: [action_embed_nested]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '<'
+      embed: inner
+      escape: '>'
+  inner:
+    - meta_scope: m.outer
+    - match: '\['
+      embed: deeper
+      escape: '\]'
+  deeper:
+    - meta_scope: m.inner
+    - match: 'a'
+      scope: k.a

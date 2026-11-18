@@ -1,0 +1,24 @@
+%YAML 1.2
+---
+name: set_loop_branch
+scope: source.set-loop-branch
+file_extensions: [set_loop_branch]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: (?=t)
+      branch_point: bp
+      branch: [failing, returning]
+    - match: '[a-z]'
+      scope: in.main
+  failing:
+    - match: (?=t)
+      fail: bp
+    - match: '[a-z]'
+      scope: in.failing
+  returning:
+    - match: (?=t)
+      set: main
+    - match: '[a-z]'
+      scope: in.returning

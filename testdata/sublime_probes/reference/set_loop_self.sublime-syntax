@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+name: set_loop_self
+scope: source.set-loop-self
+file_extensions: [set_loop_self]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: (?=t)
+      set: main
+    - match: '[a-z]'
+      scope: in.main

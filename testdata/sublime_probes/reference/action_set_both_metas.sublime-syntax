@@ -1,0 +1,20 @@
+%YAML 1.2
+---
+name: action_set_both_metas
+scope: source.action-set-both-metas
+file_extensions: [action_set_both_metas]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      push: one
+  one:
+    - meta_scope: m.one
+    - match: 'b'
+      scope: k.trigger
+      set: two
+  two:
+    - meta_scope: m.two
+    - match: 'c'
+      pop: true

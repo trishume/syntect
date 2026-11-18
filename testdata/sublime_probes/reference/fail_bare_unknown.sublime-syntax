@@ -1,0 +1,13 @@
+%YAML 1.2
+---
+name: fail_bare_unknown
+scope: source.fail-bare-unknown
+file_extensions: [fail_bare_unknown]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a'
+      fail: nobody
+    - match: 'b'
+      scope: k.b

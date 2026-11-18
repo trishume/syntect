@@ -1,0 +1,20 @@
+%YAML 1.2
+---
+name: wproto_ends_with_the_push
+scope: source.wproto-ends-with-the-push
+file_extensions: [wproto_ends_with_the_push]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'x'
+      push: sub
+      with_prototype:
+        - match: 'q'
+          scope: k.wproto
+    - match: 'q'
+      scope: k.mainq
+  sub:
+    - meta_scope: m.sub
+    - match: 'z'
+      pop: true

@@ -55,8 +55,42 @@ pub struct MetadataItems {
     pub decrease_indent_pattern: Option<Regex>,
     pub bracket_indent_next_line_pattern: Option<Regex>,
     pub disable_indent_next_line_pattern: Option<Regex>,
+    // The key in a `.tmPreferences` file is `unIndentedLinePattern`, with a
+    // capital I — Sublime spells this one that way and no other. `camelCase`
+    // over the field name gives `unindentedLinePattern`, so the key was dropped
+    // in silence: the file still deserialises because `KEYS_WE_USE` has the
+    // spelling right, and `ScopedMetadata::unindented_line` could never answer
+    // `true`. Of the 145 scopes in the metadata dump built from `testdata`,
+    // 0 carried this and 59 carry an increase-indent pattern.
+    #[serde(rename = "unIndentedLinePattern")]
     pub unindented_line_pattern: Option<Regex>,
     pub indent_parens: Option<bool>,
+    // Three keys `KEYS_WE_USE` drops before anything here can read them, and
+    // so three fields that could not have existed: a key not in that list is
+    // discarded while the entries are merged, whatever the struct says.
+    // `indentParens` above is the odd one out — readable all along.
+    //
+    // They are the half of the indentation rules that is not a pattern. A
+    // pattern says "a line that looks like this opens a block"; a flag says
+    // "an unclosed bracket at the end of a line does", which no pattern can
+    // express without counting. In `testdata/Packages` seven files carry
+    // `indentSquareBrackets` and four `indentParens`; all four of the latter
+    // and five of the former turn the behaviour *off* for a language whose own
+    // patterns already say when a bracket matters, and the two that turn it on
+    // (C++, JSON) are saying a bracket is all there is.
+    //
+    // `preserveIndent` and `indentOnPaste` are the same shape for text that
+    // arrives in a block rather than being typed: whether a reindent may touch
+    // the indentation it came with. Sublime's own `Default` package scopes
+    // `preserveIndent: true` to `comment`, and of the twelve files that carry
+    // it the three saying `true` are block comments and a heredoc saying that
+    // too, while the other nine say `false` at the language's own scope.
+    // Nothing in `testdata/Packages` carries `indentOnPaste` at all — the key
+    // is Sublime's, and third-party packages use it.
+    pub indent_square_brackets: Option<bool>,
+    pub preserve_indent: Option<bool>,
+    /// `simple` is the only value Sublime's own packages use.
+    pub indent_on_paste: Option<String>,
     #[serde(default)]
     pub shell_variables: BTreeMap<String, String>,
     /// For convenience; this is the first value in `shell_variables`
@@ -92,6 +126,9 @@ const KEYS_WE_USE: &[&str] = &[
     "disableIndentNextLinePattern",
     "unIndentedLinePattern",
     "indentParens",
+    "indentSquareBrackets",
+    "preserveIndent",
+    "indentOnPaste",
     "shellVariables",
 ];
 
@@ -377,6 +414,35 @@ impl<'a> ScopedMetadata<'a> {
         .unwrap_or(false)
     }
 
+    /// Whether an unclosed `(` at the end of a line indents the next one.
+    ///
+    /// `None` when the language does not say, which is not the same as
+    /// `false`: Sublime's `Default` package sets it `true` for bare `source`,
+    /// so what a definition that never mentions the key gets is decided by a
+    /// `.tmPreferences` and not by a default written into a library.
+    pub fn indent_parens(&self) -> Option<bool> {
+        self.best_match(|ind| ind.indent_parens)
+    }
+
+    /// The same question for `[`, which that fallback does *not* turn on.
+    pub fn indent_square_brackets(&self) -> Option<bool> {
+        self.best_match(|ind| ind.indent_square_brackets)
+    }
+
+    /// Whether a reindent leaves the indentation this text arrived with alone.
+    pub fn preserve_indent(&self) -> Option<bool> {
+        self.best_match(|ind| ind.preserve_indent)
+    }
+
+    /// What a paste into this scope does about indentation, if it says.
+    pub fn indent_on_paste(&self) -> Option<&str> {
+        let idx = self
+            .items
+            .iter()
+            .position(|m| m.1.items.indent_on_paste.is_some())?;
+        self.items[idx].1.items.indent_on_paste.as_deref()
+    }
+
     pub fn disable_indent_next_line(&self, line: &str) -> bool {
         self.best_match(|ind| {
             ind.disable_indent_next_line_pattern
@@ -530,6 +596,58 @@ mod tests {
         assert!(rust_meta.selector_string == "source.rust");
         assert!(rust_meta.items.increase_indent_pattern.is_some());
         assert!(rust_meta.items.line_comment.is_some());
+    }
+
+    /// `unIndentedLinePattern` is spelled with a capital I in every
+    /// `.tmPreferences` file that has one, which `rename_all = "camelCase"`
+    /// cannot produce.
+    ///
+    /// The failure is silent in both directions: the file loads, because
+    /// `KEYS_WE_USE` names the key correctly, and every other item in it is
+    /// read — only this one is dropped, and `unindented_line` then answers
+    /// `false` for every line of every language.
+    #[test]
+    fn unindented_line_pattern_is_spelled_the_way_the_files_spell_it() {
+        let path = "testdata/Packages/C++/Indentation Rules.tmPreferences";
+        let metadata = LoadMetadata::quick_load(path).unwrap();
+        assert!(
+            metadata.items.unindented_line_pattern.is_some(),
+            "the `unIndentedLinePattern` in {} was dropped",
+            path
+        );
+        // The rest of the file reads either way, which is why nothing noticed.
+        assert!(metadata.items.increase_indent_pattern.is_some());
+    }
+
+    /// The three indentation keys `KEYS_WE_USE` did not list.
+    ///
+    /// Dropped where the entries are merged, so a field for one of them would
+    /// have read `None` for every file that has it and nothing would have
+    /// looked wrong. They are flags rather than patterns because what they say
+    /// — an unclosed bracket at the end of a line indents the next one, a
+    /// pasted block keeps the indentation it came with — cannot be written as
+    /// one.
+    #[test]
+    fn the_indentation_flags_are_read() {
+        let go = LoadMetadata::quick_load("testdata/Packages/Go/Indentation Rules.tmPreferences")
+            .unwrap();
+        assert_eq!(go.items.indent_parens, Some(false));
+        assert_eq!(go.items.indent_square_brackets, Some(false));
+        assert_eq!(go.items.preserve_indent, Some(false));
+        // A file that turns one of them on, so `Some(false)` above cannot be a
+        // deserializer that answers `false` for everything.
+        let json =
+            LoadMetadata::quick_load("testdata/Packages/JSON/Indentation Rules.tmPreferences")
+                .unwrap();
+        assert_eq!(json.items.indent_square_brackets, Some(true));
+        // And one that mentions none of them: not said is not `false`.
+        let rust =
+            LoadMetadata::quick_load("testdata/Packages/Rust/Indentation Rules.tmPreferences")
+                .unwrap();
+        assert_eq!(rust.items.indent_parens, None);
+        assert_eq!(rust.items.indent_square_brackets, None);
+        assert_eq!(rust.items.preserve_indent, None);
+        assert_eq!(rust.items.indent_on_paste, None);
     }
 
     #[test]

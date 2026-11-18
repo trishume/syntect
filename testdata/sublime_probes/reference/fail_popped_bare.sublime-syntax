@@ -1,0 +1,24 @@
+%YAML 1.2
+---
+name: fail_popped_bare
+scope: source.fail-popped-bare
+file_extensions: [fail_popped_bare]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [only, other]
+    - match: 'b'
+      fail: bp
+    - match: 'b'
+      scope: k.b
+  only:
+    - match: 'a'
+      scope: k.a
+      pop: true
+  other:
+    - match: 'a'
+      scope: k.other
+      pop: true

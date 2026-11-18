@@ -1,0 +1,12 @@
+%YAML 1.2
+---
+name: action_captures_empty_group
+scope: source.action-captures-empty-group
+file_extensions: [action_captures_empty_group]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: 'a(x?)b'
+      captures:
+        1: k.empty

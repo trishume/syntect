@@ -1,0 +1,17 @@
+%YAML 1.2
+---
+name: proto_turned_off
+scope: source.proto-turned-off
+file_extensions: [proto_turned_off]
+hidden: true
+version: 2
+contexts:
+  prototype:
+    - match: 'p'
+      scope: k.proto
+  main:
+    - match: 'x'
+      push: sub
+  sub:
+    - meta_include_prototype: false
+    - meta_scope: m.sub

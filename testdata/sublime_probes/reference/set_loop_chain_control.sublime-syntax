@@ -1,0 +1,23 @@
+%YAML 1.2
+---
+name: set_loop_chain_control
+scope: source.set-loop-chain-control
+file_extensions: [set_loop_chain_control]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: (?=t)
+      set: a
+    - match: '[a-z]'
+      scope: in.main
+  a:
+    - match: (?=t)
+      set: b
+    - match: '[a-z]'
+      scope: in.a
+  b:
+    - match: t
+      scope: in.b.t
+    - match: '[a-z]'
+      scope: in.b

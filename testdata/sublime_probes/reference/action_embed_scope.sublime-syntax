@@ -1,0 +1,19 @@
+%YAML 1.2
+---
+name: action_embed_scope
+scope: source.action-embed-scope
+file_extensions: [action_embed_scope]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '<'
+      scope: k.open
+      embed: inner
+      embed_scope: m.embedded
+      escape: '>'
+      escape_captures:
+        0: k.close
+  inner:
+    - match: 'a'
+      scope: k.a

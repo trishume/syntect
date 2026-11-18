@@ -1,0 +1,119 @@
+%YAML 1.2
+---
+name: PopPush
+scope: source.poppush
+version: 2
+file_extensions: [poppush]
+contexts:
+  main:
+    - match: '#'
+      scope: punctuation.definition.comment.poppush
+      push: comment
+    - match: 'p'
+      scope: keyword.begin.push
+      push: p-outer
+    - match: 's'
+      scope: keyword.begin.set
+      push: s-outer
+    - match: 'e'
+      scope: keyword.begin.embed
+      push: e-outer
+    - match: 'b'
+      scope: keyword.begin.branch
+      push: b-outer
+    - match: 'k'
+      scope: keyword.begin.dup
+      push: [k-meta, k-work]
+    - match: 'z'
+      scope: variable.after.dup
+
+  p-outer:
+    - meta_scope: meta.outer.push
+    - match: 'm'
+      scope: keyword.mid.push
+      push: p-mid
+  p-mid:
+    - meta_scope: meta.mid.push
+    - match: 'X'
+      scope: keyword.trigger.push
+      pop: 2
+      push: p-tail
+  p-tail:
+    - meta_scope: meta.tail.push
+    - match: 'T+'
+      scope: variable.tail.push
+    - match: $
+      pop: true
+
+  s-outer:
+    - meta_scope: meta.outer.set
+    - match: 'n'
+      scope: keyword.mid.set
+      push: s-mid
+  s-mid:
+    - meta_scope: meta.mid.set
+    - match: 'Y'
+      scope: keyword.trigger.set
+      pop: 2
+      set: s-tail
+  s-tail:
+    - meta_scope: meta.tail.set
+    - match: 'U+'
+      scope: variable.tail.set
+    - match: $
+      pop: true
+
+  comment:
+    - meta_scope: comment.line.poppush
+    - match: $
+      pop: true
+
+  e-outer:
+    - meta_scope: meta.outer.embed
+    - match: 'f'
+      scope: keyword.mid.embed
+      push: e-mid
+  e-mid:
+    - meta_scope: meta.mid.embed
+    - match: 'Z'
+      scope: keyword.trigger.embed
+      pop: 2
+      embed: e-tail
+      escape: $
+  e-tail:
+    - meta_scope: meta.tail.embed
+    - match: 'V+'
+      scope: variable.tail.embed
+
+  b-outer:
+    - meta_scope: meta.outer.branch
+    - match: 'g'
+      scope: keyword.mid.branch
+      push: b-mid
+  b-mid:
+    - meta_scope: meta.mid.branch
+    - match: 'W'
+      scope: keyword.trigger.branch
+      pop: 2
+      branch_point: probe-bp
+      branch: [b-tail, b-alt]
+  b-tail:
+    - meta_scope: meta.tail.branch
+    - match: 'Q+'
+      scope: variable.tail.branch
+    - match: $
+      pop: true
+  b-alt:
+    - meta_scope: meta.alt.branch
+    - match: $
+      pop: true
+
+  k-meta:
+    - meta_scope: meta.dup.k
+    - match: ''
+      pop: 1
+  k-work:
+    - match: '(?=&)'
+      pop: 1
+    - match: 'j'
+      scope: keyword.work.dup

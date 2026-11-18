@@ -1,0 +1,18 @@
+%YAML 1.2
+---
+name: proto_in_itself
+scope: source.proto-in-itself
+file_extensions: [proto_in_itself]
+hidden: true
+version: 2
+contexts:
+  prototype:
+    - match: 'p'
+      scope: k.proto
+    - match: 'q'
+      push: sub
+  main:
+    - match: 'z'
+      scope: k.z
+  sub:
+    - meta_scope: m.sub

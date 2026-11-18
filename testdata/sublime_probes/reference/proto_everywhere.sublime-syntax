@@ -1,0 +1,16 @@
+%YAML 1.2
+---
+name: proto_everywhere
+scope: source.proto-everywhere
+file_extensions: [proto_everywhere]
+hidden: true
+version: 2
+contexts:
+  prototype:
+    - match: 'p'
+      scope: k.proto
+  main:
+    - match: 'x'
+      push: sub
+  sub:
+    - meta_scope: m.sub

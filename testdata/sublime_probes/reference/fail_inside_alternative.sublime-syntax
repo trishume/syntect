@@ -1,0 +1,23 @@
+%YAML 1.2
+---
+name: fail_inside_alternative
+scope: source.fail-inside-alternative
+file_extensions: [fail_inside_alternative]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [first, second]
+  first:
+    - match: 'a'
+      scope: k.first
+    - match: 'b'
+      scope: k.fail
+      fail: bp
+  second:
+    - match: 'a'
+      scope: k.second
+    - match: '(?=\S)'
+      pop: true

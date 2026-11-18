@@ -1,0 +1,17 @@
+%YAML 1.2
+---
+name: inherit_added_context
+scope: source.inherit-added-context
+file_extensions: [inherit_added_context]
+hidden: true
+version: 2
+extends: Packages/sublime_probes/reference/inherit_base.sublime-syntax
+contexts:
+  main:
+    - meta_prepend: true
+    - match: 'Q'
+      push: mine
+  mine:
+    - meta_scope: m.mine
+    - match: 'z'
+      pop: true

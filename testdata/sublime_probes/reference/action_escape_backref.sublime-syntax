@@ -1,0 +1,16 @@
+%YAML 1.2
+---
+name: action_escape_backref
+scope: source.action-escape-backref
+file_extensions: [action_escape_backref]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '<(\w)'
+      embed: inner
+      escape: '\1>'
+  inner:
+    - meta_scope: m.in
+    - match: '\w'
+      scope: k.w

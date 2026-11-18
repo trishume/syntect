@@ -1,0 +1,31 @@
+%YAML 1.2
+---
+name: self_main_plain_v1
+scope: source.self-main-plain-v1
+file_extensions: [self_main_plain_v1]
+hidden: true
+contexts:
+  main:
+    - match: p
+      scope: k.p
+      push: main
+    - match: q
+      scope: k.q
+      pop: 1
+    - match: s
+      scope: k.s
+      set: other
+    - match: '[a-z]'
+      scope: in.main
+  other:
+    - match: m
+      scope: k.m
+      set: main
+    - match: r
+      scope: k.r
+      push: main
+    - match: q
+      scope: k.q
+      pop: 1
+    - match: '[a-z]'
+      scope: in.other

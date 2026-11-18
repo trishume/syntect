@@ -1,0 +1,19 @@
+%YAML 1.2
+---
+name: fail_scoped_known
+scope: source.fail-scoped-known
+file_extensions: [fail_scoped_known]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: '(?=a)'
+      branch_point: bp
+      branch: [only]
+    - match: 'b'
+      scope: k.b
+      fail: bp
+  only:
+    - match: 'a'
+      scope: k.a
+      pop: true
