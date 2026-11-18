@@ -1,0 +1,28 @@
+%YAML 1.2
+---
+name: set_loop_tail
+scope: source.set-loop-tail
+file_extensions: [set_loop_tail]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: (?=t)
+      set: a
+    - match: '[a-z]'
+      scope: in.main
+  a:
+    - match: (?=t)
+      set: b
+    - match: '[a-z]'
+      scope: in.a
+  b:
+    - match: (?=t)
+      set: c
+    - match: '[a-z]'
+      scope: in.b
+  c:
+    - match: (?=t)
+      set: b
+    - match: '[a-z]'
+      scope: in.c

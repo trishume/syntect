@@ -1,0 +1,23 @@
+%YAML 1.2
+---
+name: set_loop_pushed
+scope: source.set-loop-pushed
+file_extensions: [set_loop_pushed]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: (?=t)
+      push: first
+    - match: '[a-z]'
+      scope: in.main
+  first:
+    - match: (?=t)
+      set: second
+    - match: '[a-z]'
+      scope: in.first
+  second:
+    - match: (?=t)
+      set: first
+    - match: '[a-z]'
+      scope: in.second

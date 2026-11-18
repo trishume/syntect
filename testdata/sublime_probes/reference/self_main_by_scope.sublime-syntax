@@ -1,0 +1,17 @@
+%YAML 1.2
+---
+name: self_main_by_scope
+scope: source.self-main-by-scope
+file_extensions: [self_main_by_scope]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: p
+      scope: k.p
+      push: scope:source.self-main-by-scope
+    - match: q
+      scope: k.q
+      pop: 1
+    - match: '[a-z]'
+      scope: in.main

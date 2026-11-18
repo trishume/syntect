@@ -17,8 +17,8 @@ use crate::parsing::syntax_definition::ContextId;
 use crate::parsing::syntax_set::{SyntaxReference, SyntaxSet};
 use fnv::FnvHasher;
 use regex_syntax::escape;
-use std::collections::{HashMap, HashSet};
-use std::hash::{BuildHasherDefault, Hash, Hasher};
+use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
@@ -521,41 +521,17 @@ fn summed_push_clear(
     Ok((total > 0).then_some(ClearAmount::TopN(total)))
 }
 
-/// The `(byte, stack hash)` states a non-consuming `set` was already taken
-/// from, used to break `set` cycles. See [`ParseState::parse_next_token`].
-type SetStates = HashSet<(usize, u64), BuildHasherDefault<FnvHasher>>;
+/// How many non-consuming `push`, `set`, `branch` or `embed` actions Sublime Text
+/// takes at one position, retries after a `fail` included, before it abandons the
+/// rest of the line. Pops are free.
+const NON_CONSUMING_ACTION_LIMIT: usize = 33;
 
-/// Hashes the stack a non-consuming `set` is taken from, for [`SetStates`].
-///
-/// A hash instead of a copy of the stack, so the guard never allocates. A
-/// collision can only make the guard skip a `set` it should have taken and
-/// advance a character instead, it can never make the parser hang.
-///
-/// Each level hashes its context and its prototypes, because two levels with
-/// the same context but different `with_prototype`s match differently. A
-/// prototype is hashed only once per level: a `set` keeps the prototypes of
-/// the level it replaces and appends its own `with_prototype`, so a cycle of
-/// `set`s with a `with_prototype` grows the list on every lap. A repeated
-/// prototype can never win over its first occurrence, so the state really is
-/// the same, and hashing it once keeps the number of states finite. Hashing
-/// every copy would make each lap look new and the cycle would never break.
-///
-/// `captures` are left out because `Region` isn't `Hash`. Two states that only
-/// differ in them are treated as one, which again can only skip a `set`.
-fn set_state_hash(stack: &[StateLevel]) -> u64 {
-    let mut hasher = FnvHasher::default();
-    for level in stack {
-        level.context.hash(&mut hasher);
-        let mut unique_prototypes = 0;
-        for (i, prototype) in level.prototypes.iter().enumerate() {
-            if !level.prototypes[..i].contains(prototype) {
-                prototype.hash(&mut hasher);
-                unique_prototypes += 1;
-            }
-        }
-        hasher.write_usize(unique_prototypes);
-    }
-    hasher.finish()
+/// Counts one zero-width action at `position`; false once the limit is passed.
+fn take_non_consuming_action(actions: &mut (usize, usize), position: usize) -> bool {
+    let (at, taken) = *actions;
+    let taken = if at == position { taken + 1 } else { 1 };
+    *actions = (position, taken);
+    taken <= NON_CONSUMING_ACTION_LIMIT
 }
 
 /// Moves `start` past one character, the way Sublime Text breaks a match loop.
@@ -978,8 +954,8 @@ impl ParseState {
         if start_at == 0 && self.first_line {
             let cur_level = &self.stack[self.stack.len() - 1];
             let context = syntax_set.get_context(&cur_level.context)?;
-            if !context.meta_content_scope.is_empty() {
-                res.push((0, ScopeStackOp::Push(context.meta_content_scope[0])));
+            for scope in &context.meta_content_scope {
+                res.push((0, ScopeStackOp::Push(*scope)));
             }
             self.first_line = false;
         }
@@ -1002,9 +978,8 @@ impl ParseState {
         // of a shorter one. See `skipped_branches`.
         let outer_skipped = std::mem::take(&mut self.skipped_branches);
         self.skipped_branches.extend(skip);
-        // Used for detecting loops between non-consuming `set`s, see
-        // `parse_next_token`.
-        let mut set_states = SetStates::default();
+        // The position and count behind `NON_CONSUMING_ACTION_LIMIT`.
+        let mut non_consuming_actions = (start_at, 0);
 
         while self.parse_next_token(
             line,
@@ -1013,7 +988,7 @@ impl ParseState {
             &mut search_cache,
             &mut regions,
             &mut non_consuming_push_at,
-            &mut set_states,
+            &mut non_consuming_actions,
             &mut res,
             budget,
         )? {
@@ -1035,7 +1010,7 @@ impl ParseState {
         search_cache: &mut SearchCache,
         regions: &mut Region,
         non_consuming_push_at: &mut (usize, usize, usize),
-        set_states: &mut SetStates,
+        non_consuming_actions: &mut (usize, usize),
         ops: &mut Vec<(usize, ScopeStackOp)>,
         budget: &mut TokenBudget,
     ) -> Result<bool, ParsingError> {
@@ -1160,6 +1135,12 @@ impl ParseState {
                 _ => false,
             };
             if fail_that_resolves {
+                let (fail_start, fail_end) = reg_match.regions.pos(0).unwrap();
+                if fail_start == fail_end
+                    && !take_non_consuming_action(non_consuming_actions, fail_start)
+                {
+                    return Ok(false);
+                }
                 let level_context = {
                     let id = &self.stack[self.stack.len() - 1].context;
                     syntax_set.get_context(id)?
@@ -1198,6 +1179,22 @@ impl ParseState {
             if matches!(match_pattern.operation, MatchOperation::Branch { .. })
                 && self.replay_line.is_some()
                 && match_end >= line.len()
+            {
+                return Ok(false);
+            }
+
+            // Stop where Sublime Text stops: the rest of the line stays
+            // unread, and the next line starts from the context reached here.
+            let match_start = reg_match.regions.pos(0).unwrap().0;
+            if match_start == match_end
+                && matches!(
+                    match_pattern.operation,
+                    MatchOperation::Push { .. }
+                        | MatchOperation::Set { .. }
+                        | MatchOperation::Branch { .. }
+                        | MatchOperation::Embed { .. }
+                )
+                && !take_non_consuming_action(non_consuming_actions, match_start)
             {
                 return Ok(false);
             }
@@ -1245,21 +1242,6 @@ impl ParseState {
                     // and a `Pop(1)` there lands on `pre` and loops. This guard
                     // may be widened and may not be narrowed.
                     *non_consuming_push_at = (match_end, pre, reach.max(pre + 1));
-                }
-                // A non-consuming "set" loops too, and the guard above cannot
-                // see it: a "set" is neither the push that arms it nor the pop
-                // that trips it, and a "set" of one context leaves the stack
-                // depth alone, so two contexts that "set" each other spin here
-                // forever. Taking a "set" from a byte and stack we already took
-                // one from can only repeat the same work, so do what Sublime
-                // Text does with the push/pop loop and move on by a character.
-                // The stack has to be part of the key: an included context is
-                // shared, so the same rule legitimately fires at one byte from
-                // many states.
-                if matches!(match_pattern.operation, MatchOperation::Set { .. })
-                    && !set_states.insert((*start, set_state_hash(&self.stack)))
-                {
-                    return Ok(advance_one_char(line, start));
                 }
             }
 
@@ -2431,6 +2413,23 @@ impl ParseState {
         Ok(())
     }
 
+    /// What the first `main` shows as its `meta_content_scope`: it is held by the
+    /// file level, and a rule leaving that `main` hides it from its trigger.
+    fn file_level_meta_content<'a>(
+        &self,
+        syntax_set: &'a SyntaxSet,
+    ) -> Result<&'a [Scope], ParsingError> {
+        let [file_level, first_main] = self.stack.as_slice() else {
+            return Ok(&[]);
+        };
+        let syntax = &syntax_set.syntaxes()[file_level.context.syntax_index];
+        if syntax.context_ids().get("__main") != Some(&first_main.context) {
+            return Ok(&[]);
+        }
+        let scopes = &syntax_set.get_context(&file_level.context)?.meta_content_scope;
+        Ok(scopes.get(1..).unwrap_or(&[]))
+    }
+
     fn push_meta_ops(
         &self,
         initial: bool,
@@ -2441,6 +2440,7 @@ impl ParseState {
         ops: &mut Vec<(usize, ScopeStackOp)>,
     ) -> Result<(), ParsingError> {
         let version = self.current_syntax_version(syntax_set);
+        let file_level = self.file_level_meta_content(syntax_set)?;
         // println!("metas ops for {:?}, initial: {}",
         //          match_op,
         //          initial);
@@ -2477,7 +2477,8 @@ impl ParseState {
                         .last()
                         .map(|level| level.mcs_skipped)
                         .unwrap_or(0);
-                    let atoms = cur_context.meta_content_scope.len().saturating_sub(skipped);
+                    let atoms = cur_context.meta_content_scope.len().saturating_sub(skipped)
+                        + file_level.len();
                     if atoms > 0 {
                         ops.push((index, ScopeStackOp::Pop(atoms)));
                     }
@@ -2487,6 +2488,9 @@ impl ParseState {
                     // stack).
                     if !cur_context.meta_scope.is_empty() {
                         ops.push((index, ScopeStackOp::Pop(cur_context.meta_scope.len())));
+                    }
+                    for scope in file_level {
+                        ops.push((index, ScopeStackOp::Push(*scope)));
                     }
                     // Each deeper context's scopes are popped in
                     // top-to-bottom order: meta_content_scope first
@@ -2615,7 +2619,8 @@ impl ParseState {
                         .last()
                         .map(|level| level.mcs_skipped)
                         .unwrap_or(0);
-                    let atoms = cur_context.meta_content_scope.len().saturating_sub(skipped);
+                    let atoms = cur_context.meta_content_scope.len().saturating_sub(skipped)
+                        + file_level.len();
                     if is_set && version >= 2 && atoms > 0 {
                         ops.push((index, ScopeStackOp::Pop(atoms)));
                     }
@@ -2843,6 +2848,7 @@ impl ParseState {
                     // fire even if the immediate contexts had no mcs/ms.
                     let repush = (is_set
                         && (set_pop_count > 1
+                            || !file_level.is_empty()
                             || !cur_context.meta_scope.is_empty()
                             || !cur_context.meta_content_scope.is_empty()
                             // cur has clear_scopes but no meta_scope/mcs: we still
@@ -2962,6 +2968,11 @@ impl ParseState {
                         // do all the popping as one operation
                         if num_to_pop > 0 {
                             ops.push((index, ScopeStackOp::Pop(num_to_pop)));
+                        }
+                        if is_set && version >= 2 {
+                            for scope in file_level {
+                                ops.push((index, ScopeStackOp::Push(*scope)));
+                            }
                         }
 
                         // then the frames a `pop: N + set:`
@@ -4067,39 +4078,35 @@ contexts:
     }
 
     #[test]
-    fn can_parse_non_consuming_sets_that_would_loop() {
+    fn non_consuming_sets_that_would_loop_end_the_line() {
         let syntax = r#"
 name: test
 scope: source.test
 contexts:
   main:
-    # This makes us go into "a" without consuming any characters
     - match: (?=test)
       set: a
   a:
-    # And this one into "b", still without consuming anything
     - match: (?=t)
       set: b
     - match: \w+
       scope: test.matched
   b:
-    # Which sends us straight back to "a". Neither of the two is a push or a
-    # pop, so the stack depth never moves and the push/pop loop check above
-    # never sees a thing. ST stops taking a "set" that already fired at this
-    # position and advances instead.
     - match: (?=t)
       set: a
     - match: \w+
       scope: test.matched
 "#;
 
-        let line = "test";
-        let expect = ["<source.test>, <test.matched>"];
-        expect_scope_stacks(line, &expect, syntax);
+        let stacks = stack_states(parse("test", syntax));
+        assert!(
+            stacks.iter().all(|stack| !stack.contains("test.matched")),
+            "the rest of the line was read: {stacks:?}"
+        );
     }
 
     #[test]
-    fn can_parse_non_consuming_sets_that_would_loop_with_prototype() {
+    fn non_consuming_sets_with_a_prototype_that_would_loop_end_the_line() {
         let syntax = r#"
 name: test
 scope: source.test
@@ -4108,9 +4115,6 @@ contexts:
     - match: (?=x)
       set: a
   a:
-    # Sets "b" without consuming anything. A "set" keeps the prototypes of
-    # the context it replaces and adds its own, so every lap through here
-    # adds another copy of this prototype.
     - match: (?=x)
       set: b
       with_prototype:
@@ -4119,19 +4123,17 @@ contexts:
     - match: y
       scope: test.a
   b:
-    # And straight back to "a", which now has the prototype. That is not the
-    # state the first "set" was taken from, so it is taken again. The loop is
-    # caught one lap later, on "b" with the prototype twice, which matches
-    # exactly like "b" with it once.
     - match: (?=x)
       set: a
     - match: y
       scope: test.b
 "#;
 
-        let line = "xyz";
-        let expect = ["<source.test>, <test.b>", "<source.test>, <test.prototype>"];
-        expect_scope_stacks(line, &expect, syntax);
+        let stacks = stack_states(parse("xyz", syntax));
+        assert!(
+            stacks.iter().all(|stack| !stack.contains("test.")),
+            "the rest of the line was read: {stacks:?}"
+        );
     }
 
     #[test]

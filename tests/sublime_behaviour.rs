@@ -148,6 +148,36 @@ mod sublime_text {
         out
     }
 
+    /// Two contexts that `set` each other without consuming anything end the
+    /// line, unread, at Sublime Text's limit on such actions.
+    #[test]
+    fn non_consuming_sets_that_answer_each_other_end_the_line() {
+        let set = set_of(&[r#"%YAML 1.2
+---
+name: SetLoop
+scope: source.setloop
+contexts:
+  main:
+    - match: (?=test)
+      set: first
+  first:
+    - match: (?=t)
+      set: second
+    - match: \w+
+      scope: word.matched
+  second:
+    - match: (?=t)
+      set: first
+    - match: \w+
+      scope: word.matched
+"#]);
+        let seen = scopes(&set, "SetLoop", "test");
+        assert!(
+            seen.iter().all(|stack| !stack.contains("word.matched")),
+            "the rest of the line was read: {seen:?}"
+        );
+    }
+
     /// A `push:` of several contexts, popped all the way back at a position
     /// that never moved, terminates.
     #[test]

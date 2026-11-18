@@ -705,5 +705,645 @@
   "text": "ab\n",
   "row": 0,
   "note": "ST refuses it; this parser accepts it and applies the scope. Being the lenient one is not a colouring difference, but a definition written this way has no ST answer to be measured against."
+ },
+ {
+  "key": "set_loop_cycle_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle",
+  "files": [
+   "set_loop_cycle"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_cycle_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle",
+  "files": [
+   "set_loop_cycle"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_cycle_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle",
+  "files": [
+   "set_loop_cycle"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_cycle_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle",
+  "files": [
+   "set_loop_cycle"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_cycle_v1_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle_v1",
+  "files": [
+   "set_loop_cycle_v1"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_cycle_v1_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle_v1",
+  "files": [
+   "set_loop_cycle_v1"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_cycle_v1_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle_v1",
+  "files": [
+   "set_loop_cycle_v1"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_cycle_v1_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_cycle_v1",
+  "files": [
+   "set_loop_cycle_v1"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_tail_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_tail",
+  "files": [
+   "set_loop_tail"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_tail_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_tail",
+  "files": [
+   "set_loop_tail"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_tail_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_tail",
+  "files": [
+   "set_loop_tail"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_tail_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_tail",
+  "files": [
+   "set_loop_tail"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_self_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_self",
+  "files": [
+   "set_loop_self"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_self_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_self",
+  "files": [
+   "set_loop_self"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_self_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_self",
+  "files": [
+   "set_loop_self"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_self_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_self",
+  "files": [
+   "set_loop_self"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_pushed_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_pushed",
+  "files": [
+   "set_loop_pushed"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_pushed_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_pushed",
+  "files": [
+   "set_loop_pushed"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_pushed_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_pushed",
+  "files": [
+   "set_loop_pushed"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_pushed_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_pushed",
+  "files": [
+   "set_loop_pushed"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_chain_control_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_control",
+  "files": [
+   "set_loop_chain_control"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_chain_control_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_control",
+  "files": [
+   "set_loop_chain_control"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_chain_control_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_control",
+  "files": [
+   "set_loop_chain_control"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_chain_control_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_control",
+  "files": [
+   "set_loop_chain_control"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_prototype_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_prototype",
+  "files": [
+   "set_loop_prototype"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_prototype_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_prototype",
+  "files": [
+   "set_loop_prototype"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_prototype_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_prototype",
+  "files": [
+   "set_loop_prototype"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_prototype_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_prototype",
+  "files": [
+   "set_loop_prototype"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_branch_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_branch",
+  "files": [
+   "set_loop_branch"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_branch_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_branch",
+  "files": [
+   "set_loop_branch"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_branch_2",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_branch",
+  "files": [
+   "set_loop_branch"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 2
+ },
+ {
+  "key": "set_loop_branch_3",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_branch",
+  "files": [
+   "set_loop_branch"
+  ],
+  "text": "abtcd\nef\ntg\nhi\n",
+  "row": 3
+ },
+ {
+  "key": "set_loop_chain_32_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_32",
+  "files": [
+   "set_loop_chain_32"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_chain_32_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_32",
+  "files": [
+   "set_loop_chain_32"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_chain_33_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_33",
+  "files": [
+   "set_loop_chain_33"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_chain_33_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_33",
+  "files": [
+   "set_loop_chain_33"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_chain_34_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_34",
+  "files": [
+   "set_loop_chain_34"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_chain_34_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_chain_34",
+  "files": [
+   "set_loop_chain_34"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_branch_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_branch",
+  "files": [
+   "set_loop_kind_branch"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_branch_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_branch",
+  "files": [
+   "set_loop_kind_branch"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_embed_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_embed",
+  "files": [
+   "set_loop_kind_embed"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_embed_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_embed",
+  "files": [
+   "set_loop_kind_embed"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_set_pop_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_set_pop",
+  "files": [
+   "set_loop_kind_set_pop"
+  ],
+  "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_set_pop_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_set_pop",
+  "files": [
+   "set_loop_kind_set_pop"
+  ],
+  "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_push_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_push",
+  "files": [
+   "set_loop_kind_push"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_push_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_push",
+  "files": [
+   "set_loop_kind_push"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_mixed_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_mixed",
+  "files": [
+   "set_loop_kind_mixed"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_mixed_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_mixed",
+  "files": [
+   "set_loop_kind_mixed"
+  ],
+  "text": "abtcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_consuming_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_consuming",
+  "files": [
+   "set_loop_kind_consuming"
+  ],
+  "text": "tttttttttttttttttttttttttttttt\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_consuming_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_consuming",
+  "files": [
+   "set_loop_kind_consuming"
+  ],
+  "text": "tttttttttttttttttttttttttttttt\nef\n",
+  "row": 1
+ },
+ {
+  "key": "set_loop_kind_pop_0",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_pop",
+  "files": [
+   "set_loop_kind_pop"
+  ],
+  "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd\nef\n",
+  "row": 0
+ },
+ {
+  "key": "set_loop_kind_pop_1",
+  "rule": "A non-consuming set that returns to a state it already left at this position ends the line.",
+  "syntax": "set_loop_kind_pop",
+  "files": [
+   "set_loop_kind_pop"
+  ],
+  "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd\nef\n",
+  "row": 1
+ },
+ {
+  "key": "self_main_plain",
+  "rule": "A context stack that holds main again does not repeat the file's own scope.",
+  "syntax": "self_main_plain",
+  "files": [
+   "self_main_plain"
+  ],
+  "text": "apbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_plain_v1",
+  "rule": "A context stack that holds main again does not repeat the file's own scope.",
+  "syntax": "self_main_plain_v1",
+  "files": [
+   "self_main_plain_v1"
+  ],
+  "text": "apbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta",
+  "rule": "A context stack that holds main again does not repeat the file's own scope.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "apbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_by_scope",
+  "rule": "A context stack that holds main again does not repeat the file's own scope.",
+  "syntax": "self_main_by_scope",
+  "files": [
+   "self_main_by_scope"
+  ],
+  "text": "apbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_again",
+  "rule": "The first main frame keeps its meta_content_scope when it is left.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "asbmsbmc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_pop",
+  "rule": "The first main frame keeps its meta_content_scope when it is left.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "aqbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_set_pop",
+  "rule": "The first main frame keeps its meta_content_scope when it is left.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "asbqcqd\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_plain_pop",
+  "rule": "The first main frame keeps its meta_content_scope when it is left.",
+  "syntax": "self_main_plain",
+  "files": [
+   "self_main_plain"
+  ],
+  "text": "aqbqc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_plain_set",
+  "rule": "A set back to main does not repeat the file's own scope.",
+  "syntax": "self_main_plain",
+  "files": [
+   "self_main_plain"
+  ],
+  "text": "asbmc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_plain_set_push",
+  "rule": "A push of main from another context does not repeat the file's own scope.",
+  "syntax": "self_main_plain",
+  "files": [
+   "self_main_plain"
+  ],
+  "text": "asbrcqd\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_set",
+  "rule": "A set back to main does not repeat the file's own scope.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "asbmc\n",
+  "row": 0
+ },
+ {
+  "key": "self_main_meta_set_push",
+  "rule": "A push of main from another context does not repeat the file's own scope.",
+  "syntax": "self_main_meta",
+  "files": [
+   "self_main_meta"
+  ],
+  "text": "asbrcqd\n",
+  "row": 0
  }
 ]

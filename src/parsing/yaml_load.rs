@@ -79,6 +79,8 @@ __start:
       push: __main
 __main:
     - include: main
+__named_main:
+    - include: main
 ";
 
 impl SyntaxDefinition {
@@ -671,39 +673,42 @@ impl SyntaxDefinition {
             &mut ContextNamer::new("__start"),
         )
         .unwrap();
-        if let Some(start) = contexts.get_mut("__start") {
-            start.meta_content_scope = vec![top_level_scope];
+        for name in ["__main", "__named_main"] {
+            let main_yaml: &[Yaml] = yaml[name].as_vec().unwrap();
+            SyntaxDefinition::parse_context(
+                main_yaml,
+                state,
+                contexts,
+                &mut ContextNamer::new(name),
+            )
+            .unwrap();
         }
-
-        let main_yaml: &[Yaml] = yaml["__main"].as_vec().unwrap();
-        SyntaxDefinition::parse_context(
-            main_yaml,
-            state,
-            contexts,
-            &mut ContextNamer::new("__main"),
-        )
-        .unwrap();
 
         let meta_include_prototype = contexts["main"].meta_include_prototype;
         let meta_scope = contexts["main"].meta_scope.clone();
-        // Copy `main`'s meta_content_scope to `__main`, but strip the
-        // auto-inserted `top_level_scope` at position 0 if present.
-        // On a fresh load `main.meta_content_scope` is still pre-insert
-        // here, so this is a no-op. On a re-run (from `resolve_extends`
-        // after a child inherits its parent's contexts), `main` already
-        // carries `top_level_scope` from the first call; copying it to
-        // `__main` would make both push the file scope at runtime,
-        // producing duplicates like `[source.diff.git, source.diff.git]`
-        // for Git Diff.
+        let clear_scopes = contexts["main"].clear_scopes;
+        // `main` already carries the file scope when `resolve_extends` re-runs this.
         let mut meta_content_scope = contexts["main"].meta_content_scope.clone();
         if meta_content_scope.first() == Some(&top_level_scope) {
             meta_content_scope.remove(0);
         }
 
+        // The file level holds `main`'s `meta_content_scope`, so it survives
+        // the first `main` being set over or popped, as it does in Sublime Text.
+        if let Some(start) = contexts.get_mut("__start") {
+            start.meta_content_scope = std::iter::once(top_level_scope)
+                .chain(meta_content_scope.iter().copied())
+                .collect();
+        }
         if let Some(outer_main) = contexts.get_mut("__main") {
             outer_main.meta_include_prototype = meta_include_prototype;
-            outer_main.meta_scope = meta_scope;
-            outer_main.meta_content_scope = meta_content_scope;
+            outer_main.meta_scope = meta_scope.clone();
+        }
+        if let Some(named_main) = contexts.get_mut("__named_main") {
+            named_main.meta_include_prototype = meta_include_prototype;
+            named_main.meta_scope = meta_scope;
+            named_main.meta_content_scope = meta_content_scope;
+            named_main.clear_scopes = clear_scopes;
         }
 
         // add the top_level_scope as a meta_content_scope to main so

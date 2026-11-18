@@ -1,0 +1,493 @@
+%YAML 1.2
+---
+name: set_loop_kind_set_pop
+scope: source.set-loop-kind-set-pop
+file_extensions: [set_loop_kind_set_pop]
+hidden: true
+version: 2
+contexts:
+  main:
+    - match: a
+      push: c1
+    - match: t
+      scope: in.end.t
+    - match: '[a-z]'
+      scope: in.main
+  c1:
+    - match: a
+      push: c2
+    - match: (?=t)
+      set: d1
+    - match: '[a-z]'
+      scope: in.c1
+  d1:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d1
+  c2:
+    - match: a
+      push: c3
+    - match: (?=t)
+      set: d2
+    - match: '[a-z]'
+      scope: in.c2
+  d2:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d2
+  c3:
+    - match: a
+      push: c4
+    - match: (?=t)
+      set: d3
+    - match: '[a-z]'
+      scope: in.c3
+  d3:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d3
+  c4:
+    - match: a
+      push: c5
+    - match: (?=t)
+      set: d4
+    - match: '[a-z]'
+      scope: in.c4
+  d4:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d4
+  c5:
+    - match: a
+      push: c6
+    - match: (?=t)
+      set: d5
+    - match: '[a-z]'
+      scope: in.c5
+  d5:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d5
+  c6:
+    - match: a
+      push: c7
+    - match: (?=t)
+      set: d6
+    - match: '[a-z]'
+      scope: in.c6
+  d6:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d6
+  c7:
+    - match: a
+      push: c8
+    - match: (?=t)
+      set: d7
+    - match: '[a-z]'
+      scope: in.c7
+  d7:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d7
+  c8:
+    - match: a
+      push: c9
+    - match: (?=t)
+      set: d8
+    - match: '[a-z]'
+      scope: in.c8
+  d8:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d8
+  c9:
+    - match: a
+      push: c10
+    - match: (?=t)
+      set: d9
+    - match: '[a-z]'
+      scope: in.c9
+  d9:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d9
+  c10:
+    - match: a
+      push: c11
+    - match: (?=t)
+      set: d10
+    - match: '[a-z]'
+      scope: in.c10
+  d10:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d10
+  c11:
+    - match: a
+      push: c12
+    - match: (?=t)
+      set: d11
+    - match: '[a-z]'
+      scope: in.c11
+  d11:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d11
+  c12:
+    - match: a
+      push: c13
+    - match: (?=t)
+      set: d12
+    - match: '[a-z]'
+      scope: in.c12
+  d12:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d12
+  c13:
+    - match: a
+      push: c14
+    - match: (?=t)
+      set: d13
+    - match: '[a-z]'
+      scope: in.c13
+  d13:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d13
+  c14:
+    - match: a
+      push: c15
+    - match: (?=t)
+      set: d14
+    - match: '[a-z]'
+      scope: in.c14
+  d14:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d14
+  c15:
+    - match: a
+      push: c16
+    - match: (?=t)
+      set: d15
+    - match: '[a-z]'
+      scope: in.c15
+  d15:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d15
+  c16:
+    - match: a
+      push: c17
+    - match: (?=t)
+      set: d16
+    - match: '[a-z]'
+      scope: in.c16
+  d16:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d16
+  c17:
+    - match: a
+      push: c18
+    - match: (?=t)
+      set: d17
+    - match: '[a-z]'
+      scope: in.c17
+  d17:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d17
+  c18:
+    - match: a
+      push: c19
+    - match: (?=t)
+      set: d18
+    - match: '[a-z]'
+      scope: in.c18
+  d18:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d18
+  c19:
+    - match: a
+      push: c20
+    - match: (?=t)
+      set: d19
+    - match: '[a-z]'
+      scope: in.c19
+  d19:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d19
+  c20:
+    - match: a
+      push: c21
+    - match: (?=t)
+      set: d20
+    - match: '[a-z]'
+      scope: in.c20
+  d20:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d20
+  c21:
+    - match: a
+      push: c22
+    - match: (?=t)
+      set: d21
+    - match: '[a-z]'
+      scope: in.c21
+  d21:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d21
+  c22:
+    - match: a
+      push: c23
+    - match: (?=t)
+      set: d22
+    - match: '[a-z]'
+      scope: in.c22
+  d22:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d22
+  c23:
+    - match: a
+      push: c24
+    - match: (?=t)
+      set: d23
+    - match: '[a-z]'
+      scope: in.c23
+  d23:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d23
+  c24:
+    - match: a
+      push: c25
+    - match: (?=t)
+      set: d24
+    - match: '[a-z]'
+      scope: in.c24
+  d24:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d24
+  c25:
+    - match: a
+      push: c26
+    - match: (?=t)
+      set: d25
+    - match: '[a-z]'
+      scope: in.c25
+  d25:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d25
+  c26:
+    - match: a
+      push: c27
+    - match: (?=t)
+      set: d26
+    - match: '[a-z]'
+      scope: in.c26
+  d26:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d26
+  c27:
+    - match: a
+      push: c28
+    - match: (?=t)
+      set: d27
+    - match: '[a-z]'
+      scope: in.c27
+  d27:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d27
+  c28:
+    - match: a
+      push: c29
+    - match: (?=t)
+      set: d28
+    - match: '[a-z]'
+      scope: in.c28
+  d28:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d28
+  c29:
+    - match: a
+      push: c30
+    - match: (?=t)
+      set: d29
+    - match: '[a-z]'
+      scope: in.c29
+  d29:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d29
+  c30:
+    - match: a
+      push: c31
+    - match: (?=t)
+      set: d30
+    - match: '[a-z]'
+      scope: in.c30
+  d30:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d30
+  c31:
+    - match: a
+      push: c32
+    - match: (?=t)
+      set: d31
+    - match: '[a-z]'
+      scope: in.c31
+  d31:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d31
+  c32:
+    - match: a
+      push: c33
+    - match: (?=t)
+      set: d32
+    - match: '[a-z]'
+      scope: in.c32
+  d32:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d32
+  c33:
+    - match: a
+      push: c34
+    - match: (?=t)
+      set: d33
+    - match: '[a-z]'
+      scope: in.c33
+  d33:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d33
+  c34:
+    - match: a
+      push: c35
+    - match: (?=t)
+      set: d34
+    - match: '[a-z]'
+      scope: in.c34
+  d34:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d34
+  c35:
+    - match: a
+      push: c36
+    - match: (?=t)
+      set: d35
+    - match: '[a-z]'
+      scope: in.c35
+  d35:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d35
+  c36:
+    - match: a
+      push: c37
+    - match: (?=t)
+      set: d36
+    - match: '[a-z]'
+      scope: in.c36
+  d36:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d36
+  c37:
+    - match: a
+      push: c38
+    - match: (?=t)
+      set: d37
+    - match: '[a-z]'
+      scope: in.c37
+  d37:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d37
+  c38:
+    - match: a
+      push: c39
+    - match: (?=t)
+      set: d38
+    - match: '[a-z]'
+      scope: in.c38
+  d38:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d38
+  c39:
+    - match: a
+      push: c40
+    - match: (?=t)
+      set: d39
+    - match: '[a-z]'
+      scope: in.c39
+  d39:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d39
+  c40:
+    - match: (?=t)
+      set: d40
+    - match: '[a-z]'
+      scope: in.c40
+  d40:
+    - match: (?=t)
+      pop: 1
+    - match: '[a-z]'
+      scope: in.d40

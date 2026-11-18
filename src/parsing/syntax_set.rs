@@ -1536,7 +1536,13 @@ impl SyntaxSetBuilder {
         };
         if let Some(context_refs) = maybe_context_refs {
             for context_ref in context_refs.iter_mut() {
-                Self::link_ref(context_ref, syntax_index, all_context_ids, syntaxes);
+                // A rule naming `main` enters that context without the file's
+                // scope, which only a `scope:` reference brings with it.
+                let names_main = matches!(context_ref, ContextReference::Named(name) if name == "main");
+                match all_context_ids[syntax_index].get("__named_main") {
+                    Some(id) if names_main => *context_ref = ContextReference::Direct(*id),
+                    _ => Self::link_ref(context_ref, syntax_index, all_context_ids, syntaxes),
+                }
             }
         }
         if let Some(ref mut context_ref) = match_pat.with_prototype {
@@ -2061,7 +2067,7 @@ mod tests {
         syntax: &SyntaxReference,
     ) {
         for (name, id) in syntax.context_ids() {
-            if name == "__main" || name == "__start" {
+            if name == "__main" || name == "__named_main" || name == "__start" {
                 // Skip special contexts
                 continue;
             }

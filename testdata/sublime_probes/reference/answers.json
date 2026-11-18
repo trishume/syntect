@@ -609,6 +609,846 @@
   "line": "xp",
   "loaded": true
  },
+ "self_main_by_scope": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-by-scope in.main",
+   "source.self-main-by-scope k.p",
+   "source.self-main-by-scope source.self-main-by-scope in.main",
+   "source.self-main-by-scope k.q",
+   "source.self-main-by-scope in.main",
+   "source.self-main-by-scope"
+  ],
+  "line": "apbqc",
+  "loaded": true
+ },
+ "self_main_meta": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta meta.main k.p",
+   "source.self-main-meta meta.main meta.main in.main",
+   "source.self-main-meta meta.main k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta meta.main"
+  ],
+  "line": "apbqc",
+  "loaded": true
+ },
+ "self_main_meta_again": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.m",
+   "source.self-main-meta meta.main k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.m",
+   "source.self-main-meta meta.main meta.main in.main",
+   "source.self-main-meta meta.main meta.main"
+  ],
+  "line": "asbmsbmc",
+  "loaded": true
+ },
+ "self_main_meta_pop": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta meta.main"
+  ],
+  "line": "aqbqc",
+  "loaded": true
+ },
+ "self_main_meta_set": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.m",
+   "source.self-main-meta meta.main meta.main in.main",
+   "source.self-main-meta meta.main meta.main"
+  ],
+  "line": "asbmc",
+  "loaded": true
+ },
+ "self_main_meta_set_pop": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.q",
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta meta.main"
+  ],
+  "line": "asbqcqd",
+  "loaded": true
+ },
+ "self_main_meta_set_push": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-meta meta.main in.main",
+   "source.self-main-meta k.s",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main k.r",
+   "source.self-main-meta meta.main meta.main in.main",
+   "source.self-main-meta meta.main k.q",
+   "source.self-main-meta meta.main in.other",
+   "source.self-main-meta meta.main"
+  ],
+  "line": "asbrcqd",
+  "loaded": true
+ },
+ "self_main_plain": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.p",
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.q",
+   "source.self-main-plain in.main",
+   "source.self-main-plain"
+  ],
+  "line": "apbqc",
+  "loaded": true
+ },
+ "self_main_plain_pop": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.q",
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.q",
+   "source.self-main-plain in.main",
+   "source.self-main-plain"
+  ],
+  "line": "aqbqc",
+  "loaded": true
+ },
+ "self_main_plain_set": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.s",
+   "source.self-main-plain in.other",
+   "source.self-main-plain k.m",
+   "source.self-main-plain in.main",
+   "source.self-main-plain"
+  ],
+  "line": "asbmc",
+  "loaded": true
+ },
+ "self_main_plain_set_push": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.s",
+   "source.self-main-plain in.other",
+   "source.self-main-plain k.r",
+   "source.self-main-plain in.main",
+   "source.self-main-plain k.q",
+   "source.self-main-plain in.other",
+   "source.self-main-plain"
+  ],
+  "line": "asbrcqd",
+  "loaded": true
+ },
+ "self_main_plain_v1": {
+  "coloured": true,
+  "columns": [
+   "source.self-main-plain-v1 in.main",
+   "source.self-main-plain-v1 k.p",
+   "source.self-main-plain-v1 in.main",
+   "source.self-main-plain-v1 k.q",
+   "source.self-main-plain-v1 in.main",
+   "source.self-main-plain-v1"
+  ],
+  "line": "apbqc",
+  "loaded": true
+ },
+ "set_loop_branch_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch",
+   "source.set-loop-branch",
+   "source.set-loop-branch",
+   "source.set-loop-branch"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_branch_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_branch_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-branch",
+   "source.set-loop-branch",
+   "source.set-loop-branch"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_branch_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch in.main",
+   "source.set-loop-branch"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_chain_32_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-32 in.main",
+   "source.set-loop-chain-32 in.main",
+   "source.set-loop-chain-32 in.end.t",
+   "source.set-loop-chain-32 in.c32",
+   "source.set-loop-chain-32 in.c32",
+   "source.set-loop-chain-32"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_chain_32_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-32 in.c32",
+   "source.set-loop-chain-32 in.c32",
+   "source.set-loop-chain-32"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_chain_33_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-33 in.main",
+   "source.set-loop-chain-33 in.main",
+   "source.set-loop-chain-33 in.end.t",
+   "source.set-loop-chain-33 in.c33",
+   "source.set-loop-chain-33 in.c33",
+   "source.set-loop-chain-33"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_chain_33_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-33 in.c33",
+   "source.set-loop-chain-33 in.c33",
+   "source.set-loop-chain-33"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_chain_34_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-34 in.main",
+   "source.set-loop-chain-34 in.main",
+   "source.set-loop-chain-34",
+   "source.set-loop-chain-34",
+   "source.set-loop-chain-34",
+   "source.set-loop-chain-34"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_chain_34_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-34 in.c33",
+   "source.set-loop-chain-34 in.c33",
+   "source.set-loop-chain-34"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_chain_control_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-control in.main",
+   "source.set-loop-chain-control in.main",
+   "source.set-loop-chain-control in.b.t",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_chain_control_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_chain_control_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-control in.b.t",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_chain_control_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control in.b",
+   "source.set-loop-chain-control"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_cycle_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle in.main",
+   "source.set-loop-cycle in.main",
+   "source.set-loop-cycle",
+   "source.set-loop-cycle",
+   "source.set-loop-cycle",
+   "source.set-loop-cycle"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_cycle_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle in.first",
+   "source.set-loop-cycle in.first",
+   "source.set-loop-cycle"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_cycle_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle",
+   "source.set-loop-cycle",
+   "source.set-loop-cycle"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_cycle_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle in.second",
+   "source.set-loop-cycle in.second",
+   "source.set-loop-cycle"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_cycle_v1_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle-v1 in.main",
+   "source.set-loop-cycle-v1 in.main",
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_cycle_v1_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle-v1 in.first",
+   "source.set-loop-cycle-v1 in.first",
+   "source.set-loop-cycle-v1"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_cycle_v1_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1",
+   "source.set-loop-cycle-v1"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_cycle_v1_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-cycle-v1 in.second",
+   "source.set-loop-cycle-v1 in.second",
+   "source.set-loop-cycle-v1"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_kind_branch_0": {
+  "coloured": false,
+  "columns": [
+   "text.plain",
+   "text.plain",
+   "text.plain",
+   "text.plain",
+   "text.plain",
+   "text.plain"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_kind_branch_1": {
+  "coloured": false,
+  "columns": [
+   "text.plain",
+   "text.plain",
+   "text.plain"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_consuming_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming in.end.t",
+   "source.set-loop-kind-consuming"
+  ],
+  "line": "tttttttttttttttttttttttttttttt",
+  "loaded": true
+ },
+ "set_loop_kind_consuming_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-consuming in.c40",
+   "source.set-loop-kind-consuming in.c40",
+   "source.set-loop-kind-consuming"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_embed_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-embed in.main",
+   "source.set-loop-kind-embed in.main",
+   "source.set-loop-kind-embed",
+   "source.set-loop-kind-embed",
+   "source.set-loop-kind-embed",
+   "source.set-loop-kind-embed"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_kind_embed_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-embed in.c33",
+   "source.set-loop-kind-embed in.c33",
+   "source.set-loop-kind-embed"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_mixed_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-mixed in.main",
+   "source.set-loop-kind-mixed in.main",
+   "source.set-loop-kind-mixed",
+   "source.set-loop-kind-mixed",
+   "source.set-loop-kind-mixed",
+   "source.set-loop-kind-mixed"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_kind_mixed_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-mixed in.c33",
+   "source.set-loop-kind-mixed in.c33",
+   "source.set-loop-kind-mixed"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_pop_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop",
+   "source.set-loop-kind-pop in.end.t",
+   "source.set-loop-kind-pop in.main",
+   "source.set-loop-kind-pop in.main",
+   "source.set-loop-kind-pop"
+  ],
+  "line": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd",
+  "loaded": true
+ },
+ "set_loop_kind_pop_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-pop in.main",
+   "source.set-loop-kind-pop in.main",
+   "source.set-loop-kind-pop"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_push_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-push in.main",
+   "source.set-loop-kind-push in.main",
+   "source.set-loop-kind-push",
+   "source.set-loop-kind-push",
+   "source.set-loop-kind-push",
+   "source.set-loop-kind-push"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_kind_push_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-push in.c33",
+   "source.set-loop-kind-push in.c33",
+   "source.set-loop-kind-push"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_kind_set_pop_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop",
+   "source.set-loop-kind-set-pop"
+  ],
+  "line": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaatcd",
+  "loaded": true
+ },
+ "set_loop_kind_set_pop_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-kind-set-pop in.c7",
+   "source.set-loop-kind-set-pop in.c7",
+   "source.set-loop-kind-set-pop"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_prototype_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_prototype_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-prototype in.first",
+   "source.set-loop-prototype in.first",
+   "source.set-loop-prototype"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_prototype_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-prototype",
+   "source.set-loop-prototype",
+   "source.set-loop-prototype"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_prototype_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-prototype in.second",
+   "source.set-loop-prototype in.second",
+   "source.set-loop-prototype"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_pushed_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-pushed in.main",
+   "source.set-loop-pushed in.main",
+   "source.set-loop-pushed",
+   "source.set-loop-pushed",
+   "source.set-loop-pushed",
+   "source.set-loop-pushed"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_pushed_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-pushed in.first",
+   "source.set-loop-pushed in.first",
+   "source.set-loop-pushed"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_pushed_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-pushed",
+   "source.set-loop-pushed",
+   "source.set-loop-pushed"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_pushed_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-pushed in.second",
+   "source.set-loop-pushed in.second",
+   "source.set-loop-pushed"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_self_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-self in.main",
+   "source.set-loop-self in.main",
+   "source.set-loop-self",
+   "source.set-loop-self",
+   "source.set-loop-self",
+   "source.set-loop-self"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_self_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-self in.main",
+   "source.set-loop-self in.main",
+   "source.set-loop-self"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_self_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-self",
+   "source.set-loop-self",
+   "source.set-loop-self"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_self_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-self in.main",
+   "source.set-loop-self in.main",
+   "source.set-loop-self"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
+ "set_loop_tail_0": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-tail in.main",
+   "source.set-loop-tail in.main",
+   "source.set-loop-tail",
+   "source.set-loop-tail",
+   "source.set-loop-tail",
+   "source.set-loop-tail"
+  ],
+  "line": "abtcd",
+  "loaded": true
+ },
+ "set_loop_tail_1": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-tail in.c",
+   "source.set-loop-tail in.c",
+   "source.set-loop-tail"
+  ],
+  "line": "ef",
+  "loaded": true
+ },
+ "set_loop_tail_2": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-tail",
+   "source.set-loop-tail",
+   "source.set-loop-tail"
+  ],
+  "line": "tg",
+  "loaded": true
+ },
+ "set_loop_tail_3": {
+  "coloured": true,
+  "columns": [
+   "source.set-loop-tail in.b",
+   "source.set-loop-tail in.b",
+   "source.set-loop-tail"
+  ],
+  "line": "hi",
+  "loaded": true
+ },
  "var_in_escape": {
   "coloured": true,
   "columns": [
